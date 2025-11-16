@@ -451,9 +451,24 @@ static bool session_token_is_suspicious_command(const char *token)
         }
     }
 
-    if ((token[0] == '.' && token[1] == '/') ||
-        (token[0] == '/' && token[1] != '\0')) {
+    // Check for file path patterns like "./script" or "/bin/sh"
+    // but NOT single-word commands like "/help"
+    if (token[0] == '.' && token[1] == '/') {
         return true;
+    }
+    if (token[0] == '/') {
+        // Check if it looks like a file path (contains another slash or 
+        // is suspiciously long for a command name)
+        const char *second_slash = strchr(token + 1, '/');
+        if (second_slash != NULL) {
+            return true;
+        }
+        // Also flag if it's too long to be a legitimate command
+        // (most commands are < 20 chars, file paths are often longer)
+        size_t len = strlen(token);
+        if (len > 30) {
+            return true;
+        }
     }
 
     if (strncmp(token, "python", 6) == 0) {

@@ -5379,6 +5379,8 @@ static void session_handle_history(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
+	session_clear_screen(ctx);
+
     size_t command_indices[SSH_CHATTER_INPUT_HISTORY_LIMIT];
     size_t command_count = 0U;
     for (size_t idx = 0U; idx < ctx->input_history_count; ++idx) {

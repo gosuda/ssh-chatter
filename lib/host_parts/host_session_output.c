@@ -2810,7 +2810,6 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
 
     if (direction < 0 && at_boundary && new_position == 0U) {
         if (!ctx->history_latest_notified) {
-            session_send_system_line(ctx, "Already at the latest messages.");
             ctx->history_latest_notified = true;
         }
         session_render_prompt(ctx, false);
@@ -2832,7 +2831,6 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
     if (direction > 0 &&
         (reached_oldest || (at_boundary && new_position == max_position))) {
         if (!ctx->history_oldest_notified) {
-            session_send_system_line(ctx, "Reached the oldest stored message.");
             ctx->history_oldest_notified = true;
         }
     }
@@ -3396,7 +3394,7 @@ static void session_send_history_entry(session_ctx_t *ctx,
                                    sizeof(id_label))) {
             id_display = id_label;
         }
-        snprintf(name_block, sizeof(name_block), "%s%s [%s] %s%s", color, bold,
+        snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s", color, bold,
                  id_display, entry->username, ANSI_RESET);
         strncat(formatted, name_block,
                 sizeof(formatted) - strlen(formatted) - 1U);

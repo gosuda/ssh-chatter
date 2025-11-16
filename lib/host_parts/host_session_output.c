@@ -2381,6 +2381,25 @@ static void session_clear_input_without_prompt(session_ctx_t *ctx)
     session_clear_input_base(ctx, false);
 }
 
+// SLASH_COMPATIBLE: Helper function to check if a character is slash-compatible
+static inline bool session_is_slash_compatible_char(char ch)
+{
+    switch ((int)ch) {
+    case (int)'/':
+    case (int)'.':
+    case (int)'_':
+    case (int)'@':
+    case (int)'$':
+    case (int)'*':
+    case (int)'-':
+    case (int)'#':
+    case (int)'>':
+        return true;
+    default:
+        return false;
+    }
+}
+
 static bool session_try_command_completion(session_ctx_t *ctx)
 {
     if (ctx == NULL) {
@@ -2400,12 +2419,14 @@ static bool session_try_command_completion(session_ctx_t *ctx)
         return false;
     }
 
-    const bool has_slash = ctx->input_buffer[first_visible] == '/';
-    if (!has_slash && ctx->input_mode != SESSION_INPUT_MODE_COMMAND) {
+    // SLASH_COMPATIBLE: Check for slash or slash-compatible characters
+    const bool has_slash_compatible =
+        session_is_slash_compatible_char(ctx->input_buffer[first_visible]);
+    if (!has_slash_compatible && ctx->input_mode != SESSION_INPUT_MODE_COMMAND) {
         return false;
     }
 
-    size_t command_start = first_visible + (has_slash ? 1U : 0U);
+    size_t command_start = first_visible + (has_slash_compatible ? 1U : 0U);
     if (command_start > ctx->input_length) {
         command_start = ctx->input_length;
     }

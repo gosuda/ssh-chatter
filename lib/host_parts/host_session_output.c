@@ -2964,6 +2964,12 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     // Clear screen before displaying messages (as per requirement)
     session_clear_screen(ctx);
 
+    // Show header indicating the message range being displayed
+    char header[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(header, sizeof(header), "Scrollback (%zu-%zu of %zu)",
+             oldest_visible + 1U, newest_visible + 1U, total);
+    session_send_system_line(ctx, header);
+
     for (size_t idx = 0; idx < copied; ++idx) {
         session_send_history_entry(ctx, &buffer[idx]);
     }

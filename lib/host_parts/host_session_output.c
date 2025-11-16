@@ -4590,18 +4590,16 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
         return;
     }
 
-    if (!translation_bypass) {
-        if (session_prepare_slash_command(normalized, command_line,
-                                          sizeof(command_line))) {
-            if (session_try_localized_command_forward(ctx, command_line)) {
-                return;
-            }
-            ctx->ops->dispatch_command(ctx, command_line);
+    if (session_prepare_slash_command(normalized, command_line,
+                                      sizeof(command_line))) {
+        if (session_try_localized_command_forward(ctx, command_line)) {
             return;
         }
+        ctx->ops->dispatch_command(ctx, command_line);
+        return;
     }
 
-    if (!translation_bypass && normalized[0] == '/') {
+    if (normalized[0] == '/') {
         if (session_try_localized_command_forward(ctx, normalized)) {
             return;
         }
@@ -4614,7 +4612,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
         ++trimmed;
     }
 
-    if (!translation_bypass && ctx->input_mode == SESSION_INPUT_MODE_COMMAND &&
+    if (ctx->input_mode == SESSION_INPUT_MODE_COMMAND &&
         *trimmed != '\0') {
         const char *command_text = trimmed;
         char command_buffer[SSH_CHATTER_MAX_INPUT_LEN];

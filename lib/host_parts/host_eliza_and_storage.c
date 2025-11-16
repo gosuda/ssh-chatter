@@ -5137,10 +5137,32 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
         pthread_mutex_unlock(&ctx->chat_message_count_mutex);
     }
 
-    session_send_history_entry(ctx, &entry);
-    // Always reset scrollback position to the latest and navigate to display the latest messages.
+    // Show the latest MESSAGE_CHUNK of history to the sender
     session_scrollback_reset_position(ctx);
-    session_scrollback_navigate(ctx, -1); // -1 to navigate towards newer messages (i.e., the latest)
+    
+    // Clear screen and show latest chunk of messages
+    session_clear_screen(ctx);
+    
+    size_t total = host_history_total(ctx->owner);
+    size_t chunk_size = SSH_CHATTER_SCROLLBACK_CHUNK;
+    if (chunk_size > total) {
+        chunk_size = total;
+    }
+    
+    // Show header
+    char header[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(header, sizeof(header), "Latest messages (1-%zu of %zu)",
+             chunk_size, total);
+    session_send_system_line(ctx, header);
+    
+    // Display the latest chunk
+    chat_history_entry_t buffer[SSH_CHATTER_SCROLLBACK_CHUNK];
+    size_t start_index = (total > chunk_size) ? (total - chunk_size) : 0U;
+    size_t copied = host_history_copy_range(ctx->owner, start_index, 
+                                            buffer, chunk_size);
+    for (size_t i = 0; i < copied; ++i) {
+        session_send_history_entry(ctx, &buffer[i]);
+    }
 
     if (ctx->history_scroll_position == 0U && !ctx->bracket_paste_active) {
         if (clear_prompt_text) {

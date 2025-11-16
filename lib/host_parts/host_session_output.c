@@ -2933,8 +2933,8 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         goto cleanup;
     }
 
-    // Calculate sliding window - show lines centered around current position
-    size_t visible_lines = 16U; // Number of lines to display
+    // Calculate sliding window - always show 100 messages (MESSAGE CHUNK)
+    size_t visible_lines = SSH_CHATTER_SCROLLBACK_CHUNK; // Always show 100 messages
     size_t newest_visible = total - 1U - new_position;
     size_t chunk = visible_lines;
     if (chunk > newest_visible + 1U) {
@@ -2960,6 +2960,15 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         session_render_prompt(ctx, false);
         goto cleanup;
     }
+
+    // Clear screen before displaying messages (as per requirement)
+    session_clear_screen(ctx);
+
+    // Show header indicating the message range being displayed
+    char header[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(header, sizeof(header), "Scrollback (%zu-%zu of %zu)",
+             oldest_visible + 1U, newest_visible + 1U, total);
+    session_send_system_line(ctx, header);
 
     for (size_t idx = 0; idx < copied; ++idx) {
         session_send_history_entry(ctx, &buffer[idx]);

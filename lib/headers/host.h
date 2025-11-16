@@ -101,6 +101,7 @@
 #define SSH_CHATTER_OTHELLO_MAX_MOVES \
     (SSH_CHATTER_OTHELLO_BOARD_SIZE * SSH_CHATTER_OTHELLO_BOARD_SIZE)
 #define SSH_CHATTER_OTHELLO_MAX_SLOTS 1024
+#define SSH_CHATTER_OUTPUT_BUFFER_SIZE 65536
 
 #include "user_data.h"
 
@@ -641,6 +642,10 @@ typedef struct session_ctx {
     const session_ops_t *ops;
     bool history_oldest_notified;
     bool history_latest_notified;
+    // Output buffering to prevent flickering
+    bool output_buffering_enabled;
+    char output_buffer[SSH_CHATTER_OUTPUT_BUFFER_SIZE];
+    size_t output_buffer_length;
 } session_ctx_t;
 
 typedef struct user_preference {

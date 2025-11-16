@@ -3666,11 +3666,87 @@ static void session_output_unlock(session_ctx_t *ctx)
     }
 }
 
+// Output buffering functions to prevent flickering
+static void session_output_buffer_start(session_ctx_t *ctx)
+{
+    if (ctx == NULL) {
+        return;
+    }
+    ctx->output_buffering_enabled = true;
+    ctx->output_buffer_length = 0U;
+}
+
+static void session_output_buffer_clear(session_ctx_t *ctx)
+{
+    if (ctx == NULL) {
+        return;
+    }
+    ctx->output_buffer_length = 0U;
+}
+
+static void session_output_buffer_flush(session_ctx_t *ctx)
+{
+    if (ctx == NULL || !ctx->output_buffering_enabled) {
+        return;
+    }
+
+    if (ctx->output_buffer_length > 0U) {
+        // Temporarily disable buffering to avoid infinite recursion
+        ctx->output_buffering_enabled = false;
+        session_channel_write(ctx, ctx->output_buffer, ctx->output_buffer_length);
+        ctx->output_buffer_length = 0U;
+        ctx->output_buffering_enabled = true;
+    }
+}
+
+static void session_output_buffer_stop(session_ctx_t *ctx)
+{
+    if (ctx == NULL) {
+        return;
+    }
+    session_output_buffer_flush(ctx);
+    ctx->output_buffering_enabled = false;
+}
+
+static bool session_output_buffer_append(session_ctx_t *ctx, const void *data,
+                                         size_t length)
+{
+    if (ctx == NULL || data == NULL || length == 0U) {
+        return false;
+    }
+
+    // Check if buffer has enough space
+    if (ctx->output_buffer_length + length > SSH_CHATTER_OUTPUT_BUFFER_SIZE) {
+        // Buffer is full, flush it first
+        session_output_buffer_flush(ctx);
+        
+        // If still not enough space after flush, this write is too large
+        if (length > SSH_CHATTER_OUTPUT_BUFFER_SIZE) {
+            // Write directly without buffering
+            ctx->output_buffering_enabled = false;
+            session_channel_write(ctx, data, length);
+            ctx->output_buffering_enabled = true;
+            return true;
+        }
+    }
+
+    // Append data to buffer
+    memcpy(ctx->output_buffer + ctx->output_buffer_length, data, length);
+    ctx->output_buffer_length += length;
+    return true;
+}
+
 static void session_channel_write(session_ctx_t *ctx, const void *data,
                                   size_t length)
 {
     if (ctx == NULL || data == NULL || length == 0U || ctx->should_exit ||
         !session_transport_active(ctx)) {
+        return;
+    }
+
+    // If output buffering is enabled, append to buffer instead of writing directly
+    if (ctx->output_buffering_enabled) {
+        session_output_buffer_append(ctx, data, length);
         return;
     }
 

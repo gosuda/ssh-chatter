@@ -4024,11 +4024,6 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     size_t target_count = 0U;
     size_t expected_targets = 0U;
 
-    chat_history_entry_t entry = {0};
-    if (from != NULL) {
-        chat_history_entry_prepare_user(&entry, from, message, false);
-    }
-
     pthread_mutex_lock(&room->lock);
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
@@ -4054,11 +4049,18 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         return;
     }
 
+    // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
         if (from != NULL) {
-            // Simply append the new message without clearing screen
-            session_send_history_entry(member, &entry);
+            // Format message directly for real-time delivery
+            char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
+            const char *color = from->user_color_code != NULL ? from->user_color_code : "";
+            const char *bold = from->user_is_bold ? ANSI_BOLD : "";
+            
+            snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s", 
+                     color, bold, from->user.name, ANSI_RESET, message);
+            session_send_plain_line(member, formatted);
         } else {
             session_send_system_line(member, message);
         }
@@ -4066,12 +4068,6 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         if (member->history_scroll_position == 0U) {
             session_refresh_input_line(member);
         }
-    }
-
-    if (from != NULL) {
-        // printf("\033[1G[broadcast:%s] %s\n", from->user.name, message);
-    } else {
-        // printf("\033[1G[broadcast] %s\n", message);
     }
 
     free(targets);
@@ -4159,35 +4155,48 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         return;
     }
 
+    // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
-        // Simply append the message without clearing screen
-        session_send_history_entry(member, entry);
+        
+        if (entry->is_user_message) {
+            // Format user message directly
+            char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
+            const char *color = entry->user_color_code != NULL ? entry->user_color_code : "";
+            const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
+            
+            char id_label[32] = "-";
+            if (entry->message_id > 0U) {
+                host_compact_id_encode(entry->message_id, id_label, sizeof(id_label));
+            }
+            
+            snprintf(formatted, sizeof(formatted), "%s%s [%s] <%s>%s %s", 
+                     color, bold, id_label, entry->username, ANSI_RESET, entry->message);
+            session_send_plain_line(member, formatted);
+            
+            // Send attachment if present
+            if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&
+                entry->attachment_target[0] != '\0') {
+                const char *label = chat_attachment_type_label(entry->attachment_type);
+                char attachment_line[SSH_CHATTER_MESSAGE_LIMIT];
+                snprintf(attachment_line, sizeof(attachment_line), "    (%s)" ANSI_RESET " %s",
+                         label, entry->attachment_target);
+                session_send_plain_line(member, attachment_line);
+                
+                if (entry->attachment_caption[0] != '\0') {
+                    char caption_line[SSH_CHATTER_MESSAGE_LIMIT];
+                    snprintf(caption_line, sizeof(caption_line), "    \342\206\263 %s",
+                             entry->attachment_caption);
+                    session_send_plain_line(member, caption_line);
+                }
+            }
+        } else {
+            // System message
+            session_send_plain_line(member, entry->message);
+        }
         
         if (member->history_scroll_position == 0U) {
             session_refresh_input_line(member);
-        }
-    }
-
-    if (entry->is_user_message) {
-        const char *message_text = entry->message;
-        char fallback[SSH_CHATTER_MESSAGE_LIMIT];
-        if ((message_text == NULL || message_text[0] == '\0') &&
-            entry->attachment_type != CHAT_ATTACHMENT_NONE) {
-            const char *label =
-                chat_attachment_type_label(entry->attachment_type);
-            snprintf(fallback, sizeof(fallback), "shared a %s" ANSI_RESET, label);
-            message_text = fallback;
-        } else if (message_text == NULL) {
-            message_text = "";
-        }
-
-        // printf("\033[1G[broadcast:%s#%" PRIu64 "] %s\n", entry->username,
-        //        entry->message_id, message_text);
-        if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&
-            entry->attachment_target[0] != '\0') {
-            // const char *label =
-            //     chat_attachment_type_label(entry->attachment_type);
         }
     }
 

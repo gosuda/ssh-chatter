@@ -106,7 +106,7 @@ security_layer_component_reset(security_layer_component_t *component)
 
     if (component->ciphertext != nullptr) {
         OPENSSL_cleanse(component->ciphertext, component->cipher_len);
-        free(component->ciphertext);
+        GC_FREE(component->ciphertext);
         component->ciphertext = nullptr;
     }
     component->cipher_len = 0U;
@@ -144,7 +144,7 @@ security_layer_encode_component(const security_layer_component_t *component,
     char *encoded = (char *)GC_MALLOC(encoded_len + 1U);
     if (encoded == nullptr) {
         OPENSSL_cleanse(buffer, buffer_len);
-        free(buffer);
+        GC_FREE(buffer);
         errno = ENOMEM;
         return false;
     }
@@ -152,10 +152,10 @@ security_layer_encode_component(const security_layer_component_t *component,
     int written =
         EVP_EncodeBlock((unsigned char *)encoded, buffer, (int)buffer_len);
     OPENSSL_cleanse(buffer, buffer_len);
-    free(buffer);
+    GC_FREE(buffer);
     if (written <= 0) {
         OPENSSL_cleanse(encoded, encoded_len + 1U);
-        free(encoded);
+        GC_FREE(encoded);
         errno = EIO;
         return false;
     }
@@ -295,7 +295,7 @@ bool security_layer_encrypt_message(const security_layer_t *layer,
         }
 
         OPENSSL_cleanse(working, working_len);
-        free(working);
+        GC_FREE(working);
         working = component->ciphertext;
         working_len = component->cipher_len;
         component->ciphertext = working;
@@ -303,7 +303,7 @@ bool security_layer_encrypt_message(const security_layer_t *layer,
 
     if (!success) {
         OPENSSL_cleanse(working, working_len);
-        free(working);
+        GC_FREE(working);
         for (size_t idx = 0U; idx < SECURITY_LAYER_LEVELS; ++idx) {
             if (layers[idx].ciphertext == working) {
                 layers[idx].ciphertext = nullptr;
@@ -354,7 +354,7 @@ bool security_layer_encrypt_message(const security_layer_t *layer,
     for (size_t idx = 0U; idx < SECURITY_LAYER_LEVELS; ++idx) {
         if (encoded_layers[idx] != nullptr) {
             OPENSSL_cleanse(encoded_layers[idx], strlen(encoded_layers[idx]));
-            free(encoded_layers[idx]);
+            GC_FREE(encoded_layers[idx]);
         }
     }
 
@@ -366,7 +366,7 @@ bool security_layer_encrypt_message(const security_layer_t *layer,
     }
 
     OPENSSL_cleanse(working, working_len);
-    free(working);
+    GC_FREE(working);
 
     return success;
 }
@@ -392,7 +392,7 @@ static bool security_layer_decode_segment(const char *segment,
                                       (int)segment_len);
     if (decoded_len < 0) {
         OPENSSL_cleanse(decoded, (size_t)((segment_len * 3U) / 4U + 4U));
-        free(decoded);
+        GC_FREE(decoded);
         errno = EIO;
         return false;
     }
@@ -408,7 +408,7 @@ static bool security_layer_decode_segment(const char *segment,
 
     if (usable_len < SECURITY_LAYER_IV_LEN + SECURITY_LAYER_TAG_LEN) {
         OPENSSL_cleanse(decoded, (size_t)((segment_len * 3U) / 4U + 4U));
-        free(decoded);
+        GC_FREE(decoded);
         errno = EINVAL;
         return false;
     }
@@ -457,7 +457,7 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
 
     if (segment_count != SECURITY_LAYER_LEVELS || token != nullptr) {
         OPENSSL_cleanse(copy, strlen(copy));
-        free(copy);
+        GC_FREE(copy);
         errno = EINVAL;
         return false;
     }
@@ -487,7 +487,7 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
             current_len = cipher_len;
             if (cipher_len > (size_t)INT_MAX) {
                 OPENSSL_cleanse(decoded, decoded_len);
-                free(decoded);
+                GC_FREE(decoded);
                 errno = EOVERFLOW;
                 success = false;
                 break;
@@ -496,7 +496,7 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
                 (unsigned char *)GC_MALLOC(cipher_len > 0U ? cipher_len : 1U);
             if (current_cipher == nullptr) {
                 OPENSSL_cleanse(decoded, decoded_len);
-                free(decoded);
+                GC_FREE(decoded);
                 errno = ENOMEM;
                 success = false;
                 break;
@@ -507,7 +507,7 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
         } else {
             if (cipher_len != current_len) {
                 OPENSSL_cleanse(decoded, decoded_len);
-                free(decoded);
+                GC_FREE(decoded);
                 errno = EIO;
                 success = false;
                 break;
@@ -517,7 +517,7 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
         EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
         if (ctx == nullptr) {
             OPENSSL_cleanse(decoded, decoded_len);
-            free(decoded);
+            GC_FREE(decoded);
             errno = ENOMEM;
             success = false;
             break;
@@ -531,7 +531,7 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
                                layer->subkeys[layer_index], iv) != 1) {
             EVP_CIPHER_CTX_free(ctx);
             OPENSSL_cleanse(decoded, decoded_len);
-            free(decoded);
+            GC_FREE(decoded);
             errno = EIO;
             success = false;
             break;
@@ -542,7 +542,7 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
         if (plaintext_layer == nullptr) {
             EVP_CIPHER_CTX_free(ctx);
             OPENSSL_cleanse(decoded, decoded_len);
-            free(decoded);
+            GC_FREE(decoded);
             errno = ENOMEM;
             success = false;
             break;
@@ -553,10 +553,10 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
             if (EVP_DecryptUpdate(ctx, plaintext_layer, &out_len,
                                   current_cipher, (int)current_len) != 1) {
                 OPENSSL_cleanse(plaintext_layer, current_len);
-                free(plaintext_layer);
+                GC_FREE(plaintext_layer);
                 EVP_CIPHER_CTX_free(ctx);
                 OPENSSL_cleanse(decoded, decoded_len);
-                free(decoded);
+                GC_FREE(decoded);
                 errno = EIO;
                 success = false;
                 break;
@@ -566,10 +566,10 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
             if (EVP_DecryptUpdate(ctx, plaintext_layer, &tmp_len, nullptr, 0) !=
                 1) {
                 OPENSSL_cleanse(plaintext_layer, 1U);
-                free(plaintext_layer);
+                GC_FREE(plaintext_layer);
                 EVP_CIPHER_CTX_free(ctx);
                 OPENSSL_cleanse(decoded, decoded_len);
-                free(decoded);
+                GC_FREE(decoded);
                 errno = EIO;
                 success = false;
                 break;
@@ -581,10 +581,10 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
                                 SECURITY_LAYER_TAG_LEN, (void *)tag) != 1) {
             OPENSSL_cleanse(plaintext_layer,
                             current_len > 0U ? current_len : 1U);
-            free(plaintext_layer);
+            GC_FREE(plaintext_layer);
             EVP_CIPHER_CTX_free(ctx);
             OPENSSL_cleanse(decoded, decoded_len);
-            free(decoded);
+            GC_FREE(decoded);
             errno = EIO;
             success = false;
             break;
@@ -595,10 +595,10 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
             1) {
             OPENSSL_cleanse(plaintext_layer,
                             current_len > 0U ? current_len : 1U);
-            free(plaintext_layer);
+            GC_FREE(plaintext_layer);
             EVP_CIPHER_CTX_free(ctx);
             OPENSSL_cleanse(decoded, decoded_len);
-            free(decoded);
+            GC_FREE(decoded);
             errno = EIO;
             success = false;
             break;
@@ -606,35 +606,35 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
 
         EVP_CIPHER_CTX_free(ctx);
         OPENSSL_cleanse(decoded, decoded_len);
-        free(decoded);
+        GC_FREE(decoded);
 
         size_t plain_len = (size_t)out_len + (size_t)final_len;
         if (plain_len != current_len) {
             OPENSSL_cleanse(plaintext_layer,
                             current_len > 0U ? current_len : 1U);
-            free(plaintext_layer);
+            GC_FREE(plaintext_layer);
             errno = EIO;
             success = false;
             break;
         }
 
         OPENSSL_cleanse(current_cipher, current_len);
-        free(current_cipher);
+        GC_FREE(current_cipher);
         current_cipher = plaintext_layer;
     }
 
     OPENSSL_cleanse(copy, strlen(copy));
-    free(copy);
+    GC_FREE(copy);
 
     if (!success) {
         OPENSSL_cleanse(current_cipher, current_len);
-        free(current_cipher);
+        GC_FREE(current_cipher);
         return false;
     }
 
     if (current_len >= plaintext_len) {
         OPENSSL_cleanse(current_cipher, current_len);
-        free(current_cipher);
+        GC_FREE(current_cipher);
         errno = ENOSPC;
         return false;
     }
@@ -646,14 +646,14 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
 
     OPENSSL_cleanse(current_cipher, current_len);
 
-    free(current_cipher);
+    GC_FREE(current_cipher);
 
     return true;
 }
 
 void security_layer_generate_salt(uint8_t *salt)
 {
-    if (salt == NULL) {
+    if (salt == nullptr) {
         return;
     }
 
@@ -664,17 +664,17 @@ void security_layer_hash_password(const char *password, const uint8_t *salt,
 
                                   uint8_t *hash_output)
 {
-    if (password == NULL || salt == NULL || hash_output == NULL) {
+    if (password == nullptr || salt == nullptr || hash_output == nullptr) {
         return;
     }
 
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
 
-    if (mdctx == NULL) {
+    if (mdctx == nullptr) {
         return;
     }
 
-    if (EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL) != 1) {
+    if (EVP_DigestInit_ex(mdctx, EVP_sha256(), nullptr) != 1) {
         EVP_MD_CTX_free(mdctx);
 
         return;
@@ -706,7 +706,7 @@ void security_layer_hash_password(const char *password, const uint8_t *salt,
 
 bool security_layer_is_zero_hash(const uint8_t *hash, size_t len)
 {
-    if (hash == NULL || len == 0) {
+    if (hash == nullptr || len == 0) {
         return true; // Treat null or empty hash as zero
     }
     for (size_t i = 0; i < len; ++i) {

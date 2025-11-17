@@ -36,7 +36,7 @@ static bool user_data_profile_picture_store(const char *root,
 
 static size_t user_data_column_reset_sequence_length(const char *text)
 {
-    if (text == NULL) {
+    if (text == nullptr) {
         return 0U;
     }
 
@@ -54,7 +54,7 @@ static size_t user_data_column_reset_sequence_length(const char *text)
 
 static void user_data_strip_column_reset(char *text)
 {
-    if (text == NULL || text[0] == '\0') {
+    if (text == nullptr || text[0] == '\0') {
         return;
     }
 
@@ -75,7 +75,7 @@ static void user_data_strip_column_reset(char *text)
 
 static bool user_data_is_directory(const char *path)
 {
-    if (path == NULL || path[0] == '\0') {
+    if (path == nullptr || path[0] == '\0') {
         return false;
     }
 
@@ -89,7 +89,7 @@ static bool user_data_is_directory(const char *path)
 
 static bool user_data_create_directory(const char *path)
 {
-    if (path == NULL || path[0] == '\0') {
+    if (path == nullptr || path[0] == '\0') {
         return false;
     }
 
@@ -110,14 +110,14 @@ static bool user_data_create_directory(const char *path)
 
 static bool user_data_ensure_parent(const char *path)
 {
-    if (path == NULL || path[0] == '\0') {
+    if (path == nullptr || path[0] == '\0') {
         return false;
     }
 
     char temp[PATH_MAX];
     snprintf(temp, sizeof(temp), "%s", path);
     char *parent = dirname(temp);
-    if (parent == NULL || parent[0] == '\0') {
+    if (parent == nullptr || parent[0] == '\0') {
         return false;
     }
 
@@ -126,7 +126,7 @@ static bool user_data_ensure_parent(const char *path)
 
 static bool user_data_file_exists(const char *path)
 {
-    if (path == NULL || path[0] == '\0') {
+    if (path == nullptr || path[0] == '\0') {
         return false;
     }
 
@@ -136,7 +136,7 @@ static bool user_data_file_exists(const char *path)
 static bool user_data_build_variant_name(const char *base, size_t index,
                                          char *buffer, size_t length)
 {
-    if (buffer == NULL || length == 0U || base == NULL || base[0] == '\0') {
+    if (buffer == nullptr || length == 0U || base == nullptr || base[0] == '\0') {
         return false;
     }
 
@@ -153,12 +153,12 @@ static bool user_data_build_variant_name(const char *base, size_t index,
 static bool user_data_load_raw(const char *path, user_data_record_t *record,
                                bool *needs_upgrade)
 {
-    if (record == NULL || path == NULL || path[0] == '\0') {
+    if (record == nullptr || path == nullptr || path[0] == '\0') {
         return false;
     }
 
     FILE *fp = fopen(path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return false;
     }
 
@@ -199,7 +199,7 @@ static bool user_data_load_raw(const char *path, user_data_record_t *record,
         return false;
     }
 
-    if (needs_upgrade != NULL) {
+    if (needs_upgrade != nullptr) {
         *needs_upgrade = false;
     }
 
@@ -209,7 +209,7 @@ static bool user_data_load_raw(const char *path, user_data_record_t *record,
 
 bool user_data_ensure_root(const char *restrict root)
 {
-    if (root == NULL || root[0] == '\0') {
+    if (root == nullptr || root[0] == '\0') {
         return false;
     }
 
@@ -229,12 +229,12 @@ bool user_data_ensure_root(const char *restrict root)
 bool user_data_sanitize_username(const char *restrict username,
                                  char *restrict sanitized, size_t length)
 {
-    if (sanitized == NULL || length == 0U) {
+    if (sanitized == nullptr || length == 0U) {
         return false;
     }
 
     sanitized[0] = '\0';
-    if (username == NULL || username[0] == '\0') {
+    if (username == nullptr || username[0] == '\0') {
         return false;
     }
 
@@ -286,7 +286,7 @@ bool user_data_path_for(const char *restrict root,
                         bool create_if_missing, char *restrict path,
                         size_t length)
 {
-    if (path == NULL || length == 0U || root == NULL || root[0] == '\0') {
+    if (path == nullptr || length == 0U || root == nullptr || root[0] == '\0') {
         return false;
     }
 
@@ -295,7 +295,7 @@ bool user_data_path_for(const char *restrict root,
         return false;
     }
 
-    if (ip == NULL || ip[0] == '\0') {
+    if (ip == nullptr || ip[0] == '\0') {
         int written = snprintf(path, length, "%s/%s.dat", root, sanitized);
         return written >= 0 && (size_t)written < length;
     }
@@ -317,7 +317,7 @@ bool user_data_path_for(const char *restrict root,
 
         if (user_data_file_exists(candidate_path)) {
             user_data_record_t existing;
-            if (user_data_load_raw(candidate_path, &existing, NULL)) {
+            if (user_data_load_raw(candidate_path, &existing, nullptr)) {
                 bool username_match = strncmp(existing.username, username,
                                               sizeof(existing.username)) == 0;
                 bool ip_match =
@@ -354,7 +354,7 @@ bool user_data_path_for(const char *restrict root,
 static bool user_data_profile_directory_path(const char *root, char *path,
                                              size_t length)
 {
-    if (path == NULL || length == 0U || root == NULL || root[0] == '\0') {
+    if (path == nullptr || length == 0U || root == nullptr || root[0] == '\0') {
         return false;
     }
 
@@ -371,8 +371,8 @@ static bool user_data_profile_picture_path(const char *root,
                                            const char *username, char *path,
                                            size_t length)
 {
-    if (path == NULL || length == 0U || root == NULL || root[0] == '\0' ||
-        username == NULL || username[0] == '\0') {
+    if (path == nullptr || length == 0U || root == nullptr || root[0] == '\0' ||
+        username == nullptr || username[0] == '\0') {
         return false;
     }
 
@@ -402,7 +402,7 @@ static void user_data_profile_picture_overlay(const char *root,
                                               const char *username,
                                               user_data_record_t *record)
 {
-    if (record == NULL || root == NULL || root[0] == '\0' || username == NULL ||
+    if (record == nullptr || root == nullptr || root[0] == '\0' || username == nullptr ||
         username[0] == '\0') {
         return;
     }
@@ -413,7 +413,7 @@ static void user_data_profile_picture_overlay(const char *root,
     }
 
     FILE *fp = fopen(path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return;
     }
 
@@ -436,7 +436,7 @@ static void user_data_profile_picture_overlay(const char *root,
 static bool user_data_profile_picture_store(const char *root,
                                             const user_data_record_t *record)
 {
-    if (root == NULL || root[0] == '\0' || record == NULL ||
+    if (root == nullptr || root[0] == '\0' || record == nullptr ||
         record->username[0] == '\0') {
         return false;
     }
@@ -473,7 +473,7 @@ static bool user_data_profile_picture_store(const char *root,
     }
 
     FILE *fp = fopen(temp_path, "wb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return false;
     }
 
@@ -530,7 +530,7 @@ static bool user_data_profile_picture_store(const char *root,
 static void user_data_normalize_record(user_data_record_t *record,
                                        const char *username)
 {
-    if (record == NULL) {
+    if (record == nullptr) {
         return;
     }
 
@@ -543,7 +543,7 @@ static void user_data_normalize_record(user_data_record_t *record,
     record->profile_picture[USER_DATA_PROFILE_PICTURE_LEN - 1U] = '\0';
     record->last_ip[SSH_CHATTER_IP_LEN - 1U] = '\0';
     user_data_strip_column_reset(record->profile_picture);
-    if (username != NULL && username[0] != '\0') {
+    if (username != nullptr && username[0] != '\0') {
         snprintf(record->username, sizeof(record->username), "%s", username);
     }
 }
@@ -551,17 +551,17 @@ static void user_data_normalize_record(user_data_record_t *record,
 bool user_data_init(user_data_record_t *restrict record,
                     const char *restrict username, const char *restrict ip)
 {
-    if (record == NULL) {
+    if (record == nullptr) {
         return false;
     }
 
     memset(record, 0, sizeof(*record));
     record->magic = USER_DATA_MAGIC;
     record->version = USER_DATA_VERSION;
-    if (username != NULL) {
+    if (username != nullptr) {
         snprintf(record->username, sizeof(record->username), "%s", username);
     }
-    if (ip != NULL) {
+    if (ip != nullptr) {
         snprintf(record->last_ip, sizeof(record->last_ip), "%s", ip);
     }
     record->alpha.active = 0U;
@@ -578,7 +578,7 @@ bool user_data_init(user_data_record_t *restrict record,
     record->mailbox_count = 0U;
     record->flag_count = 0U;
     record->flag_history_count = 0U;
-    record->last_updated = (uint64_t)time(NULL);
+    record->last_updated = (uint64_t)time(nullptr);
     memset(record->reserved, 0, sizeof(record->reserved));
 
     // Initialize password salt and hash
@@ -592,7 +592,7 @@ bool user_data_load(const char *restrict root, const char *restrict username,
                     const char *restrict ip,
                     user_data_record_t *restrict record)
 {
-    if (record == NULL) {
+    if (record == nullptr) {
         return false;
     }
 
@@ -612,7 +612,7 @@ bool user_data_load(const char *restrict root, const char *restrict username,
     if (needs_upgrade) {
         temp.version = USER_DATA_VERSION;
     }
-    if (ip != NULL && ip[0] != '\0') {
+    if (ip != nullptr && ip[0] != '\0') {
         snprintf(temp.last_ip, sizeof(temp.last_ip), "%s", ip);
     }
     *record = temp;
@@ -623,13 +623,13 @@ bool user_data_save(const char *restrict root,
                     const user_data_record_t *restrict record,
                     const char *restrict ip)
 {
-    if (record == NULL) {
+    if (record == nullptr) {
         return false;
     }
 
     char path[PATH_MAX];
     const char *effective_ip =
-        (ip != NULL && ip[0] != '\0') ? ip : record->last_ip;
+        (ip != nullptr && ip[0] != '\0') ? ip : record->last_ip;
     if (!user_data_path_for(root, record->username, effective_ip, true, path,
                             sizeof(path))) {
         return false;
@@ -650,7 +650,7 @@ bool user_data_save(const char *restrict root,
     }
 
     FILE *fp = fopen(temp_path, "wb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return false;
     }
 
@@ -658,7 +658,7 @@ bool user_data_save(const char *restrict root,
     user_data_normalize_record(&normalized, record->username);
     normalized.magic = USER_DATA_MAGIC;
     normalized.version = USER_DATA_VERSION;
-    if (effective_ip != NULL && effective_ip[0] != '\0') {
+    if (effective_ip != nullptr && effective_ip[0] != '\0') {
         snprintf(normalized.last_ip, sizeof(normalized.last_ip), "%s",
                  effective_ip);
     }
@@ -714,7 +714,7 @@ bool user_data_ensure_exists(const char *restrict root,
                              const char *restrict ip,
                              user_data_record_t *restrict record)
 {
-    if (record != NULL && user_data_load(root, username, ip, record)) {
+    if (record != nullptr && user_data_load(root, username, ip, record)) {
         return true;
     }
 
@@ -727,7 +727,7 @@ bool user_data_ensure_exists(const char *restrict root,
         return false;
     }
 
-    if (record != NULL) {
+    if (record != nullptr) {
         *record = temp;
     }
     return true;
@@ -737,10 +737,10 @@ void user_data_set_ssh_chat_server_config(user_data_record_t *restrict record,
                                           const char *restrict url,
                                           uint16_t port)
 {
-    if (record == NULL) {
+    if (record == nullptr) {
         return;
     }
-    if (url != NULL) {
+    if (url != nullptr) {
         strncpy(record->ssh_chat_server_url, url,
                 sizeof(record->ssh_chat_server_url) - 1);
         record->ssh_chat_server_url[sizeof(record->ssh_chat_server_url) - 1] =
@@ -755,21 +755,21 @@ void user_data_get_ssh_chat_server_config(
     const user_data_record_t *restrict record, char *restrict url,
     size_t url_len, uint16_t *restrict port)
 {
-    if (record == NULL) {
-        if (url != NULL && url_len > 0) {
+    if (record == nullptr) {
+        if (url != nullptr && url_len > 0) {
             url[0] = '\0';
         }
-        if (port != NULL) {
+        if (port != nullptr) {
             *port = 0;
         }
         return;
     }
 
-    if (url != NULL && url_len > 0) {
+    if (url != nullptr && url_len > 0) {
         strncpy(url, record->ssh_chat_server_url, url_len - 1);
         url[url_len - 1] = '\0';
     }
-    if (port != NULL) {
+    if (port != nullptr) {
         *port = record->ssh_chat_server_port;
     }
 }

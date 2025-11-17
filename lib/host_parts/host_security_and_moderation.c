@@ -4,7 +4,7 @@
 static void host_security_reset_diagnostic(char *diagnostic,
                                            size_t diagnostic_length)
 {
-    if (diagnostic != NULL && diagnostic_length > 0U) {
+    if (diagnostic != nullptr && diagnostic_length > 0U) {
         diagnostic[0] = '\0';
     }
 }
@@ -12,7 +12,7 @@ static void host_security_reset_diagnostic(char *diagnostic,
 static bool host_security_scan_input_invalid(host_t *host, const char *payload,
                                              size_t length)
 {
-    return (host == NULL || payload == NULL || length == 0U);
+    return (host == nullptr || payload == nullptr || length == 0U);
 }
 
 static bool host_security_moderation_available(host_t *host)
@@ -46,7 +46,7 @@ static const time_t HOST_HISTORY_RETENTION_SECONDS = 14 * 24 * 60 * 60;
 static bool chat_history_entry_is_expired(const chat_history_entry_t *entry,
                                           time_t cutoff)
 {
-    if (entry == NULL || cutoff <= 0) {
+    if (entry == nullptr || cutoff <= 0) {
         return false;
     }
 
@@ -59,7 +59,7 @@ static bool chat_history_entry_is_expired(const chat_history_entry_t *entry,
 
 static size_t host_history_drop_expired_locked(host_t *host, time_t cutoff)
 {
-    if (host == NULL || cutoff <= 0 || host->history == NULL ||
+    if (host == nullptr || cutoff <= 0 || host->history == nullptr ||
         host->history_count == 0U) {
         return 0U;
     }
@@ -116,8 +116,8 @@ static size_t host_security_copy_sanitized_snippet(char *snippet,
 static host_security_scan_result_t host_security_handle_moderation_failure(
     host_t *host, const char *error, char *diagnostic, size_t diagnostic_length)
 {
-    if (diagnostic != NULL && diagnostic_length > 0U) {
-        if (error != NULL && error[0] != '\0') {
+    if (diagnostic != nullptr && diagnostic_length > 0U) {
+        if (error != nullptr && error[0] != '\0') {
             snprintf(diagnostic, diagnostic_length, "%s", error);
         } else {
             snprintf(diagnostic, diagnostic_length, "%s",
@@ -137,8 +137,8 @@ host_security_finalize_scan(bool blocked, const char *reason, char *diagnostic,
         return HOST_SECURITY_SCAN_CLEAN;
     }
 
-    if (diagnostic != NULL && diagnostic_length > 0U) {
-        if (reason != NULL && reason[0] != '\0') {
+    if (diagnostic != nullptr && diagnostic_length > 0U) {
+        if (reason != nullptr && reason[0] != '\0') {
             snprintf(diagnostic, diagnostic_length, "%s", reason);
         } else {
             snprintf(diagnostic, diagnostic_length, "%s",
@@ -197,9 +197,9 @@ static void host_security_blocked_identity_set_label_name(
     const char *username)
 {
     identity->label =
-        (category != NULL && category[0] != '\0') ? category : "submission";
+        (category != nullptr && category[0] != '\0') ? category : "submission";
     identity->name =
-        (username != NULL && username[0] != '\0') ? username : "unknown";
+        (username != nullptr && username[0] != '\0') ? username : "unknown";
 }
 
 static void host_security_blocked_identity_resolve_ip(
@@ -208,14 +208,14 @@ static void host_security_blocked_identity_resolve_ip(
 {
     identity->resolved_ip[0] = '\0';
 
-    if (ip != NULL && ip[0] != '\0' &&
+    if (ip != nullptr && ip[0] != '\0' &&
         strncmp(ip, "unknown", SSH_CHATTER_IP_LEN) != 0) {
         snprintf(identity->resolved_ip, sizeof(identity->resolved_ip), "%s",
                  ip);
         return;
     }
 
-    if (host != NULL && username != NULL && username[0] != '\0') {
+    if (host != nullptr && username != nullptr && username[0] != '\0') {
         host_lookup_last_ip(host, username, identity->resolved_ip,
                             sizeof(identity->resolved_ip));
     }
@@ -230,7 +230,7 @@ static void host_security_blocked_identity_choose_addresses(
         return;
     }
 
-    if (ip != NULL && ip[0] != '\0') {
+    if (ip != nullptr && ip[0] != '\0') {
         identity->address = ip;
         if (strncmp(ip, "unknown", SSH_CHATTER_IP_LEN) != 0) {
             identity->register_ip = ip;
@@ -239,7 +239,7 @@ static void host_security_blocked_identity_choose_addresses(
     }
 
     identity->address = "unknown";
-    identity->register_ip = NULL;
+    identity->register_ip = nullptr;
 }
 
 static void
@@ -256,7 +256,7 @@ static const char *host_security_select_diagnostic(const char *diagnostic,
                                                    char *buffer,
                                                    size_t buffer_length)
 {
-    if (diagnostic != NULL && diagnostic[0] != '\0') {
+    if (diagnostic != nullptr && diagnostic[0] != '\0') {
         return diagnostic;
     }
 
@@ -277,7 +277,7 @@ static void host_security_notify_session_blocked(session_ctx_t *session,
                                                  const char *diagnostic,
                                                  bool post_send)
 {
-    if (session == NULL) {
+    if (session == nullptr) {
         return;
     }
 
@@ -300,9 +300,9 @@ static void host_security_handle_suspicious_activity(
     size_t attempts = 0U;
     bool banned = false;
 
-    if (host != NULL) {
+    if (host != nullptr) {
         const char *register_ip =
-            (identity->register_ip != NULL) ? identity->register_ip : "";
+            (identity->register_ip != nullptr) ? identity->register_ip : "";
         banned = host_register_suspicious_activity(host, identity->name,
                                                    register_ip, &attempts);
     }
@@ -314,7 +314,7 @@ static void host_security_handle_suspicious_activity(
     }
 
     if (!banned) {
-        if (attempts > 0U && session != NULL) {
+        if (attempts > 0U && session != nullptr) {
             char warning[256];
             snprintf(
                 warning, sizeof(warning),
@@ -327,7 +327,7 @@ static void host_security_handle_suspicious_activity(
 
     printf("[security] auto-banned %s (%s) for repeated suspicious payloads\n",
            identity->name, identity->address);
-    if (session != NULL) {
+    if (session != nullptr) {
         char notice[256];
         snprintf(
             notice, sizeof(notice),
@@ -340,7 +340,7 @@ static void host_security_apply_eliza_intervention(session_ctx_t *session,
                                                    const char *content,
                                                    const char *diagnostic)
 {
-    if (session != NULL) {
+    if (session != nullptr) {
         (void)host_eliza_intervene(session, content, diagnostic, true);
     }
 }
@@ -375,23 +375,23 @@ static void host_security_process_error(host_t *host, const char *category,
     (void)ip;
 
     const char *label =
-        (category != NULL && category[0] != '\0') ? category : "submission";
+        (category != nullptr && category[0] != '\0') ? category : "submission";
     const char *name =
-        (username != NULL && username[0] != '\0') ? username : "unknown";
+        (username != nullptr && username[0] != '\0') ? username : "unknown";
 
-    if (diagnostic != NULL && diagnostic[0] != '\0') {
+    if (diagnostic != nullptr && diagnostic[0] != '\0') {
         printf("[security] unable to moderate %s from %s: %s\n", label, name,
                diagnostic);
     } else {
         printf("[security] unable to moderate %s from %s\n", label, name);
     }
 
-    if (session == NULL) {
+    if (session == nullptr) {
         return;
     }
 
     char message[512];
-    if (diagnostic != NULL && diagnostic[0] != '\0') {
+    if (diagnostic != nullptr && diagnostic[0] != '\0') {
         if (post_send) {
             snprintf(message, sizeof(message),
                      "Security filter could not validate your %s after "
@@ -421,7 +421,7 @@ static void host_security_process_error(host_t *host, const char *category,
 
 static bool host_moderation_write_all(int fd, const void *buffer, size_t length)
 {
-    if (fd < 0 || buffer == NULL) {
+    if (fd < 0 || buffer == nullptr) {
         return false;
     }
 
@@ -446,7 +446,7 @@ static bool host_moderation_write_all(int fd, const void *buffer, size_t length)
 
 static bool host_moderation_read_all(int fd, void *buffer, size_t length)
 {
-    if (fd < 0 || buffer == NULL) {
+    if (fd < 0 || buffer == nullptr) {
         return false;
     }
 
@@ -529,7 +529,7 @@ static void host_moderation_worker_loop(int request_fd, int response_fd)
             response.result = HOST_SECURITY_SCAN_ERROR;
             response.disable_filter = 1U;
             const char *error = translator_last_error();
-            if (error != NULL && error[0] != '\0') {
+            if (error != nullptr && error[0] != '\0') {
                 message_length = strnlen(error, sizeof(message) - 1U);
                 memcpy(message, error, message_length);
             } else {
@@ -578,7 +578,7 @@ static void host_moderation_backoff(unsigned int attempts)
 
 static void host_moderation_close_worker(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -604,7 +604,7 @@ static void host_moderation_close_worker(host_t *host)
 
 static bool host_moderation_spawn_worker(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return false;
     }
 
@@ -653,11 +653,11 @@ static bool host_moderation_spawn_worker(host_t *host)
 
 static bool host_moderation_recover_worker(host_t *host, const char *diagnostic)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return false;
     }
 
-    const char *reason = (diagnostic != NULL && diagnostic[0] != '\0')
+    const char *reason = (diagnostic != nullptr && diagnostic[0] != '\0')
                              ? diagnostic
                              : "moderation worker failure";
 
@@ -729,14 +729,14 @@ host_moderation_apply_result(host_t *host, host_moderation_task_t *task,
                              const host_moderation_ipc_response_t *response,
                              const char *message)
 {
-    if (host == NULL || task == NULL || response == NULL) {
+    if (host == nullptr || task == nullptr || response == nullptr) {
         return;
     }
 
     session_ctx_t *session = chat_room_find_user(&host->room, task->username);
 
     if (response->disable_filter != 0U) {
-        const char *reason = (message != NULL && message[0] != '\0')
+        const char *reason = (message != nullptr && message[0] != '\0')
                                  ? message
                                  : "moderation pipeline unavailable";
         host_security_disable_filter(host, reason);
@@ -763,11 +763,11 @@ static void host_moderation_handle_failure(host_t *host,
                                            host_moderation_task_t *task,
                                            const char *diagnostic)
 {
-    if (host == NULL || task == NULL) {
+    if (host == nullptr || task == nullptr) {
         return;
     }
 
-    const char *message = (diagnostic != NULL && diagnostic[0] != '\0')
+    const char *message = (diagnostic != nullptr && diagnostic[0] != '\0')
                               ? diagnostic
                               : "moderation pipeline unavailable";
     host_security_disable_filter(host, message);
@@ -779,25 +779,25 @@ static void host_moderation_handle_failure(host_t *host,
 
 static void host_moderation_flush_pending(host_t *host, const char *diagnostic)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
-    host_moderation_task_t *task = NULL;
+    host_moderation_task_t *task = nullptr;
 
     if (host->moderation.mutex_initialized) {
         pthread_mutex_lock(&host->moderation.mutex);
         task = host->moderation.head;
-        host->moderation.head = NULL;
-        host->moderation.tail = NULL;
+        host->moderation.head = nullptr;
+        host->moderation.tail = nullptr;
         pthread_mutex_unlock(&host->moderation.mutex);
     }
 
-    const char *message = (diagnostic != NULL && diagnostic[0] != '\0')
+    const char *message = (diagnostic != nullptr && diagnostic[0] != '\0')
                               ? diagnostic
                               : "moderation unavailable";
 
-    while (task != NULL) {
+    while (task != nullptr) {
         host_moderation_task_t *next = task->next;
         session_ctx_t *session =
             chat_room_find_user(&host->room, task->username);
@@ -811,38 +811,38 @@ static void host_moderation_flush_pending(host_t *host, const char *diagnostic)
 static void *host_moderation_thread(void *arg)
 {
     host_t *host = (host_t *)arg;
-    if (host == NULL) {
-        return NULL;
+    if (host == nullptr) {
+        return nullptr;
     }
 
     sshc_memory_context_t *memory_scope =
         sshc_memory_context_push(host->memory_context);
 
-    const char *failure_reason = NULL;
+    const char *failure_reason = nullptr;
 
     while (true) {
         pthread_mutex_lock(&host->moderation.mutex);
-        while (!host->moderation.stop && host->moderation.head == NULL &&
+        while (!host->moderation.stop && host->moderation.head == nullptr &&
                host->moderation.active) {
             pthread_cond_wait(&host->moderation.cond, &host->moderation.mutex);
         }
 
         if (!host->moderation.active ||
-            (host->moderation.stop && host->moderation.head == NULL)) {
+            (host->moderation.stop && host->moderation.head == nullptr)) {
             pthread_mutex_unlock(&host->moderation.mutex);
             break;
         }
 
         host_moderation_task_t *task = host->moderation.head;
-        if (task != NULL) {
+        if (task != nullptr) {
             host->moderation.head = task->next;
-            if (host->moderation.head == NULL) {
-                host->moderation.tail = NULL;
+            if (host->moderation.head == nullptr) {
+                host->moderation.tail = nullptr;
             }
         }
         pthread_mutex_unlock(&host->moderation.mutex);
 
-        if (task == NULL) {
+        if (task == nullptr) {
             continue;
         }
 
@@ -875,7 +875,7 @@ static void *host_moderation_thread(void *arg)
             if (!recovered) {
                 break;
             }
-            failure_reason = NULL;
+            failure_reason = nullptr;
             continue;
         }
 
@@ -889,18 +889,18 @@ static void *host_moderation_thread(void *arg)
             if (!recovered) {
                 break;
             }
-            failure_reason = NULL;
+            failure_reason = nullptr;
             continue;
         }
 
         size_t message_length = response.message_length;
-        char *message = NULL;
+        char *message = nullptr;
 
         if (message_length > 0U) {
             message = (char *)GC_MALLOC(message_length + 1U);
-            if (message == NULL) {
+            if (message == nullptr) {
                 char *discard = (char *)GC_MALLOC(message_length);
-                if (discard != NULL) {
+                if (discard != nullptr) {
                     (void)host_moderation_read_all(host->moderation.response_fd,
                                                    discard, message_length);
                 }
@@ -911,7 +911,7 @@ static void *host_moderation_thread(void *arg)
                 if (!recovered) {
                     break;
                 }
-                failure_reason = NULL;
+                failure_reason = nullptr;
                 continue;
             }
 
@@ -924,34 +924,34 @@ static void *host_moderation_thread(void *arg)
                 if (!recovered) {
                     break;
                 }
-                failure_reason = NULL;
+                failure_reason = nullptr;
                 continue;
             }
             message[message_length] = '\0';
         }
 
-        const char *message_text = (message != NULL) ? message : "";
+        const char *message_text = (message != nullptr) ? message : "";
         host_moderation_apply_result(host, task, &response, message_text);
-        if (message != NULL) {
+        if (message != nullptr) {
         }
-        failure_reason = NULL;
+        failure_reason = nullptr;
     }
 
     host_moderation_flush_pending(host, failure_reason);
     sshc_memory_context_pop(memory_scope);
-    return NULL;
+    return nullptr;
 }
 
 static bool host_moderation_init(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return false;
     }
 
     host->moderation.active = false;
     host->moderation.stop = false;
-    host->moderation.head = NULL;
-    host->moderation.tail = NULL;
+    host->moderation.head = nullptr;
+    host->moderation.tail = nullptr;
     host->moderation.next_task_id = 1U;
     host->moderation.request_fd = -1;
     host->moderation.response_fd = -1;
@@ -960,12 +960,12 @@ static bool host_moderation_init(host_t *host)
     host->moderation.mutex_initialized = false;
     host->moderation.cond_initialized = false;
 
-    if (pthread_mutex_init(&host->moderation.mutex, NULL) != 0) {
+    if (pthread_mutex_init(&host->moderation.mutex, nullptr) != 0) {
         return false;
     }
     host->moderation.mutex_initialized = true;
 
-    if (pthread_cond_init(&host->moderation.cond, NULL) != 0) {
+    if (pthread_cond_init(&host->moderation.cond, nullptr) != 0) {
         pthread_mutex_destroy(&host->moderation.mutex);
         host->moderation.mutex_initialized = false;
         return false;
@@ -984,7 +984,7 @@ static bool host_moderation_init(host_t *host)
     host->moderation.active = true;
     host->moderation.stop = false;
 
-    if (pthread_create(&host->moderation.thread, NULL, host_moderation_thread,
+    if (pthread_create(&host->moderation.thread, nullptr, host_moderation_thread,
                        host) != 0) {
         host->moderation.active = false;
         host->moderation.stop = true;
@@ -998,7 +998,7 @@ static bool host_moderation_init(host_t *host)
 
 static void host_moderation_shutdown(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -1022,7 +1022,7 @@ static void host_moderation_shutdown(host_t *host)
     }
 
     if (host->moderation.thread_started) {
-        pthread_join(host->moderation.thread, NULL);
+        pthread_join(host->moderation.thread, nullptr);
         host->moderation.thread_started = false;
     }
 
@@ -1031,7 +1031,7 @@ static void host_moderation_shutdown(host_t *host)
     host->moderation.worker_start_time.tv_sec = 0;
     host->moderation.worker_start_time.tv_nsec = 0;
 
-    host_moderation_flush_pending(host, NULL);
+    host_moderation_flush_pending(host, nullptr);
 
     if (host->moderation.mutex_initialized) {
         pthread_mutex_destroy(&host->moderation.mutex);
@@ -1048,7 +1048,7 @@ static void host_moderation_shutdown(host_t *host)
 static bool host_moderation_queue_chat(session_ctx_t *ctx, const char *message,
                                        size_t length)
 {
-    if (ctx == NULL || ctx->owner == NULL || message == NULL || length == 0U) {
+    if (ctx == nullptr || ctx->owner == nullptr || message == nullptr || length == 0U) {
         return false;
     }
 
@@ -1079,7 +1079,7 @@ static bool host_moderation_queue_chat(session_ctx_t *ctx, const char *message,
 
     host_moderation_task_t *task =
         (host_moderation_task_t *)GC_MALLOC(sizeof(*task));
-    if (task == NULL) {
+    if (task == nullptr) {
         return false;
     }
 
@@ -1125,8 +1125,8 @@ static bool host_moderation_queue_chat(session_ctx_t *ctx, const char *message,
     }
 
     task->task_id = host->moderation.next_task_id++;
-    task->next = NULL;
-    if (host->moderation.tail == NULL) {
+    task->next = nullptr;
+    if (host->moderation.tail == nullptr) {
         host->moderation.head = task;
         host->moderation.tail = task;
     } else {
@@ -1141,7 +1141,7 @@ static bool host_moderation_queue_chat(session_ctx_t *ctx, const char *message,
 
 static bool host_eliza_enable(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return false;
     }
 
@@ -1171,7 +1171,7 @@ static bool host_eliza_enable(host_t *host)
 
 static bool host_eliza_disable(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return false;
     }
 
@@ -1201,11 +1201,11 @@ static bool host_eliza_disable(host_t *host)
 
 static void host_eliza_announce_join(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
-    host_history_record_system(host, "* [eliza] has joined the chat", NULL);
+    host_history_record_system(host, "* [eliza] has joined the chat", nullptr);
     host_eliza_say(host,
                    "Hey everyone, I'm eliza. Just another chatter keeping "
                    "an eye on things.");
@@ -1213,21 +1213,21 @@ static void host_eliza_announce_join(host_t *host)
 
 static void host_eliza_announce_depart(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     host_eliza_say(host, "I'm heading out. Stay safe!");
-    host_history_record_system(host, "* [eliza] has left the chat", NULL);
+    host_history_record_system(host, "* [eliza] has left the chat", nullptr);
 }
 
 static void host_eliza_say(host_t *host, const char *message)
 {
-    if (host == NULL || message == NULL || message[0] == '\0') {
+    if (host == nullptr || message == nullptr || message[0] == '\0') {
         return;
     }
 
-    if (!host_post_client_message(host, "eliza", message, NULL, NULL, false)) {
+    if (!host_post_client_message(host, "eliza", message, nullptr, nullptr, false)) {
         printf("[eliza] failed to deliver message: %s\n", message);
     }
 }
@@ -1235,13 +1235,13 @@ static void host_eliza_say(host_t *host, const char *message)
 static void host_eliza_prepare_private_reply(const char *message, char *reply,
                                              size_t reply_length)
 {
-    if (reply == NULL || reply_length == 0U) {
+    if (reply == nullptr || reply_length == 0U) {
         return;
     }
 
     reply[0] = '\0';
 
-    if (message == NULL) {
+    if (message == nullptr) {
         snprintf(reply, reply_length,
                  "I'm listening. Let me know what's going on.");
         return;
@@ -1264,7 +1264,7 @@ static void host_eliza_prepare_private_reply(const char *message, char *reply,
         }
     } else {
         const char *error = translator_last_error();
-        if (error != NULL && error[0] != '\0') {
+        if (error != nullptr && error[0] != '\0') {
             printf("[eliza] AI backend error: %s\n", error);
         }
     }
@@ -1278,7 +1278,7 @@ static void host_eliza_prepare_private_reply(const char *message, char *reply,
     const bool expresses_thanks =
         string_contains_case_insensitive(working, "thank") ||
         string_contains_case_insensitive(working, "고마");
-    const bool asks_question = strchr(working, '?') != NULL;
+    const bool asks_question = strchr(working, '?') != nullptr;
 
     if (says_hello) {
         snprintf(reply, reply_length,
@@ -1311,7 +1311,7 @@ static void host_eliza_prepare_private_reply(const char *message, char *reply,
 static void host_eliza_handle_private_message(session_ctx_t *ctx,
                                               const char *message)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -1323,9 +1323,9 @@ static void host_eliza_handle_private_message(session_ctx_t *ctx,
 
     session_ctx_t palette = {0};
     palette.user_color_code =
-        host->user_theme.userColor != NULL ? host->user_theme.userColor : "";
+        host->user_theme.userColor != nullptr ? host->user_theme.userColor : "";
     palette.user_highlight_code =
-        host->user_theme.highlight != NULL ? host->user_theme.highlight : "";
+        host->user_theme.highlight != nullptr ? host->user_theme.highlight : "";
     palette.user_is_bold = host->user_theme.isBold;
 
     char reply[SSH_CHATTER_MESSAGE_LIMIT];
@@ -1339,7 +1339,7 @@ static void host_eliza_handle_private_message(session_ctx_t *ctx,
 
 static bool host_eliza_content_is_severe(const char *text)
 {
-    if (text == NULL || text[0] == '\0') {
+    if (text == nullptr || text[0] == '\0') {
         return false;
     }
 
@@ -1400,7 +1400,7 @@ static void host_eliza_task_free(host_eliza_intervene_task_t *task)
 
 static bool host_eliza_worker_init(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return false;
     }
 
@@ -1409,27 +1409,27 @@ static bool host_eliza_worker_init(host_t *host)
         return true;
     }
 
-    worker->head = NULL;
-    worker->tail = NULL;
+    worker->head = nullptr;
+    worker->tail = nullptr;
     worker->mutex_initialized = false;
     worker->cond_initialized = false;
     worker->thread_started = false;
     atomic_store(&worker->stop, false);
     atomic_store(&worker->active, false);
 
-    if (pthread_mutex_init(&worker->mutex, NULL) != 0) {
+    if (pthread_mutex_init(&worker->mutex, nullptr) != 0) {
         return false;
     }
     worker->mutex_initialized = true;
 
-    if (pthread_cond_init(&worker->cond, NULL) != 0) {
+    if (pthread_cond_init(&worker->cond, nullptr) != 0) {
         pthread_mutex_destroy(&worker->mutex);
         worker->mutex_initialized = false;
         return false;
     }
     worker->cond_initialized = true;
 
-    if (pthread_create(&worker->thread, NULL, host_eliza_worker_thread, host) !=
+    if (pthread_create(&worker->thread, nullptr, host_eliza_worker_thread, host) !=
         0) {
         pthread_cond_destroy(&worker->cond);
         worker->cond_initialized = false;
@@ -1444,7 +1444,7 @@ static bool host_eliza_worker_init(host_t *host)
 
 static void host_eliza_worker_shutdown(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -1460,7 +1460,7 @@ static void host_eliza_worker_shutdown(host_t *host)
     }
 
     if (worker->thread_started) {
-        pthread_join(worker->thread, NULL);
+        pthread_join(worker->thread, nullptr);
         worker->thread_started = false;
     }
 
@@ -1475,14 +1475,14 @@ static void host_eliza_worker_shutdown(host_t *host)
     }
 
     host_eliza_intervene_task_t *task = worker->head;
-    while (task != NULL) {
+    while (task != nullptr) {
         host_eliza_intervene_task_t *next = task->next;
         host_eliza_task_free(task);
         task = next;
     }
 
-    worker->head = NULL;
-    worker->tail = NULL;
+    worker->head = nullptr;
+    worker->tail = nullptr;
     atomic_store(&worker->active, false);
     atomic_store(&worker->stop, false);
 }
@@ -1490,7 +1490,7 @@ static void host_eliza_worker_shutdown(host_t *host)
 static bool host_eliza_worker_enqueue(host_t *host,
                                       host_eliza_intervene_task_t *task)
 {
-    if (host == NULL || task == NULL) {
+    if (host == nullptr || task == nullptr) {
         return false;
     }
 
@@ -1500,7 +1500,7 @@ static bool host_eliza_worker_enqueue(host_t *host,
         return false;
     }
 
-    task->next = NULL;
+    task->next = nullptr;
 
     pthread_mutex_lock(&worker->mutex);
     if (atomic_load(&worker->stop)) {
@@ -1508,7 +1508,7 @@ static bool host_eliza_worker_enqueue(host_t *host,
         return false;
     }
 
-    if (worker->tail == NULL) {
+    if (worker->tail == nullptr) {
         worker->head = task;
         worker->tail = task;
     } else {
@@ -1524,8 +1524,8 @@ static bool host_eliza_worker_enqueue(host_t *host,
 static void *host_eliza_worker_thread(void *arg)
 {
     host_t *host = (host_t *)arg;
-    if (host == NULL) {
-        return NULL;
+    if (host == nullptr) {
+        return nullptr;
     }
 
     sshc_memory_context_t *memory_scope =
@@ -1536,42 +1536,42 @@ static void *host_eliza_worker_thread(void *arg)
 
     while (true) {
         pthread_mutex_lock(&worker->mutex);
-        while (!atomic_load(&worker->stop) && worker->head == NULL) {
+        while (!atomic_load(&worker->stop) && worker->head == nullptr) {
             pthread_cond_wait(&worker->cond, &worker->mutex);
         }
 
-        if (worker->head == NULL && atomic_load(&worker->stop)) {
+        if (worker->head == nullptr && atomic_load(&worker->stop)) {
             pthread_mutex_unlock(&worker->mutex);
             break;
         }
 
         host_eliza_intervene_task_t *task = worker->head;
-        if (task != NULL) {
+        if (task != nullptr) {
             worker->head = task->next;
-            if (worker->head == NULL) {
-                worker->tail = NULL;
+            if (worker->head == nullptr) {
+                worker->tail = nullptr;
             }
         }
         pthread_mutex_unlock(&worker->mutex);
 
-        if (task == NULL) {
+        if (task == nullptr) {
             continue;
         }
 
-        const char *reason = (task->reason[0] != '\0') ? task->reason : NULL;
+        const char *reason = (task->reason[0] != '\0') ? task->reason : nullptr;
         host_eliza_intervene_execute(task->ctx, reason, task->from_filter);
         host_eliza_task_free(task);
     }
 
     atomic_store(&worker->active, false);
     sshc_memory_context_pop(memory_scope);
-    return NULL;
+    return nullptr;
 }
 
 static bool host_eliza_intervene(session_ctx_t *ctx, const char *content,
                                  const char *reason, bool from_filter)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return false;
     }
 
@@ -1585,7 +1585,7 @@ static bool host_eliza_intervene(session_ctx_t *ctx, const char *content,
     }
 
     bool severe = host_eliza_content_is_severe(content);
-    if (!severe && reason != NULL) {
+    if (!severe && reason != nullptr) {
         severe = host_eliza_content_is_severe(reason);
     }
 
@@ -1602,14 +1602,14 @@ static bool host_eliza_intervene(session_ctx_t *ctx, const char *content,
 
     host_eliza_intervene_task_t *task =
         (host_eliza_intervene_task_t *)GC_MALLOC(sizeof(*task));
-    if (task == NULL) {
+    if (task == nullptr) {
         return false;
     }
     task->allocated_with_gc = true;
 
     task->ctx = ctx;
     task->from_filter = from_filter;
-    if (reason != NULL) {
+    if (reason != nullptr) {
         snprintf(task->reason, sizeof(task->reason), "%s", reason);
     } else {
         task->reason[0] = '\0';
@@ -1626,7 +1626,7 @@ static bool host_eliza_intervene(session_ctx_t *ctx, const char *content,
 static void host_eliza_intervene_execute(session_ctx_t *ctx, const char *reason,
                                          bool from_filter)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -1661,10 +1661,10 @@ static void host_eliza_intervene_execute(session_ctx_t *ctx, const char *reason,
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(notice, sizeof(notice),
              "* [eliza] removed [%s] for severe content.", ctx->user.name);
-    host_history_record_system(host, notice, NULL);
+    host_history_record_system(host, notice, nullptr);
 
     clock_gettime(CLOCK_MONOTONIC, &host->eliza_last_action);
-    if (from_filter && reason != NULL && reason[0] != '\0') {
+    if (from_filter && reason != nullptr && reason[0] != '\0') {
         printf("[eliza] removing %s (%s) after filter flag: %s\n",
                ctx->user.name, ctx->client_ip, reason);
     } else {
@@ -1680,7 +1680,7 @@ static host_security_scan_result_t
 session_security_check_text(session_ctx_t *ctx, const char *category,
                             const char *content, size_t length, bool post_send)
 {
-    if (ctx == NULL || ctx->owner == NULL || content == NULL || length == 0U) {
+    if (ctx == nullptr || ctx->owner == nullptr || content == nullptr || length == 0U) {
         return HOST_SECURITY_SCAN_CLEAN;
     }
 
@@ -1700,7 +1700,7 @@ session_security_check_text(session_ctx_t *ctx, const char *category,
     }
 
     const char *error = translator_last_error();
-    if (diagnostic[0] == '\0' && error != NULL && error[0] != '\0') {
+    if (diagnostic[0] == '\0' && error != nullptr && error[0] != '\0') {
         snprintf(diagnostic, sizeof(diagnostic), "%s", error);
     }
 
@@ -1711,12 +1711,12 @@ session_security_check_text(session_ctx_t *ctx, const char *category,
 
 static void host_state_resolve_path(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     const char *state_path = getenv("CHATTER_STATE_FILE");
-    if (state_path == NULL || state_path[0] == '\0') {
+    if (state_path == nullptr || state_path[0] == '\0') {
         state_path = "chatter_state.dat";
     }
 
@@ -1731,12 +1731,12 @@ static void host_state_resolve_path(host_t *host)
 
 static void host_vote_resolve_path(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     const char *vote_path = getenv("CHATTER_VOTE_FILE");
-    if (vote_path == NULL || vote_path[0] == '\0') {
+    if (vote_path == nullptr || vote_path[0] == '\0') {
         vote_path = "vote_state.dat";
     }
 
@@ -1751,12 +1751,12 @@ static void host_vote_resolve_path(host_t *host)
 
 static void host_ban_resolve_path(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     const char *ban_path = getenv("CHATTER_BAN_FILE");
-    if (ban_path == NULL || ban_path[0] == '\0') {
+    if (ban_path == nullptr || ban_path[0] == '\0') {
         ban_path = "ban_state.dat";
     }
 
@@ -1771,12 +1771,12 @@ static void host_ban_resolve_path(host_t *host)
 
 static void host_reply_state_resolve_path(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     const char *reply_path = getenv("CHATTER_REPLY_FILE");
-    if (reply_path == NULL || reply_path[0] == '\0') {
+    if (reply_path == nullptr || reply_path[0] == '\0') {
         reply_path = "reply_state.dat";
     }
 
@@ -1792,12 +1792,12 @@ static void host_reply_state_resolve_path(host_t *host)
 
 static void host_pw_auth_resolve_path(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     const char *pw_path = getenv("CHATTER_PW_AUTH_FILE");
-    if (pw_path == NULL || pw_path[0] == '\0') {
+    if (pw_path == nullptr || pw_path[0] == '\0') {
         pw_path = "pw_auth.dat";
     }
 
@@ -1812,12 +1812,12 @@ static void host_pw_auth_resolve_path(host_t *host)
 
 static void host_alpha_landers_resolve_path(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     const char *landers_path = getenv("CHATTER_ALPHA_LANDERS_FILE");
-    if (landers_path == NULL || landers_path[0] == '\0') {
+    if (landers_path == nullptr || landers_path[0] == '\0') {
         landers_path = "alpha_landers.dat";
     }
 
@@ -1836,11 +1836,11 @@ static bool host_alpha_landers_load_locked(host_t *host,
                                            alpha_lander_entry_t *entries,
                                            size_t capacity, size_t *entry_count)
 {
-    if (entry_count != NULL) {
+    if (entry_count != nullptr) {
         *entry_count = 0U;
     }
-    if (host == NULL || entries == NULL || capacity == 0U ||
-        entry_count == NULL) {
+    if (host == nullptr || entries == nullptr || capacity == 0U ||
+        entry_count == nullptr) {
         errno = EINVAL;
         return false;
     }
@@ -1853,7 +1853,7 @@ static bool host_alpha_landers_load_locked(host_t *host,
     memset(entries, 0, sizeof(entries[0]) * capacity);
 
     FILE *fp = fopen(host->alpha_landers_file_path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         if (errno == ENOENT) {
             return true;
         }
@@ -1897,7 +1897,7 @@ static bool host_alpha_landers_load_locked(host_t *host,
         }
     }
 
-    if (entry_count != NULL) {
+    if (entry_count != nullptr) {
         *entry_count = stored;
     }
 
@@ -1909,7 +1909,7 @@ static bool host_alpha_landers_save_locked(host_t *host,
                                            const alpha_lander_entry_t *entries,
                                            size_t entry_count)
 {
-    if (host == NULL || entries == NULL) {
+    if (host == nullptr || entries == nullptr) {
         errno = EINVAL;
         return false;
     }
@@ -1934,7 +1934,7 @@ static bool host_alpha_landers_save_locked(host_t *host,
     }
 
     FILE *fp = fopen(temp_path, "wb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         humanized_log_error("alpha", "failed to open alpha landers file",
                             errno != 0 ? errno : EIO);
         return false;
@@ -2011,11 +2011,11 @@ static bool host_alpha_landers_snapshot(host_t *host,
                                         alpha_lander_entry_t *entries,
                                         size_t capacity, size_t *entry_count)
 {
-    if (entry_count != NULL) {
+    if (entry_count != nullptr) {
         *entry_count = 0U;
     }
-    if (host == NULL || entries == NULL || capacity == 0U ||
-        entry_count == NULL) {
+    if (host == nullptr || entries == nullptr || capacity == 0U ||
+        entry_count == nullptr) {
         errno = EINVAL;
         return false;
     }
@@ -2034,7 +2034,7 @@ static bool host_alpha_landers_snapshot(host_t *host,
 static void host_alpha_landers_record(host_t *host, const char *username,
                                       uint32_t flag_count, uint64_t timestamp)
 {
-    if (host == NULL || username == NULL || username[0] == '\0' ||
+    if (host == nullptr || username == nullptr || username[0] == '\0' ||
         flag_count == 0U) {
         return;
     }
@@ -2110,7 +2110,7 @@ static void host_alpha_landers_record(host_t *host, const char *username,
 
 static bool host_user_data_bootstrap_username_is_valid(const char *username)
 {
-    if (username == NULL) {
+    if (username == nullptr) {
         return false;
     }
 
@@ -2133,7 +2133,7 @@ static bool host_user_data_bootstrap_username_is_valid(const char *username)
 
 static void host_user_data_bootstrap_visit(host_t *host, const char *username)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -2141,12 +2141,12 @@ static void host_user_data_bootstrap_visit(host_t *host, const char *username)
         return;
     }
 
-    (void)host_user_data_load_existing(host, username, NULL, NULL, true);
+    (void)host_user_data_load_existing(host, username, nullptr, nullptr, true);
 }
 
 static void host_user_data_bootstrap(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -2162,7 +2162,7 @@ static void host_user_data_bootstrap(host_t *host)
     }
 
     if (!host->user_data_lock_initialized) {
-        if (pthread_mutex_init(&host->user_data_lock, NULL) != 0) {
+        if (pthread_mutex_init(&host->user_data_lock, nullptr) != 0) {
             humanized_log_error("mailbox", "failed to initialise mailbox lock",
                                 errno != 0 ? errno : ENOMEM);
             host->user_data_lock_initialized = false;
@@ -2176,7 +2176,7 @@ static void host_user_data_bootstrap(host_t *host)
         return;
     }
 
-    if (host->history != NULL) {
+    if (host->history != nullptr) {
         for (size_t idx = 0U; idx < host->history_count; ++idx) {
             const chat_history_entry_t *entry = &host->history[idx];
             if (!entry->is_user_message) {
@@ -2241,21 +2241,21 @@ static void host_user_data_bootstrap(host_t *host)
 
 static void host_eliza_state_resolve_path(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     const char *state_path = getenv("CHATTER_ELIZA_STATE_FILE");
     char fallback_path[PATH_MAX];
     fallback_path[0] = '\0';
-    if (state_path == NULL || state_path[0] == '\0') {
+    if (state_path == nullptr || state_path[0] == '\0') {
         state_path = "eliza_state.dat";
         if (host->eliza_memory_file_path[0] != '\0') {
             char memory_parent_buffer[PATH_MAX];
             snprintf(memory_parent_buffer, sizeof(memory_parent_buffer), "%s",
                      host->eliza_memory_file_path);
             char *memory_parent = dirname(memory_parent_buffer);
-            if (memory_parent != NULL && memory_parent[0] != '\0' &&
+            if (memory_parent != nullptr && memory_parent[0] != '\0' &&
                 strcmp(memory_parent, ".") != 0) {
                 int derived_written =
                     snprintf(fallback_path, sizeof(fallback_path), "%s/%s",
@@ -2280,7 +2280,7 @@ static void host_eliza_state_resolve_path(host_t *host)
 
 static void host_state_save_locked(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -2298,7 +2298,7 @@ static void host_state_save_locked(host_t *host)
     }
 
     FILE *fp = fopen(temp_path, "wb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         humanized_log_error("host", "failed to open state file", errno);
         return;
     }
@@ -2314,15 +2314,15 @@ static void host_state_save_locked(host_t *host)
     size_t override_total = host->history_override_count;
     size_t history_entry_count = override_total;
     bool using_override =
-        (history_entries != NULL) ||
-        (host->history_override_count == 0U && host->history_override != NULL);
+        (history_entries != nullptr) ||
+        (host->history_override_count == 0U && host->history_override != nullptr);
     if (!using_override) {
         history_entry_count = host->history_total;
     }
 
     time_t cutoff = 0;
     if (HOST_HISTORY_RETENTION_SECONDS > 0) {
-        time_t now = time(NULL);
+        time_t now = time(nullptr);
         if (now != (time_t)-1 && now > HOST_HISTORY_RETENTION_SECONDS) {
             cutoff = now - HOST_HISTORY_RETENTION_SECONDS;
         }
@@ -2335,7 +2335,7 @@ static void host_state_save_locked(host_t *host)
     if (cutoff > 0) {
         if (using_override) {
             history_entry_count = 0U;
-            if (history_entries != NULL) {
+            if (history_entries != nullptr) {
                 for (size_t idx = 0U; idx < override_total; ++idx) {
                     if (!chat_history_entry_is_expired(&history_entries[idx],
                                                        cutoff)) {
@@ -2356,7 +2356,7 @@ static void host_state_save_locked(host_t *host)
 
             persisted_older_count = 0U;
             if (original_older_count > 0U) {
-                FILE *input = NULL;
+                FILE *input = nullptr;
                 uint32_t version = 0U;
                 uint32_t file_history_count = 0U;
                 if (host_state_stream_open(host->state_file_path, &input,
@@ -2410,13 +2410,13 @@ static void host_state_save_locked(host_t *host)
 
     bool success = fwrite(&header, sizeof(header), 1U, fp) == 1U;
 
-    if (!using_override && host->history_count > 0U && host->history == NULL) {
+    if (!using_override && host->history_count > 0U && host->history == nullptr) {
         success = false;
     }
 
     if (success) {
         if (using_override) {
-            if (history_entries != NULL) {
+            if (history_entries != nullptr) {
                 for (size_t idx = 0U; success && idx < override_total; ++idx) {
                     if (cutoff > 0 &&
                         chat_history_entry_is_expired(&history_entries[idx],
@@ -2432,7 +2432,7 @@ static void host_state_save_locked(host_t *host)
         } else {
             if (original_older_count > 0U) {
                 if (prune_success) {
-                    FILE *input = NULL;
+                    FILE *input = nullptr;
                     uint32_t version = 0U;
                     uint32_t file_history_count = 0U;
                     if (host_state_stream_open(host->state_file_path, &input,
@@ -2588,7 +2588,7 @@ static void host_state_save_locked(host_t *host)
 
 static void host_eliza_state_save_locked(host_t *host)
 {
-    if (host == NULL || host->eliza_state_file_path[0] == '\0') {
+    if (host == nullptr || host->eliza_state_file_path[0] == '\0') {
         return;
     }
 
@@ -2607,7 +2607,7 @@ static void host_eliza_state_save_locked(host_t *host)
     }
 
     FILE *fp = fopen(temp_path, "wb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         humanized_log_error("host", "failed to open eliza state file",
                             errno != 0 ? errno : EIO);
         return;
@@ -2671,7 +2671,7 @@ static void host_eliza_state_save_locked(host_t *host)
 
 static void host_eliza_state_load(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -2685,7 +2685,7 @@ static void host_eliza_state_load(host_t *host)
     }
 
     FILE *fp = fopen(host->eliza_state_file_path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return;
     }
 
@@ -2714,7 +2714,7 @@ static void host_eliza_state_load(host_t *host)
 
 static void host_ban_state_save_locked(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -2732,7 +2732,7 @@ static void host_ban_state_save_locked(host_t *host)
     }
 
     FILE *fp = fopen(temp_path, "wb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         humanized_log_error("host", "failed to open ban state file", errno);
         return;
     }
@@ -2801,7 +2801,7 @@ static void host_ban_state_save_locked(host_t *host)
 
 static void host_reply_state_save_locked(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -2819,7 +2819,7 @@ static void host_reply_state_save_locked(host_t *host)
     }
 
     FILE *fp = fopen(temp_path, "wb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         humanized_log_error("host", "failed to open reply state file", errno);
         return;
     }
@@ -2908,12 +2908,12 @@ static void host_reply_state_save_locked(host_t *host)
 static void vote_state_export_poll_entry(const poll_state_t *source,
                                          vote_state_poll_entry_t *dest)
 {
-    if (dest == NULL) {
+    if (dest == nullptr) {
         return;
     }
 
     memset(dest, 0, sizeof(*dest));
-    if (source == NULL) {
+    if (source == nullptr) {
         return;
     }
 
@@ -2935,12 +2935,12 @@ static void vote_state_export_poll_entry(const poll_state_t *source,
 static void vote_state_import_poll_entry(const vote_state_poll_entry_t *source,
                                          poll_state_t *dest)
 {
-    if (dest == NULL) {
+    if (dest == nullptr) {
         return;
     }
 
     poll_state_reset(dest);
-    if (source == NULL) {
+    if (source == nullptr) {
         return;
     }
 
@@ -2966,7 +2966,7 @@ static void vote_state_import_poll_entry(const vote_state_poll_entry_t *source,
 
 static void host_vote_state_save_locked(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -2984,7 +2984,7 @@ static void host_vote_state_save_locked(host_t *host)
     }
 
     FILE *fp = fopen(temp_path, "wb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         humanized_log_error("host", "failed to open vote state file", errno);
         return;
     }
@@ -3087,7 +3087,7 @@ static void host_vote_state_save_locked(host_t *host)
 static bool host_state_read_base_header(FILE *fp,
                                         host_state_header_v1_t *base_header)
 {
-    if (fp == NULL || base_header == NULL) {
+    if (fp == nullptr || base_header == nullptr) {
         return false;
     }
 
@@ -3112,8 +3112,8 @@ static bool host_state_read_metadata(FILE *fp, uint32_t version,
                                      uint32_t *grant_count,
                                      uint8_t *captcha_enabled_raw)
 {
-    if (fp == NULL || next_message_id == NULL || grant_count == NULL ||
-        captcha_enabled_raw == NULL) {
+    if (fp == nullptr || next_message_id == nullptr || grant_count == nullptr ||
+        captcha_enabled_raw == nullptr) {
         return false;
     }
 
@@ -3152,7 +3152,7 @@ static bool
 host_state_read_history_entry_from_stream(FILE *fp, uint32_t version,
                                           chat_history_entry_t *entry_value)
 {
-    if (fp == NULL || entry_value == NULL) {
+    if (fp == nullptr || entry_value == nullptr) {
         return false;
     }
 
@@ -3296,7 +3296,7 @@ static bool host_state_load_history_entries(FILE *fp, host_t *host,
                                             uint32_t version,
                                             uint32_t history_count)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return false;
     }
 
@@ -3340,7 +3340,7 @@ static bool host_state_load_history_entries(FILE *fp, host_t *host,
 static bool host_state_read_preference_entry(FILE *fp, uint32_t version,
                                              host_state_preference_entry_t *out)
 {
-    if (fp == NULL || out == NULL) {
+    if (fp == nullptr || out == nullptr) {
         return false;
     }
 
@@ -3619,7 +3619,7 @@ static bool host_state_read_preference_entry(FILE *fp, uint32_t version,
 static void host_state_apply_preference_entry(
     host_t *host, const host_state_preference_entry_t *serialized)
 {
-    if (host == NULL || serialized == NULL) {
+    if (host == nullptr || serialized == nullptr) {
         return;
     }
 
@@ -3678,7 +3678,7 @@ static bool host_state_load_preferences(FILE *fp, host_t *host,
                                         uint32_t version,
                                         uint32_t preference_count)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return false;
     }
 
@@ -3699,7 +3699,7 @@ static bool host_state_load_preferences(FILE *fp, host_t *host,
 
 static bool host_state_load_grants(FILE *fp, host_t *host, uint32_t grant_count)
 {
-    if (fp == NULL || host == NULL) {
+    if (fp == nullptr || host == nullptr) {
         return false;
     }
 
@@ -3728,11 +3728,11 @@ static bool host_state_load_grants(FILE *fp, host_t *host, uint32_t grant_count)
 
 static void host_state_reset_loaded_data(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
-    if (host->history != NULL && host->history_capacity > 0U) {
+    if (host->history != nullptr && host->history_capacity > 0U) {
         memset(host->history, 0,
                host->history_capacity * sizeof(chat_history_entry_t));
     }
@@ -3753,7 +3753,7 @@ static uint64_t host_state_normalize_next_message_id(uint64_t requested,
 
 static void host_state_load(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -3762,7 +3762,7 @@ static void host_state_load(host_t *host)
     }
 
     FILE *fp = fopen(host->state_file_path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return;
     }
 
@@ -3822,7 +3822,7 @@ static void host_state_load(host_t *host)
 
 static void host_clear_rss_feed(rss_feed_t *feed)
 {
-    if (feed == NULL) {
+    if (feed == nullptr) {
         return;
     }
 
@@ -3831,7 +3831,7 @@ static void host_clear_rss_feed(rss_feed_t *feed)
 
 static void host_rss_recount_locked(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -3846,8 +3846,8 @@ static void host_rss_recount_locked(host_t *host)
 
 static rss_feed_t *host_find_rss_feed_locked(host_t *host, const char *tag)
 {
-    if (host == NULL || tag == NULL || tag[0] == '\0') {
-        return NULL;
+    if (host == nullptr || tag == nullptr || tag[0] == '\0') {
+        return nullptr;
     }
 
     for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
@@ -3859,19 +3859,19 @@ static rss_feed_t *host_find_rss_feed_locked(host_t *host, const char *tag)
             return entry;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
                               char *error, size_t error_length)
 {
-    if (error != NULL && error_length > 0U) {
+    if (error != nullptr && error_length > 0U) {
         error[0] = '\0';
     }
 
-    if (host == NULL || url == NULL || url[0] == '\0' || tag == NULL ||
+    if (host == nullptr || url == nullptr || url[0] == '\0' || tag == nullptr ||
         tag[0] == '\0') {
-        if (error != NULL && error_length > 0U) {
+        if (error != nullptr && error_length > 0U) {
             snprintf(error, error_length, "Invalid RSS feed details.");
         }
         return false;
@@ -3882,7 +3882,7 @@ static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
     bool success = false;
 
     if (!rss_tag_is_valid(tag)) {
-        if (error != NULL && error_length > 0U) {
+        if (error != nullptr && error_length > 0U) {
             snprintf(error, error_length,
                      "Tag may only contain letters, numbers, '-', '_' or '.'.");
         }
@@ -3890,14 +3890,14 @@ static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
     }
 
     if (host->rss_feed_count >= SSH_CHATTER_RSS_MAX_FEEDS) {
-        if (error != NULL && error_length > 0U) {
+        if (error != nullptr && error_length > 0U) {
             snprintf(error, error_length, "Maximum RSS feed capacity reached.");
         }
         goto cleanup;
     }
 
-    if (host_find_rss_feed_locked(host, tag) != NULL) {
-        if (error != NULL && error_length > 0U) {
+    if (host_find_rss_feed_locked(host, tag) != nullptr) {
+        if (error != nullptr && error_length > 0U) {
             snprintf(error, error_length,
                      "Tag '%s' is already assigned to another feed.", tag);
         }
@@ -3910,7 +3910,7 @@ static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
             continue;
         }
         if (strcasecmp(entry->url, url) == 0) {
-            if (error != NULL && error_length > 0U) {
+            if (error != nullptr && error_length > 0U) {
                 snprintf(error, error_length,
                          "Feed '%s' is already registered as '%s'.", url,
                          entry->tag);
@@ -3919,7 +3919,7 @@ static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
         }
     }
 
-    rss_feed_t *slot = NULL;
+    rss_feed_t *slot = nullptr;
     for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
         if (!host->rss_feeds[idx].in_use) {
             slot = &host->rss_feeds[idx];
@@ -3927,8 +3927,8 @@ static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
         }
     }
 
-    if (slot == NULL) {
-        if (error != NULL && error_length > 0U) {
+    if (slot == nullptr) {
+        if (error != nullptr && error_length > 0U) {
             snprintf(error, error_length, "Unable to allocate RSS feed slot.");
         }
         goto cleanup;
@@ -3955,12 +3955,12 @@ cleanup:
 static bool host_rss_remove_feed(host_t *host, const char *tag, char *error,
                                  size_t error_length)
 {
-    if (error != NULL && error_length > 0U) {
+    if (error != nullptr && error_length > 0U) {
         error[0] = '\0';
     }
 
-    if (host == NULL || tag == NULL || tag[0] == '\0') {
-        if (error != NULL && error_length > 0U) {
+    if (host == nullptr || tag == nullptr || tag[0] == '\0') {
+        if (error != nullptr && error_length > 0U) {
             snprintf(error, error_length, "Invalid RSS feed tag.");
         }
         return false;
@@ -3971,7 +3971,7 @@ static bool host_rss_remove_feed(host_t *host, const char *tag, char *error,
     bool success = false;
 
     if (!rss_tag_is_valid(tag)) {
-        if (error != NULL && error_length > 0U) {
+        if (error != nullptr && error_length > 0U) {
             snprintf(error, error_length,
                      "Tag may only contain letters, numbers, '-', '_' or '.'.");
         }
@@ -3979,8 +3979,8 @@ static bool host_rss_remove_feed(host_t *host, const char *tag, char *error,
     }
 
     rss_feed_t *entry = host_find_rss_feed_locked(host, tag);
-    if (entry == NULL) {
-        if (error != NULL && error_length > 0U) {
+    if (entry == nullptr) {
+        if (error != nullptr && error_length > 0U) {
             snprintf(error, error_length, "No RSS feed found for tag '%s'.",
                      tag);
         }
@@ -3999,12 +3999,12 @@ cleanup:
 
 static void host_rss_resolve_path(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     const char *rss_path = getenv("CHATTER_RSS_FILE");
-    if (rss_path == NULL || rss_path[0] == '\0') {
+    if (rss_path == nullptr || rss_path[0] == '\0') {
         rss_path = "rss_state.dat";
     }
 
@@ -4019,7 +4019,7 @@ static void host_rss_resolve_path(host_t *host)
 
 static void host_rss_state_save_locked(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -4049,7 +4049,7 @@ static void host_rss_state_save_locked(host_t *host)
     }
 
     FILE *fp = fdopen(temp_fd, "wb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         int saved_errno = errno;
         close(temp_fd);
         unlink(temp_path);
@@ -4132,7 +4132,7 @@ static void host_rss_state_save_locked(host_t *host)
 
 static void host_rss_state_load(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -4146,7 +4146,7 @@ static void host_rss_state_load(host_t *host)
     }
 
     FILE *fp = fopen(host->rss_state_file_path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return;
     }
 
@@ -4185,7 +4185,7 @@ static void host_rss_state_load(host_t *host)
             continue;
         }
 
-        rss_feed_t *slot = NULL;
+        rss_feed_t *slot = nullptr;
         for (size_t pos = 0U; pos < SSH_CHATTER_RSS_MAX_FEEDS; ++pos) {
             if (!host->rss_feeds[pos].in_use) {
                 slot = &host->rss_feeds[pos];
@@ -4193,7 +4193,7 @@ static void host_rss_state_load(host_t *host)
             }
         }
 
-        if (slot == NULL) {
+        if (slot == nullptr) {
             continue;
         }
 
@@ -4229,12 +4229,12 @@ static size_t host_rss_write_callback(void *contents, size_t size, size_t nmemb,
 {
     host_rss_buffer_t *buffer = (host_rss_buffer_t *)userp;
     const size_t total = size * nmemb;
-    if (buffer == NULL || total == 0U) {
+    if (buffer == nullptr || total == 0U) {
         return 0U;
     }
 
-    char *resized = realloc(buffer->data, buffer->length + total + 1U);
-    if (resized == NULL) {
+    char *resized = GC_REALLOC(buffer->data, buffer->length + total + 1U);
+    if (resized == nullptr) {
         return 0U;
     }
 
@@ -4247,19 +4247,19 @@ static size_t host_rss_write_callback(void *contents, size_t size, size_t nmemb,
 
 static bool host_rss_download(const char *url, char **payload, size_t *length)
 {
-    if (payload != NULL) {
-        *payload = NULL;
+    if (payload != nullptr) {
+        *payload = nullptr;
     }
-    if (length != NULL) {
+    if (length != nullptr) {
         *length = 0U;
     }
 
-    if (url == NULL || url[0] == '\0') {
+    if (url == nullptr || url[0] == '\0') {
         return false;
     }
 
     CURL *curl = curl_easy_init();
-    if (curl == NULL) {
+    if (curl == nullptr) {
         return false;
     }
 
@@ -4278,14 +4278,14 @@ static bool host_rss_download(const char *url, char **payload, size_t *length)
     if (result == CURLE_OK) {
         long status = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-        if (status >= 200L && status < 300L && buffer.data != NULL) {
-            if (payload != NULL) {
+        if (status >= 200L && status < 300L && buffer.data != nullptr) {
+            if (payload != nullptr) {
                 *payload = buffer.data;
             }
-            if (length != NULL) {
+            if (length != nullptr) {
                 *length = buffer.length;
             }
-            buffer.data = NULL;
+            buffer.data = nullptr;
             success = true;
         }
     }
@@ -4300,7 +4300,7 @@ static bool host_rss_download(const char *url, char **payload, size_t *length)
 static bool host_rss_extract_tag(const char *block, const char *tag, char *out,
                                  size_t out_len)
 {
-    if (block == NULL || tag == NULL || out == NULL || out_len == 0U) {
+    if (block == nullptr || tag == nullptr || out == nullptr || out_len == 0U) {
         return false;
     }
 
@@ -4315,18 +4315,18 @@ static bool host_rss_extract_tag(const char *block, const char *tag, char *out,
     }
 
     const char *start = strcasestr(block, open_pattern);
-    if (start == NULL) {
+    if (start == nullptr) {
         return false;
     }
 
     const char *content = strchr(start, '>');
-    if (content == NULL) {
+    if (content == nullptr) {
         return false;
     }
     ++content;
 
     const char *end = strcasestr(content, close_pattern);
-    if (end == NULL) {
+    if (end == nullptr) {
         return false;
     }
 
@@ -4342,19 +4342,19 @@ static bool host_rss_extract_tag(const char *block, const char *tag, char *out,
 static bool host_rss_extract_atom_link(const char *block, char *out,
                                        size_t out_len)
 {
-    if (block == NULL || out == NULL || out_len == 0U) {
+    if (block == nullptr || out == nullptr || out_len == 0U) {
         return false;
     }
 
     const char *cursor = block;
-    while ((cursor = strcasestr(cursor, "<link")) != NULL) {
+    while ((cursor = strcasestr(cursor, "<link")) != nullptr) {
         const char *close = strchr(cursor, '>');
-        if (close == NULL) {
+        if (close == nullptr) {
             return false;
         }
 
         const char *href = strcasestr(cursor, "href=");
-        if (href == NULL || href > close) {
+        if (href == nullptr || href > close) {
             cursor = close + 1;
             continue;
         }
@@ -4368,7 +4368,7 @@ static bool host_rss_extract_atom_link(const char *block, char *out,
         ++href;
 
         const char *end = strchr(href, quote);
-        if (end == NULL || end > close) {
+        if (end == nullptr || end > close) {
             cursor = close + 1;
             continue;
         }
@@ -4389,7 +4389,7 @@ static bool host_rss_extract_atom_link(const char *block, char *out,
 static size_t host_rss_parse_items(const char *payload,
                                    rss_session_item_t *items, size_t max_items)
 {
-    if (payload == NULL || items == NULL || max_items == 0U) {
+    if (payload == nullptr || items == nullptr || max_items == 0U) {
         return 0U;
     }
 
@@ -4402,16 +4402,16 @@ static size_t host_rss_parse_items(const char *payload,
     while (*cursor != '\0' && count < max_items) {
         const char *item_start = strcasestr(cursor, "<item");
         const char *entry_start = strcasestr(cursor, "<entry");
-        const char *start = NULL;
-        const char *close_tag = NULL;
+        const char *start = nullptr;
+        const char *close_tag = nullptr;
         bool is_atom = false;
 
-        if (item_start == NULL && entry_start == NULL) {
+        if (item_start == nullptr && entry_start == nullptr) {
             break;
         }
 
-        if (item_start != NULL &&
-            (entry_start == NULL || item_start < entry_start)) {
+        if (item_start != nullptr &&
+            (entry_start == nullptr || item_start < entry_start)) {
             start = item_start;
             close_tag = "</item>";
         } else {
@@ -4421,14 +4421,14 @@ static size_t host_rss_parse_items(const char *payload,
         }
 
         const char *end = strcasestr(start, close_tag);
-        if (end == NULL) {
+        if (end == nullptr) {
             break;
         }
         end += strlen(close_tag);
 
         size_t block_len = (size_t)(end - start);
         char *block = (char *)GC_MALLOC(block_len + 1U);
-        if (block == NULL) {
+        if (block == nullptr) {
             break;
         }
         memcpy(block, start, block_len);
@@ -4503,22 +4503,22 @@ static bool host_rss_fetch_items(const rss_feed_t *feed,
                                  rss_session_item_t *items, size_t max_items,
                                  size_t *out_count)
 {
-    if (out_count != NULL) {
+    if (out_count != nullptr) {
         *out_count = 0U;
     }
 
-    if (feed == NULL || items == NULL || max_items == 0U) {
+    if (feed == nullptr || items == nullptr || max_items == 0U) {
         return false;
     }
 
-    char *payload = NULL;
+    char *payload = nullptr;
     size_t length = 0U;
     if (!host_rss_download(feed->url, &payload, &length)) {
         return false;
     }
 
     size_t count = host_rss_parse_items(payload, items, max_items);
-    if (out_count != NULL) {
+    if (out_count != nullptr) {
         *out_count = count;
     }
 
@@ -4527,7 +4527,7 @@ static bool host_rss_fetch_items(const rss_feed_t *feed,
 
 static bool host_rss_should_broadcast_breaking(const rss_session_item_t *item)
 {
-    if (item == NULL) {
+    if (item == nullptr) {
         return false;
     }
 
@@ -4535,23 +4535,23 @@ static bool host_rss_should_broadcast_breaking(const rss_session_item_t *item)
     for (size_t field_index = 0U;
          field_index < sizeof(fields) / sizeof(fields[0]); ++field_index) {
         const char *field = fields[field_index];
-        if (field == NULL || field[0] == '\0') {
+        if (field == nullptr || field[0] == '\0') {
             continue;
         }
 
         if (strncasecmp(field, "[breaking", 9) == 0) {
             return true;
         }
-        if (strcasestr(field, "breaking news") != NULL ||
-            strcasestr(field, "breaking:") != NULL ||
-            strcasestr(field, "breaking ") != NULL) {
+        if (strcasestr(field, "breaking news") != nullptr ||
+            strcasestr(field, "breaking:") != nullptr ||
+            strcasestr(field, "breaking ") != nullptr) {
             return true;
         }
-        if (strcasestr(field, "urgent") != NULL ||
-            strcasestr(field, "alert") != NULL) {
+        if (strcasestr(field, "urgent") != nullptr ||
+            strcasestr(field, "alert") != nullptr) {
             return true;
         }
-        if (strstr(field, "속보") != NULL || strstr(field, "速報") != NULL) {
+        if (strstr(field, "속보") != nullptr || strstr(field, "速報") != nullptr) {
             return true;
         }
     }
@@ -4562,8 +4562,8 @@ static bool host_rss_should_broadcast_breaking(const rss_session_item_t *item)
 static void *host_rss_backend(void *arg)
 {
     host_t *host = (host_t *)arg;
-    if (host == NULL) {
-        return NULL;
+    if (host == nullptr) {
+        return nullptr;
     }
 
     atomic_store(&host->rss_thread_running, true);
@@ -4626,12 +4626,12 @@ static void *host_rss_backend(void *arg)
 
                 bool feed_active = false;
                 bool key_changed = false;
-                time_t now = time(NULL);
+                time_t now = time(nullptr);
 
                 pthread_mutex_lock(&host->lock);
                 rss_feed_t *entry =
                     host_find_rss_feed_locked(host, feed_snapshot.tag);
-                if (entry != NULL && entry->in_use) {
+                if (entry != nullptr && entry->in_use) {
                     feed_active = true;
                     entry->last_checked = now;
                     if (item_count > 0U) {
@@ -4728,12 +4728,12 @@ static void *host_rss_backend(void *arg)
                     }
 
                     printf("%s\n", notice);
-                    host_history_record_system(host, notice, NULL);
+                    host_history_record_system(host, notice, nullptr);
                     // Iterate through all active sessions and send the notice only to those with breaking_alerts_enabled
                     pthread_mutex_lock(&host->room.lock);
                     for (size_t i = 0; i < host->room.member_count; ++i) {
                         session_ctx_t *member = host->room.members[i];
-                        if (member != NULL && member->breaking_alerts_enabled) {
+                        if (member != nullptr && member->breaking_alerts_enabled) {
                             session_send_system_line(member, notice);
                         }
                     }
@@ -4746,7 +4746,7 @@ static void *host_rss_backend(void *arg)
         if (clock_gettime(CLOCK_MONOTONIC, &mark) == 0) {
             host->rss_last_run = mark;
         } else {
-            host->rss_last_run.tv_sec = time(NULL);
+            host->rss_last_run.tv_sec = time(nullptr);
             host->rss_last_run.tv_nsec = 0L;
         }
 
@@ -4772,12 +4772,12 @@ static void *host_rss_backend(void *arg)
 
     atomic_store(&host->rss_thread_running, false);
     printf("[rss] backend thread stopped\n");
-    return NULL;
+    return nullptr;
 }
 
 static void host_rss_start_backend(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -4796,7 +4796,7 @@ static void host_rss_start_backend(host_t *host)
     atomic_store(&host->rss_thread_stop, false);
     atomic_store(&host->rss_thread_running, false);
 
-    int error = pthread_create(&host->rss_thread, NULL, host_rss_backend, host);
+    int error = pthread_create(&host->rss_thread, nullptr, host_rss_backend, host);
     if (error != 0) {
         printf("[rss] failed to start backend thread: %s\n", strerror(error));
         return;
@@ -4807,7 +4807,7 @@ static void host_rss_start_backend(host_t *host)
 
 static void host_vote_state_load(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -4816,7 +4816,7 @@ static void host_vote_state_load(host_t *host)
     }
 
     FILE *fp = fopen(host->vote_state_file_path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return;
     }
 
@@ -4897,7 +4897,7 @@ static void host_vote_state_load(host_t *host)
 
 static void host_ban_state_load(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -4906,7 +4906,7 @@ static void host_ban_state_load(host_t *host)
     }
 
     FILE *fp = fopen(host->ban_state_file_path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return;
     }
 
@@ -4923,10 +4923,10 @@ static void host_ban_state_load(host_t *host)
     }
 
     uint32_t entry_count = header.entry_count;
-    ban_state_entry_t *entries = NULL;
+    ban_state_entry_t *entries = nullptr;
     if (entry_count > 0U) {
         entries = GC_CALLOC(entry_count, sizeof(*entries));
-        if (entries == NULL) {
+        if (entries == nullptr) {
             fclose(fp);
             humanized_log_error("host", "failed to allocate ban state buffer",
                                 ENOMEM);
@@ -4966,7 +4966,7 @@ static void host_ban_state_load(host_t *host)
             continue;
         }
         if (entries[idx].ip[0] != '\0' &&
-            strchr(entries[idx].ip, '/') != NULL) {
+            strchr(entries[idx].ip, '/') != nullptr) {
             bool intersects_protected = false;
             for (size_t protected_idx = 0;
                  protected_idx < host->protected_ip_count &&
@@ -4994,7 +4994,7 @@ static void host_ban_state_load(host_t *host)
 
 static void host_reply_state_load(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -5003,7 +5003,7 @@ static void host_reply_state_load(host_t *host)
     }
 
     FILE *fp = fopen(host->reply_state_file_path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return;
     }
 
@@ -5020,10 +5020,10 @@ static void host_reply_state_load(host_t *host)
     }
 
     uint32_t entry_count = header.entry_count;
-    reply_state_entry_t *entries = NULL;
+    reply_state_entry_t *entries = nullptr;
     if (entry_count > 0U) {
         entries = GC_CALLOC(entry_count, sizeof(*entries));
-        if (entries == NULL) {
+        if (entries == nullptr) {
             fclose(fp);
             humanized_log_error("host", "failed to allocate reply state buffer",
                                 ENOMEM);
@@ -5102,12 +5102,12 @@ static void host_reply_state_load(host_t *host)
 
 static void host_eliza_memory_resolve_path(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     const char *memory_path = getenv("CHATTER_ELIZA_MEMORY_FILE");
-    if (memory_path == NULL || memory_path[0] == '\0') {
+    if (memory_path == nullptr || memory_path[0] == '\0') {
         memory_path = "eliza_memory.dat";
     }
 
@@ -5124,7 +5124,7 @@ static void host_eliza_memory_resolve_path(host_t *host)
 
 static void host_eliza_memory_save_locked(host_t *host)
 {
-    if (host == NULL || host->eliza_memory_file_path[0] == '\0') {
+    if (host == nullptr || host->eliza_memory_file_path[0] == '\0') {
         return;
     }
 
@@ -5143,7 +5143,7 @@ static void host_eliza_memory_save_locked(host_t *host)
     }
 
     FILE *fp = fopen(temp_path, "wb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         humanized_log_error("host", "failed to open eliza memory file",
                             errno != 0 ? errno : EIO);
         return;
@@ -5231,7 +5231,7 @@ static void host_eliza_memory_save_locked(host_t *host)
 
 static void host_eliza_memory_load(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -5245,7 +5245,7 @@ static void host_eliza_memory_load(host_t *host)
     }
 
     FILE *fp = fopen(host->eliza_memory_file_path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return;
     }
 
@@ -5262,10 +5262,10 @@ static void host_eliza_memory_load(host_t *host)
     }
 
     uint32_t entry_count = header.entry_count;
-    eliza_memory_entry_serialized_t *entries = NULL;
+    eliza_memory_entry_serialized_t *entries = nullptr;
     if (entry_count > 0U) {
         entries = GC_CALLOC(entry_count, sizeof(*entries));
-        if (entries == NULL) {
+        if (entries == nullptr) {
             fclose(fp);
             humanized_log_error(
                 "host", "failed to allocate eliza memory buffer", ENOMEM);

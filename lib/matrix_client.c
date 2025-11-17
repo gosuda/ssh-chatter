@@ -72,7 +72,7 @@ typedef struct matrix_payload {
 
 static bool matrix_url_is_https(const char *url)
 {
-    if (url == NULL) {
+    if (url == nullptr) {
         return false;
     }
     return strncasecmp(url, "https://", 8) == 0;
@@ -87,8 +87,8 @@ static size_t matrix_curl_write(void *contents, size_t size, size_t nmemb,
         return 0U;
     }
 
-    char *new_data = (char *)realloc(buffer->data, buffer->length + total + 1U);
-    if (new_data == NULL) {
+    char *new_data = (char *)GC_REALLOC(buffer->data, buffer->length + total + 1U);
+    if (new_data == nullptr) {
         return 0U;
     }
 
@@ -101,13 +101,13 @@ static size_t matrix_curl_write(void *contents, size_t size, size_t nmemb,
 
 static void matrix_buffer_free(matrix_buffer_t *buffer)
 {
-    if (buffer == NULL) {
+    if (buffer == nullptr) {
         return;
     }
-    if (buffer->data != NULL) {
+    if (buffer->data != nullptr) {
         OPENSSL_cleanse(buffer->data, buffer->length);
-        free(buffer->data);
-        buffer->data = NULL;
+        GC_FREE(buffer->data);
+        buffer->data = nullptr;
     }
     buffer->length = 0U;
 }
@@ -115,7 +115,7 @@ static void matrix_buffer_free(matrix_buffer_t *buffer)
 static void matrix_client_disable(matrix_client_t *client, const char *message,
                                   int error_code)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return;
     }
 
@@ -125,7 +125,7 @@ static void matrix_client_disable(matrix_client_t *client, const char *message,
     }
 
     int log_code = (error_code != 0) ? error_code : EIO;
-    if (message != NULL && message[0] != '\0') {
+    if (message != nullptr && message[0] != '\0') {
         humanized_log_error("matrix", message, log_code);
     } else {
         humanized_log_error("matrix", "matrix bridge disabled after failure",
@@ -138,19 +138,19 @@ static void matrix_client_disable(matrix_client_t *client, const char *message,
 static const char *matrix_getenv(const char *name)
 {
     const char *value = getenv(name);
-    if (value == NULL || value[0] == '\0') {
-        return NULL;
+    if (value == nullptr || value[0] == '\0') {
+        return nullptr;
     }
     return value;
 }
 
 static bool matrix_copy_trimmed(char *dest, size_t dest_len, const char *src)
 {
-    if (dest == NULL || dest_len == 0U) {
+    if (dest == nullptr || dest_len == 0U) {
         return false;
     }
     dest[0] = '\0';
-    if (src == NULL) {
+    if (src == nullptr) {
         return false;
     }
 
@@ -183,13 +183,13 @@ static pthread_mutex_t probe_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static bool matrix_probe_homeserver(const char *homeserver)
 {
-    if (homeserver == NULL || homeserver[0] == '\0') {
+    if (homeserver == nullptr || homeserver[0] == '\0') {
         return false;
     }
 
     pthread_mutex_lock(&probe_lock);
     CURL *curl = curl_easy_init();
-    if (curl == NULL) {
+    if (curl == nullptr) {
         pthread_mutex_unlock(&probe_lock);
         errno = ENOMEM;
         return false;
@@ -241,11 +241,11 @@ static bool matrix_probe_homeserver(const char *homeserver)
 static bool matrix_json_escape(const char *input, char *output,
                                size_t output_len)
 {
-    if (output == NULL || output_len == 0U) {
+    if (output == nullptr || output_len == 0U) {
         return false;
     }
 
-    if (input == NULL) {
+    if (input == nullptr) {
         output[0] = '\0';
         return true;
     }
@@ -356,7 +356,7 @@ static bool matrix_append_codepoint(char **output, size_t *remaining,
 static bool matrix_json_decode_string(const char *input, char *output,
                                       size_t output_len, const char **end_out)
 {
-    if (input == NULL || output == NULL || output_len == 0U) {
+    if (input == nullptr || output == nullptr || output_len == 0U) {
         return false;
     }
 
@@ -374,7 +374,7 @@ static bool matrix_json_decode_string(const char *input, char *output,
                 return false;
             }
             *dest = '\0';
-            if (end_out != NULL) {
+            if (end_out != nullptr) {
                 *end_out = cursor + 1;
             }
             return true;
@@ -461,7 +461,7 @@ static bool matrix_json_decode_string(const char *input, char *output,
 
 static const char *matrix_skip_whitespace(const char *cursor)
 {
-    while (cursor != NULL && (*cursor == ' ' || *cursor == '\n' ||
+    while (cursor != nullptr && (*cursor == ' ' || *cursor == '\n' ||
                               *cursor == '\r' || *cursor == '\t')) {
         ++cursor;
     }
@@ -471,45 +471,45 @@ static const char *matrix_skip_whitespace(const char *cursor)
 static bool matrix_json_extract_string(const char *json, const char *key,
                                        char *output, size_t output_len)
 {
-    if (json == NULL || key == NULL || output == NULL || output_len == 0U) {
+    if (json == nullptr || key == nullptr || output == nullptr || output_len == 0U) {
         return false;
     }
 
     const char *key_pos = strstr(json, key);
-    if (key_pos == NULL) {
+    if (key_pos == nullptr) {
         return false;
     }
 
     const char *colon = strchr(key_pos, ':');
-    if (colon == NULL) {
+    if (colon == nullptr) {
         return false;
     }
     colon = matrix_skip_whitespace(colon + 1);
-    if (colon == NULL || *colon != '"') {
+    if (colon == nullptr || *colon != '"') {
         return false;
     }
 
-    return matrix_json_decode_string(colon, output, output_len, NULL);
+    return matrix_json_decode_string(colon, output, output_len, nullptr);
 }
 
 static bool matrix_json_extract_bool(const char *json, const char *key,
                                      bool *value_out)
 {
-    if (json == NULL || key == NULL || value_out == NULL) {
+    if (json == nullptr || key == nullptr || value_out == nullptr) {
         return false;
     }
 
     const char *key_pos = strstr(json, key);
-    if (key_pos == NULL) {
+    if (key_pos == nullptr) {
         return false;
     }
 
     const char *colon = strchr(key_pos, ':');
-    if (colon == NULL) {
+    if (colon == nullptr) {
         return false;
     }
     colon = matrix_skip_whitespace(colon + 1);
-    if (colon == NULL) {
+    if (colon == nullptr) {
         return false;
     }
 
@@ -547,20 +547,20 @@ static bool matrix_client_issue_request(matrix_client_t *client,
                                         matrix_buffer_t *response,
                                         long *status_out)
 {
-    if (client == NULL || method == NULL || url == NULL) {
+    if (client == nullptr || method == nullptr || url == nullptr) {
         return false;
     }
 
     pthread_mutex_lock(&client->http_lock);
 
     CURL *curl = curl_easy_init();
-    if (curl == NULL) {
+    if (curl == nullptr) {
         pthread_mutex_unlock(&client->http_lock);
         errno = ENOMEM;
         return false;
     }
 
-    struct curl_slist *headers = NULL;
+    struct curl_slist *headers = nullptr;
     char auth_header[640];
     snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s",
              client->access_token);
@@ -582,14 +582,14 @@ static bool matrix_client_issue_request(matrix_client_t *client,
     curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
 
     matrix_buffer_t local_response = {0};
-    if (response == NULL) {
+    if (response == nullptr) {
         response = &local_response;
     }
 
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, matrix_curl_write);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
 
-    if (body != NULL) {
+    if (body != nullptr) {
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)strlen(body));
     }
@@ -605,7 +605,7 @@ static bool matrix_client_issue_request(matrix_client_t *client,
 
     pthread_mutex_unlock(&client->http_lock);
 
-    if (status_out != NULL) {
+    if (status_out != nullptr) {
         *status_out = status;
     }
 
@@ -622,7 +622,7 @@ static bool matrix_client_issue_request(matrix_client_t *client,
 static bool matrix_client_send_payload(matrix_client_t *client,
                                        const char *payload)
 {
-    if (client == NULL || payload == NULL) {
+    if (client == nullptr || payload == nullptr) {
         return false;
     }
 
@@ -635,14 +635,14 @@ static bool matrix_client_send_payload(matrix_client_t *client,
     }
 
     CURL *curl = curl_easy_init();
-    if (curl == NULL) {
+    if (curl == nullptr) {
         pthread_mutex_unlock(&client->http_lock);
         errno = ENOMEM;
         return false;
     }
 
     char *encoded_room = curl_easy_escape(curl, client->room_id, 0);
-    if (encoded_room == NULL) {
+    if (encoded_room == nullptr) {
         curl_easy_cleanup(curl);
         pthread_mutex_unlock(&client->http_lock);
         errno = ENOMEM;
@@ -682,7 +682,7 @@ static bool matrix_client_send_payload(matrix_client_t *client,
 static bool matrix_client_should_skip(matrix_client_t *client,
                                       const chat_history_entry_t *entry)
 {
-    if (client == NULL || entry == NULL) {
+    if (client == nullptr || entry == nullptr) {
         return false;
     }
 
@@ -707,11 +707,11 @@ static bool matrix_client_should_skip(matrix_client_t *client,
 
 static bool matrix_entry_is_bbs_notice(const chat_history_entry_t *entry)
 {
-    if (entry == NULL || entry->is_user_message) {
+    if (entry == nullptr || entry->is_user_message) {
         return false;
     }
     const char *message = entry->message;
-    if (message == NULL) {
+    if (message == nullptr) {
         return false;
     }
     return strncmp(message, "* [bbs]", 7) == 0;
@@ -722,7 +722,7 @@ static bool matrix_client_build_plaintext(matrix_client_t *client,
                                           char *plaintext, size_t plaintext_len)
 {
     (void)client;
-    if (entry == NULL || plaintext == NULL) {
+    if (entry == nullptr || plaintext == nullptr) {
         return false;
     }
 
@@ -793,7 +793,7 @@ static bool matrix_client_build_plaintext(matrix_client_t *client,
 static bool matrix_client_send_entry(matrix_client_t *client,
                                      const chat_history_entry_t *entry)
 {
-    if (client == NULL || entry == NULL || client->security == NULL) {
+    if (client == nullptr || entry == nullptr || client->security == nullptr) {
         return false;
     }
 
@@ -809,7 +809,7 @@ static bool matrix_client_send_entry(matrix_client_t *client,
 
     size_t encrypted_capacity = (SSH_CHATTER_MESSAGE_LIMIT * 4U) + 4096U;
     char *encrypted = (char *)GC_MALLOC(encrypted_capacity);
-    if (encrypted == NULL) {
+    if (encrypted == nullptr) {
         errno = ENOMEM;
         return false;
     }
@@ -846,7 +846,7 @@ static bool matrix_client_send_entry(matrix_client_t *client,
 static void matrix_client_on_message(client_connection_t *connection,
                                      const chat_history_entry_t *entry)
 {
-    if (connection == NULL || entry == NULL || connection->user_data == NULL) {
+    if (connection == nullptr || entry == nullptr || connection->user_data == nullptr) {
         return;
     }
 
@@ -883,7 +883,7 @@ static void matrix_client_on_detach(client_connection_t *connection)
 static void matrix_client_record_event(matrix_client_t *client,
                                        const char *event_id)
 {
-    if (client == NULL || event_id == NULL || event_id[0] == '\0') {
+    if (client == nullptr || event_id == nullptr || event_id[0] == '\0') {
         return;
     }
 
@@ -916,7 +916,7 @@ static void matrix_client_record_event(matrix_client_t *client,
 static bool matrix_client_event_recent(matrix_client_t *client,
                                        const char *event_id)
 {
-    if (client == NULL || event_id == NULL) {
+    if (client == nullptr || event_id == nullptr) {
         return true;
     }
 
@@ -942,7 +942,7 @@ static bool matrix_client_event_recent(matrix_client_t *client,
 static bool matrix_client_parse_payload(const char *plaintext,
                                         matrix_payload_t *payload)
 {
-    if (plaintext == NULL || payload == NULL) {
+    if (plaintext == nullptr || payload == nullptr) {
         return false;
     }
 
@@ -981,7 +981,7 @@ static bool matrix_client_parse_payload(const char *plaintext,
 static void matrix_client_inject_message(matrix_client_t *client,
                                          const matrix_payload_t *payload)
 {
-    if (client == NULL || payload == NULL || client->host == NULL) {
+    if (client == nullptr || payload == nullptr || client->host == nullptr) {
         return;
     }
 
@@ -992,8 +992,8 @@ static void matrix_client_inject_message(matrix_client_t *client,
     if (payload->system) {
         char line[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(line, sizeof(line), "[matrix] %s", payload->message);
-        if (!host_post_client_message(client->host, "matrix-system", line, NULL,
-                                      NULL, false)) {
+        if (!host_post_client_message(client->host, "matrix-system", line, nullptr,
+                                      nullptr, false)) {
             humanized_log_error("matrix", "failed to inject system notice",
                                 errno != 0 ? errno : EIO);
         }
@@ -1009,7 +1009,7 @@ static void matrix_client_inject_message(matrix_client_t *client,
     pthread_mutex_unlock(&client->lock);
 
     if (!host_post_client_message(client->host, payload->username,
-                                  payload->message, NULL, NULL, false)) {
+                                  payload->message, nullptr, nullptr, false)) {
         humanized_log_error("matrix", "failed to inject bridged message",
                             errno != 0 ? errno : EIO);
         atomic_store(&client->skip_next_broadcast, false);
@@ -1018,13 +1018,13 @@ static void matrix_client_inject_message(matrix_client_t *client,
 
 static void matrix_client_handle_body(matrix_client_t *client, const char *body)
 {
-    if (client == NULL || body == NULL || client->security == NULL) {
+    if (client == nullptr || body == nullptr || client->security == nullptr) {
         return;
     }
 
     size_t decrypted_capacity = SSH_CHATTER_MESSAGE_LIMIT * 4U;
     char *plaintext = (char *)GC_MALLOC(decrypted_capacity);
-    if (plaintext == NULL) {
+    if (plaintext == nullptr) {
         return;
     }
 
@@ -1047,8 +1047,8 @@ static void matrix_client_handle_body(matrix_client_t *client, const char *body)
 static const char *matrix_find_matching(const char *start, char open,
                                         char close)
 {
-    if (start == NULL || *start != open) {
-        return NULL;
+    if (start == nullptr || *start != open) {
+        return nullptr;
     }
 
     int depth = 1;
@@ -1064,24 +1064,24 @@ static const char *matrix_find_matching(const char *start, char open,
         }
         ++cursor;
     }
-    return NULL;
+    return nullptr;
 }
 
 static void matrix_client_process_event(matrix_client_t *client,
                                         const char *event_json, size_t length)
 {
-    if (client == NULL || event_json == NULL || length == 0U) {
+    if (client == nullptr || event_json == nullptr || length == 0U) {
         return;
     }
 
     char *buffer = (char *)GC_MALLOC(length + 1U);
-    if (buffer == NULL) {
+    if (buffer == nullptr) {
         return;
     }
     memcpy(buffer, event_json, length);
     buffer[length] = '\0';
 
-    if (strstr(buffer, "\"type\":\"m.room.message\"") == NULL) {
+    if (strstr(buffer, "\"type\":\"m.room.message\"") == nullptr) {
         OPENSSL_cleanse(buffer, length);
         GC_free(buffer);
         return;
@@ -1102,7 +1102,7 @@ static void matrix_client_process_event(matrix_client_t *client,
     }
 
     const char *content_pos = strstr(buffer, "\"body\"");
-    if (content_pos == NULL) {
+    if (content_pos == nullptr) {
         matrix_client_record_event(client, event_id);
         OPENSSL_cleanse(buffer, length);
         GC_free(buffer);
@@ -1110,14 +1110,14 @@ static void matrix_client_process_event(matrix_client_t *client,
     }
 
     const char *colon = strchr(content_pos, ':');
-    if (colon == NULL) {
+    if (colon == nullptr) {
         matrix_client_record_event(client, event_id);
         OPENSSL_cleanse(buffer, length);
         GC_free(buffer);
         return;
     }
     colon = matrix_skip_whitespace(colon + 1);
-    if (colon == NULL || *colon != '"') {
+    if (colon == nullptr || *colon != '"') {
         matrix_client_record_event(client, event_id);
         OPENSSL_cleanse(buffer, length);
         GC_free(buffer);
@@ -1125,7 +1125,7 @@ static void matrix_client_process_event(matrix_client_t *client,
     }
 
     char body[SSH_CHATTER_MESSAGE_LIMIT * 4];
-    if (!matrix_json_decode_string(colon, body, sizeof(body), NULL)) {
+    if (!matrix_json_decode_string(colon, body, sizeof(body), nullptr)) {
         matrix_client_record_event(client, event_id);
         OPENSSL_cleanse(buffer, length);
         GC_free(buffer);
@@ -1141,7 +1141,7 @@ static void matrix_client_process_event(matrix_client_t *client,
 static void matrix_client_process_sync(matrix_client_t *client,
                                        const char *json)
 {
-    if (client == NULL || json == NULL) {
+    if (client == nullptr || json == nullptr) {
         return;
     }
 
@@ -1157,29 +1157,29 @@ static void matrix_client_process_sync(matrix_client_t *client,
     char pattern[512];
     snprintf(pattern, sizeof(pattern), "\"%s\":{\"timeline\"", client->room_id);
     const char *room_block = strstr(json, pattern);
-    if (room_block == NULL) {
+    if (room_block == nullptr) {
         return;
     }
 
     const char *events_pos = strstr(room_block, "\"events\":[");
-    if (events_pos == NULL) {
+    if (events_pos == nullptr) {
         return;
     }
 
     const char *array_start = strchr(events_pos, '[');
-    if (array_start == NULL) {
+    if (array_start == nullptr) {
         return;
     }
 
     const char *array_end = matrix_find_matching(array_start, '[', ']');
-    if (array_end == NULL) {
+    if (array_end == nullptr) {
         return;
     }
 
     const char *cursor = array_start + 1;
     while (cursor < array_end) {
         cursor = matrix_skip_whitespace(cursor);
-        if (cursor == NULL || cursor >= array_end) {
+        if (cursor == nullptr || cursor >= array_end) {
             break;
         }
         if (*cursor != '{') {
@@ -1187,7 +1187,7 @@ static void matrix_client_process_sync(matrix_client_t *client,
             continue;
         }
         const char *event_end = matrix_find_matching(cursor, '{', '}');
-        if (event_end == NULL || event_end > array_end) {
+        if (event_end == nullptr || event_end > array_end) {
             break;
         }
         matrix_client_process_event(client, cursor,
@@ -1198,7 +1198,7 @@ static void matrix_client_process_sync(matrix_client_t *client,
 
 static bool matrix_client_sync(matrix_client_t *client)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return false;
     }
 
@@ -1217,12 +1217,12 @@ static bool matrix_client_sync(matrix_client_t *client)
 
     if (since_token[0] != '\0') {
         CURL *curl = curl_easy_init();
-        if (curl == NULL) {
+        if (curl == nullptr) {
             errno = ENOMEM;
             return false;
         }
         char *encoded = curl_easy_escape(curl, since_token, 0);
-        if (encoded != NULL) {
+        if (encoded != nullptr) {
             strncat(url, "&since=", sizeof(url) - strlen(url) - 1U);
             strncat(url, encoded, sizeof(url) - strlen(url) - 1U);
             curl_free(encoded);
@@ -1232,7 +1232,7 @@ static bool matrix_client_sync(matrix_client_t *client)
 
     matrix_buffer_t response = {0};
     long status = 0;
-    bool ok = matrix_client_issue_request(client, "GET", url, NULL, &response,
+    bool ok = matrix_client_issue_request(client, "GET", url, nullptr, &response,
                                           &status);
     if (!ok) {
         int saved_errno = errno;
@@ -1261,15 +1261,15 @@ static bool matrix_client_sync(matrix_client_t *client)
 static void *matrix_client_poll_thread(void *user_data)
 {
     matrix_client_t *client = (matrix_client_t *)user_data;
-    if (client == NULL) {
-        return NULL;
+    if (client == nullptr) {
+        return nullptr;
     }
 
-    if (client->host == NULL) {
+    if (client->host == nullptr) {
         humanized_log_error("matrix", "matrix poll thread missing host context",
                             EINVAL);
         atomic_store(&client->running, false);
-        return NULL;
+        return nullptr;
     }
 
     sshc_memory_context_t *memory_scope =
@@ -1294,54 +1294,54 @@ static void *matrix_client_poll_thread(void *user_data)
     }
 
     atomic_store(&client->running, false);
-    if (memory_scope != NULL) {
+    if (memory_scope != nullptr) {
         sshc_memory_context_pop(memory_scope);
     }
-    return NULL;
+    return nullptr;
 }
 
 matrix_client_t *matrix_client_create(host_t *host, client_manager_t *manager,
                                       security_layer_t *security)
 {
-    if (host == NULL || manager == NULL || security == NULL ||
+    if (host == nullptr || manager == nullptr || security == nullptr ||
         !security->ready) {
-        return NULL;
+        return nullptr;
     }
 
     const char *homeserver = matrix_getenv("CHATTER_MATRIX_HOMESERVER");
     const char *access_token = matrix_getenv("CHATTER_MATRIX_ACCESS_TOKEN");
     const char *room_id = matrix_getenv("CHATTER_MATRIX_ROOM_ID");
-    if (homeserver == NULL || access_token == NULL || room_id == NULL) {
-        return NULL;
+    if (homeserver == nullptr || access_token == nullptr || room_id == nullptr) {
+        return nullptr;
     }
 
     char trimmed_homeserver[sizeof(((matrix_client_t *)0)->homeserver)];
     if (!matrix_copy_trimmed(trimmed_homeserver, sizeof(trimmed_homeserver),
                              homeserver) ||
         trimmed_homeserver[0] == '\0') {
-        return NULL;
+        return nullptr;
     }
 
     const char *homeserver_value = trimmed_homeserver;
     char normalized_homeserver[sizeof(((matrix_client_t *)0)->homeserver)];
-    if (strstr(trimmed_homeserver, "://") == NULL) {
+    if (strstr(trimmed_homeserver, "://") == nullptr) {
         int written =
             snprintf(normalized_homeserver, sizeof(normalized_homeserver),
                      "https://%s", trimmed_homeserver);
         if (written < 0 || (size_t)written >= sizeof(normalized_homeserver)) {
-            return NULL;
+            return nullptr;
         }
         homeserver_value = normalized_homeserver;
     }
 
     if (!matrix_probe_homeserver(homeserver_value)) {
-        return NULL;
+        return nullptr;
     }
 
     matrix_client_t *client =
         (matrix_client_t *)calloc(1U, sizeof(matrix_client_t));
-    if (client == NULL) {
-        return NULL;
+    if (client == nullptr) {
+        return nullptr;
     }
 
     client->host = host;
@@ -1357,18 +1357,18 @@ matrix_client_t *matrix_client_create(host_t *host, client_manager_t *manager,
                              access_token) ||
         client->access_token[0] == '\0') {
         OPENSSL_cleanse(client->access_token, sizeof(client->access_token));
-        free(client);
-        return NULL;
+        GC_FREE(client);
+        return nullptr;
     }
     if (!matrix_copy_trimmed(client->room_id, sizeof(client->room_id),
                              room_id) ||
         client->room_id[0] == '\0') {
         OPENSSL_cleanse(client->access_token, sizeof(client->access_token));
-        free(client);
-        return NULL;
+        GC_FREE(client);
+        return nullptr;
     }
     const char *device = matrix_getenv("CHATTER_MATRIX_DEVICE_NAME");
-    if (device != NULL) {
+    if (device != nullptr) {
         matrix_copy_trimmed(client->device_name, sizeof(client->device_name),
                             device);
     }
@@ -1377,7 +1377,7 @@ matrix_client_t *matrix_client_create(host_t *host, client_manager_t *manager,
                  "ssh-chatter");
     }
     client->since_token[0] = '\0';
-    client->next_txn_id = (uint64_t)time(NULL);
+    client->next_txn_id = (uint64_t)time(nullptr);
     client->pending_skip_username[0] = '\0';
     client->pending_skip_message[0] = '\0';
     atomic_store(&client->skip_next_broadcast, false);
@@ -1387,17 +1387,17 @@ matrix_client_t *matrix_client_create(host_t *host, client_manager_t *manager,
 
     if (nullptr != 0) {
         OPENSSL_cleanse(client->access_token, sizeof(client->access_token));
-        free(client);
-        return NULL;
+        GC_FREE(client);
+        return nullptr;
     }
     client->lock_initialized = true;
 
-    if (pthread_mutex_init(&client->http_lock, NULL) != 0) {
+    if (pthread_mutex_init(&client->http_lock, nullptr) != 0) {
         pthread_mutex_destroy(&client->lock);
         client->lock_initialized = false;
         OPENSSL_cleanse(client->access_token, sizeof(client->access_token));
-        free(client);
-        return NULL;
+        GC_FREE(client);
+        return nullptr;
     }
     client->http_lock_initialized = true;
 
@@ -1420,13 +1420,13 @@ matrix_client_t *matrix_client_create(host_t *host, client_manager_t *manager,
             client->lock_initialized = false;
         }
         OPENSSL_cleanse(client->access_token, sizeof(client->access_token));
-        free(client);
-        return NULL;
+        GC_FREE(client);
+        return nullptr;
     }
 
     atomic_store(&client->stop, false);
     atomic_store(&client->running, false);
-    if (pthread_create(&client->thread, NULL, matrix_client_poll_thread,
+    if (pthread_create(&client->thread, nullptr, matrix_client_poll_thread,
                        client) != 0) {
         client_manager_unregister(manager, &client->connection);
         if (client->http_lock_initialized) {
@@ -1438,8 +1438,8 @@ matrix_client_t *matrix_client_create(host_t *host, client_manager_t *manager,
             client->lock_initialized = false;
         }
         OPENSSL_cleanse(client->access_token, sizeof(client->access_token));
-        free(client);
-        return NULL;
+        GC_FREE(client);
+        return nullptr;
     }
 
     client->thread_initialized = true;
@@ -1449,17 +1449,17 @@ matrix_client_t *matrix_client_create(host_t *host, client_manager_t *manager,
 
 void matrix_client_destroy(matrix_client_t *client)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return;
     }
 
     if (client->thread_initialized) {
         atomic_store(&client->stop, true);
-        pthread_join(client->thread, NULL);
+        pthread_join(client->thread, nullptr);
         client->thread_initialized = false;
     }
 
-    if (client->manager != NULL) {
+    if (client->manager != nullptr) {
         client_manager_unregister(client->manager, &client->connection);
     }
 
@@ -1476,5 +1476,5 @@ void matrix_client_destroy(matrix_client_t *client)
                     sizeof(client->pending_skip_username));
     OPENSSL_cleanse(client->pending_skip_message,
                     sizeof(client->pending_skip_message));
-    free(client);
+    GC_FREE(client);
 }

@@ -6,11 +6,11 @@ static int session_game_random_range(session_ctx_t *ctx, int max);
 // Handle the /bbs command entry point.
 static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
-    if (arguments == NULL || *arguments == '\0') {
+    if (arguments == nullptr || *arguments == '\0') {
         session_bbs_show_dashboard(ctx);
         return;
     }
@@ -24,7 +24,7 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
     }
 
     char *command = working;
-    char *rest = NULL;
+    char *rest = nullptr;
     for (char *cursor = working; *cursor != '\0'; ++cursor) {
         if (isspace((unsigned char)*cursor)) {
             *cursor = '\0';
@@ -32,7 +32,7 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
             break;
         }
     }
-    if (rest != NULL) {
+    if (rest != nullptr) {
         trim_whitespace_inplace(rest);
     }
 
@@ -48,7 +48,7 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
 
     const char *canonical_command =
         session_bbs_subcommand_canonicalize(ctx, command);
-    if (canonical_command == NULL) {
+    if (canonical_command == nullptr) {
         session_send_system_line(
             ctx, "Unknown /bbs subcommand. Try /bbs for usage.");
         return;
@@ -58,14 +58,14 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         session_bbs_prepare_canvas(ctx);
         session_bbs_list(ctx);
     } else if (strcmp(canonical_command, "read") == 0) {
-        if (rest == NULL || rest[0] == '\0') {
+        if (rest == nullptr || rest[0] == '\0') {
             session_bbs_send_usage(ctx, "read", "<id>");
             return;
         }
-        uint64_t id = (uint64_t)strtoull(rest, NULL, 10);
+        uint64_t id = (uint64_t)strtoull(rest, nullptr, 10);
         session_bbs_read(ctx, id);
     } else if (strcmp(canonical_command, "topic") == 0) {
-        if (rest == NULL || rest[0] == '\0') {
+        if (rest == nullptr || rest[0] == '\0') {
             session_bbs_send_usage(ctx, "topic", "read <tag>");
             return;
         }
@@ -92,7 +92,7 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         }
         action_token[action_len] = '\0';
 
-        char *remaining = NULL;
+        char *remaining = nullptr;
         if (*cursor != '\0') {
             *cursor = '\0';
             remaining = cursor + 1;
@@ -102,9 +102,9 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         if (action_token[0] != '\0') {
             const char *canonical_action =
                 session_bbs_subcommand_canonicalize(ctx, action_token);
-            if (canonical_action != NULL &&
+            if (canonical_action != nullptr &&
                 strcmp(canonical_action, "read") == 0) {
-                if (remaining == NULL || remaining[0] == '\0') {
+                if (remaining == nullptr || remaining[0] == '\0') {
                     session_bbs_send_usage(ctx, "topic", "read <tag>");
                     return;
                 }
@@ -119,27 +119,27 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
     } else if (strcmp(canonical_command, "post") == 0) {
         session_bbs_begin_post(ctx, rest);
     } else if (strcmp(canonical_command, "edit") == 0) {
-        if (rest == NULL || rest[0] == '\0') {
+        if (rest == nullptr || rest[0] == '\0') {
             session_bbs_send_usage(ctx, "edit", "<id>");
             return;
         }
-        uint64_t id = (uint64_t)strtoull(rest, NULL, 10);
+        uint64_t id = (uint64_t)strtoull(rest, nullptr, 10);
         session_bbs_begin_edit(ctx, id);
     } else if (strcmp(canonical_command, "comment") == 0) {
         session_bbs_add_comment(ctx, rest);
     } else if (strcmp(canonical_command, "regen") == 0) {
-        if (rest == NULL || rest[0] == '\0') {
+        if (rest == nullptr || rest[0] == '\0') {
             session_bbs_send_usage(ctx, "regen", "<id>");
             return;
         }
-        uint64_t id = (uint64_t)strtoull(rest, NULL, 10);
+        uint64_t id = (uint64_t)strtoull(rest, nullptr, 10);
         session_bbs_regen_post(ctx, id);
     } else if (strcmp(canonical_command, "delete") == 0) {
-        if (rest == NULL || rest[0] == '\0') {
+        if (rest == nullptr || rest[0] == '\0') {
             session_bbs_send_usage(ctx, "delete", "<id>");
             return;
         }
-        uint64_t id = (uint64_t)strtoull(rest, NULL, 10);
+        uint64_t id = (uint64_t)strtoull(rest, nullptr, 10);
         session_bbs_delete(ctx, id);
     } else {
         session_send_system_line(
@@ -149,7 +149,7 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
 
 static void session_game_seed_rng(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -159,7 +159,7 @@ static void session_game_seed_rng(session_ctx_t *ctx)
 
     struct timespec ts;
     if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-        ts.tv_sec = time(NULL);
+        ts.tv_sec = time(nullptr);
         ts.tv_nsec = 0L;
     }
 
@@ -194,7 +194,7 @@ static int session_game_random_range(session_ctx_t *ctx, int max)
 
 static void session_game_tetris_reset(tetris_game_state_t *state)
 {
-    if (state == NULL) {
+    if (state == nullptr) {
         return;
     }
 
@@ -227,7 +227,7 @@ static void session_game_tetris_reset(tetris_game_state_t *state)
 
 static void session_game_tetris_apply_round_settings(tetris_game_state_t *state)
 {
-    if (state == NULL) {
+    if (state == nullptr) {
         return;
     }
 
@@ -300,7 +300,7 @@ static bool session_game_tetris_position_valid(const tetris_game_state_t *state,
                                                int piece, int rotation, int row,
                                                int column)
 {
-    if (state == NULL) {
+    if (state == nullptr) {
         return false;
     }
     for (int r = 0; r < SSH_CHATTER_TETROMINO_SIZE; ++r) {
@@ -329,7 +329,7 @@ static bool session_game_tetris_position_valid(const tetris_game_state_t *state,
 
 static bool session_game_tetris_spawn_piece(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return false;
     }
     tetris_game_state_t *state = &ctx->game.tetris;
@@ -354,7 +354,7 @@ static bool session_game_tetris_spawn_piece(session_ctx_t *ctx)
 
 static bool session_game_tetris_move(session_ctx_t *ctx, int drow, int dcol)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_TETRIS) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS) {
         return false;
     }
     tetris_game_state_t *state = &ctx->game.tetris;
@@ -384,7 +384,7 @@ static bool session_game_tetris_soft_drop(session_ctx_t *ctx)
 static bool session_game_tetris_apply_gravity(session_ctx_t *ctx,
                                               unsigned ticks)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_TETRIS ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS ||
         !ctx->game.active) {
         return false;
     }
@@ -426,7 +426,7 @@ typedef enum {
 static bool session_game_tetris_update_timer(session_ctx_t *ctx,
                                              bool accelerate)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_TETRIS ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS ||
         !ctx->game.active) {
         return false;
     }
@@ -438,7 +438,7 @@ static bool session_game_tetris_update_timer(session_ctx_t *ctx,
 
     struct timespec now;
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
-        now.tv_sec = time(NULL);
+        now.tv_sec = time(nullptr);
         now.tv_nsec = 0L;
     }
 
@@ -484,7 +484,7 @@ static bool session_game_tetris_update_timer(session_ctx_t *ctx,
 
 static bool session_game_tetris_process_timeout(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_TETRIS ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS ||
         !ctx->game.active) {
         return false;
     }
@@ -510,7 +510,7 @@ static bool session_game_tetris_process_timeout(session_ctx_t *ctx)
 static bool session_game_tetris_process_action(session_ctx_t *ctx,
                                                int action_value)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_TETRIS ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS ||
         !ctx->game.active) {
         return false;
     }
@@ -598,7 +598,7 @@ static bool session_game_tetris_process_action(session_ctx_t *ctx,
 
 static bool session_game_tetris_process_raw_input(session_ctx_t *ctx, char ch)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_TETRIS ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS ||
         !ctx->game.active) {
         return false;
     }
@@ -727,7 +727,7 @@ static bool session_game_tetris_process_raw_input(session_ctx_t *ctx, char ch)
 
 static bool session_game_tetris_rotate(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_TETRIS) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS) {
         return false;
     }
     tetris_game_state_t *state = &ctx->game.tetris;
@@ -747,8 +747,8 @@ static bool session_game_tetris_rotate(session_ctx_t *ctx)
 static void session_game_tetris_clear_lines(session_ctx_t *ctx,
                                             unsigned *cleared)
 {
-    if (ctx == NULL) {
-        if (cleared != NULL) {
+    if (ctx == nullptr) {
+        if (cleared != nullptr) {
             *cleared = 0U;
         }
         return;
@@ -780,14 +780,14 @@ static void session_game_tetris_clear_lines(session_ctx_t *ctx,
             state->board[0][move_col] = 0;
         }
     }
-    if (cleared != NULL) {
+    if (cleared != nullptr) {
         *cleared = removed;
     }
 }
 
 static void session_game_tetris_handle_round_progress(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_TETRIS) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS) {
         return;
     }
 
@@ -817,7 +817,7 @@ static void session_game_tetris_handle_round_progress(session_ctx_t *ctx)
 
 static void session_game_tetris_lock_piece(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_TETRIS) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS) {
         return;
     }
 
@@ -857,8 +857,8 @@ static void session_game_tetris_lock_piece(session_ctx_t *ctx)
 
 static const char *session_game_camouflage_lexer(const char *language)
 {
-    if (language == NULL) {
-        return NULL;
+    if (language == nullptr) {
+        return nullptr;
     }
     if (strcmp(language, "c") == 0) {
         return "c";
@@ -881,14 +881,14 @@ static const char *session_game_camouflage_lexer(const char *language)
     if (strcmp(language, "rust") == 0) {
         return "rust";
     }
-    return NULL;
+    return nullptr;
 }
 
 static bool session_game_camouflage_highlight(session_ctx_t *ctx,
                                               const char *lexer,
                                               const char *file_path)
 {
-    if (ctx == NULL || lexer == NULL || file_path == NULL) {
+    if (ctx == nullptr || lexer == nullptr || file_path == nullptr) {
         return false;
     }
 
@@ -903,7 +903,7 @@ static bool session_game_camouflage_highlight(session_ctx_t *ctx,
 
     errno = 0;
     FILE *pipe = popen(command, "r");
-    if (pipe == NULL) {
+    if (pipe == nullptr) {
         if (errno == ENOENT) {
             session_send_system_line(ctx, "Install python3-pygments to enable "
                                           "camouflage syntax highlighting.");
@@ -913,7 +913,7 @@ static bool session_game_camouflage_highlight(session_ctx_t *ctx,
 
     char line_buffer[SSH_CHATTER_MESSAGE_LIMIT];
     bool produced_output = false;
-    while (fgets(line_buffer, sizeof(line_buffer), pipe) != NULL) {
+    while (fgets(line_buffer, sizeof(line_buffer), pipe) != nullptr) {
         size_t len = strlen(line_buffer);
         if (len > 0U && line_buffer[len - 1U] == '\n') {
             line_buffer[len - 1U] = '\0';
@@ -932,7 +932,7 @@ static bool session_game_camouflage_highlight(session_ctx_t *ctx,
 
 static void session_game_show_camouflage(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -945,7 +945,7 @@ static void session_game_show_camouflage(session_ctx_t *ctx)
              ctx->game.chosen_camouflage_language);
 
     FILE *probe = fopen(file_path_buffer, "r");
-    if (probe == NULL) {
+    if (probe == nullptr) {
         session_send_system_line(
             ctx, "Error: Could not load camouflage code snippet.");
         return;
@@ -955,14 +955,14 @@ static void session_game_show_camouflage(session_ctx_t *ctx)
     bool highlighted = false;
     const char *lexer =
         session_game_camouflage_lexer(ctx->game.chosen_camouflage_language);
-    if (lexer != NULL) {
+    if (lexer != nullptr) {
         highlighted =
             session_game_camouflage_highlight(ctx, lexer, file_path_buffer);
     }
 
     if (!highlighted) {
         FILE *fp = fopen(file_path_buffer, "r");
-        if (fp == NULL) {
+        if (fp == nullptr) {
             session_send_system_line(
                 ctx, "Error: Could not load camouflage code snippet.");
             session_render_prompt(ctx, false);
@@ -970,7 +970,7 @@ static void session_game_show_camouflage(session_ctx_t *ctx)
         }
 
         char line_buffer[SSH_CHATTER_MESSAGE_LIMIT];
-        while (fgets(line_buffer, sizeof(line_buffer), fp) != NULL) {
+        while (fgets(line_buffer, sizeof(line_buffer), fp) != nullptr) {
             size_t len = strlen(line_buffer);
             if (len > 0U && line_buffer[len - 1U] == '\n') {
                 line_buffer[len - 1U] = '\0';
@@ -986,7 +986,7 @@ static void session_game_show_camouflage(session_ctx_t *ctx)
 
 static void session_game_tetris_render(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_TETRIS) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS) {
         return;
     }
 
@@ -1101,7 +1101,7 @@ static void session_game_tetris_render(session_ctx_t *ctx)
 static void session_game_tetris_handle_line(session_ctx_t *ctx,
                                             const char *line)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_TETRIS ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS ||
         !ctx->game.active) {
         return;
     }
@@ -1116,7 +1116,7 @@ static void session_game_tetris_handle_line(session_ctx_t *ctx,
     ctx->translation_suppress_output = true;
 
     char command[32];
-    if (line == NULL) {
+    if (line == nullptr) {
         command[0] = '\0';
     } else {
         size_t copy_len = strnlen(line, sizeof(command) - 1U);
@@ -1255,7 +1255,7 @@ static void session_game_start_tetris(session_ctx_t *ctx)
 
 static void session_game_start_liargame(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -1271,7 +1271,7 @@ static void session_game_start_liargame(session_ctx_t *ctx)
 
 static void session_game_liar_present_round(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_LIARGAME ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_LIARGAME ||
         !ctx->game.active) {
         return;
     }
@@ -1308,14 +1308,14 @@ static void session_game_liar_present_round(session_ctx_t *ctx)
 
 static void session_game_liar_handle_line(session_ctx_t *ctx, const char *line)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_LIARGAME ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_LIARGAME ||
         !ctx->game.active) {
         return;
     }
 
     liar_game_state_t *state = &ctx->game.liar;
     char command[32];
-    if (line == NULL) {
+    if (line == nullptr) {
         command[0] = '\0';
     } else {
         size_t copy_len = strnlen(line, sizeof(command) - 1U);
@@ -1344,7 +1344,7 @@ static void session_game_liar_handle_line(session_ctx_t *ctx, const char *line)
         return;
     }
 
-    char *endptr = NULL;
+    char *endptr = nullptr;
     long value = strtol(command, &endptr, 10);
     if (endptr == command || value < 1L || value > 3L) {
         session_send_system_line(ctx,
@@ -1389,7 +1389,7 @@ session_game_othello_direction_count(const othello_game_state_t *state, int row,
                                      int col, int drow, int dcol,
                                      othello_cell_type_t player)
 {
-    if (state == NULL) {
+    if (state == nullptr) {
         return 0;
     }
 
@@ -1422,7 +1422,7 @@ static int session_game_othello_count_flips(const othello_game_state_t *state,
                                             int row, int col,
                                             othello_cell_type_t player)
 {
-    if (state == NULL || !session_game_othello_in_bounds(row, col)) {
+    if (state == nullptr || !session_game_othello_in_bounds(row, col)) {
         return 0;
     }
 
@@ -1445,14 +1445,14 @@ static int session_game_othello_count_flips(const othello_game_state_t *state,
 static void session_game_othello_count_scores(const othello_game_state_t *state,
                                               unsigned *red, unsigned *green)
 {
-    if (red != NULL) {
+    if (red != nullptr) {
         *red = 0U;
     }
-    if (green != NULL) {
+    if (green != nullptr) {
         *green = 0U;
     }
 
-    if (state == NULL) {
+    if (state == nullptr) {
         return;
     }
 
@@ -1468,17 +1468,17 @@ static void session_game_othello_count_scores(const othello_game_state_t *state,
         }
     }
 
-    if (red != NULL) {
+    if (red != nullptr) {
         *red = red_count;
     }
-    if (green != NULL) {
+    if (green != nullptr) {
         *green = green_count;
     }
 }
 
 static void session_game_othello_reset_state(othello_game_state_t *state)
 {
-    if (state == NULL) {
+    if (state == nullptr) {
         return;
     }
 
@@ -1513,7 +1513,7 @@ static void session_game_othello_reset_state(othello_game_state_t *state)
 static void session_game_othello_copy_core(othello_game_state_t *dest,
                                            const othello_game_state_t *src)
 {
-    if (dest == NULL || src == NULL) {
+    if (dest == nullptr || src == nullptr) {
         return;
     }
 
@@ -1533,7 +1533,7 @@ static void session_game_othello_sync_player_from_snapshot(
     session_ctx_t *player, const othello_game_state_t *snapshot,
     unsigned player_index, int slot_index, bool awaiting_opponent)
 {
-    if (player == NULL || snapshot == NULL) {
+    if (player == nullptr || snapshot == nullptr) {
         return;
     }
 
@@ -1556,9 +1556,9 @@ static void session_game_othello_sync_player_from_snapshot(
 static othello_multiplayer_slot_t *host_othello_slot_by_id_locked(host_t *host,
                                                                   int slot_id)
 {
-    if (host == NULL || slot_id <= 0 ||
+    if (host == nullptr || slot_id <= 0 ||
         slot_id > (int)SSH_CHATTER_OTHELLO_MAX_SLOTS) {
-        return NULL;
+        return nullptr;
     }
 
     return &host->othello_games[(size_t)(slot_id - 1)];
@@ -1567,8 +1567,8 @@ static othello_multiplayer_slot_t *host_othello_slot_by_id_locked(host_t *host,
 static othello_multiplayer_slot_t *
 host_othello_allocate_slot_locked(host_t *host, const char *owner_name)
 {
-    if (host == NULL) {
-        return NULL;
+    if (host == nullptr) {
+        return nullptr;
     }
 
     for (size_t idx = 0U; idx < SSH_CHATTER_OTHELLO_MAX_SLOTS; ++idx) {
@@ -1581,11 +1581,11 @@ host_othello_allocate_slot_locked(host_t *host, const char *owner_name)
         slot->active = false;
         slot->awaiting_second_player = true;
         slot->owner[0] = '\0';
-        if (owner_name != NULL) {
+        if (owner_name != nullptr) {
             snprintf(slot->owner, sizeof(slot->owner), "%s", owner_name);
         }
-        slot->players[0] = NULL;
-        slot->players[1] = NULL;
+        slot->players[0] = nullptr;
+        slot->players[1] = nullptr;
         session_game_othello_reset_state(&slot->state);
         slot->state.awaiting_mode_selection = false;
         slot->state.multiplayer = true;
@@ -1595,13 +1595,13 @@ host_othello_allocate_slot_locked(host_t *host, const char *owner_name)
         return slot;
     }
 
-    return NULL;
+    return nullptr;
 }
 
 static void host_othello_release_slot_locked(host_t *host,
                                              othello_multiplayer_slot_t *slot)
 {
-    if (host == NULL || slot == NULL) {
+    if (host == nullptr || slot == nullptr) {
         return;
     }
 
@@ -1609,8 +1609,8 @@ static void host_othello_release_slot_locked(host_t *host,
     slot->active = false;
     slot->awaiting_second_player = false;
     slot->owner[0] = '\0';
-    slot->players[0] = NULL;
-    slot->players[1] = NULL;
+    slot->players[0] = nullptr;
+    slot->players[1] = nullptr;
     session_game_othello_reset_state(&slot->state);
 }
 
@@ -1618,11 +1618,11 @@ static void session_game_othello_finish_multiplayer(
     host_t *host, othello_multiplayer_slot_t *slot, const char *reason_p1,
     const char *reason_p2)
 {
-    if (host == NULL || slot == NULL) {
+    if (host == nullptr || slot == nullptr) {
         return;
     }
 
-    session_ctx_t *players[2] = {NULL, NULL};
+    session_ctx_t *players[2] = {nullptr, nullptr};
     othello_game_state_t snapshot = {0};
 
     pthread_mutex_lock(&host->lock);
@@ -1638,7 +1638,7 @@ static void session_game_othello_finish_multiplayer(
 
     for (unsigned idx = 0U; idx < 2U; ++idx) {
         session_ctx_t *player = players[idx];
-        if (player == NULL) {
+        if (player == nullptr) {
             continue;
         }
         session_game_othello_sync_player_from_snapshot(player, &snapshot, idx,
@@ -1652,7 +1652,7 @@ static void session_game_othello_apply_move(othello_game_state_t *state,
                                             int row, int col,
                                             othello_cell_type_t player)
 {
-    if (state == NULL || !session_game_othello_in_bounds(row, col)) {
+    if (state == nullptr || !session_game_othello_in_bounds(row, col)) {
         return;
     }
 
@@ -1687,7 +1687,7 @@ session_game_othello_collect_moves(const othello_game_state_t *state,
                                    othello_cell_type_t player,
                                    othello_move_t *moves, unsigned max_moves)
 {
-    if (state == NULL) {
+    if (state == nullptr) {
         return 0U;
     }
 
@@ -1700,7 +1700,7 @@ session_game_othello_collect_moves(const othello_game_state_t *state,
                 continue;
             }
 
-            if (moves != NULL && count < max_moves) {
+            if (moves != nullptr && count < max_moves) {
                 moves[count].row = row;
                 moves[count].col = col;
                 moves[count].flipped = flipped;
@@ -1715,7 +1715,7 @@ session_game_othello_collect_moves(const othello_game_state_t *state,
 static void session_game_othello_format_coordinate(int row, int col,
                                                    char *buffer, size_t length)
 {
-    if (buffer == NULL || length == 0U) {
+    if (buffer == nullptr || length == 0U) {
         return;
     }
 
@@ -1732,7 +1732,7 @@ static void session_game_othello_format_coordinate(int row, int col,
 static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
                                                          const char *working)
 {
-    if (ctx == NULL || working == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || working == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -1747,7 +1747,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
                 othello_multiplayer_slot_t *slot =
                     host_othello_slot_by_id_locked(host,
                                                    session_state->slot_index);
-                if (slot != NULL && slot->in_use && !slot->active &&
+                if (slot != nullptr && slot->in_use && !slot->active &&
                     slot->players[0] == ctx) {
                     host_othello_release_slot_locked(host, slot);
                 }
@@ -1778,7 +1778,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
     pthread_mutex_lock(&host->lock);
     othello_multiplayer_slot_t *slot =
         host_othello_slot_by_id_locked(host, session_state->slot_index);
-    if (slot == NULL || !slot->in_use) {
+    if (slot == nullptr || !slot->in_use) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "This multiplayer game has ended.");
         session_state->multiplayer = false;
@@ -1810,7 +1810,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
 
     if (slot->state.game_over) {
         pthread_mutex_unlock(&host->lock);
-        session_game_othello_finish_multiplayer(host, slot, NULL, NULL);
+        session_game_othello_finish_multiplayer(host, slot, nullptr, nullptr);
         return;
     }
 
@@ -1833,7 +1833,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
 
     if (strcmp(working, "pass") == 0) {
         unsigned my_moves = session_game_othello_collect_moves(
-            &slot->state, my_color, NULL, 0U);
+            &slot->state, my_color, nullptr, 0U);
         if (my_moves > 0U) {
             pthread_mutex_unlock(&host->lock);
             session_send_system_line(ctx,
@@ -1876,17 +1876,17 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
                                                        1U, slot_id, false);
 
         session_send_system_line(ctx, "You pass your turn.");
-        if (opponent != NULL) {
+        if (opponent != nullptr) {
             char notice[SSH_CHATTER_MESSAGE_LIMIT];
             snprintf(notice, sizeof(notice), "%s (%s) passes their turn.",
                      player_index == 0U ? "1P" : "2P", ctx->user.name);
             session_send_system_line(opponent, notice);
         }
 
-        if (players[player_index] != NULL) {
+        if (players[player_index] != nullptr) {
             session_game_othello_prepare_next_turn(players[player_index]);
         }
-        if (opponent != NULL) {
+        if (opponent != nullptr) {
             session_game_othello_prepare_next_turn(opponent);
         }
         return;
@@ -1901,7 +1901,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
         char self_reason[64];
         char opp_reason[64];
         snprintf(self_reason, sizeof(self_reason), "You resigned.");
-        if (opponent != NULL) {
+        if (opponent != nullptr) {
             snprintf(opp_reason, sizeof(opp_reason), "%s resigned.",
                      ctx->user.name);
         } else {
@@ -1949,9 +1949,9 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
     slot->state.consecutive_passes = 0U;
 
     unsigned opponent_moves = session_game_othello_collect_moves(
-        &slot->state, opponent_color, NULL, 0U);
+        &slot->state, opponent_color, nullptr, 0U);
     unsigned my_future_moves =
-        session_game_othello_collect_moves(&slot->state, my_color, NULL, 0U);
+        session_game_othello_collect_moves(&slot->state, my_color, nullptr, 0U);
 
     bool opponent_forced_pass = false;
     bool finish = false;
@@ -1987,13 +1987,13 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
     session_game_othello_sync_player_from_snapshot(players[1], &snapshot, 1U,
                                                    slot_id, false);
 
-    if (players[player_index] != NULL) {
+    if (players[player_index] != nullptr) {
         char self_message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(self_message, sizeof(self_message), "You place a piece at %s.",
                  coord);
         session_send_system_line(players[player_index], self_message);
     }
-    if (opponent != NULL) {
+    if (opponent != nullptr) {
         char other_message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(other_message, sizeof(other_message),
                  "%s (%s) places a piece at %s.",
@@ -2002,21 +2002,21 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
     }
 
     if (opponent_forced_pass) {
-        if (players[player_index] != NULL) {
+        if (players[player_index] != nullptr) {
             session_send_system_line(players[player_index],
                                      "Opponent has no moves and must pass.");
         }
-        if (opponent != NULL) {
+        if (opponent != nullptr) {
             session_send_system_line(opponent,
                                      "You have no legal moves and must pass.");
         }
     }
 
-    if (players[player_index] != NULL) {
+    if (players[player_index] != nullptr) {
         session_game_othello_render(players[player_index]);
         session_game_othello_prepare_next_turn(players[player_index]);
     }
-    if (opponent != NULL) {
+    if (opponent != nullptr) {
         session_game_othello_render(opponent);
         session_game_othello_prepare_next_turn(opponent);
     }
@@ -2024,7 +2024,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
 
 bool session_game_othello_handle_forced_exit(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return false;
     }
 
@@ -2041,14 +2041,14 @@ bool session_game_othello_handle_forced_exit(session_ctx_t *ctx)
     pthread_mutex_lock(&host->lock);
     othello_multiplayer_slot_t *slot =
         host_othello_slot_by_id_locked(host, state->slot_index);
-    if (slot == NULL || !slot->in_use || !slot->active) {
+    if (slot == nullptr || !slot->in_use || !slot->active) {
         pthread_mutex_unlock(&host->lock);
         return false;
     }
 
     bool is_player_one = slot->players[0] == ctx;
     bool is_player_two = slot->players[1] == ctx;
-    session_ctx_t *opponent = NULL;
+    session_ctx_t *opponent = nullptr;
     if (is_player_one) {
         opponent = slot->players[1];
     } else if (is_player_two) {
@@ -2070,14 +2070,14 @@ bool session_game_othello_handle_forced_exit(session_ctx_t *ctx)
     char reason_p2[64];
     if (is_player_one) {
         snprintf(reason_p1, sizeof(reason_p1), "You resigned.");
-        if (opponent != NULL) {
+        if (opponent != nullptr) {
             snprintf(reason_p2, sizeof(reason_p2), "%s resigned.",
                      resigner_name);
         } else {
             snprintf(reason_p2, sizeof(reason_p2), "Opponent resigned.");
         }
     } else {
-        if (opponent != NULL) {
+        if (opponent != nullptr) {
             snprintf(reason_p1, sizeof(reason_p1), "%s resigned.",
                      resigner_name);
         } else {
@@ -2092,7 +2092,7 @@ bool session_game_othello_handle_forced_exit(session_ctx_t *ctx)
 
 static void session_game_othello_render(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_OTHELLO) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_OTHELLO) {
         return;
     }
 
@@ -2174,7 +2174,7 @@ static void session_game_othello_render(session_ctx_t *ctx)
 
 static void session_game_othello_finish(session_ctx_t *ctx, const char *reason)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_OTHELLO) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_OTHELLO) {
         return;
     }
 
@@ -2186,20 +2186,20 @@ static void session_game_othello_finish(session_ctx_t *ctx, const char *reason)
     }
 
     const char *message =
-        (reason != NULL && reason[0] != '\0') ? reason : "Othello finished.";
+        (reason != nullptr && reason[0] != '\0') ? reason : "Othello finished.";
 
     if (state->multiplayer) {
         host_t *host = ctx->owner;
-        othello_multiplayer_slot_t *slot = NULL;
-        if (host != NULL && state->slot_index > 0) {
+        othello_multiplayer_slot_t *slot = nullptr;
+        if (host != nullptr && state->slot_index > 0) {
             pthread_mutex_lock(&host->lock);
             slot = host_othello_slot_by_id_locked(host, state->slot_index);
             pthread_mutex_unlock(&host->lock);
         }
 
-        if (host != NULL && slot != NULL) {
+        if (host != nullptr && slot != nullptr) {
             const char *outcome =
-                (reason != NULL && reason[0] != '\0') ? reason : NULL;
+                (reason != nullptr && reason[0] != '\0') ? reason : nullptr;
             session_game_othello_finish_multiplayer(host, slot, outcome,
                                                     outcome);
         } else {
@@ -2215,7 +2215,7 @@ static void session_game_othello_handle_ai_turn(session_ctx_t *ctx);
 
 static void session_game_othello_prepare_next_turn(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_OTHELLO) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_OTHELLO) {
         return;
     }
 
@@ -2252,9 +2252,9 @@ static void session_game_othello_prepare_next_turn(session_ctx_t *ctx)
     }
 
     unsigned player_moves =
-        session_game_othello_collect_moves(state, OTHELLO_CELL_RED, NULL, 0U);
+        session_game_othello_collect_moves(state, OTHELLO_CELL_RED, nullptr, 0U);
     unsigned ai_moves =
-        session_game_othello_collect_moves(state, OTHELLO_CELL_GREEN, NULL, 0U);
+        session_game_othello_collect_moves(state, OTHELLO_CELL_GREEN, nullptr, 0U);
 
     if (player_moves == 0U && ai_moves == 0U) {
         session_game_othello_finish(ctx, "No more moves available.");
@@ -2295,7 +2295,7 @@ static void session_game_othello_prepare_next_turn(session_ctx_t *ctx)
 
 static void session_game_othello_handle_ai_turn(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_OTHELLO) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_OTHELLO) {
         return;
     }
 
@@ -2368,7 +2368,7 @@ static void session_game_othello_handle_ai_turn(session_ctx_t *ctx)
 static void session_game_othello_handle_line(session_ctx_t *ctx,
                                              const char *line)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_OTHELLO || line == NULL) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_OTHELLO || line == nullptr) {
         return;
     }
 
@@ -2398,7 +2398,7 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
                                      "your move.");
             session_game_othello_prepare_next_turn(ctx);
         } else if (strcmp(working, "multi") == 0 || strcmp(working, "m") == 0) {
-            if (ctx->owner == NULL) {
+            if (ctx->owner == nullptr) {
                 session_send_system_line(
                     ctx, "Multiplayer mode is unavailable right now.");
                 return;
@@ -2416,18 +2416,18 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
                 return;
             }
 
-            othello_multiplayer_slot_t *slot = NULL;
+            othello_multiplayer_slot_t *slot = nullptr;
             int slot_id = -1;
             pthread_mutex_lock(&ctx->owner->lock);
             slot =
                 host_othello_allocate_slot_locked(ctx->owner, ctx->user.name);
-            if (slot != NULL) {
+            if (slot != nullptr) {
                 slot->players[0] = ctx;
                 slot_id = (int)slot->slot_id;
             }
             pthread_mutex_unlock(&ctx->owner->lock);
 
-            if (slot == NULL) {
+            if (slot == nullptr) {
                 session_send_system_line(
                     ctx, "All multiplayer Othello slots are currently in use.");
                 return;
@@ -2476,7 +2476,7 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
     }
 
     unsigned player_moves =
-        session_game_othello_collect_moves(state, OTHELLO_CELL_RED, NULL, 0U);
+        session_game_othello_collect_moves(state, OTHELLO_CELL_RED, nullptr, 0U);
     if (strcmp(working, "pass") == 0) {
         if (player_moves > 0U) {
             session_send_system_line(ctx,
@@ -2540,7 +2540,7 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
 
 static void session_game_start_othello(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -2559,7 +2559,7 @@ static void session_game_start_othello(session_ctx_t *ctx)
 
 static void session_othello_list_games(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -2607,7 +2607,7 @@ static void session_othello_list_games(session_ctx_t *ctx)
 
 static void session_othello_accept_game(session_ctx_t *ctx, unsigned slot_id)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -2626,7 +2626,7 @@ static void session_othello_accept_game(session_ctx_t *ctx, unsigned slot_id)
     pthread_mutex_lock(&host->lock);
     othello_multiplayer_slot_t *slot =
         host_othello_slot_by_id_locked(host, (int)slot_id);
-    if (slot == NULL || !slot->in_use || slot->active ||
+    if (slot == nullptr || !slot->in_use || slot->active ||
         !slot->awaiting_second_player) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "That game is not available.");
@@ -2640,7 +2640,7 @@ static void session_othello_accept_game(session_ctx_t *ctx, unsigned slot_id)
     }
 
     session_ctx_t *creator = slot->players[0];
-    if (creator == NULL || creator->owner != host ||
+    if (creator == nullptr || creator->owner != host ||
         creator->game.type != SESSION_GAME_OTHELLO ||
         !creator->game.othello.multiplayer) {
         host_othello_release_slot_locked(host, slot);
@@ -2700,13 +2700,13 @@ static void session_othello_accept_game(session_ctx_t *ctx, unsigned slot_id)
 static void session_handle_othello_command(session_ctx_t *ctx,
                                            const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     const char *usage = "Usage: /othello <list|accept <game-id>>";
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -2720,7 +2720,7 @@ static void session_handle_othello_command(session_ctx_t *ctx,
     }
 
     char *command = working;
-    char *rest = NULL;
+    char *rest = nullptr;
     for (char *cursor = working; *cursor != '\0'; ++cursor) {
         if (isspace((unsigned char)*cursor)) {
             *cursor = '\0';
@@ -2728,7 +2728,7 @@ static void session_handle_othello_command(session_ctx_t *ctx,
             break;
         }
     }
-    if (rest != NULL) {
+    if (rest != nullptr) {
         trim_whitespace_inplace(rest);
     }
 
@@ -2737,7 +2737,7 @@ static void session_handle_othello_command(session_ctx_t *ctx,
     }
 
     if (strcmp(command, "list") == 0) {
-        if (rest != NULL && rest[0] != '\0') {
+        if (rest != nullptr && rest[0] != '\0') {
             session_send_system_line(
                 ctx, "Usage: /othello list (no extra arguments).");
             return;
@@ -2747,14 +2747,14 @@ static void session_handle_othello_command(session_ctx_t *ctx,
     }
 
     if (strcmp(command, "accept") == 0) {
-        if (rest == NULL || rest[0] == '\0') {
+        if (rest == nullptr || rest[0] == '\0') {
             session_send_system_line(ctx, "Usage: /othello accept <game-id>");
             return;
         }
 
-        char *endptr = NULL;
+        char *endptr = nullptr;
         unsigned long parsed = strtoul(rest, &endptr, 10);
-        if (endptr == rest || (endptr != NULL && *endptr != '\0') ||
+        if (endptr == rest || (endptr != nullptr && *endptr != '\0') ||
             parsed == 0UL || parsed > SSH_CHATTER_OTHELLO_MAX_SLOTS) {
             session_send_system_line(ctx, "Provide a valid game number.");
             return;
@@ -2772,7 +2772,7 @@ session_game_alpha_add_gravity_source(alpha_centauri_game_state_t *state, int x,
                                       int y, double mu, int influence_radius,
                                       char symbol, const char *name)
 {
-    if (state == NULL ||
+    if (state == nullptr ||
         state->gravity_source_count >= ALPHA_MAX_GRAVITY_SOURCES) {
         return;
     }
@@ -2796,7 +2796,7 @@ session_game_alpha_add_gravity_source(alpha_centauri_game_state_t *state, int x,
     source->mu = mu >= 0.0 ? mu : 0.0;
     source->influence_radius = influence_radius > 0 ? influence_radius : 0;
     source->symbol = symbol;
-    if (name != NULL) {
+    if (name != nullptr) {
         snprintf(source->name, sizeof(source->name), "%s", name);
     } else {
         source->name[0] = '\0';
@@ -2805,7 +2805,7 @@ session_game_alpha_add_gravity_source(alpha_centauri_game_state_t *state, int x,
 
 static void session_game_alpha_configure_gravity(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA) {
         return;
     }
 
@@ -2936,7 +2936,7 @@ static void session_game_alpha_configure_gravity(session_ctx_t *ctx)
 
 static void session_game_alpha_apply_gravity(alpha_centauri_game_state_t *state)
 {
-    if (state == NULL || state->gravity_source_count == 0U) {
+    if (state == nullptr || state->gravity_source_count == 0U) {
         return;
     }
 
@@ -3037,7 +3037,7 @@ static void session_game_alpha_apply_gravity(alpha_centauri_game_state_t *state)
 
 static void session_game_alpha_prepare_navigation(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA) {
         return;
     }
 
@@ -3222,7 +3222,7 @@ static void session_game_alpha_prepare_navigation(session_ctx_t *ctx)
 
 static void session_game_alpha_reroll_navigation(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         !ctx->game.active) {
         return;
     }
@@ -3236,7 +3236,7 @@ static void session_game_alpha_reroll_navigation(session_ctx_t *ctx)
 
 static void session_game_alpha_reset(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -3258,7 +3258,7 @@ static void session_game_alpha_reset(session_ctx_t *ctx)
 
 static void session_game_alpha_sync_from_save(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -3293,7 +3293,7 @@ static void session_game_alpha_sync_from_save(session_ctx_t *ctx)
 
 static void session_game_alpha_sync_to_save(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -3320,7 +3320,7 @@ static void session_game_alpha_sync_to_save(session_ctx_t *ctx)
 static void session_game_alpha_report_state(session_ctx_t *ctx,
                                             const char *label)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -3328,7 +3328,7 @@ static void session_game_alpha_report_state(session_ctx_t *ctx,
     bool previous_translation = ctx->translation_suppress_output;
     ctx->translation_suppress_output = true;
 
-    if (label != NULL && label[0] != '\0') {
+    if (label != nullptr && label[0] != '\0') {
         session_send_system_line(ctx, label);
     }
 
@@ -3357,7 +3357,7 @@ static void session_game_alpha_report_state(session_ctx_t *ctx,
 static const char *
 session_game_alpha_phase_label(const alpha_centauri_game_state_t *state)
 {
-    if (state == NULL) {
+    if (state == nullptr) {
         return "Guidance";
     }
 
@@ -3386,7 +3386,7 @@ session_game_alpha_phase_label(const alpha_centauri_game_state_t *state)
 
 static void session_game_alpha_render_navigation(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         !ctx->game.active) {
         return;
     }
@@ -3499,7 +3499,7 @@ static void session_game_alpha_render_navigation(session_ctx_t *ctx)
 
 static void session_game_alpha_refresh_navigation(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         !ctx->game.active) {
         return;
     }
@@ -3513,7 +3513,7 @@ static void session_game_alpha_refresh_navigation(session_ctx_t *ctx)
 
 static void session_game_alpha_plan_waypoints(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA) {
         return;
     }
 
@@ -3617,7 +3617,7 @@ static void session_game_alpha_plan_waypoints(session_ctx_t *ctx)
 
 static void session_game_alpha_present_waypoints(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA) {
         return;
     }
 
@@ -3671,7 +3671,7 @@ static void session_game_alpha_present_waypoints(session_ctx_t *ctx)
 
 static void session_game_alpha_complete_waypoint(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA) {
         return;
     }
 
@@ -3719,7 +3719,7 @@ static void session_game_alpha_complete_waypoint(session_ctx_t *ctx)
 
 static void session_game_alpha_present_stage(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         !ctx->game.active) {
         return;
     }
@@ -3838,7 +3838,7 @@ static void session_game_alpha_present_stage(session_ctx_t *ctx)
 
 static void session_game_alpha_log_completion(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -3862,7 +3862,7 @@ static void session_game_alpha_log_completion(session_ctx_t *ctx)
     double total_years = state->mission_time_years;
     double total_radiation = state->radiation_msv;
 
-    time_t now = time(NULL);
+    time_t now = time(nullptr);
     uint64_t landing_timestamp = 0U;
     if (now != (time_t)-1) {
         landing_timestamp = (uint64_t)now;
@@ -3902,8 +3902,8 @@ static void session_game_alpha_log_completion(session_ctx_t *ctx)
     snprintf(notice, sizeof(notice),
              "* [alpha-centauri] Immigrants' Flag planted by %s.",
              ctx->user.name);
-    host_history_record_system(ctx->owner, notice, NULL);
-    chat_room_broadcast(&ctx->owner->room, notice, NULL);
+    host_history_record_system(ctx->owner, notice, nullptr);
+    chat_room_broadcast(&ctx->owner->room, notice, nullptr);
 
     ctx->translation_suppress_output = previous_translation;
 
@@ -3920,7 +3920,7 @@ static void session_game_alpha_log_completion(session_ctx_t *ctx)
 
 static void session_game_alpha_execute_ignite(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         ctx->game.alpha.stage != 0U) {
         return;
     }
@@ -3945,7 +3945,7 @@ static void session_game_alpha_execute_ignite(session_ctx_t *ctx)
 
 static void session_game_alpha_execute_trim(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         ctx->game.alpha.stage != 1U) {
         return;
     }
@@ -3971,7 +3971,7 @@ static void session_game_alpha_execute_trim(session_ctx_t *ctx)
 
 static void session_game_alpha_execute_flip(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         ctx->game.alpha.stage != 2U) {
         return;
     }
@@ -3996,7 +3996,7 @@ static void session_game_alpha_execute_flip(session_ctx_t *ctx)
 
 static void session_game_alpha_execute_retro(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         ctx->game.alpha.stage != 3U) {
         return;
     }
@@ -4028,7 +4028,7 @@ static void session_game_alpha_execute_retro(session_ctx_t *ctx)
 
 static void session_game_alpha_execute_eva(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         ctx->game.alpha.stage != 4U || ctx->game.alpha.eva_ready) {
         return;
     }
@@ -4051,7 +4051,7 @@ static void session_game_alpha_execute_eva(session_ctx_t *ctx)
 
 static bool session_game_alpha_attempt_completion(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA) {
         return false;
     }
 
@@ -4094,7 +4094,7 @@ static bool session_game_alpha_attempt_completion(session_ctx_t *ctx)
 
 static void session_game_alpha_manual_lock(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         !ctx->game.active) {
         return;
     }
@@ -4117,7 +4117,7 @@ static void session_game_alpha_manual_lock(session_ctx_t *ctx)
 
 static void session_game_alpha_manual_save(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA) {
         return;
     }
 
@@ -4129,7 +4129,7 @@ static void session_game_alpha_manual_save(session_ctx_t *ctx)
 
 static bool session_game_alpha_handle_arrow(session_ctx_t *ctx, int dx, int dy)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         !ctx->game.active) {
         return false;
     }
@@ -4194,14 +4194,14 @@ static bool session_game_alpha_handle_arrow(session_ctx_t *ctx, int dx, int dy)
 
 static void session_game_alpha_handle_line(session_ctx_t *ctx, const char *line)
 {
-    if (ctx == NULL || ctx->game.type != SESSION_GAME_ALPHA ||
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
         !ctx->game.active) {
         return;
     }
 
     alpha_centauri_game_state_t *state = &ctx->game.alpha;
     char command[SSH_CHATTER_MAX_INPUT_LEN];
-    if (line == NULL) {
+    if (line == nullptr) {
         command[0] = '\0';
     } else {
         snprintf(command, sizeof(command), "%s", line);
@@ -4336,7 +4336,7 @@ static void session_game_alpha_handle_line(session_ctx_t *ctx, const char *line)
 
 static void session_game_start_alpha(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -4371,7 +4371,7 @@ static void session_game_start_alpha(session_ctx_t *ctx)
 
 static void session_handle_game(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -4381,7 +4381,7 @@ static void session_handle_game(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(
             ctx, "Usage: /game <tetris|liargame|alpha|othello>");
         return;
@@ -4417,12 +4417,12 @@ static void session_handle_game(session_ctx_t *ctx, const char *arguments)
 
 static void session_game_suspend(session_ctx_t *ctx, const char *reason)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     if (!ctx->game.active) {
-        if (reason != NULL && reason[0] != '\0') {
+        if (reason != nullptr && reason[0] != '\0') {
             session_send_system_line(ctx, reason);
         } else {
             session_send_system_line(ctx,
@@ -4436,7 +4436,7 @@ static void session_game_suspend(session_ctx_t *ctx, const char *reason)
         session_disable_alternate_screen(ctx);
     }
 
-    if (reason != NULL && reason[0] != '\0') {
+    if (reason != nullptr && reason[0] != '\0') {
         session_send_system_line(ctx, reason);
     }
 
@@ -4494,7 +4494,7 @@ static void session_game_suspend(session_ctx_t *ctx, const char *reason)
 static int session_channel_read_poll(session_ctx_t *ctx, char *buffer,
                                      size_t length, int timeout_ms)
 {
-    if (ctx == NULL || buffer == NULL || length == 0U ||
+    if (ctx == nullptr || buffer == nullptr || length == 0U ||
         !session_transport_active(ctx)) {
         return SSH_ERROR;
     }
@@ -4545,16 +4545,16 @@ static bool session_parse_color_arguments(char *working, char **tokens,
                                           size_t max_tokens,
                                           size_t *token_count)
 {
-    if (working == NULL || tokens == NULL || token_count == NULL) {
+    if (working == nullptr || tokens == nullptr || token_count == nullptr) {
         return false;
     }
 
     *token_count = 0U;
     bool extra_tokens = false;
     char *cursor = working;
-    while (cursor != NULL) {
+    while (cursor != nullptr) {
         char *next = strchr(cursor, ';');
-        if (next != NULL) {
+        if (next != nullptr) {
             *next = '\0';
         }
 
@@ -4570,7 +4570,7 @@ static bool session_parse_color_arguments(char *working, char **tokens,
             extra_tokens = true;
         }
 
-        if (next == NULL) {
+        if (next == nullptr) {
             break;
         }
 
@@ -4586,11 +4586,11 @@ static bool session_parse_color_arguments(char *working, char **tokens,
 
 static void session_handle_color(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, "Usage: /color (text;highlight[;bold])");
         return;
     }
@@ -4638,7 +4638,7 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
     const char *text_code = lookup_color_code(
         USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
         tokens[0]);
-    if (text_code == NULL) {
+    if (text_code == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(message, sizeof(message), "Unknown text color '%s'.",
                  tokens[0]);
@@ -4650,7 +4650,7 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
         HIGHLIGHT_COLOR_MAP,
         sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
         tokens[1]);
-    if (highlight_code == NULL) {
+    if (highlight_code == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(message, sizeof(message), "Unknown highlight color '%s'.",
                  tokens[1]);
@@ -4688,14 +4688,14 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
              bold_code, text_code, ctx->user.name, ANSI_RESET);
     session_send_line(ctx, preview);
 
-    if (ctx->owner != NULL) {
+    if (ctx->owner != nullptr) {
         host_store_user_theme(ctx->owner, ctx);
     }
 }
 
 static void session_handle_motd(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -4715,7 +4715,7 @@ static void session_handle_motd(session_ctx_t *ctx)
 static void session_handle_system_color(session_ctx_t *ctx,
                                         const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -4728,7 +4728,7 @@ static void session_handle_system_color(session_ctx_t *ctx,
     session_command_format_usage(ctx, "/systemcolor", kUsage, usage,
                                  sizeof(usage));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -4769,7 +4769,7 @@ static void session_handle_system_color(session_ctx_t *ctx,
         session_send_system_line(ctx, "System colors reset to defaults.");
         session_render_separator(ctx, "Chatroom");
         session_render_prompt(ctx, true);
-        if (ctx->owner != NULL) {
+        if (ctx->owner != nullptr) {
             host_store_system_theme(ctx->owner, ctx);
         }
         return;
@@ -4786,7 +4786,7 @@ static void session_handle_system_color(session_ctx_t *ctx,
     const char *fg_code = lookup_color_code(
         USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
         tokens[0]);
-    if (fg_code == NULL) {
+    if (fg_code == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(message, sizeof(message), "Unknown foreground color '%s'.",
                  tokens[0]);
@@ -4798,7 +4798,7 @@ static void session_handle_system_color(session_ctx_t *ctx,
                                             sizeof(HIGHLIGHT_COLOR_MAP) /
                                                 sizeof(HIGHLIGHT_COLOR_MAP[0]),
                                             tokens[1]);
-    if (bg_code == NULL) {
+    if (bg_code == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(message, sizeof(message), "Unknown background color '%s'.",
                  tokens[1]);
@@ -4822,7 +4822,7 @@ static void session_handle_system_color(session_ctx_t *ctx,
                 HIGHLIGHT_COLOR_MAP,
                 sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
                 tokens[2]);
-            if (highlight_code == NULL) {
+            if (highlight_code == nullptr) {
                 char message[SSH_CHATTER_MESSAGE_LIMIT];
                 snprintf(message, sizeof(message),
                          "Unknown highlight color '%s'.", tokens[2]);
@@ -4860,7 +4860,7 @@ static void session_handle_system_color(session_ctx_t *ctx,
     session_send_system_line(ctx, "System colors updated.");
     session_render_separator(ctx, "Chatroom");
     session_render_prompt(ctx, true);
-    if (ctx->owner != NULL) {
+    if (ctx->owner != nullptr) {
         host_store_system_theme(ctx->owner, ctx);
     }
 }
@@ -4868,12 +4868,12 @@ static void session_handle_system_color(session_ctx_t *ctx,
 static void session_handle_set_trans_lang(session_ctx_t *ctx,
                                           const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     char working[SSH_CHATTER_LANG_NAME_LEN];
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         working[0] = '\0';
     } else {
         snprintf(working, sizeof(working), "%s", arguments);
@@ -4890,7 +4890,7 @@ static void session_handle_set_trans_lang(session_ctx_t *ctx,
         ctx->output_translation_language[0] = '\0';
         session_translation_clear_queue(ctx);
         session_send_system_line(ctx, "Terminal translation disabled.");
-        if (ctx->owner != NULL) {
+        if (ctx->owner != nullptr) {
             host_store_translation_preferences(ctx->owner, ctx);
         }
         return;
@@ -4911,7 +4911,7 @@ static void session_handle_set_trans_lang(session_ctx_t *ctx,
             session_send_system_line(ctx, "Translation is currently disabled; "
                                           "enable it with /translate on.");
         }
-        if (ctx->owner != NULL) {
+        if (ctx->owner != nullptr) {
             host_store_translation_preferences(ctx->owner, ctx);
         }
         return;
@@ -4923,7 +4923,7 @@ static void session_handle_set_trans_lang(session_ctx_t *ctx,
                               working, preview, sizeof(preview), detected,
                               sizeof(detected))) {
         const char *error = translator_last_error();
-        if (error != NULL && *error != '\0') {
+        if (error != nullptr && *error != '\0') {
             char message[SSH_CHATTER_MESSAGE_LIMIT];
             snprintf(message, sizeof(message), "Translation service error: %s",
                      error);
@@ -4966,7 +4966,7 @@ static void session_handle_set_trans_lang(session_ctx_t *ctx,
             ctx,
             "Translation is currently disabled; enable it with /translate on.");
     }
-    if (ctx->owner != NULL) {
+    if (ctx->owner != nullptr) {
         host_store_translation_preferences(ctx->owner, ctx);
     }
 }
@@ -4974,12 +4974,12 @@ static void session_handle_set_trans_lang(session_ctx_t *ctx,
 static void session_handle_set_target_lang(session_ctx_t *ctx,
                                            const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     char working[SSH_CHATTER_LANG_NAME_LEN];
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         working[0] = '\0';
     } else {
         snprintf(working, sizeof(working), "%s", arguments);
@@ -4996,7 +4996,7 @@ static void session_handle_set_target_lang(session_ctx_t *ctx,
         ctx->input_translation_language[0] = '\0';
         ctx->last_detected_input_language[0] = '\0';
         session_send_system_line(ctx, "Outgoing message translation disabled.");
-        if (ctx->owner != NULL) {
+        if (ctx->owner != nullptr) {
             host_store_translation_preferences(ctx->owner, ctx);
         }
         return;
@@ -5017,7 +5017,7 @@ static void session_handle_set_target_lang(session_ctx_t *ctx,
             session_send_system_line(ctx, "Translation is currently disabled; "
                                           "enable it with /translate on.");
         }
-        if (ctx->owner != NULL) {
+        if (ctx->owner != nullptr) {
             host_store_translation_preferences(ctx->owner, ctx);
         }
         return;
@@ -5029,7 +5029,7 @@ static void session_handle_set_target_lang(session_ctx_t *ctx,
             "Your messages will be translated before broadcasting.", working,
             preview, sizeof(preview), detected, sizeof(detected))) {
         const char *error = translator_last_error();
-        if (error != NULL && *error != '\0') {
+        if (error != nullptr && *error != '\0') {
             char message[SSH_CHATTER_MESSAGE_LIMIT];
             snprintf(message, sizeof(message), "Translation service error: %s",
                      error);
@@ -5072,7 +5072,7 @@ static void session_handle_set_target_lang(session_ctx_t *ctx,
             ctx,
             "Translation is currently disabled; enable it with /translate on.");
     }
-    if (ctx->owner != NULL) {
+    if (ctx->owner != nullptr) {
         host_store_translation_preferences(ctx->owner, ctx);
     }
 }
@@ -5080,19 +5080,19 @@ static void session_handle_set_target_lang(session_ctx_t *ctx,
 static void session_handle_chat_spacing(session_ctx_t *ctx,
                                         const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     const session_ui_locale_t *locale = session_ui_get_locale(ctx);
     const char *prefix = session_command_prefix(ctx);
-    const char *usage_format = (locale->chat_spacing_usage != NULL &&
+    const char *usage_format = (locale->chat_spacing_usage != nullptr &&
                                 locale->chat_spacing_usage[0] != '\0')
                                    ? locale->chat_spacing_usage
                                    : "Usage: %schat-spacing <0-5>";
 
     char working[16];
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         working[0] = '\0';
     } else {
         snprintf(working, sizeof(working), "%s", arguments);
@@ -5110,9 +5110,9 @@ static void session_handle_chat_spacing(session_ctx_t *ctx,
         return;
     }
 
-    char *endptr = NULL;
+    char *endptr = nullptr;
     long value = strtol(working, &endptr, 10);
-    if (endptr == working || (endptr != NULL && *endptr != '\0') ||
+    if (endptr == working || (endptr != nullptr && *endptr != '\0') ||
         value < 0L || value > 5L) {
         session_format_template(usage_format, usage_args,
                                 sizeof(usage_args) / sizeof(usage_args[0]),
@@ -5126,22 +5126,22 @@ static void session_handle_chat_spacing(session_ctx_t *ctx,
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     if (value == 0L) {
         const char *format =
-            (locale->chat_spacing_immediate != NULL &&
+            (locale->chat_spacing_immediate != nullptr &&
              locale->chat_spacing_immediate[0] != '\0')
                 ? locale->chat_spacing_immediate
                 : "Translation captions will appear immediately "
                   "without reserving extra blank lines.";
-        session_format_template(format, NULL, 0U, message, sizeof(message));
+        session_format_template(format, nullptr, 0U, message, sizeof(message));
     } else if (value == 1L) {
         const char *format =
-            (locale->chat_spacing_single != NULL &&
+            (locale->chat_spacing_single != nullptr &&
              locale->chat_spacing_single[0] != '\0')
                 ? locale->chat_spacing_single
                 : "Translation captions will reserve 1 blank line "
                   "before appearing in chat threads.";
-        session_format_template(format, NULL, 0U, message, sizeof(message));
+        session_format_template(format, nullptr, 0U, message, sizeof(message));
     } else {
-        const char *format = (locale->chat_spacing_multiple != NULL &&
+        const char *format = (locale->chat_spacing_multiple != nullptr &&
                               locale->chat_spacing_multiple[0] != '\0')
                                  ? locale->chat_spacing_multiple
                                  : "Translation captions will reserve %s blank "
@@ -5154,7 +5154,7 @@ static void session_handle_chat_spacing(session_ctx_t *ctx,
     }
     session_send_system_line(ctx, message);
 
-    if (ctx->owner != NULL) {
+    if (ctx->owner != nullptr) {
         host_store_chat_spacing(ctx->owner, ctx);
     }
 }
@@ -5162,7 +5162,7 @@ static void session_handle_chat_spacing(session_ctx_t *ctx,
 static void session_handle_set_ui_lang(session_ctx_t *ctx,
                                        const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -5172,9 +5172,9 @@ static void session_handle_set_ui_lang(session_ctx_t *ctx,
     char token[SSH_CHATTER_LANG_NAME_LEN];
     const char *cursor = session_consume_token(arguments, token, sizeof(token));
 
-    bool extra_tokens = cursor != NULL && *cursor != '\0';
+    bool extra_tokens = cursor != nullptr && *cursor != '\0';
     if (token[0] == '\0' || extra_tokens) {
-        const char *format = (locale->set_ui_lang_usage != NULL &&
+        const char *format = (locale->set_ui_lang_usage != nullptr &&
                               locale->set_ui_lang_usage[0] != '\0')
                                  ? locale->set_ui_lang_usage
                                  : "Usage: %sset-ui-lang <ko|en|jp|zh|ru>";
@@ -5189,12 +5189,12 @@ static void session_handle_set_ui_lang(session_ctx_t *ctx,
     session_ui_language_t language = session_ui_language_from_code(token);
     if (language == SESSION_UI_LANGUAGE_COUNT) {
         const char *format =
-            (locale->set_ui_lang_invalid != NULL &&
+            (locale->set_ui_lang_invalid != nullptr &&
              locale->set_ui_lang_invalid[0] != '\0')
                 ? locale->set_ui_lang_invalid
                 : "Unsupported language. Use one of: ko, en, jp, zh, ru.";
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        session_format_template(format, NULL, 0U, message, sizeof(message));
+        session_format_template(format, nullptr, 0U, message, sizeof(message));
         session_send_system_line(ctx, message);
         return;
     }
@@ -5204,87 +5204,87 @@ static void session_handle_set_ui_lang(session_ctx_t *ctx,
     const char *language_name =
         session_ui_language_name(language, ctx->ui_language);
     const char *format =
-        (updated_locale->set_ui_lang_success != NULL &&
+        (updated_locale->set_ui_lang_success != nullptr &&
          updated_locale->set_ui_lang_success[0] != '\0')
             ? updated_locale->set_ui_lang_success
             : "UI language set to %s. Use %shelp to review commands.";
     const char *updated_prefix = session_command_prefix(ctx);
 
     char message[SSH_CHATTER_MESSAGE_LIMIT];
-    const char *args[] = {language_name != NULL ? language_name : "-",
+    const char *args[] = {language_name != nullptr ? language_name : "-",
                           updated_prefix};
     session_format_template(format, args, sizeof(args) / sizeof(args[0]),
                             message, sizeof(message));
     session_send_system_line(ctx, message);
 
-    if (ctx->owner != NULL) {
+    if (ctx->owner != nullptr) {
         host_store_ui_language(ctx->owner, ctx);
     }
 }
 
 static void session_handle_mode(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     const session_ui_locale_t *locale = session_ui_get_locale(ctx);
     const char *prefix = session_command_prefix(ctx);
     const char *chat_label =
-        (locale->mode_label_chat != NULL && locale->mode_label_chat[0] != '\0')
+        (locale->mode_label_chat != nullptr && locale->mode_label_chat[0] != '\0')
             ? locale->mode_label_chat
             : "chat";
-    const char *command_label = (locale->mode_label_command != NULL &&
+    const char *command_label = (locale->mode_label_command != nullptr &&
                                  locale->mode_label_command[0] != '\0')
                                     ? locale->mode_label_command
                                     : "command";
 
     char working[32];
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         working[0] = '\0';
     } else {
         snprintf(working, sizeof(working), "%s", arguments);
     }
     trim_whitespace_inplace(working);
 
-    const char *status_format = (locale->mode_status_format != NULL &&
+    const char *status_format = (locale->mode_status_format != nullptr &&
                                  locale->mode_status_format[0] != '\0')
                                     ? locale->mode_status_format
                                     : "Current input mode: %s.";
     const char *explain_chat =
-        (locale->mode_explain_chat != NULL &&
+        (locale->mode_explain_chat != nullptr &&
          locale->mode_explain_chat[0] != '\0')
             ? locale->mode_explain_chat
             : "Chat mode: send messages normally. Prefix commands with %s.";
     const char *explain_command =
-        (locale->mode_explain_command != NULL &&
+        (locale->mode_explain_command != nullptr &&
          locale->mode_explain_command[0] != '\0')
             ? locale->mode_explain_command
             : "Command mode: enter commands without %s, use UpArrow/DownArrow "
               "for history and Tab for completion.";
     const char *already_chat =
-        (locale->mode_already_chat != NULL &&
+        (locale->mode_already_chat != nullptr &&
          locale->mode_already_chat[0] != '\0')
             ? locale->mode_already_chat
             : "Already in chat mode. Commands require the %s prefix.";
     const char *already_command =
-        (locale->mode_already_command != NULL &&
+        (locale->mode_already_command != nullptr &&
          locale->mode_already_command[0] != '\0')
             ? locale->mode_already_command
             : "Command mode already active. Enter commands without %s.";
     const char *enabled_chat =
-        (locale->mode_enabled_chat != NULL &&
+        (locale->mode_enabled_chat != nullptr &&
          locale->mode_enabled_chat[0] != '\0')
             ? locale->mode_enabled_chat
             : "Chat mode enabled. Commands once again require the %s prefix.";
     const char *enabled_command =
-        (locale->mode_enabled_command != NULL &&
+        (locale->mode_enabled_command != nullptr &&
          locale->mode_enabled_command[0] != '\0')
             ? locale->mode_enabled_command
             : "Command mode enabled. Enter commands without %s; use "
               "UpArrow/DownArrow for history and Tab for completion.";
     const char *usage_format =
-        (locale->mode_usage != NULL && locale->mode_usage[0] != '\0')
+        (locale->mode_usage != nullptr && locale->mode_usage[0] != '\0')
             ? locale->mode_usage
             : "Usage: %smode <chat|command|toggle>";
 
@@ -5312,7 +5312,7 @@ static void session_handle_mode(session_ctx_t *ctx, const char *arguments)
     }
 
     const bool matches_chat = (strcasecmp(working, "chat") == 0) ||
-                              (chat_label != NULL && chat_label[0] != '\0' &&
+                              (chat_label != nullptr && chat_label[0] != '\0' &&
                                strcmp(working, chat_label) == 0);
     if (matches_chat) {
         if (ctx->input_mode == SESSION_INPUT_MODE_CHAT) {
@@ -5337,7 +5337,7 @@ static void session_handle_mode(session_ctx_t *ctx, const char *arguments)
 
     const bool matches_command =
         (strcasecmp(working, "command") == 0) ||
-        (command_label != NULL && command_label[0] != '\0' &&
+        (command_label != nullptr && command_label[0] != '\0' &&
          strcmp(working, command_label) == 0);
     if (matches_command) {
         if (ctx->input_mode == SESSION_INPUT_MODE_COMMAND) {
@@ -5385,7 +5385,7 @@ static void session_handle_mode(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_history(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -5405,12 +5405,12 @@ static void session_handle_history(session_ctx_t *ctx, const char *arguments)
     }
 
     size_t limit = command_count;
-    if (arguments != NULL) {
+    if (arguments != nullptr) {
         char working[32];
         snprintf(working, sizeof(working), "%s", arguments);
         trim_whitespace_inplace(working);
         if (working[0] != '\0') {
-            char *end = NULL;
+            char *end = nullptr;
             errno = 0;
             long requested = strtol(working, &end, 10);
             if (errno != 0 || end == working || *end != '\0' ||
@@ -5429,14 +5429,14 @@ static void session_handle_history(session_ctx_t *ctx, const char *arguments)
     for (size_t displayed = 0U; displayed < limit; ++displayed) {
         size_t source_index = command_indices[command_count - 1U - displayed];
         const char *entry = ctx->input_history[source_index];
-        if (entry == NULL || entry[0] == '\0') {
+        if (entry == nullptr || entry[0] == '\0') {
             continue;
         }
         char normalized[SSH_CHATTER_MAX_INPUT_LEN];
         normalized[0] = '\0';
         const char *prefix = session_command_prefix(ctx);
         const char *display_prefix =
-            (prefix != NULL && prefix[0] != '\0') ? prefix : "/";
+            (prefix != nullptr && prefix[0] != '\0') ? prefix : "/";
         size_t prefix_len = strlen(display_prefix);
         bool has_prefix = false;
         if (prefix_len > 0U) {
@@ -5470,12 +5470,12 @@ static size_t session_weather_write_callback(void *contents, size_t size,
 {
     session_weather_buffer_t *buffer = (session_weather_buffer_t *)userp;
     const size_t total = size * nmemb;
-    if (buffer == NULL || total == 0U) {
+    if (buffer == nullptr || total == 0U) {
         return 0U;
     }
 
-    char *resized = realloc(buffer->data, buffer->length + total + 1U);
-    if (resized == NULL) {
+    char *resized = GC_REALLOC(buffer->data, buffer->length + total + 1U);
+    if (resized == nullptr) {
         return 0U;
     }
 
@@ -5489,13 +5489,13 @@ static size_t session_weather_write_callback(void *contents, size_t size,
 static bool session_fetch_weather_summary(const char *region, const char *city,
                                           char *summary, size_t summary_len)
 {
-    if (region == NULL || city == NULL || summary == NULL ||
+    if (region == nullptr || city == nullptr || summary == nullptr ||
         summary_len == 0U) {
         return false;
     }
 
     CURL *curl = curl_easy_init();
-    if (curl == NULL) {
+    if (curl == nullptr) {
         return false;
     }
 
@@ -5505,7 +5505,7 @@ static bool session_fetch_weather_summary(const char *region, const char *city,
     snprintf(query, sizeof(query), "%s %s", region, city);
 
     char *escaped = curl_easy_escape(curl, query, 0);
-    if (escaped == NULL) {
+    if (escaped == nullptr) {
         goto cleanup;
     }
 
@@ -5533,7 +5533,7 @@ static bool session_fetch_weather_summary(const char *region, const char *city,
 
     long status = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-    if (status < 200L || status >= 300L || buffer.data == NULL) {
+    if (status < 200L || status >= 300L || buffer.data == nullptr) {
         goto cleanup;
     }
 
@@ -5560,14 +5560,14 @@ cleanup:
 
 static void session_handle_status(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     static const char *kUsage = "Usage: /status <message|clear>";
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/status", kUsage, usage, sizeof(usage));
-    if (arguments == NULL || *arguments == '\0') {
+    if (arguments == nullptr || *arguments == '\0') {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -5594,7 +5594,7 @@ static void session_handle_status(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -5602,7 +5602,7 @@ static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/showstatus", kUsage, usage,
                                  sizeof(usage));
-    if (arguments == NULL || *arguments == '\0') {
+    if (arguments == nullptr || *arguments == '\0') {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -5617,7 +5617,7 @@ static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
     }
 
     session_ctx_t *target = chat_room_find_user(&ctx->owner->room, target_name);
-    if (target == NULL) {
+    if (target == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(message, sizeof(message), "User '%s' is not connected.",
                  target_name);
@@ -5641,14 +5641,14 @@ static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_weather(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     static const char *kUsage = "Usage: /weather <region> <city>";
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/weather", kUsage, usage, sizeof(usage));
-    if (arguments == NULL || *arguments == '\0') {
+    if (arguments == nullptr || *arguments == '\0') {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -5707,12 +5707,12 @@ static void session_handle_weather(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_translate(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     char working[16];
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         working[0] = '\0';
     } else {
         snprintf(working, sizeof(working), "%s", arguments);
@@ -5731,7 +5731,7 @@ static void session_handle_translate(session_ctx_t *ctx, const char *arguments)
         session_send_system_line(ctx,
                                  "Translation disabled. New messages will be "
                                  "delivered without translation.");
-        if (ctx->owner != NULL) {
+        if (ctx->owner != nullptr) {
             host_store_translation_preferences(ctx->owner, ctx);
         }
         return;
@@ -5760,7 +5760,7 @@ static void session_handle_translate(session_ctx_t *ctx, const char *arguments)
                                  "Translation disabled. New messages will be "
                                  "delivered without translation.");
     }
-    if (ctx->owner != NULL) {
+    if (ctx->owner != nullptr) {
         host_store_translation_preferences(ctx->owner, ctx);
     }
 }
@@ -5768,12 +5768,12 @@ static void session_handle_translate(session_ctx_t *ctx, const char *arguments)
 static void session_handle_breaking_alerts(session_ctx_t *ctx,
                                            const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     char working[32];
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         working[0] = '\0';
     } else {
         snprintf(working, sizeof(working), "%s", arguments);
@@ -5825,14 +5825,14 @@ static void session_handle_breaking_alerts(session_ctx_t *ctx,
         session_send_system_line(ctx, "Breaking alerts enabled.");
     }
 
-    if (ctx->owner != NULL) {
+    if (ctx->owner != nullptr) {
         host_store_breaking_alerts(ctx->owner, ctx);
     }
 }
 
 static void session_translate_scope_send_usage(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -5876,7 +5876,7 @@ static void session_translate_scope_send_usage(session_ctx_t *ctx)
 static void session_handle_translate_scope(session_ctx_t *ctx,
                                            const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -5888,7 +5888,7 @@ static void session_handle_translate_scope(session_ctx_t *ctx,
 
     char token[64];
     token[0] = '\0';
-    if (arguments != NULL) {
+    if (arguments != nullptr) {
         const char *cursor = arguments;
         while (*cursor == ' ' || *cursor == '\t') {
             ++cursor;
@@ -6003,8 +6003,8 @@ static void session_handle_translate_scope(session_ctx_t *ctx,
         snprintf(notice, sizeof(notice),
                  "* [%s] limited translation scope to chat and BBS posts.",
                  ctx->user.name);
-        host_history_record_system(ctx->owner, notice, NULL);
-        chat_room_broadcast(&ctx->owner->room, notice, NULL);
+        host_history_record_system(ctx->owner, notice, nullptr);
+        chat_room_broadcast(&ctx->owner->room, notice, nullptr);
         return;
     }
 
@@ -6030,8 +6030,8 @@ static void session_handle_translate_scope(session_ctx_t *ctx,
             "* [%s] limited translation scope to chat/BBS posts and disabled "
             "scrollback translation.",
             ctx->user.name);
-        host_history_record_system(ctx->owner, notice, NULL);
-        chat_room_broadcast(&ctx->owner->room, notice, NULL);
+        host_history_record_system(ctx->owner, notice, nullptr);
+        chat_room_broadcast(&ctx->owner->room, notice, nullptr);
         return;
     }
 
@@ -6063,8 +6063,8 @@ static void session_handle_translate_scope(session_ctx_t *ctx,
         snprintf(notice, sizeof(notice),
                  "* [%s] restored full translation scope for translations.",
                  ctx->user.name);
-        host_history_record_system(ctx->owner, notice, NULL);
-        chat_room_broadcast(&ctx->owner->room, notice, NULL);
+        host_history_record_system(ctx->owner, notice, nullptr);
+        chat_room_broadcast(&ctx->owner->room, notice, nullptr);
         return;
     }
 
@@ -6073,7 +6073,7 @@ static void session_handle_translate_scope(session_ctx_t *ctx,
 
 static void session_handle_gemini(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -6084,13 +6084,13 @@ static void session_handle_gemini(session_ctx_t *ctx, const char *arguments)
     }
 
     const char *cursor = arguments;
-    while (cursor != NULL && (*cursor == ' ' || *cursor == '\t')) {
+    while (cursor != nullptr && (*cursor == ' ' || *cursor == '\t')) {
         ++cursor;
     }
 
     char token[16];
     token[0] = '\0';
-    if (cursor != NULL && *cursor != '\0') {
+    if (cursor != nullptr && *cursor != '\0') {
         size_t length = 0U;
         while (cursor[length] != '\0' &&
                !isspace((unsigned char)cursor[length]) &&
@@ -6176,8 +6176,8 @@ static void session_handle_gemini(session_ctx_t *ctx, const char *arguments)
                  "* [%s] enabled Gemini translation; Ollama fallback remains "
                  "available.",
                  ctx->user.name);
-        host_history_record_system(ctx->owner, notice, NULL);
-        chat_room_broadcast(&ctx->owner->room, notice, NULL);
+        host_history_record_system(ctx->owner, notice, nullptr);
+        chat_room_broadcast(&ctx->owner->room, notice, nullptr);
         return;
     }
 
@@ -6192,14 +6192,14 @@ static void session_handle_gemini(session_ctx_t *ctx, const char *arguments)
              "* [%s] disabled Gemini translation; using Ollama fallback only "
              "(chat and BBS posts).",
              ctx->user.name);
-    host_history_record_system(ctx->owner, notice, NULL);
-    chat_room_broadcast(&ctx->owner->room, notice, NULL);
+    host_history_record_system(ctx->owner, notice, nullptr);
+    chat_room_broadcast(&ctx->owner->room, notice, nullptr);
     return;
 }
 
 static void session_handle_captcha(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -6210,7 +6210,7 @@ static void session_handle_captcha(session_ctx_t *ctx, const char *arguments)
     }
 
     char token[16];
-    if (arguments != NULL) {
+    if (arguments != nullptr) {
         snprintf(token, sizeof(token), "%s", arguments);
         trim_whitespace_inplace(token);
     } else {
@@ -6253,8 +6253,8 @@ static void session_handle_captcha(session_ctx_t *ctx, const char *arguments)
             snprintf(notice, sizeof(notice),
                      "* [%s] enabled captcha for new connections.",
                      ctx->user.name);
-            host_history_record_system(host, notice, NULL);
-            chat_room_broadcast(&host->room, notice, NULL);
+            host_history_record_system(host, notice, nullptr);
+            chat_room_broadcast(&host->room, notice, nullptr);
             pthread_mutex_lock(&host->lock);
             host_state_save_locked(host);
             pthread_mutex_unlock(&host->lock);
@@ -6272,8 +6272,8 @@ static void session_handle_captcha(session_ctx_t *ctx, const char *arguments)
         snprintf(notice, sizeof(notice),
                  "* [%s] disabled captcha for new connections.",
                  ctx->user.name);
-        host_history_record_system(host, notice, NULL);
-        chat_room_broadcast(&host->room, notice, NULL);
+        host_history_record_system(host, notice, nullptr);
+        chat_room_broadcast(&host->room, notice, nullptr);
         pthread_mutex_lock(&host->lock);
         host_state_save_locked(host);
         pthread_mutex_unlock(&host->lock);
@@ -6283,7 +6283,7 @@ static void session_handle_captcha(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_eliza(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -6293,7 +6293,7 @@ static void session_handle_eliza(session_ctx_t *ctx, const char *arguments)
     }
 
     char token[32];
-    if (arguments != NULL) {
+    if (arguments != nullptr) {
         snprintf(token, sizeof(token), "%s", arguments);
         trim_whitespace_inplace(token);
     } else {

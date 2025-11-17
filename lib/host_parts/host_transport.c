@@ -4,7 +4,7 @@
 static void session_format_telnet_identity(session_ctx_t *ctx,
                                            const char *primary_label)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -17,7 +17,7 @@ static void session_format_telnet_identity(session_ctx_t *ctx,
     char snippet[SSH_CHATTER_TERMINAL_TYPE_LEN];
     snippet[0] = '\0';
 
-    if (label == NULL || label[0] == '\0') {
+    if (label == nullptr || label[0] == '\0') {
         if (ctx->terminal_type[0] != '\0') {
             label = ctx->terminal_type;
         } else if (ctx->client_banner[0] != '\0') {
@@ -29,7 +29,7 @@ static void session_format_telnet_identity(session_ctx_t *ctx,
         }
     }
 
-    if (label == NULL || label[0] == '\0') {
+    if (label == nullptr || label[0] == '\0') {
         label = "unknown";
     }
 
@@ -39,7 +39,7 @@ static void session_format_telnet_identity(session_ctx_t *ctx,
 
 bool host_compact_id_encode(uint64_t id, char *buffer, size_t length)
 {
-    if (buffer == NULL || length == 0U) {
+    if (buffer == nullptr || length == 0U) {
         return false;
     }
 
@@ -88,7 +88,7 @@ bool host_compact_id_encode(uint64_t id, char *buffer, size_t length)
 
 bool host_compact_id_decode(const char *text, uint64_t *id_out)
 {
-    if (text == NULL || id_out == NULL) {
+    if (text == nullptr || id_out == nullptr) {
         return false;
     }
 
@@ -177,7 +177,7 @@ static struct timespec timespec_diff(const struct timespec *end,
                                      const struct timespec *start)
 {
     struct timespec result = {0, 0};
-    if (end == NULL || start == NULL) {
+    if (end == nullptr || start == nullptr) {
         return result;
     }
 
@@ -198,7 +198,7 @@ static struct timespec timespec_diff(const struct timespec *end,
 
 static long long timespec_to_ns(const struct timespec *value)
 {
-    if (value == NULL) {
+    if (value == nullptr) {
         return 0LL;
     }
 
@@ -209,7 +209,7 @@ static bool host_listener_attempt_recover(host_t *host, ssh_bind bind_handle,
                                           const char *address,
                                           const char *bind_port)
 {
-    if (host == NULL || bind_handle == NULL) {
+    if (host == nullptr || bind_handle == nullptr) {
         return false;
     }
 
@@ -227,7 +227,7 @@ static bool host_listener_attempt_recover(host_t *host, ssh_bind bind_handle,
     }
 
     const char *error_message = ssh_get_error(bind_handle);
-    if (error_message == NULL || error_message[0] == '\0') {
+    if (error_message == nullptr || error_message[0] == '\0') {
         error_message = "unknown error";
     }
     printf("[listener] in-place recovery failed: %s\n", error_message);
@@ -237,7 +237,7 @@ static bool host_listener_attempt_recover(host_t *host, ssh_bind bind_handle,
 static bool host_join_key_path(const char *directory, const char *filename,
                                char *buffer, size_t buffer_len)
 {
-    if (directory == NULL || filename == NULL || buffer == NULL ||
+    if (directory == nullptr || filename == nullptr || buffer == nullptr ||
         buffer_len == 0U) {
         return false;
     }
@@ -255,14 +255,14 @@ static bool host_join_key_path(const char *directory, const char *filename,
 
 static bool host_bind_algorithm_is_rsa(const char *algorithm)
 {
-    return algorithm != NULL && strcmp(algorithm, "ssh-rsa") == 0;
+    return algorithm != nullptr && strcmp(algorithm, "ssh-rsa") == 0;
 }
 
 static void host_bind_append_single_algorithm(char *buffer, size_t buffer_len,
                                               size_t *current_len,
                                               const char *algorithm)
 {
-    if (buffer == NULL || current_len == NULL || algorithm == NULL ||
+    if (buffer == nullptr || current_len == nullptr || algorithm == nullptr ||
         algorithm[0] == '\0' || buffer_len == 0U) {
         return;
     }
@@ -303,7 +303,7 @@ static void host_bind_append_algorithm(char *buffer, size_t buffer_len,
                                        size_t *current_len,
                                        const char *algorithm)
 {
-    if (buffer == NULL || current_len == NULL || algorithm == NULL ||
+    if (buffer == nullptr || current_len == nullptr || algorithm == nullptr ||
         algorithm[0] == '\0' || buffer_len == 0U) {
         return;
     }
@@ -322,19 +322,19 @@ static void host_bind_append_algorithm(char *buffer, size_t buffer_len,
 static bool host_bind_import_key(ssh_bind bind_handle, const char *algorithm,
                                  const char *key_path)
 {
-    if (bind_handle == NULL || algorithm == NULL || key_path == NULL) {
+    if (bind_handle == nullptr || algorithm == nullptr || key_path == nullptr) {
         return false;
     }
 
-    ssh_key imported_key = NULL;
-    if (ssh_pki_import_privkey_file(key_path, NULL, NULL, NULL,
+    ssh_key imported_key = nullptr;
+    if (ssh_pki_import_privkey_file(key_path, nullptr, nullptr, nullptr,
                                     &imported_key) != SSH_OK ||
-        imported_key == NULL) {
+        imported_key == nullptr) {
         char message[256];
         snprintf(message, sizeof(message), "failed to import %s host key",
                  algorithm);
         humanized_log_error("host", message, errno != 0 ? errno : EIO);
-        if (imported_key != NULL) {
+        if (imported_key != nullptr) {
             ssh_key_free(imported_key);
         }
         return false;
@@ -350,7 +350,7 @@ static bool host_bind_import_key(ssh_bind bind_handle, const char *algorithm,
         snprintf(message, sizeof(message), "failed to register %s host key",
                  algorithm);
         humanized_log_error("host",
-                            error_message != NULL ? error_message : message,
+                            error_message != nullptr ? error_message : message,
                             errno != 0 ? errno : EIO);
         return false;
     }
@@ -362,7 +362,7 @@ static bool host_bind_load_key(ssh_bind bind_handle,
                                const host_key_definition_t *definition,
                                const char *key_path)
 {
-    if (bind_handle == NULL || definition == NULL || key_path == NULL) {
+    if (bind_handle == nullptr || definition == nullptr || key_path == nullptr) {
         return false;
     }
 
@@ -377,15 +377,15 @@ static bool host_bind_load_key(ssh_bind bind_handle,
 
         const char *error_message = ssh_get_error(bind_handle);
         const bool unsupported_option =
-            (error_message != NULL &&
-             strstr(error_message, "Unknown ssh option") != NULL) ||
+            (error_message != nullptr &&
+             strstr(error_message, "Unknown ssh option") != nullptr) ||
             errno == ENOTSUP;
         if (!unsupported_option) {
             char message[256];
             snprintf(message, sizeof(message), "failed to load %s host key",
                      definition->algorithm);
             humanized_log_error("host",
-                                error_message != NULL ? error_message : message,
+                                error_message != nullptr ? error_message : message,
                                 errno != 0 ? errno : EIO);
             return false;
         }
@@ -405,7 +405,7 @@ static struct timespec timespec_add_ns(const struct timespec *start,
                                        long long nanoseconds)
 {
     struct timespec result = {0, 0};
-    if (start != NULL) {
+    if (start != nullptr) {
         result = *start;
     }
 
@@ -426,7 +426,7 @@ static struct timespec timespec_add_ms(const struct timespec *start,
                                        long milliseconds)
 {
     struct timespec result = {0, 0};
-    if (start != NULL) {
+    if (start != nullptr) {
         result = *start;
     }
 
@@ -444,7 +444,7 @@ static struct timespec timespec_add_ms(const struct timespec *start,
 static int timespec_compare(const struct timespec *lhs,
                             const struct timespec *rhs)
 {
-    if (lhs == NULL || rhs == NULL) {
+    if (lhs == nullptr || rhs == nullptr) {
         return 0;
     }
     if (lhs->tv_sec < rhs->tv_sec) {
@@ -473,7 +473,7 @@ typedef struct connection_guard_result {
 static void host_connection_guard_prune_locked(host_t *host,
                                                const struct timespec *now)
 {
-    if (host == NULL || now == NULL || host->connection_guard_count == 0U) {
+    if (host == nullptr || now == nullptr || host->connection_guard_count == 0U) {
         return;
     }
 
@@ -510,8 +510,8 @@ static void host_connection_guard_prune_locked(host_t *host,
 static connection_guard_entry_t *
 host_find_connection_guard_locked(host_t *host, const char *ip)
 {
-    if (host == NULL || ip == NULL) {
-        return NULL;
+    if (host == nullptr || ip == nullptr) {
+        return nullptr;
     }
 
     for (size_t idx = 0U; idx < host->connection_guard_count; ++idx) {
@@ -521,19 +521,19 @@ host_find_connection_guard_locked(host_t *host, const char *ip)
         }
     }
 
-    return NULL;
+    return nullptr;
 }
 
 static connection_guard_entry_t *
 host_ensure_connection_guard_locked(host_t *host, const char *ip)
 {
-    if (host == NULL || ip == NULL || ip[0] == '\0') {
-        return NULL;
+    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
+        return nullptr;
     }
 
     connection_guard_entry_t *entry =
         host_find_connection_guard_locked(host, ip);
-    if (entry != NULL) {
+    if (entry != nullptr) {
         return entry;
     }
 
@@ -542,10 +542,10 @@ host_ensure_connection_guard_locked(host_t *host, const char *ip)
                                   ? host->connection_guard_capacity * 2U
                                   : 16U;
         connection_guard_entry_t *resized =
-            realloc(host->connection_guard,
+            GC_REALLOC(host->connection_guard,
                     new_capacity * sizeof(connection_guard_entry_t));
-        if (resized == NULL) {
-            return NULL;
+        if (resized == nullptr) {
+            return nullptr;
         }
         host->connection_guard = resized;
         memset(&host->connection_guard[host->connection_guard_capacity], 0,
@@ -564,7 +564,7 @@ static connection_guard_result_t host_connection_guard_register(host_t *host,
                                                                 const char *ip)
 {
     connection_guard_result_t result = {0};
-    if (host == NULL || ip == NULL || ip[0] == '\0') {
+    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
         return result;
     }
 
@@ -575,7 +575,7 @@ static connection_guard_result_t host_connection_guard_register(host_t *host,
     host_connection_guard_prune_locked(host, &now);
     connection_guard_entry_t *entry =
         host_ensure_connection_guard_locked(host, ip);
-    if (entry == NULL) {
+    if (entry == nullptr) {
         pthread_mutex_unlock(&host->lock);
         return result;
     }
@@ -648,7 +648,7 @@ static connection_guard_result_t host_connection_guard_register(host_t *host,
 
 static void host_error_guard_register_success(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -662,7 +662,7 @@ static bool host_try_load_motd_from_path(host_t *host, const char *path);
 static struct timespec host_stat_mtime(const struct stat *info)
 {
     struct timespec result = {0, 0};
-    if (info == NULL) {
+    if (info == nullptr) {
         return result;
     }
 
@@ -688,7 +688,7 @@ static struct timespec host_stat_mtime(const struct stat *info)
 
 static void host_maybe_reload_motd_from_file(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -715,7 +715,7 @@ static void host_maybe_reload_motd_from_file(host_t *host)
     if (stored_path[0] == '~' &&
         (stored_path[1] == '\0' || stored_path[1] == '/')) {
         const char *home = getenv("HOME");
-        if (home != NULL && home[0] != '\0') {
+        if (home != nullptr && home[0] != '\0') {
             int expanded = snprintf(resolved_path, sizeof(resolved_path),
                                     "%s%s", home, stored_path + 1);
             if (expanded <= 0 || (size_t)expanded >= sizeof(resolved_path)) {
@@ -758,7 +758,7 @@ static void host_maybe_reload_motd_from_file(host_t *host)
 static unsigned session_simple_hash(const char *text)
 {
     unsigned hash = 5381U;
-    if (text == NULL) {
+    if (text == nullptr) {
         return hash;
     }
 
@@ -772,14 +772,14 @@ static unsigned session_simple_hash(const char *text)
 static void session_build_captcha_prompt(session_ctx_t *ctx,
                                          captcha_prompt_t *prompt)
 {
-    if (prompt == NULL) {
+    if (prompt == nullptr) {
         return;
     }
 
     memset(prompt, 0, sizeof(*prompt));
 
-    unsigned basis = session_simple_hash(ctx != NULL ? ctx->user.name : "user");
-    basis ^= session_simple_hash(ctx != NULL ? ctx->client_ip : "ip");
+    unsigned basis = session_simple_hash(ctx != nullptr ? ctx->user.name : "user");
+    basis ^= session_simple_hash(ctx != nullptr ? ctx->client_ip : "ip");
 
     unsigned entropy = 0U;
     struct timespec now = {0, 0};
@@ -789,13 +789,13 @@ static void session_build_captcha_prompt(session_ctx_t *ctx,
         entropy ^= (unsigned)(now_sec >> 32);
         entropy ^= (unsigned)now.tv_nsec;
     } else {
-        uint64_t fallback = (uint64_t)time(NULL);
+        uint64_t fallback = (uint64_t)time(nullptr);
         entropy ^= (unsigned)fallback;
         entropy ^= (unsigned)(fallback >> 32);
     }
 
-    host_t *host = (ctx != NULL) ? ctx->owner : NULL;
-    if (host != NULL) {
+    host_t *host = (ctx != nullptr) ? ctx->owner : nullptr;
+    if (host != nullptr) {
         pthread_mutex_lock(&host->lock);
         uint64_t nonce = ++host->captcha_nonce;
         pthread_mutex_unlock(&host->lock);
@@ -1940,7 +1940,7 @@ extern int ssh_message_channel_request_open_reply_accept_channel(
 #endif
 
 static void resolve_accept_channel_once(void);
-static accept_channel_fn_t g_accept_channel_fn = NULL;
+static accept_channel_fn_t g_accept_channel_fn = nullptr;
 static pthread_once_t g_accept_channel_once = PTHREAD_ONCE_INIT;
 
 static accept_channel_fn_t resolve_accept_channel_fn(void)
@@ -1952,7 +1952,7 @@ static accept_channel_fn_t resolve_accept_channel_fn(void)
 static void resolve_accept_channel_once(void)
 {
 #if defined(__GNUC__)
-    if (ssh_message_channel_request_open_reply_accept_channel != NULL) {
+    if (ssh_message_channel_request_open_reply_accept_channel != nullptr) {
         g_accept_channel_fn =
             ssh_message_channel_request_open_reply_accept_channel;
         return;
@@ -1964,7 +1964,7 @@ static void resolve_accept_channel_once(void)
 
 #if defined(RTLD_DEFAULT)
     g_accept_channel_fn = (accept_channel_fn_t)dlsym(RTLD_DEFAULT, kSymbol);
-    if (g_accept_channel_fn != NULL) {
+    if (g_accept_channel_fn != nullptr) {
         return;
     }
 #endif
@@ -1974,15 +1974,15 @@ static void resolve_accept_channel_once(void)
          ++idx) {
         const char *name = candidates[idx];
         void *handle = dlopen(name, RTLD_LAZY | RTLD_LOCAL);
-        if (handle == NULL) {
+        if (handle == nullptr) {
             handle = dlopen(name, RTLD_LAZY);
         }
-        if (handle == NULL) {
+        if (handle == nullptr) {
             continue;
         }
 
         g_accept_channel_fn = (accept_channel_fn_t)dlsym(handle, kSymbol);
-        if (g_accept_channel_fn != NULL) {
+        if (g_accept_channel_fn != nullptr) {
             return;
         }
     }
@@ -2214,7 +2214,7 @@ static void host_apply_grant_to_ip(host_t *host, const char *ip);
 static void host_state_save_locked(host_t *host);
 static void session_handle_grant(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -2224,7 +2224,7 @@ static void session_handle_grant(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, "Usage: /grant <ip-address>");
         return;
     }
@@ -2721,7 +2721,7 @@ static bool
 session_game_alpha_position_occupied(const alpha_centauri_game_state_t *state,
                                      int x, int y)
 {
-    if (state == NULL) {
+    if (state == nullptr) {
         return true;
     }
     if (state->nav_x == x && state->nav_y == y) {
@@ -2757,7 +2757,7 @@ static void session_game_alpha_place_random_source(
     session_ctx_t *ctx, alpha_centauri_game_state_t *state, int margin,
     double mu, int radius, char symbol, const char *name)
 {
-    if (ctx == NULL || state == NULL) {
+    if (ctx == nullptr || state == nullptr) {
         return;
     }
 
@@ -2795,7 +2795,7 @@ static double session_game_alpha_random_double(session_ctx_t *ctx,
                                                double min_value,
                                                double max_value)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return min_value;
     }
     if (max_value <= min_value) {
@@ -3510,7 +3510,7 @@ static const char *DAILY_FUNCTIONS[] = {
 
 static bool chat_room_ensure_capacity(chat_room_t *room, size_t required)
 { // chat members should be within capacity
-    if (room == NULL) {
+    if (room == nullptr) {
         return false;
     }
 
@@ -3529,13 +3529,13 @@ static bool chat_room_ensure_capacity(chat_room_t *room, size_t required)
     }
 
     session_ctx_t **resized =
-        realloc(room->members, new_capacity * sizeof(*resized));
-    if (resized == NULL) {
+        GC_REALLOC(room->members, new_capacity * sizeof(*resized));
+    if (resized == nullptr) {
         return false;
     }
 
     for (size_t idx = room->member_capacity; idx < new_capacity; ++idx) {
-        resized[idx] = NULL;
+        resized[idx] = nullptr;
     }
 
     room->members = resized;
@@ -3545,23 +3545,23 @@ static bool chat_room_ensure_capacity(chat_room_t *room, size_t required)
 
 static void chat_room_init(chat_room_t *room)
 {
-    if (room == NULL) {
+    if (room == nullptr) {
         return;
     }
-    pthread_mutex_init(&room->lock, NULL);
-    room->members = NULL;
+    pthread_mutex_init(&room->lock, nullptr);
+    room->members = nullptr;
     room->member_count = 0U;
     room->member_capacity = 0U;
 }
 
 static void session_describe_peer(ssh_session session, char *buffer, size_t len)
 {
-    if (buffer == NULL || len == 0U) {
+    if (buffer == nullptr || len == 0U) {
         return;
     }
 
     buffer[0] = '\0';
-    if (session == NULL) {
+    if (session == nullptr) {
         return;
     }
 
@@ -3578,7 +3578,7 @@ static void session_describe_peer(ssh_session session, char *buffer, size_t len)
 
     char host[NI_MAXHOST];
     if (getnameinfo((struct sockaddr *)&addr, addr_len, host, sizeof(host),
-                    NULL, 0, NI_NUMERICHOST) != 0) {
+                    nullptr, 0, NI_NUMERICHOST) != 0) {
         return;
     }
 
@@ -3588,12 +3588,12 @@ static void session_describe_peer(ssh_session session, char *buffer, size_t len)
 static void host_format_sockaddr(const struct sockaddr *addr, socklen_t len,
                                  char *buffer, size_t size)
 {
-    if (buffer == NULL || size == 0U) {
+    if (buffer == nullptr || size == 0U) {
         return;
     }
 
     buffer[0] = '\0';
-    if (addr == NULL) {
+    if (addr == nullptr) {
         return;
     }
 
@@ -3602,7 +3602,7 @@ static void host_format_sockaddr(const struct sockaddr *addr, socklen_t len,
         return;
     }
 
-    if (getnameinfo(addr, len, buffer, host_len, NULL, 0, NI_NUMERICHOST) !=
+    if (getnameinfo(addr, len, buffer, host_len, nullptr, 0, NI_NUMERICHOST) !=
         0) {
         buffer[0] = '\0';
     }
@@ -3622,7 +3622,7 @@ typedef struct {
 static bool hostkey_list_contains(const unsigned char *data, size_t data_len,
                                   const char *needle, size_t needle_len)
 {
-    if (data == NULL || needle == NULL || needle_len == 0U) {
+    if (data == nullptr || needle == nullptr || needle_len == 0U) {
         return false;
     }
 
@@ -3658,13 +3658,13 @@ session_probe_client_hostkey_algorithms(ssh_session session,
     result.status = HOSTKEY_SUPPORT_UNKNOWN;
     result.offered_algorithms[0] = '\0';
 
-    if (session == NULL || required_algorithms == NULL ||
+    if (session == nullptr || required_algorithms == nullptr ||
         required_algorithm_count == 0U) {
         return result;
     }
 
     for (size_t i = 0; i < required_algorithm_count; ++i) {
-        if (required_algorithms[i] == NULL ||
+        if (required_algorithms[i] == nullptr ||
             required_algorithms[i][0] == '\0') {
             return result;
         }
@@ -3678,7 +3678,7 @@ session_probe_client_hostkey_algorithms(ssh_session session,
     const size_t max_buffer_size = 65536U;
     size_t buffer_size = 16384U;
     unsigned char *buffer = (unsigned char *)GC_MALLOC(buffer_size);
-    if (buffer == NULL) {
+    if (buffer == nullptr) {
         return result;
     }
 
@@ -3731,14 +3731,14 @@ session_probe_client_hostkey_algorithms(ssh_session session,
 
         size_t available = (size_t)peeked;
         unsigned char *newline = memchr(buffer, '\n', available);
-        if (newline == NULL) {
+        if (newline == nullptr) {
             if (available == buffer_size && buffer_size < max_buffer_size) {
                 size_t new_size = buffer_size * 2U;
                 if (new_size > max_buffer_size) {
                     new_size = max_buffer_size;
                 }
-                unsigned char *resized = realloc(buffer, new_size);
-                if (resized != NULL) {
+                unsigned char *resized = GC_REALLOC(buffer, new_size);
+                if (resized != nullptr) {
                     buffer = resized;
                     buffer_size = new_size;
                     continue;
@@ -3780,8 +3780,8 @@ session_probe_client_hostkey_algorithms(ssh_session session,
                     }
                 }
                 if (new_size > buffer_size) {
-                    unsigned char *resized = realloc(buffer, new_size);
-                    if (resized != NULL) {
+                    unsigned char *resized = GC_REALLOC(buffer, new_size);
+                    if (resized != nullptr) {
                         buffer = resized;
                         buffer_size = new_size;
                         continue;
@@ -3879,7 +3879,7 @@ session_probe_client_hostkey_algorithms(ssh_session session,
 
 static bool session_is_private_ipv4(const unsigned char octets[4])
 {
-    if (octets == NULL) {
+    if (octets == nullptr) {
         return false;
     }
 
@@ -3901,7 +3901,7 @@ static bool session_is_private_ipv4(const unsigned char octets[4])
 
 bool session_is_lan_client(const char *ip)
 {
-    if (ip == NULL || ip[0] == '\0') {
+    if (ip == nullptr || ip[0] == '\0') {
         return false;
     }
 
@@ -3935,7 +3935,7 @@ bool session_is_lan_client(const char *ip)
 
 static void session_assign_lan_privileges(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -3963,7 +3963,7 @@ static void session_assign_lan_privileges(session_ctx_t *ctx)
 
 static void session_apply_granted_privileges(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -3975,7 +3975,7 @@ static void session_apply_granted_privileges(session_ctx_t *ctx)
 
 static void chat_room_add(chat_room_t *room, session_ctx_t *session)
 {
-    if (room == NULL || session == NULL) {
+    if (room == nullptr || session == nullptr) {
         return;
     }
 
@@ -3996,7 +3996,7 @@ static void chat_room_add(chat_room_t *room, session_ctx_t *session)
 
 static void chat_room_remove(chat_room_t *room, const session_ctx_t *session)
 {
-    if (room == NULL || session == NULL) {
+    if (room == nullptr || session == nullptr) {
         return;
     }
 
@@ -4006,7 +4006,7 @@ static void chat_room_remove(chat_room_t *room, const session_ctx_t *session)
             for (size_t shift = idx; shift + 1U < room->member_count; ++shift) {
                 room->members[shift] = room->members[shift + 1U];
             }
-            room->members[room->member_count - 1U] = NULL;
+            room->members[room->member_count - 1U] = nullptr;
             room->member_count--;
             break;
         }
@@ -4017,11 +4017,11 @@ static void chat_room_remove(chat_room_t *room, const session_ctx_t *session)
 static void chat_room_broadcast(chat_room_t *room, const char *message,
                                 const session_ctx_t *from)
 {
-    if (room == NULL || message == NULL) {
+    if (room == nullptr || message == nullptr) {
         return;
     }
 
-    session_ctx_t **targets = NULL;
+    session_ctx_t **targets = nullptr;
     size_t target_count = 0U;
     size_t expected_targets = 0U;
 
@@ -4029,13 +4029,13 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
         targets = calloc(expected_targets, sizeof(*targets));
-        if (targets != NULL) {
+        if (targets != nullptr) {
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
-                if (member == NULL || member->channel == NULL) {
+                if (member == nullptr || member->channel == nullptr) {
                     continue;
                 }
-                if (from != NULL && member == from) {
+                if (from != nullptr && member == from) {
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4044,7 +4044,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     }
     pthread_mutex_unlock(&room->lock);
 
-    if (targets == NULL && expected_targets > 0U) {
+    if (targets == nullptr && expected_targets > 0U) {
         humanized_log_error("chat-room", "failed to allocate broadcast buffer",
                             ENOMEM);
         return;
@@ -4053,10 +4053,10 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
-        if (from != NULL) {
+        if (from != nullptr) {
             // Format message directly for real-time delivery
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-            const char *color = from->user_color_code != NULL ? from->user_color_code : "";
+            const char *color = from->user_color_code != nullptr ? from->user_color_code : "";
             const char *bold = from->user_is_bold ? ANSI_BOLD : "";
             
             snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s", 
@@ -4071,16 +4071,16 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         }
     }
 
-    free(targets);
+    GC_FREE(targets);
 }
 
 static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
 {
-    if (room == NULL || message == NULL) {
+    if (room == nullptr || message == nullptr) {
         return;
     }
 
-    session_ctx_t **targets = NULL;
+    session_ctx_t **targets = nullptr;
     size_t target_count = 0U;
     size_t expected_targets = 0U;
 
@@ -4088,10 +4088,10 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
         targets = calloc(expected_targets, sizeof(*targets));
-        if (targets != NULL) {
+        if (targets != nullptr) {
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
-                if (member == NULL || member->channel == NULL) {
+                if (member == nullptr || member->channel == nullptr) {
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4100,7 +4100,7 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
     }
     pthread_mutex_unlock(&room->lock);
 
-    if (targets == NULL && expected_targets > 0U) {
+    if (targets == nullptr && expected_targets > 0U) {
         humanized_log_error("chat-room", "failed to allocate broadcast buffer",
                             ENOMEM);
         return;
@@ -4116,18 +4116,18 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
 
     // printf("\033[1G[broadcast caption] %s\n", message);
 
-    free(targets);
+    GC_FREE(targets);
 }
 
 static void chat_room_broadcast_entry(chat_room_t *room,
                                       const chat_history_entry_t *entry,
                                       const session_ctx_t *from)
 {
-    if (room == NULL || entry == NULL) {
+    if (room == nullptr || entry == nullptr) {
         return;
     }
 
-    session_ctx_t **targets = NULL;
+    session_ctx_t **targets = nullptr;
     size_t target_count = 0U;
     size_t expected_targets = 0U;
 
@@ -4135,13 +4135,13 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
         targets = calloc(expected_targets, sizeof(*targets));
-        if (targets != NULL) {
+        if (targets != nullptr) {
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
-                if (member == NULL || member->channel == NULL) {
+                if (member == nullptr || member->channel == nullptr) {
                     continue;
                 }
-                if (from != NULL && member == from) {
+                if (from != nullptr && member == from) {
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4150,7 +4150,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     }
     pthread_mutex_unlock(&room->lock);
 
-    if (targets == NULL && expected_targets > 0U) {
+    if (targets == nullptr && expected_targets > 0U) {
         humanized_log_error(
             "chat-room", "failed to allocate entry broadcast buffer", ENOMEM);
         return;
@@ -4163,7 +4163,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         if (entry->is_user_message) {
             // Format user message directly
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-            const char *color = entry->user_color_code != NULL ? entry->user_color_code : "";
+            const char *color = entry->user_color_code != nullptr ? entry->user_color_code : "";
             const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
             
             char id_label[32] = "-";
@@ -4201,14 +4201,14 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         }
     }
 
-    free(targets);
+    GC_FREE(targets);
 }
 
 static void
 chat_room_broadcast_reaction_update(host_t *host,
                                     const chat_history_entry_t *entry)
 {
-    if (host == NULL || entry == NULL) {
+    if (host == nullptr || entry == nullptr) {
         return;
     }
 
@@ -4237,7 +4237,7 @@ chat_room_broadcast_reaction_update(host_t *host,
 // chat_room_broadcast_entry to ensure proper integration with chat buffer
 // static void host_broadcast_reply(host_t *host, const chat_reply_entry_t *entry)
 // {
-//     if (host == NULL || entry == NULL) {
+//     if (host == nullptr || entry == nullptr) {
 //         return;
 //     }
 // 
@@ -4261,12 +4261,12 @@ chat_room_broadcast_reaction_update(host_t *host,
 //     snprintf(line, sizeof(line), "↳ [r#%s → %s%s] %s: %s", reply_label,
 //              target_prefix, target_label, entry->username, entry->message);
 // 
-//     chat_room_broadcast(&host->room, line, NULL);
+//     chat_room_broadcast(&host->room, line, nullptr);
 // }
 
 static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return false;
     }
 
@@ -4306,8 +4306,8 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
     }
 
     size_t bytes = new_capacity * sizeof(chat_history_entry_t);
-    chat_history_entry_t *resized = realloc(host->history, bytes);
-    if (resized == NULL) {
+    chat_history_entry_t *resized = GC_REALLOC(host->history, bytes);
+    if (resized == nullptr) {
         humanized_log_error("host-history",
                             "failed to grow chat history buffer",
                             errno != 0 ? errno : ENOMEM);
@@ -4328,7 +4328,7 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
 static bool host_history_append_locked(host_t *host,
                                        const chat_history_entry_t *entry)
 {
-    if (host == NULL || entry == NULL) {
+    if (host == nullptr || entry == nullptr) {
         return false;
     }
 
@@ -4377,7 +4377,7 @@ static bool host_history_append_locked(host_t *host,
 
 static size_t host_history_total(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return 0U;
     }
 
@@ -4391,7 +4391,7 @@ static size_t host_history_total(host_t *host)
 static bool host_state_read_history_entry(FILE *fp, uint32_t version,
                                           chat_history_entry_t *entry)
 {
-    if (fp == NULL || entry == NULL) {
+    if (fp == nullptr || entry == nullptr) {
         return false;
     }
 
@@ -4527,7 +4527,7 @@ static bool host_state_read_history_entry(FILE *fp, uint32_t version,
 static bool host_state_write_history_entry(FILE *fp,
                                            const chat_history_entry_t *entry)
 {
-    if (fp == NULL || entry == NULL) {
+    if (fp == nullptr || entry == nullptr) {
         return false;
     }
 
@@ -4563,13 +4563,13 @@ static bool host_state_write_history_entry(FILE *fp,
 static bool host_state_stream_open(const char *path, FILE **out_fp,
                                    uint32_t *version, uint32_t *history_count)
 {
-    if (path == NULL || path[0] == '\0' || out_fp == NULL || version == NULL ||
-        history_count == NULL) {
+    if (path == nullptr || path[0] == '\0' || out_fp == nullptr || version == nullptr ||
+        history_count == nullptr) {
         return false;
     }
 
     FILE *fp = fopen(path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return false;
     }
 
@@ -4640,11 +4640,11 @@ static size_t host_state_read_history_range(const char *path, size_t start,
                                             chat_history_entry_t *buffer,
                                             size_t count)
 {
-    if (buffer == NULL || count == 0U) {
+    if (buffer == nullptr || count == 0U) {
         return 0U;
     }
 
-    FILE *fp = NULL;
+    FILE *fp = nullptr;
     uint32_t version = 0U;
     uint32_t total = 0U;
     if (!host_state_stream_open(path, &fp, &version, &total)) {
@@ -4701,11 +4701,11 @@ static size_t host_history_copy_range(host_t *host, size_t start_index,
                                       chat_history_entry_t *buffer,
                                       size_t capacity)
 {
-    if (host == NULL || buffer == NULL || capacity == 0U) {
+    if (host == nullptr || buffer == nullptr || capacity == 0U) {
         return 0U;
     }
 
-    chat_history_entry_t *cached_copy = NULL;
+    chat_history_entry_t *cached_copy = nullptr;
     size_t cached_count = 0U;
     size_t cached_offset = 0U;
     size_t before_cache = 0U;
@@ -4743,7 +4743,7 @@ static size_t host_history_copy_range(host_t *host, size_t start_index,
     size_t cache_portion = 0U;
     size_t cache_begin_index = start_index + before_cache;
     if (total_available > before_cache && cache_begin_index < cache_end &&
-        host->history != NULL) {
+        host->history != nullptr) {
         cache_portion = total_available - before_cache;
         size_t available_cache = cache_end - cache_begin_index;
         if (cache_portion > available_cache) {
@@ -4752,9 +4752,9 @@ static size_t host_history_copy_range(host_t *host, size_t start_index,
     }
 
     if (cache_portion > 0U) {
-        cached_copy = (chat_history_entry_t *)malloc(cache_portion *
+        cached_copy = (chat_history_entry_t *)GC_MALLOC(cache_portion *
                                                      sizeof(*cached_copy));
-        if (cached_copy == NULL) {
+        if (cached_copy == nullptr) {
             pthread_mutex_unlock(&host->lock);
             return 0U;
         }
@@ -4771,32 +4771,32 @@ static size_t host_history_copy_range(host_t *host, size_t start_index,
 
     if (before_cache > 0U) {
         if (state_path[0] == '\0') {
-            free(cached_copy);
+            GC_FREE(cached_copy);
             return 0U;
         }
         size_t fetched = host_state_read_history_range(state_path, start_index,
                                                        buffer, before_cache);
         if (fetched < before_cache) {
-            free(cached_copy);
+            GC_FREE(cached_copy);
             return fetched;
         }
         produced += fetched;
     }
 
-    if (cached_count > 0U && cached_copy != NULL) {
+    if (cached_count > 0U && cached_copy != nullptr) {
         memcpy(buffer + produced, cached_copy,
                cached_count * sizeof(*cached_copy));
         produced += cached_count;
     }
 
-    free(cached_copy);
+    GC_FREE(cached_copy);
     return produced;
 }
 
 static bool host_history_find_entry_by_id(host_t *host, uint64_t message_id,
                                           chat_history_entry_t *entry)
 {
-    if (host == NULL || entry == NULL || message_id == 0U) {
+    if (host == nullptr || entry == nullptr || message_id == 0U) {
         return false;
     }
 
@@ -4808,7 +4808,7 @@ static bool host_history_find_entry_by_id(host_t *host, uint64_t message_id,
     uint32_t file_history_count = 0U;
 
     pthread_mutex_lock(&host->lock);
-    if (host->history != NULL) {
+    if (host->history != nullptr) {
         for (size_t idx = 0U; idx < host->history_count; ++idx) {
             const chat_history_entry_t *candidate = &host->history[idx];
             if (candidate->message_id != message_id) {
@@ -4834,7 +4834,7 @@ static bool host_history_find_entry_by_id(host_t *host, uint64_t message_id,
     }
 
     if (state_path[0] != '\0') {
-        FILE *fp = NULL;
+        FILE *fp = nullptr;
         if (host_state_stream_open(state_path, &fp, &file_version,
                                    &file_history_count)) {
             size_t limit = older_count;
@@ -4863,7 +4863,7 @@ static bool host_history_find_entry_by_id(host_t *host, uint64_t message_id,
 
 static bool host_history_remove_join_entry(host_t *host, const char *username)
 {
-    if (host == NULL || username == NULL || username[0] == '\0') {
+    if (host == nullptr || username == nullptr || username[0] == '\0') {
         return false;
     }
 
@@ -4876,7 +4876,7 @@ static bool host_history_remove_join_entry(host_t *host, const char *username)
 
     bool removed = false;
     pthread_mutex_lock(&host->lock);
-    if (host->history != NULL && host->history_count > 0U) {
+    if (host->history != nullptr && host->history_count > 0U) {
         size_t index = SIZE_MAX;
         for (size_t idx = 0U; idx < host->history_count; ++idx) {
             chat_history_entry_t *entry = &host->history[idx];
@@ -4916,17 +4916,17 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
                                         uint64_t *last_removed,
                                         size_t *replies_removed)
 {
-    if (first_removed != NULL) {
+    if (first_removed != nullptr) {
         *first_removed = 0U;
     }
-    if (last_removed != NULL) {
+    if (last_removed != nullptr) {
         *last_removed = 0U;
     }
-    if (replies_removed != NULL) {
+    if (replies_removed != nullptr) {
         *replies_removed = 0U;
     }
 
-    if (host == NULL || start_id == 0U || end_id == 0U || start_id > end_id) {
+    if (host == nullptr || start_id == 0U || end_id == 0U || start_id > end_id) {
         return 0U;
     }
 
@@ -4937,21 +4937,21 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
 
     pthread_mutex_lock(&host->lock);
 
-    chat_history_entry_t *entries = NULL;
+    chat_history_entry_t *entries = nullptr;
     size_t entry_count = 0U;
     bool history_loaded = false;
 
     if (host->state_file_path[0] != '\0') {
-        FILE *fp = NULL;
+        FILE *fp = nullptr;
         uint32_t version = 0U;
         uint32_t file_history_count = 0U;
         if (host_state_stream_open(host->state_file_path, &fp, &version,
                                    &file_history_count)) {
             entry_count = (size_t)file_history_count;
             if (entry_count > 0U) {
-                entries = (chat_history_entry_t *)malloc(entry_count *
+                entries = (chat_history_entry_t *)GC_MALLOC(entry_count *
                                                          sizeof(*entries));
-                if (entries != NULL) {
+                if (entries != nullptr) {
                     history_loaded = true;
                     for (size_t idx = 0U; idx < entry_count; ++idx) {
                         if (!host_state_read_history_entry(fp, version,
@@ -4972,8 +4972,8 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
         entry_count = host->history_count;
         if (entry_count > 0U) {
             entries =
-                (chat_history_entry_t *)malloc(entry_count * sizeof(*entries));
-            if (entries == NULL) {
+                (chat_history_entry_t *)GC_MALLOC(entry_count * sizeof(*entries));
+            if (entries == nullptr) {
                 pthread_mutex_unlock(&host->lock);
                 return 0U;
             }
@@ -4984,9 +4984,9 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
         history_loaded = true;
     }
 
-    if (!history_loaded || (entries == NULL && entry_count == 0U)) {
+    if (!history_loaded || (entries == nullptr && entry_count == 0U)) {
         pthread_mutex_unlock(&host->lock);
-        free(entries);
+        GC_FREE(entries);
         return 0U;
     }
 
@@ -5017,7 +5017,7 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
 
     if (removed == 0U) {
         pthread_mutex_unlock(&host->lock);
-        free(entries);
+        GC_FREE(entries);
         return 0U;
     }
 
@@ -5031,7 +5031,7 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
 
     if (!host_history_reserve_locked(host, new_cache_count)) {
         pthread_mutex_unlock(&host->lock);
-        free(entries);
+        GC_FREE(entries);
         return 0U;
     }
 
@@ -5113,29 +5113,29 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
     host->history_override = entries;
     host->history_override_count = entry_count;
     host_state_save_locked(host);
-    host->history_override = NULL;
+    host->history_override = nullptr;
     host->history_override_count = 0U;
 
     pthread_mutex_unlock(&host->lock);
 
-    if (first_removed != NULL) {
+    if (first_removed != nullptr) {
         *first_removed = local_first;
     }
-    if (last_removed != NULL) {
+    if (last_removed != nullptr) {
         *last_removed = local_last;
     }
-    if (replies_removed != NULL) {
+    if (replies_removed != nullptr) {
         *replies_removed = reply_removed;
     }
 
-    free(entries);
+    GC_FREE(entries);
     return removed;
 }
 
 static bool host_replies_find_entry_by_id(host_t *host, uint64_t reply_id,
                                           chat_reply_entry_t *entry)
 {
-    if (host == NULL || entry == NULL || reply_id == 0U) {
+    if (host == nullptr || entry == nullptr || reply_id == 0U) {
         return false;
     }
 
@@ -5165,18 +5165,18 @@ static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
                                             const char *message,
                                             bool preserve_whitespace)
 {
-    if (entry == NULL || from == NULL) {
+    if (entry == nullptr || from == nullptr) {
         return;
     }
 
     memset(entry, 0, sizeof(*entry));
     entry->is_user_message = true;
     entry->preserve_whitespace = preserve_whitespace;
-    time_t now = time(NULL);
+    time_t now = time(nullptr);
     if (now != (time_t)-1) {
         entry->created_at = now;
     }
-    if (message != NULL) {
+    if (message != nullptr) {
         snprintf(entry->message, sizeof(entry->message), "%s", message);
     }
     snprintf(entry->username, sizeof(entry->username), "%s", from->user.name);
@@ -5194,12 +5194,12 @@ static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
 static bool host_history_commit_entry(host_t *host, chat_history_entry_t *entry,
                                       chat_history_entry_t *stored_entry)
 {
-    if (host == NULL || entry == NULL) {
+    if (host == nullptr || entry == nullptr) {
         return false;
     }
 
     if (entry->created_at == 0) {
-        time_t now = time(NULL);
+        time_t now = time(nullptr);
         if (now != (time_t)-1) {
             entry->created_at = now;
         }
@@ -5222,7 +5222,7 @@ static bool host_history_commit_entry(host_t *host, chat_history_entry_t *entry,
         return false;
     }
 
-    if (stored_entry != NULL) {
+    if (stored_entry != nullptr) {
         *stored_entry = *entry;
     }
 
@@ -5233,7 +5233,7 @@ static bool host_history_commit_entry(host_t *host, chat_history_entry_t *entry,
 static bool host_replies_commit_entry(host_t *host, chat_reply_entry_t *entry,
                                       chat_reply_entry_t *stored_entry)
 {
-    if (host == NULL || entry == NULL) {
+    if (host == nullptr || entry == nullptr) {
         return false;
     }
 
@@ -5265,7 +5265,7 @@ static bool host_replies_commit_entry(host_t *host, chat_reply_entry_t *entry,
 
     host_reply_state_save_locked(host);
 
-    if (stored_entry != NULL) {
+    if (stored_entry != nullptr) {
         *stored_entry = host->replies[slot];
     }
 
@@ -5278,10 +5278,10 @@ static bool host_replies_commit_entry(host_t *host, chat_reply_entry_t *entry,
 static void host_notify_external_clients(host_t *host,
                                          const chat_history_entry_t *entry)
 {
-    if (host == NULL || entry == NULL) {
+    if (host == nullptr || entry == nullptr) {
         return;
     }
-    if (host->clients == NULL) {
+    if (host->clients == nullptr) {
         return;
     }
     client_manager_notify_history(host->clients, entry);
@@ -5292,7 +5292,7 @@ static bool host_history_record_user(host_t *host, const session_ctx_t *from,
                                      bool preserve_whitespace,
                                      chat_history_entry_t *stored_entry)
 {
-    if (host == NULL || from == NULL || message == NULL || message[0] == '\0') {
+    if (host == nullptr || from == nullptr || message == nullptr || message[0] == '\0') {
         return false;
     }
 
@@ -5304,7 +5304,7 @@ static bool host_history_record_user(host_t *host, const session_ctx_t *from,
 static bool host_history_record_system(host_t *host, const char *message,
                                        chat_history_entry_t *stored_entry)
 {
-    if (host == NULL || message == NULL || message[0] == '\0') {
+    if (host == nullptr || message == nullptr || message[0] == '\0') {
         return false;
     }
 
@@ -5315,7 +5315,7 @@ static bool host_history_record_system(host_t *host, const char *message,
     entry.user_highlight_name[0] = '\0';
     entry.attachment_type = CHAT_ATTACHMENT_NONE;
     entry.message_id = 0U;
-    time_t now = time(NULL);
+    time_t now = time(nullptr);
     if (now != (time_t)-1) {
         entry.created_at = now;
     }
@@ -5325,7 +5325,7 @@ static bool host_history_record_system(host_t *host, const char *message,
     }
     
     chat_history_entry_t notification_entry;
-    if (stored_entry != NULL) {
+    if (stored_entry != nullptr) {
         notification_entry = *stored_entry;
     } else {
         notification_entry = entry;
@@ -5338,7 +5338,7 @@ static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
                                         size_t reaction_index,
                                         chat_history_entry_t *updated_entry)
 {
-    if (host == NULL || message_id == 0U ||
+    if (host == nullptr || message_id == 0U ||
         reaction_index >= SSH_CHATTER_REACTION_KIND_COUNT) {
         return false;
     }
@@ -5346,7 +5346,7 @@ static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
     bool applied = false;
 
     pthread_mutex_lock(&host->lock);
-    if (host->history == NULL) {
+    if (host->history == nullptr) {
         pthread_mutex_unlock(&host->lock);
         return false;
     }
@@ -5363,7 +5363,7 @@ static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
             entry->reaction_counts[reaction_index] += 1U;
         }
 
-        if (updated_entry != NULL) {
+        if (updated_entry != nullptr) {
             *updated_entry = *entry;
         }
 
@@ -5378,7 +5378,7 @@ static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
 
 static void session_apply_theme_defaults(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -5397,7 +5397,7 @@ static void session_apply_theme_defaults(session_ctx_t *ctx)
 
 static void session_apply_system_theme_defaults(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -5418,7 +5418,7 @@ static void session_apply_system_theme_defaults(session_ctx_t *ctx)
 
 static void session_force_dark_mode_foreground(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -5426,7 +5426,7 @@ static void session_force_dark_mode_foreground(session_ctx_t *ctx)
     const bool name_is_default =
         has_name && strcasecmp(ctx->system_fg_name, "default") == 0;
     const bool missing_name = !has_name;
-    const bool code_is_default = ctx->system_fg_code == NULL ||
+    const bool code_is_default = ctx->system_fg_code == nullptr ||
                                  strcmp(ctx->system_fg_code, ANSI_DEFAULT) == 0;
 
     if (!missing_name && !name_is_default && !code_is_default) {
@@ -5440,8 +5440,8 @@ static void session_force_dark_mode_foreground(session_ctx_t *ctx)
 static user_preference_t *host_find_preference_locked(host_t *host,
                                                       const char *username)
 {
-    if (host == NULL || username == NULL || username[0] == '\0') {
-        return NULL;
+    if (host == nullptr || username == nullptr || username[0] == '\0') {
+        return nullptr;
     }
 
     for (size_t idx = 0; idx < SSH_CHATTER_MAX_PREFERENCES; ++idx) {
@@ -5455,18 +5455,18 @@ static user_preference_t *host_find_preference_locked(host_t *host,
         }
     }
 
-    return NULL;
+    return nullptr;
 }
 
 static user_preference_t *host_ensure_preference_locked(host_t *host,
                                                         const char *username)
 {
-    if (host == NULL || username == NULL || username[0] == '\0') {
-        return NULL;
+    if (host == nullptr || username == nullptr || username[0] == '\0') {
+        return nullptr;
     }
 
     user_preference_t *existing = host_find_preference_locked(host, username);
-    if (existing != NULL) {
+    if (existing != nullptr) {
         return existing;
     }
 
@@ -5488,19 +5488,19 @@ static user_preference_t *host_ensure_preference_locked(host_t *host,
         return pref;
     }
 
-    return NULL;
+    return nullptr;
 }
 
 static void host_store_user_theme(host_t *host, const session_ctx_t *ctx)
 {
-    if (host == NULL || ctx == NULL) {
+    if (host == nullptr || ctx == nullptr) {
         return;
     }
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name);
-    if (pref != NULL) {
+    if (pref != nullptr) {
         pref->has_user_theme = true;
         snprintf(pref->user_color_name, sizeof(pref->user_color_name), "%s",
                  ctx->user_color_name);
@@ -5514,14 +5514,14 @@ static void host_store_user_theme(host_t *host, const session_ctx_t *ctx)
 
 static void host_store_system_theme(host_t *host, const session_ctx_t *ctx)
 {
-    if (host == NULL || ctx == NULL) {
+    if (host == nullptr || ctx == nullptr) {
         return;
     }
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name);
-    if (pref != NULL) {
+    if (pref != nullptr) {
         pref->has_system_theme = true;
         snprintf(pref->system_fg_name, sizeof(pref->system_fg_name), "%s",
                  ctx->system_fg_name);
@@ -5538,14 +5538,14 @@ static void host_store_system_theme(host_t *host, const session_ctx_t *ctx)
 
 static void host_store_user_os(host_t *host, const session_ctx_t *ctx)
 {
-    if (host == NULL || ctx == NULL) {
+    if (host == nullptr || ctx == nullptr) {
         return;
     }
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name);
-    if (pref != NULL) {
+    if (pref != nullptr) {
         snprintf(pref->os_name, sizeof(pref->os_name), "%s", ctx->os_name);
     }
     host_state_save_locked(host);
@@ -5555,14 +5555,14 @@ static void host_store_user_os(host_t *host, const session_ctx_t *ctx)
 static void host_store_birthday(host_t *host, const session_ctx_t *ctx,
                                 const char *birthday)
 {
-    if (host == NULL || ctx == NULL || birthday == NULL) {
+    if (host == nullptr || ctx == nullptr || birthday == nullptr) {
         return;
     }
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name);
-    if (pref != NULL) {
+    if (pref != nullptr) {
         pref->has_birthday = true;
         snprintf(pref->birthday, sizeof(pref->birthday), "%s", birthday);
     }
@@ -5573,14 +5573,14 @@ static void host_store_birthday(host_t *host, const session_ctx_t *ctx,
 
 static void host_store_chat_spacing(host_t *host, const session_ctx_t *ctx)
 {
-    if (host == NULL || ctx == NULL) {
+    if (host == nullptr || ctx == nullptr) {
         return;
     }
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name);
-    if (pref != NULL) {
+    if (pref != nullptr) {
         if (ctx->translation_caption_spacing > UINT8_MAX) {
             pref->translation_caption_spacing = UINT8_MAX;
         } else {
@@ -5595,14 +5595,14 @@ static void host_store_chat_spacing(host_t *host, const session_ctx_t *ctx)
 static void host_store_translation_preferences(host_t *host,
                                                const session_ctx_t *ctx)
 {
-    if (host == NULL || ctx == NULL) {
+    if (host == nullptr || ctx == nullptr) {
         return;
     }
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name);
-    if (pref != NULL) {
+    if (pref != nullptr) {
         pref->translation_master_enabled = ctx->translation_enabled;
         pref->translation_master_explicit = true;
         pref->output_translation_enabled = ctx->output_translation_enabled;
@@ -5620,14 +5620,14 @@ static void host_store_translation_preferences(host_t *host,
 
 static void host_store_breaking_alerts(host_t *host, const session_ctx_t *ctx)
 {
-    if (host == NULL || ctx == NULL) {
+    if (host == nullptr || ctx == nullptr) {
         return;
     }
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name);
-    if (pref != NULL) {
+    if (pref != nullptr) {
         pref->breaking_alerts_enabled = ctx->breaking_alerts_enabled;
     }
     host_state_save_locked(host);
@@ -5636,14 +5636,14 @@ static void host_store_breaking_alerts(host_t *host, const session_ctx_t *ctx)
 
 static void host_store_ui_language(host_t *host, const session_ctx_t *ctx)
 {
-    if (host == NULL || ctx == NULL) {
+    if (host == nullptr || ctx == nullptr) {
         return;
     }
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name);
-    if (pref != NULL) {
+    if (pref != nullptr) {
         const char *code = session_ui_language_code(ctx->ui_language);
         snprintf(pref->ui_language, sizeof(pref->ui_language), "%s", code);
     }
@@ -5653,7 +5653,7 @@ static void host_store_ui_language(host_t *host, const session_ctx_t *ctx)
 
 static bool host_ip_has_grant_locked(host_t *host, const char *ip)
 {
-    if (host == NULL || ip == NULL || ip[0] == '\0') {
+    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
         return false;
     }
 
@@ -5669,7 +5669,7 @@ static bool host_ip_has_grant_locked(host_t *host, const char *ip)
 
 static bool host_add_operator_grant_locked(host_t *host, const char *ip)
 {
-    if (host == NULL || ip == NULL || ip[0] == '\0') {
+    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
         return false;
     }
 
@@ -5690,7 +5690,7 @@ static bool host_add_operator_grant_locked(host_t *host, const char *ip)
 
 static bool host_ip_has_grant(host_t *host, const char *ip)
 {
-    if (host == NULL || ip == NULL || ip[0] == '\0') {
+    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
         return false;
     }
 
@@ -5703,20 +5703,20 @@ static bool host_ip_has_grant(host_t *host, const char *ip)
 
 static void host_apply_grant_to_ip(host_t *host, const char *ip)
 {
-    if (host == NULL || ip == NULL || ip[0] == '\0') {
+    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
         return;
     }
 
-    session_ctx_t **matches = NULL;
+    session_ctx_t **matches = nullptr;
     size_t match_count = 0U;
 
     pthread_mutex_lock(&host->room.lock);
     if (host->room.member_count > 0U) {
         matches = GC_CALLOC(host->room.member_count, sizeof(*matches));
-        if (matches != NULL) {
+        if (matches != nullptr) {
             for (size_t idx = 0U; idx < host->room.member_count; ++idx) {
                 session_ctx_t *member = host->room.members[idx];
-                if (member == NULL) {
+                if (member == nullptr) {
                     continue;
                 }
                 if (strncmp(member->client_ip, ip, SSH_CHATTER_IP_LEN) != 0) {
@@ -5730,7 +5730,7 @@ static void host_apply_grant_to_ip(host_t *host, const char *ip)
     }
     pthread_mutex_unlock(&host->room.lock);
 
-    if (matches == NULL) {
+    if (matches == nullptr) {
         return;
     }
 
@@ -5743,7 +5743,7 @@ static void host_apply_grant_to_ip(host_t *host, const char *ip)
 
 static bool host_remove_operator_grant_locked(host_t *host, const char *ip)
 {
-    if (host == NULL || ip == NULL || ip[0] == '\0') {
+    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
         return false;
     }
 
@@ -5768,24 +5768,24 @@ static bool host_remove_operator_grant_locked(host_t *host, const char *ip)
 
 static void host_revoke_grant_from_ip(host_t *host, const char *ip)
 {
-    if (host == NULL || ip == NULL || ip[0] == '\0') {
+    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
         return;
     }
 
-    session_ctx_t **matches = NULL;
+    session_ctx_t **matches = nullptr;
     size_t match_count = 0U;
 
     pthread_mutex_lock(&host->room.lock);
     if (host->room.member_count > 0U) {
         session_ctx_t **allocated =
             GC_CALLOC(host->room.member_count, sizeof(*allocated));
-        if (allocated != NULL) {
+        if (allocated != nullptr) {
             matches = allocated;
         }
 
         for (size_t idx = 0U; idx < host->room.member_count; ++idx) {
             session_ctx_t *member = host->room.members[idx];
-            if (member == NULL) {
+            if (member == nullptr) {
                 continue;
             }
             if (strncmp(member->client_ip, ip, SSH_CHATTER_IP_LEN) != 0) {
@@ -5798,20 +5798,20 @@ static void host_revoke_grant_from_ip(host_t *host, const char *ip)
             member->user.is_operator = false;
             member->auth.is_operator = false;
 
-            if (matches != NULL) {
+            if (matches != nullptr) {
                 matches[match_count++] = member;
             }
         }
     }
     pthread_mutex_unlock(&host->room.lock);
 
-    if (matches == NULL) {
+    if (matches == nullptr) {
         return;
     }
 
     for (size_t idx = 0U; idx < match_count; ++idx) {
         session_ctx_t *member = matches[idx];
-        if (member == NULL) {
+        if (member == nullptr) {
             continue;
         }
         session_send_system_line(
@@ -5822,7 +5822,7 @@ static void host_revoke_grant_from_ip(host_t *host, const char *ip)
 static bool host_lookup_user_os(host_t *host, const char *username,
                                 char *buffer, size_t length)
 {
-    if (host == NULL || username == NULL || buffer == NULL || length == 0U) {
+    if (host == nullptr || username == nullptr || buffer == nullptr || length == 0U) {
         return false;
     }
 
@@ -5830,7 +5830,7 @@ static bool host_lookup_user_os(host_t *host, const char *username,
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref = host_find_preference_locked(host, username);
-    if (pref != NULL && pref->os_name[0] != '\0') {
+    if (pref != nullptr && pref->os_name[0] != '\0') {
         snprintf(buffer, length, "%s", pref->os_name);
         found = true;
     }
@@ -5841,7 +5841,7 @@ static bool host_lookup_user_os(host_t *host, const char *username,
     }
 
     session_ctx_t *session = chat_room_find_user(&host->room, username);
-    if (session != NULL && session->os_name[0] != '\0') {
+    if (session != nullptr && session->os_name[0] != '\0') {
         snprintf(buffer, length, "%s", session->os_name);
         return true;
     }
@@ -5852,13 +5852,13 @@ static bool host_lookup_user_os(host_t *host, const char *username,
 static void host_history_normalize_entry(host_t *host,
                                          chat_history_entry_t *entry)
 {
-    if (host == NULL || entry == NULL) {
+    if (host == nullptr || entry == nullptr) {
         return;
     }
 
     if (!entry->is_user_message) {
-        entry->user_color_code = NULL;
-        entry->user_highlight_code = NULL;
+        entry->user_color_code = nullptr;
+        entry->user_highlight_code = nullptr;
         entry->user_is_bold = false;
         entry->user_color_name[0] = '\0';
         entry->user_highlight_name[0] = '\0';
@@ -5868,7 +5868,7 @@ static void host_history_normalize_entry(host_t *host,
     const char *color_code = lookup_color_code(
         USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
         entry->user_color_name);
-    if (color_code == NULL) {
+    if (color_code == nullptr) {
         color_code = host->user_theme.userColor;
         snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
                  host->default_user_color_name);
@@ -5878,7 +5878,7 @@ static void host_history_normalize_entry(host_t *host,
         HIGHLIGHT_COLOR_MAP,
         sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
         entry->user_highlight_name);
-    if (highlight_code == NULL) {
+    if (highlight_code == nullptr) {
         highlight_code = host->user_theme.highlight;
         snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name),
                  "%s", host->default_user_highlight_name);
@@ -5890,7 +5890,7 @@ static void host_history_normalize_entry(host_t *host,
 
 static void host_security_configure(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -5902,7 +5902,7 @@ static void host_security_configure(host_t *host)
     host->security_clamav_command[0] = '\0';
 
     const char *toggle = getenv("CHATTER_SECURITY_FILTER");
-    if (toggle != NULL && toggle[0] != '\0') {
+    if (toggle != nullptr && toggle[0] != '\0') {
         if (strcasecmp(toggle, "0") == 0 || strcasecmp(toggle, "false") == 0 ||
             strcasecmp(toggle, "off") == 0) {
             return;
@@ -5913,7 +5913,7 @@ static void host_security_configure(host_t *host)
 
     const char *clamav_toggle = getenv("CHATTER_CLAMAV");
     bool clamav_disabled = false;
-    if (clamav_toggle != NULL && clamav_toggle[0] != '\0') {
+    if (clamav_toggle != nullptr && clamav_toggle[0] != '\0') {
         if (strcasecmp(clamav_toggle, "0") == 0 ||
             strcasecmp(clamav_toggle, "false") == 0 ||
             strcasecmp(clamav_toggle, "off") == 0) {
@@ -5923,7 +5923,7 @@ static void host_security_configure(host_t *host)
 
     if (!clamav_disabled) {
         const char *command = getenv("CHATTER_CLAMAV_COMMAND");
-        if (command == NULL || command[0] == '\0') {
+        if (command == nullptr || command[0] == '\0') {
             command = "clamscan --no-summary --stdout .";
         }
 
@@ -5938,7 +5938,7 @@ static void host_security_configure(host_t *host)
 
     bool ai_requested = false;
     const char *ai_toggle = getenv("CHATTER_SECURITY_AI");
-    if (ai_toggle != NULL && ai_toggle[0] != '\0') {
+    if (ai_toggle != nullptr && ai_toggle[0] != '\0') {
         if (!(strcasecmp(ai_toggle, "0") == 0 ||
               strcasecmp(ai_toggle, "false") == 0 ||
               strcasecmp(ai_toggle, "off") == 0)) {
@@ -5949,7 +5949,7 @@ static void host_security_configure(host_t *host)
     if (ai_requested) {
         bool has_gemini = false;
         const char *gemini_key = getenv("GEMINI_API_KEY");
-        if (gemini_key != NULL && gemini_key[0] != '\0') {
+        if (gemini_key != nullptr && gemini_key[0] != '\0') {
             has_gemini = true;
         }
 
@@ -5975,7 +5975,7 @@ static void host_security_configure(host_t *host)
 
 static void host_security_disable_filter(host_t *host, const char *reason)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -5983,7 +5983,7 @@ static void host_security_disable_filter(host_t *host, const char *reason)
         return;
     }
 
-    if (reason == NULL || reason[0] == '\0') {
+    if (reason == nullptr || reason[0] == '\0') {
         reason = "moderation failure";
     }
 
@@ -5998,7 +5998,7 @@ static void host_security_disable_filter(host_t *host, const char *reason)
 
 static void host_security_disable_clamav(host_t *host, const char *reason)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -6006,7 +6006,7 @@ static void host_security_disable_clamav(host_t *host, const char *reason)
         return;
     }
 
-    if (reason == NULL || reason[0] == '\0') {
+    if (reason == nullptr || reason[0] == '\0') {
         reason = "ClamAV failure";
     }
 
@@ -6021,7 +6021,7 @@ static void host_security_disable_clamav(host_t *host, const char *reason)
 
 static void host_security_compact_whitespace(char *text)
 {
-    if (text == NULL) {
+    if (text == nullptr) {
         return;
     }
 
@@ -6069,11 +6069,11 @@ static double host_elapsed_seconds(const struct timespec *start,
 static bool host_security_execute_clamav_backend(host_t *host, char *notice,
                                                  size_t notice_length)
 {
-    if (notice != NULL && notice_length > 0U) {
+    if (notice != nullptr && notice_length > 0U) {
         notice[0] = '\0';
     }
 
-    if (host == NULL || notice == NULL || notice_length == 0U) {
+    if (host == nullptr || notice == nullptr || notice_length == 0U) {
         return false;
     }
 
@@ -6166,7 +6166,7 @@ static bool host_security_execute_clamav_backend(host_t *host, char *notice,
         }
 
         // execute clamscan without shell parsing issues
-        const char *argv[] = {"sh", "-c", host->security_clamav_command, NULL};
+        const char *argv[] = {"sh", "-c", host->security_clamav_command, nullptr};
         execvp(argv[0], (char *const *)argv);
 
         // only runs if exec failed
@@ -6213,7 +6213,7 @@ static bool host_security_execute_clamav_backend(host_t *host, char *notice,
     size_t output_length = 0U;
 
     char buffer[256];
-    while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
         size_t chunk = strlen(buffer);
         if (chunk == 0U) {
             continue;
@@ -6314,8 +6314,8 @@ static bool host_security_execute_clamav_backend(host_t *host, char *notice,
 static void *host_security_clamav_backend(void *arg)
 {
     host_t *host = (host_t *)arg;
-    if (host == NULL) {
-        return NULL;
+    if (host == nullptr) {
+        return nullptr;
     }
 
     sshc_memory_context_t *memory_scope =
@@ -6334,8 +6334,8 @@ static void *host_security_clamav_backend(void *arg)
                                                      sizeof(notice)) &&
                 notice[0] != '\0') {
                 printf("%s\n", notice);
-                host_history_record_system(host, notice, NULL);
-                chat_room_broadcast(&host->room, notice, NULL);
+                host_history_record_system(host, notice, nullptr);
+                chat_room_broadcast(&host->room, notice, nullptr);
             }
         }
 
@@ -6362,12 +6362,12 @@ static void *host_security_clamav_backend(void *arg)
     atomic_store(&host->security_clamav_thread_running, false);
     printf("[security] scheduled ClamAV backend thread stopped\n");
     sshc_memory_context_pop(memory_scope);
-    return NULL;
+    return nullptr;
 }
 
 static void host_security_start_clamav_backend(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -6386,7 +6386,7 @@ static void host_security_start_clamav_backend(host_t *host)
     atomic_store(&host->security_clamav_thread_stop, false);
     atomic_store(&host->security_clamav_thread_running, false);
 
-    int error = pthread_create(&host->security_clamav_thread, NULL,
+    int error = pthread_create(&host->security_clamav_thread, nullptr,
                                host_security_clamav_backend, host);
     if (error != 0) {
         printf("[security] failed to start ClamAV backend thread: %s\n",
@@ -6401,14 +6401,14 @@ static bool host_ensure_private_data_path(host_t *host, const char *path,
                                           bool create_directories)
 {
     (void)host;
-    if (path == NULL || path[0] == '\0') {
+    if (path == nullptr || path[0] == '\0') {
         return false;
     }
 
     char parent_buffer[PATH_MAX];
     snprintf(parent_buffer, sizeof(parent_buffer), "%s", path);
     char *parent_dir = dirname(parent_buffer);
-    if (parent_dir == NULL || parent_dir[0] == '\0') {
+    if (parent_dir == nullptr || parent_dir[0] == '\0') {
         parent_dir = ".";
     }
 

@@ -136,7 +136,8 @@ static bool user_data_file_exists(const char *path)
 static bool user_data_build_variant_name(const char *base, size_t index,
                                          char *buffer, size_t length)
 {
-    if (buffer == nullptr || length == 0U || base == nullptr || base[0] == '\0') {
+    if (buffer == nullptr || length == 0U || base == nullptr ||
+        base[0] == '\0') {
         return false;
     }
 
@@ -402,8 +403,8 @@ static void user_data_profile_picture_overlay(const char *root,
                                               const char *username,
                                               user_data_record_t *record)
 {
-    if (record == nullptr || root == nullptr || root[0] == '\0' || username == nullptr ||
-        username[0] == '\0') {
+    if (record == nullptr || root == nullptr || root[0] == '\0' ||
+        username == nullptr || username[0] == '\0') {
         return;
     }
 

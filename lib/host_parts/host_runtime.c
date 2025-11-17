@@ -334,7 +334,8 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 
 static bool find_reserved_names(session_ctx_t *ctx, const char *nick)
 {
-    if (ctx == nullptr || ctx->owner == nullptr || nick == nullptr || nick[0] == '\0') {
+    if (ctx == nullptr || ctx->owner == nullptr || nick == nullptr ||
+        nick[0] == '\0') {
         return false;
     }
 
@@ -1051,9 +1052,10 @@ static bool host_add_ban_entry(host_t *host, const char *username,
     }
 
     for (size_t idx = 0; idx < host->ban_count; ++idx) {
-        const bool username_match = (username != nullptr && username[0] != '\0' &&
-                                     strncmp(host->bans[idx].username, username,
-                                             SSH_CHATTER_USERNAME_LEN) == 0);
+        const bool username_match =
+            (username != nullptr && username[0] != '\0' &&
+             strncmp(host->bans[idx].username, username,
+                     SSH_CHATTER_USERNAME_LEN) == 0);
         const bool ip_match =
             (ip != nullptr && ip[0] != '\0' &&
              strncmp(host->bans[idx].ip, ip, SSH_CHATTER_IP_LEN) == 0);
@@ -1622,8 +1624,8 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         session_handle_rss(ctx, args);
         return;
     } else if (session_parse_command_any(ctx, "/bbs", effective_line, &args)) {
-        session_handle_bbs(ctx,
-                           (args != nullptr && args[0] != '\0') ? args : nullptr);
+        session_handle_bbs(ctx, (args != nullptr && args[0] != '\0') ? args
+                                                                     : nullptr);
         return;
     }
 
@@ -1640,7 +1642,8 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
             const unsigned long max_vote = sizeof(ctx->owner->poll.options) /
                                            sizeof(ctx->owner->poll.options[0]);
             if (vote_index >= 1UL && vote_index <= max_vote) {
-                while (endptr != nullptr && (*endptr == ' ' || *endptr == '\t')) {
+                while (endptr != nullptr &&
+                       (*endptr == ' ' || *endptr == '\t')) {
                     ++endptr;
                 }
                 if (endptr == nullptr || *endptr == '\0') {
@@ -1693,10 +1696,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     }
 
     const session_ui_locale_t *locale = session_ui_get_locale(ctx);
-    const char *format =
-        (locale->unknown_command != nullptr && locale->unknown_command[0] != '\0')
-            ? locale->unknown_command
-            : "Unknown command. Type %shelp for help.";
+    const char *format = (locale->unknown_command != nullptr &&
+                          locale->unknown_command[0] != '\0')
+                             ? locale->unknown_command
+                             : "Unknown command. Type %shelp for help.";
     const char *prefix = session_command_prefix(ctx);
     const char *prefix_args[] = {prefix};
     char message[SSH_CHATTER_MESSAGE_LIMIT];
@@ -1816,8 +1819,8 @@ static bool host_lookup_last_ip(host_t *host, const char *username, char *ip,
         ip[0] = '\0';
     }
 
-    if (host == nullptr || username == nullptr || username[0] == '\0' || ip == nullptr ||
-        length == 0U) {
+    if (host == nullptr || username == nullptr || username[0] == '\0' ||
+        ip == nullptr || length == 0U) {
         return false;
     }
 
@@ -1826,7 +1829,8 @@ static bool host_lookup_last_ip(host_t *host, const char *username, char *ip,
     }
 
     user_data_record_t record;
-    if (!host_user_data_load_existing(host, username, nullptr, &record, false)) {
+    if (!host_user_data_load_existing(host, username, nullptr, &record,
+                                      false)) {
         return false;
     }
 
@@ -1873,7 +1877,8 @@ static bool host_user_data_send_mail(host_t *host, const char *recipient,
     if (target_is_lan_ops) {
         session_ctx_t *target_session =
             chat_room_find_user(&host->room, recipient);
-        if (target_session == nullptr || !target_session->user.is_lan_operator) {
+        if (target_session == nullptr ||
+            !target_session->user.is_lan_operator) {
             if (error != nullptr && error_length > 0U) {
                 snprintf(error, error_length, "%s",
                          "LAN operator mailbox is unavailable.");
@@ -2239,7 +2244,8 @@ static bool timezone_sanitize_identifier(const char *input, char *output,
 static bool timezone_resolve_identifier(const char *input, char *resolved,
                                         size_t length)
 {
-    if (input == nullptr || input[0] == '\0' || resolved == nullptr || length == 0U) {
+    if (input == nullptr || input[0] == '\0' || resolved == nullptr ||
+        length == 0U) {
         return false;
     }
 
@@ -2745,8 +2751,9 @@ static int host_telnet_open_socket(host_t *host)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
-    const char *bind_addr =
-        host->telnet.bind_address[0] != '\0' ? host->telnet.bind_address : nullptr;
+    const char *bind_addr = host->telnet.bind_address[0] != '\0'
+                                ? host->telnet.bind_address
+                                : nullptr;
     struct addrinfo *result = nullptr;
     int rc = getaddrinfo(bind_addr, host->telnet.port, &hints, &result);
     if (rc != 0) {
@@ -3084,8 +3091,8 @@ static bool host_telnet_listener_start(host_t *host, const char *bind_addr,
     host->telnet.last_error_time.tv_nsec = 0L;
     atomic_store(&host->telnet.stop, false);
 
-    if (pthread_create(&host->telnet.thread, nullptr, host_telnet_thread, host) !=
-        0) {
+    if (pthread_create(&host->telnet.thread, nullptr, host_telnet_thread,
+                       host) != 0) {
         humanized_log_error("telnet", "failed to start telnet listener", errno);
         host->telnet.enabled = false;
         return false;
@@ -3184,7 +3191,8 @@ static void session_cleanup(session_ctx_t *ctx)
         pthread_mutex_destroy(&ctx->channel_mutex);
         ctx->channel_mutex_initialized = false;
     }
-    if (ctx->transport_kind == SESSION_TRANSPORT_SSH && ctx->channel != nullptr) {
+    if (ctx->transport_kind == SESSION_TRANSPORT_SSH &&
+        ctx->channel != nullptr) {
         ssh_channel_request_send_exit_status(ctx->channel, ctx->exit_status);
     }
     session_close_channel(ctx);
@@ -4259,7 +4267,7 @@ void host_init(host_t *host, auth_profile_t *auth)
                                     "CHATTER_MATRIX_* configuration",
                                     EINVAL);
             }
-            
+
             host->irc_client = irc_client_create(host);
             if (host->irc_client == nullptr) {
                 humanized_log_error("irc",
@@ -4866,7 +4874,8 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
     const char *address =
         (bind_addr != nullptr && bind_addr[0] != '\0') ? bind_addr : "0.0.0.0";
-    const char *bind_port = (port != nullptr && port[0] != '\0') ? port : "2222";
+    const char *bind_port =
+        (port != nullptr && port[0] != '\0') ? port : "2222";
     const char *telnet_bind = nullptr;
     if (telnet_bind_addr != nullptr) {
         telnet_bind = telnet_bind_addr;
@@ -4879,7 +4888,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         if (!host_telnet_listener_start(host, telnet_bind, telnet_port)) {
             const char *display_addr =
                 (telnet_bind != nullptr && telnet_bind[0] != '\0') ? telnet_bind
-                                                                : "*";
+                                                                   : "*";
             printf("[telnet] telnet listener unavailable on %s:%s\n",
                    display_addr, telnet_port);
         }
@@ -5052,18 +5061,19 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 const int accept_error = errno;
                 const char *bind_error = ssh_get_error(bind_handle);
 
-                printf(
-                    "[listener] accept failed, error=%d, shutdown_flag=%p "
-                    "value=%d\n",
-                    accept_error, (void *)host->shutdown_flag,
-                    (host->shutdown_flag != nullptr ? *host->shutdown_flag : -1));
+                printf("[listener] accept failed, error=%d, shutdown_flag=%p "
+                       "value=%d\n",
+                       accept_error, (void *)host->shutdown_flag,
+                       (host->shutdown_flag != nullptr ? *host->shutdown_flag
+                                                       : -1));
                 fflush(stdout);
 
                 if (accept_error != 0) {
                     char log_message[512];
                     const char *system_message = strerror(accept_error);
 
-                    if (system_message != nullptr && system_message[0] != '\0') {
+                    if (system_message != nullptr &&
+                        system_message[0] != '\0') {
                         if (bind_error != nullptr && bind_error[0] != '\0' &&
                             !string_contains_case_insensitive(bind_error,
                                                               system_message)) {
@@ -5166,7 +5176,8 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 }
 
                 // Check shutdown flag after non-fatal errors (e.g., EINTR from signal)
-                if (host->shutdown_flag != nullptr && *host->shutdown_flag != 0) {
+                if (host->shutdown_flag != nullptr &&
+                    *host->shutdown_flag != 0) {
                     printf(
                         "[listener] detected shutdown flag after socket error, "
                         "breaking from accept loop\n");
@@ -5265,10 +5276,10 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                      matched_rule->original_pattern[0] != '\0')
                         ? matched_rule->original_pattern
                         : "policy";
-                const char *cidr_display =
-                    (matched_rule != nullptr && matched_rule->cidr_text[0] != '\0')
-                        ? matched_rule->cidr_text
-                        : "unknown range";
+                const char *cidr_display = (matched_rule != nullptr &&
+                                            matched_rule->cidr_text[0] != '\0')
+                                               ? matched_rule->cidr_text
+                                               : "unknown range";
                 const char *note_display =
                     (matched_rule != nullptr && matched_rule->note[0] != '\0')
                         ? matched_rule->note

@@ -1088,7 +1088,7 @@ static void session_game_tetris_render(session_ctx_t *ctx)
         session_output_buffer_start(ctx);
         session_send_raw_text(ctx, ctx->tetris_screen_buffer);
         session_output_buffer_stop(ctx);
-        
+
         strncpy(ctx->tetris_prev_screen_buffer, ctx->tetris_screen_buffer,
                 SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE);
         ctx->tetris_prev_screen_buffer[SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE -
@@ -2251,10 +2251,10 @@ static void session_game_othello_prepare_next_turn(session_ctx_t *ctx)
         return;
     }
 
-    unsigned player_moves =
-        session_game_othello_collect_moves(state, OTHELLO_CELL_RED, nullptr, 0U);
-    unsigned ai_moves =
-        session_game_othello_collect_moves(state, OTHELLO_CELL_GREEN, nullptr, 0U);
+    unsigned player_moves = session_game_othello_collect_moves(
+        state, OTHELLO_CELL_RED, nullptr, 0U);
+    unsigned ai_moves = session_game_othello_collect_moves(
+        state, OTHELLO_CELL_GREEN, nullptr, 0U);
 
     if (player_moves == 0U && ai_moves == 0U) {
         session_game_othello_finish(ctx, "No more moves available.");
@@ -2368,7 +2368,8 @@ static void session_game_othello_handle_ai_turn(session_ctx_t *ctx)
 static void session_game_othello_handle_line(session_ctx_t *ctx,
                                              const char *line)
 {
-    if (ctx == nullptr || ctx->game.type != SESSION_GAME_OTHELLO || line == nullptr) {
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_OTHELLO ||
+        line == nullptr) {
         return;
     }
 
@@ -2475,8 +2476,8 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
         return;
     }
 
-    unsigned player_moves =
-        session_game_othello_collect_moves(state, OTHELLO_CELL_RED, nullptr, 0U);
+    unsigned player_moves = session_game_othello_collect_moves(
+        state, OTHELLO_CELL_RED, nullptr, 0U);
     if (strcmp(working, "pass") == 0) {
         if (player_moves > 0U) {
             session_send_system_line(ctx,
@@ -5230,10 +5231,10 @@ static void session_handle_mode(session_ctx_t *ctx, const char *arguments)
 
     const session_ui_locale_t *locale = session_ui_get_locale(ctx);
     const char *prefix = session_command_prefix(ctx);
-    const char *chat_label =
-        (locale->mode_label_chat != nullptr && locale->mode_label_chat[0] != '\0')
-            ? locale->mode_label_chat
-            : "chat";
+    const char *chat_label = (locale->mode_label_chat != nullptr &&
+                              locale->mode_label_chat[0] != '\0')
+                                 ? locale->mode_label_chat
+                                 : "chat";
     const char *command_label = (locale->mode_label_command != nullptr &&
                                  locale->mode_label_command[0] != '\0')
                                     ? locale->mode_label_command
@@ -5389,7 +5390,7 @@ static void session_handle_history(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-	session_clear_screen(ctx);
+    session_clear_screen(ctx);
 
     size_t command_indices[SSH_CHATTER_INPUT_HISTORY_LIMIT];
     size_t command_count = 0U;

@@ -44,8 +44,8 @@ bool ssh_chatter_backend_translate_line(const char *message,
         detected_language[0] = '\0';
     }
 
-    if (message == nullptr || target_language == nullptr || translated == nullptr ||
-        translated_len == 0U) {
+    if (message == nullptr || target_language == nullptr ||
+        translated == nullptr || translated_len == 0U) {
         return false;
     }
 

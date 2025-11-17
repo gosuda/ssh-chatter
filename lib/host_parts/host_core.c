@@ -385,7 +385,8 @@ static void host_register_protected_bind_address(host_t *host,
             continue;
         }
 
-        if (inet_ntop(family, addr_ptr, ip_buffer, sizeof(ip_buffer)) == nullptr) {
+        if (inet_ntop(family, addr_ptr, ip_buffer, sizeof(ip_buffer)) ==
+            nullptr) {
             continue;
         }
 
@@ -1034,7 +1035,8 @@ static bool host_version_ip_rule_matches(const version_ip_ban_rule_t *rule,
         break;
     case VERSION_PATTERN_MATCH_SUBSTRING:
         if (version != nullptr && rule->normalized_pattern[0] != '\0') {
-            version_match = strstr(version, rule->normalized_pattern) != nullptr;
+            version_match =
+                strstr(version, rule->normalized_pattern) != nullptr;
         }
         break;
     default:
@@ -4251,7 +4253,7 @@ static void session_bbs_format_usage(session_ctx_t *ctx, const char *canonical,
 
     const char *subcommand =
         canonical != nullptr ? session_bbs_subcommand_preferred(ctx, canonical)
-                          : nullptr;
+                             : nullptr;
     if (subcommand == nullptr || subcommand[0] == '\0') {
         subcommand = canonical != nullptr ? canonical : "";
     }
@@ -4547,10 +4549,11 @@ static void session_format_template(const char *format, const char *const *args,
     for (size_t idx = 0U; format[idx] != '\0' && out_index + 1U < length;
          ++idx) {
         if (format[idx] == '%' && format[idx + 1U] == 's') {
-            const char *replacement = (args != nullptr && arg_index < arg_count &&
-                                       args[arg_index] != nullptr)
-                                          ? args[arg_index]
-                                          : "";
+            const char *replacement =
+                (args != nullptr && arg_index < arg_count &&
+                 args[arg_index] != nullptr)
+                    ? args[arg_index]
+                    : "";
             size_t available = length - out_index - 1U;
             size_t rep_len = strnlen(replacement, available);
             memcpy(buffer + out_index, replacement, rep_len);
@@ -4648,7 +4651,8 @@ static void session_format_help_line(session_ctx_t *ctx,
                                      const char *description, char *buffer,
                                      size_t length)
 {
-    if (ctx == nullptr || entry == nullptr || buffer == nullptr || length == 0U) {
+    if (ctx == nullptr || entry == nullptr || buffer == nullptr ||
+        length == 0U) {
         return;
     }
 
@@ -4679,7 +4683,8 @@ static void session_format_help_line(session_ctx_t *ctx,
     }
 
     if (entry->kind == SESSION_HELP_ENTRY_TEXT) {
-        snprintf(buffer, length, "%s", description != nullptr ? description : "");
+        snprintf(buffer, length, "%s",
+                 description != nullptr ? description : "");
         return;
     }
 

@@ -20,7 +20,8 @@ struct webssh_client {
 static void webssh_client_on_message(client_connection_t *connection,
                                      const chat_history_entry_t *entry)
 {
-    if (connection == nullptr || entry == nullptr || connection->user_data == nullptr) {
+    if (connection == nullptr || entry == nullptr ||
+        connection->user_data == nullptr) {
         return;
     }
 
@@ -125,6 +126,6 @@ bool webssh_client_send_message(webssh_client_t *client, const char *username,
     if (client == nullptr || client->host == nullptr) {
         return false;
     }
-    return host_post_client_message(client->host, username, message, nullptr, nullptr,
-                                    false);
+    return host_post_client_message(client->host, username, message, nullptr,
+                                    nullptr, false);
 }

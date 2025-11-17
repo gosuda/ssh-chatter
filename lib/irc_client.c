@@ -63,9 +63,8 @@ static void irc_set_status(irc_client_t *client, const char *status)
     pthread_mutex_unlock(&client->lock);
 }
 
-__attribute__((unused))
-static void irc_client_disable(irc_client_t *client, const char *message,
-                               int error_code)
+__attribute__((unused)) static void
+irc_client_disable(irc_client_t *client, const char *message, int error_code)
 {
     if (client == nullptr) {
         return;
@@ -80,7 +79,8 @@ static void irc_client_disable(irc_client_t *client, const char *message,
     if (message != nullptr && message[0] != '\0') {
         humanized_log_error("irc", message, log_code);
     } else {
-        humanized_log_error("irc", "IRC relay disabled after failure", log_code);
+        humanized_log_error("irc", "IRC relay disabled after failure",
+                            log_code);
     }
 
     irc_set_status(client, "Disabled");
@@ -149,8 +149,8 @@ static bool irc_connect_socket(irc_client_t *client)
         return false;
     }
 
-    snprintf(buffer, sizeof(buffer), "USER %s 0 * :%s\r\n",
-             client->username, client->realname);
+    snprintf(buffer, sizeof(buffer), "USER %s 0 * :%s\r\n", client->username,
+             client->realname);
     if (send(client->socket_fd, buffer, strlen(buffer), 0) < 0) {
         close(client->socket_fd);
         client->socket_fd = -1;
@@ -199,7 +199,8 @@ static void irc_handle_message(irc_client_t *client, const char *line)
 
     // Parse IRC-style PRIVMSG
     // Format: :nick!user@host PRIVMSG #channel :message
-    if (strncmp(line, "PRIVMSG ", 8) == 0 || strstr(line, " PRIVMSG ") != nullptr) {
+    if (strncmp(line, "PRIVMSG ", 8) == 0 ||
+        strstr(line, " PRIVMSG ") != nullptr) {
         const char *privmsg = strstr(line, " PRIVMSG ");
         if (privmsg == nullptr) {
             privmsg = line;
@@ -211,36 +212,41 @@ static void irc_handle_message(irc_client_t *client, const char *line)
         const char *msg_start = strchr(privmsg, ':');
         if (msg_start != nullptr) {
             msg_start++; // Skip ':'
-            
+
             // Check for CTCP message (starts and ends with \x01)
             // CTCP format: \x01COMMAND [parameters]\x01
             if (msg_start[0] == '\x01') {
                 // This is a CTCP message - filter it out
                 // Common CTCP messages: VERSION, PING, TIME, FINGER, etc.
-                
+
                 // Extract CTCP command for potential response
                 const char *ctcp_end = strchr(msg_start + 1, '\x01');
                 if (ctcp_end != nullptr) {
                     size_t ctcp_len = (size_t)(ctcp_end - (msg_start + 1));
-                    
+
                     // Check if it's a CTCP VERSION query (no parameters after VERSION)
-                    if (ctcp_len == 7 && strncmp(msg_start + 1, "VERSION", 7) == 0) {
+                    if (ctcp_len == 7 &&
+                        strncmp(msg_start + 1, "VERSION", 7) == 0) {
                         // Extract the sender's nickname to reply
                         if (line[0] == ':') {
                             const char *nick_end = strchr(line + 1, '!');
                             if (nick_end != nullptr) {
                                 char sender_nick[64] = {0};
-                                size_t nick_len = (size_t)(nick_end - (line + 1));
+                                size_t nick_len =
+                                    (size_t)(nick_end - (line + 1));
                                 if (nick_len < sizeof(sender_nick)) {
                                     memcpy(sender_nick, line + 1, nick_len);
                                     sender_nick[nick_len] = '\0';
-                                    
+
                                     // Send CTCP VERSION reply
                                     char reply[512];
-                                    snprintf(reply, sizeof(reply), 
-                                            "NOTICE %s :\x01VERSION SSH-Chatter IRC Bridge v1.0\x01\r\n",
-                                            sender_nick);
-                                    send(client->socket_fd, reply, strlen(reply), 0);
+                                    snprintf(
+                                        reply, sizeof(reply),
+                                        "NOTICE %s :\x01VERSION SSH-Chatter "
+                                        "IRC Bridge v1.0\x01\r\n",
+                                        sender_nick);
+                                    send(client->socket_fd, reply,
+                                         strlen(reply), 0);
                                 }
                             }
                         }
@@ -249,7 +255,7 @@ static void irc_handle_message(irc_client_t *client, const char *line)
                 // Don't post CTCP messages to the chat room
                 return;
             }
-            
+
             // Extract nickname from prefix
             char nick[64] = {0};
             if (line[0] == ':') {
@@ -267,16 +273,17 @@ static void irc_handle_message(irc_client_t *client, const char *line)
             char formatted[SSH_CHATTER_MESSAGE_LIMIT];
             snprintf(formatted, sizeof(formatted), "[IRC] %s", msg_start);
             const char *username = nick[0] != '\0' ? nick : "irc-relay";
-            
-            if (!host_post_client_message(client->host, username, formatted, 
-                                         nullptr, nullptr, false)) {
+
+            if (!host_post_client_message(client->host, username, formatted,
+                                          nullptr, nullptr, false)) {
                 // Silently fail - don't flood logs
             }
         }
     }
     // Handle PING
     // Format: PING :server or :server PING :server
-    else if (strncmp(line, "PING ", 5) == 0 || strstr(line, " PING ") != nullptr) {
+    else if (strncmp(line, "PING ", 5) == 0 ||
+             strstr(line, " PING ") != nullptr) {
         const char *ping_pos = strstr(line, " PING ");
         const char *ping_param;
         if (ping_pos == nullptr) {
@@ -286,7 +293,7 @@ static void irc_handle_message(irc_client_t *client, const char *line)
             // Line contains " PING ", skip " PING "
             ping_param = ping_pos + 6;
         }
-        
+
         char pong[512];
         snprintf(pong, sizeof(pong), "PONG %s\r\n", ping_param);
         send(client->socket_fd, pong, strlen(pong), 0);
@@ -334,7 +341,8 @@ static void *irc_client_thread(void *arg)
         timeout.tv_sec = 1;
         timeout.tv_usec = 0;
 
-        int ret = select(client->socket_fd + 1, &read_fds, nullptr, nullptr, &timeout);
+        int ret = select(client->socket_fd + 1, &read_fds, nullptr, nullptr,
+                         &timeout);
         if (ret < 0) {
             irc_disconnect_socket(client);
             continue;
@@ -344,9 +352,8 @@ static void *irc_client_thread(void *arg)
             continue; // Timeout
         }
 
-        ssize_t bytes =
-            recv(client->socket_fd, buffer + buffer_pos,
-                 sizeof(buffer) - buffer_pos - 1, 0);
+        ssize_t bytes = recv(client->socket_fd, buffer + buffer_pos,
+                             sizeof(buffer) - buffer_pos - 1, 0);
         if (bytes <= 0) {
             irc_disconnect_socket(client);
             continue;
@@ -422,7 +429,9 @@ irc_client_t *irc_client_create(host_t *host)
     snprintf(client->nickname, sizeof(client->nickname), "%s",
              nickname != nullptr ? nickname : "ssh-chatter");
     snprintf(client->username, sizeof(client->username), "%s",
-             username != nullptr ? username : (nickname != nullptr ? nickname : "ssh-chatter"));
+             username != nullptr
+                 ? username
+                 : (nickname != nullptr ? nickname : "ssh-chatter"));
     snprintf(client->realname, sizeof(client->realname), "%s",
              realname != nullptr ? realname : "SSH-Chatter Bot");
 
@@ -434,7 +443,8 @@ irc_client_t *irc_client_create(host_t *host)
 
     irc_set_status(client, "Initializing");
 
-    if (pthread_create(&client->thread, nullptr, irc_client_thread, client) != 0) {
+    if (pthread_create(&client->thread, nullptr, irc_client_thread, client) !=
+        0) {
         pthread_mutex_destroy(&client->lock);
         GC_FREE(client);
         return nullptr;
@@ -489,7 +499,7 @@ bool irc_client_reconnect(irc_client_t *client)
 
     irc_disconnect_socket(client);
     atomic_store(&client->disabled, false);
-    
+
     return irc_connect_socket(client);
 }
 

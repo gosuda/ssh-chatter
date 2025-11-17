@@ -984,8 +984,8 @@ static bool host_moderation_init(host_t *host)
     host->moderation.active = true;
     host->moderation.stop = false;
 
-    if (pthread_create(&host->moderation.thread, nullptr, host_moderation_thread,
-                       host) != 0) {
+    if (pthread_create(&host->moderation.thread, nullptr,
+                       host_moderation_thread, host) != 0) {
         host->moderation.active = false;
         host->moderation.stop = true;
         host_moderation_shutdown(host);
@@ -1048,7 +1048,8 @@ static void host_moderation_shutdown(host_t *host)
 static bool host_moderation_queue_chat(session_ctx_t *ctx, const char *message,
                                        size_t length)
 {
-    if (ctx == nullptr || ctx->owner == nullptr || message == nullptr || length == 0U) {
+    if (ctx == nullptr || ctx->owner == nullptr || message == nullptr ||
+        length == 0U) {
         return false;
     }
 
@@ -1227,7 +1228,8 @@ static void host_eliza_say(host_t *host, const char *message)
         return;
     }
 
-    if (!host_post_client_message(host, "eliza", message, nullptr, nullptr, false)) {
+    if (!host_post_client_message(host, "eliza", message, nullptr, nullptr,
+                                  false)) {
         printf("[eliza] failed to deliver message: %s\n", message);
     }
 }
@@ -1429,8 +1431,8 @@ static bool host_eliza_worker_init(host_t *host)
     }
     worker->cond_initialized = true;
 
-    if (pthread_create(&worker->thread, nullptr, host_eliza_worker_thread, host) !=
-        0) {
+    if (pthread_create(&worker->thread, nullptr, host_eliza_worker_thread,
+                       host) != 0) {
         pthread_cond_destroy(&worker->cond);
         worker->cond_initialized = false;
         pthread_mutex_destroy(&worker->mutex);
@@ -1680,7 +1682,8 @@ static host_security_scan_result_t
 session_security_check_text(session_ctx_t *ctx, const char *category,
                             const char *content, size_t length, bool post_send)
 {
-    if (ctx == nullptr || ctx->owner == nullptr || content == nullptr || length == 0U) {
+    if (ctx == nullptr || ctx->owner == nullptr || content == nullptr ||
+        length == 0U) {
         return HOST_SECURITY_SCAN_CLEAN;
     }
 
@@ -2314,8 +2317,8 @@ static void host_state_save_locked(host_t *host)
     size_t override_total = host->history_override_count;
     size_t history_entry_count = override_total;
     bool using_override =
-        (history_entries != nullptr) ||
-        (host->history_override_count == 0U && host->history_override != nullptr);
+        (history_entries != nullptr) || (host->history_override_count == 0U &&
+                                         host->history_override != nullptr);
     if (!using_override) {
         history_entry_count = host->history_total;
     }
@@ -2410,7 +2413,8 @@ static void host_state_save_locked(host_t *host)
 
     bool success = fwrite(&header, sizeof(header), 1U, fp) == 1U;
 
-    if (!using_override && host->history_count > 0U && host->history == nullptr) {
+    if (!using_override && host->history_count > 0U &&
+        host->history == nullptr) {
         success = false;
     }
 
@@ -2418,13 +2422,12 @@ static void host_state_save_locked(host_t *host)
         if (using_override) {
             if (history_entries != nullptr) {
                 for (size_t idx = 0U; success && idx < override_total; ++idx) {
-                    if (cutoff > 0 &&
-                        chat_history_entry_is_expired(&history_entries[idx],
-                                                       cutoff)) {
+                    if (cutoff > 0 && chat_history_entry_is_expired(
+                                          &history_entries[idx], cutoff)) {
                         continue;
                     }
-                    if (!host_state_write_history_entry(fp,
-                                                        &history_entries[idx])) {
+                    if (!host_state_write_history_entry(
+                            fp, &history_entries[idx])) {
                         success = false;
                     }
                 }
@@ -2448,9 +2451,8 @@ static void host_state_save_locked(host_t *host)
                                 success = false;
                                 break;
                             }
-                            if (cutoff > 0 &&
-                                chat_history_entry_is_expired(&entry_value,
-                                                               cutoff)) {
+                            if (cutoff > 0 && chat_history_entry_is_expired(
+                                                  &entry_value, cutoff)) {
                                 continue;
                             }
                             if (!host_state_write_history_entry(fp,
@@ -2470,7 +2472,8 @@ static void host_state_save_locked(host_t *host)
 
             for (size_t idx = 0U; success && idx < host->history_count; ++idx) {
                 const chat_history_entry_t *entry = &host->history[idx];
-                if (cutoff > 0 && chat_history_entry_is_expired(entry, cutoff)) {
+                if (cutoff > 0 &&
+                    chat_history_entry_is_expired(entry, cutoff)) {
                     continue;
                 }
                 if (!host_state_write_history_entry(fp, entry)) {
@@ -4551,7 +4554,8 @@ static bool host_rss_should_broadcast_breaking(const rss_session_item_t *item)
             strcasestr(field, "alert") != nullptr) {
             return true;
         }
-        if (strstr(field, "속보") != nullptr || strstr(field, "速報") != nullptr) {
+        if (strstr(field, "속보") != nullptr ||
+            strstr(field, "速報") != nullptr) {
             return true;
         }
     }
@@ -4733,7 +4737,8 @@ static void *host_rss_backend(void *arg)
                     pthread_mutex_lock(&host->room.lock);
                     for (size_t i = 0; i < host->room.member_count; ++i) {
                         session_ctx_t *member = host->room.members[i];
-                        if (member != nullptr && member->breaking_alerts_enabled) {
+                        if (member != nullptr &&
+                            member->breaking_alerts_enabled) {
                             session_send_system_line(member, notice);
                         }
                     }
@@ -4796,7 +4801,8 @@ static void host_rss_start_backend(host_t *host)
     atomic_store(&host->rss_thread_stop, false);
     atomic_store(&host->rss_thread_running, false);
 
-    int error = pthread_create(&host->rss_thread, nullptr, host_rss_backend, host);
+    int error =
+        pthread_create(&host->rss_thread, nullptr, host_rss_backend, host);
     if (error != 0) {
         printf("[rss] failed to start backend thread: %s\n", strerror(error));
         return;

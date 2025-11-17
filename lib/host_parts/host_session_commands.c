@@ -155,19 +155,19 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
     char reply_label[32];
     if (!host_compact_id_encode(stored.reply_id, reply_label,
                                 sizeof(reply_label))) {
-        snprintf(reply_label, sizeof(reply_label), "%" PRIu64,
-                 stored.reply_id);
+        snprintf(reply_label, sizeof(reply_label), "%" PRIu64, stored.reply_id);
     }
 
     char target_label[32];
-    if (!host_compact_id_encode(target_id, target_label, sizeof(target_label))) {
+    if (!host_compact_id_encode(target_id, target_label,
+                                sizeof(target_label))) {
         snprintf(target_label, sizeof(target_label), "%" PRIu64, target_id);
     }
 
     char reply_message[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(reply_message, sizeof(reply_message),
-             "↳ [r#%s → %s%s] %s: %s", reply_label, target_prefix,
-             target_label, stored.username, stored.message);
+    snprintf(reply_message, sizeof(reply_message), "↳ [r#%s → %s%s] %s: %s",
+             reply_label, target_prefix, target_label, stored.username,
+             stored.message);
 
     chat_history_entry_t reply_entry = {0};
     if (!host_history_record_system(ctx->owner, reply_message, &reply_entry)) {
@@ -177,7 +177,7 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
 
     // Show the reply to the sender immediately (just like regular chat messages)
     session_send_history_entry(ctx, &reply_entry);
-    
+
     // Broadcast the reply entry to all users so it appears in chat buffer
     chat_room_broadcast_entry(&ctx->owner->room, &reply_entry, ctx);
 }
@@ -766,9 +766,8 @@ static void session_handle_reaction(session_ctx_t *ctx, size_t reaction_index,
     if (!host_compact_id_encode(message_id, label, sizeof(label))) {
         snprintf(label, sizeof(label), "%" PRIu64, message_id);
     }
-    snprintf(confirmation, sizeof(confirmation),
-             "Added %s %s to message #%s.", descriptor->icon,
-             descriptor->label, label);
+    snprintf(confirmation, sizeof(confirmation), "Added %s %s to message #%s.",
+             descriptor->icon, descriptor->label, label);
     session_send_system_line(ctx, confirmation);
     chat_room_broadcast_reaction_update(ctx->owner, &updated);
     host_notify_external_clients(ctx->owner, &updated);
@@ -1081,7 +1080,8 @@ static void session_handle_getos(session_ctx_t *ctx, const char *arguments)
     }
 
     const os_descriptor_t *descriptor = session_lookup_os_descriptor(os_buffer);
-    const char *display = descriptor != nullptr ? descriptor->display : os_buffer;
+    const char *display =
+        descriptor != nullptr ? descriptor->display : os_buffer;
 
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(message, sizeof(message), "%s reports using %s.", target, display);
@@ -1624,7 +1624,7 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
 
         // Add user's nickname to reserved list if password was set
         if (ctx->owner != nullptr && ctx->owner->reserved_nicknames_len <
-                                      SSH_CHATTER_MAX_RESERVED_NAMES) {
+                                         SSH_CHATTER_MAX_RESERVED_NAMES) {
             pthread_mutex_lock(&ctx->owner->nickname_reserve_lock);
             // Check if nickname is already reserved to avoid duplicates
             bool already_reserved = false;
@@ -1758,8 +1758,8 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
             pthread_mutex_unlock(&ctx->owner->nickname_reserve_lock);
         }
 
-        if (!session_pw_auth_update(ctx->owner, target_user, nullptr, 0U, nullptr, 0U,
-                                    false)) {
+        if (!session_pw_auth_update(ctx->owner, target_user, nullptr, 0U,
+                                    nullptr, 0U, false)) {
             session_send_system_line(ctx,
                                      "Warning: unable to update pw_auth.dat.");
         }
@@ -1846,8 +1846,8 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
                  target_nickname);
         session_send_system_line(ctx, message);
 
-        if (!session_pw_auth_update(ctx->owner, target_nickname, nullptr, 0U, nullptr,
-                                    0U, false)) {
+        if (!session_pw_auth_update(ctx->owner, target_nickname, nullptr, 0U,
+                                    nullptr, 0U, false)) {
             session_send_system_line(ctx,
                                      "Warning: unable to update pw_auth.dat.");
         }
@@ -2069,7 +2069,8 @@ static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
     char *tokens[1 + 5];
     size_t token_count = 0U;
     char *cursor = working;
-    while (cursor != nullptr && token_count < sizeof(tokens) / sizeof(tokens[0])) {
+    while (cursor != nullptr &&
+           token_count < sizeof(tokens) / sizeof(tokens[0])) {
         char *next = strchr(cursor, '|');
         if (next != nullptr) {
             *next = '\0';
@@ -4253,8 +4254,8 @@ static void session_rss_show_current(session_ctx_t *ctx)
 static void session_rss_begin(session_ctx_t *ctx, const char *tag,
                               const rss_session_item_t *items, size_t count)
 {
-    if (ctx == nullptr || tag == nullptr || tag[0] == '\0' || items == nullptr ||
-        count == 0U) {
+    if (ctx == nullptr || tag == nullptr || tag[0] == '\0' ||
+        items == nullptr || count == 0U) {
         return;
     }
 
@@ -4359,7 +4360,8 @@ static void session_rss_list(session_ctx_t *ctx)
 
 static void session_rss_read(session_ctx_t *ctx, const char *tag)
 {
-    if (ctx == nullptr || ctx->owner == nullptr || tag == nullptr || tag[0] == '\0') {
+    if (ctx == nullptr || ctx->owner == nullptr || tag == nullptr ||
+        tag[0] == '\0') {
         session_send_system_line(ctx, "Usage: /rss read <tag>");
         return;
     }

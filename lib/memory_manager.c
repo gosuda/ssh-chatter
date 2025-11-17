@@ -158,7 +158,7 @@ sshc_memory_context_t *sshc_memory_context_current(void)
 {
     sshc_memory_runtime_init();
     return (sshc_tls_context != nullptr) ? sshc_tls_context
-                                      : sshc_memory_context_global();
+                                         : sshc_memory_context_global();
 }
 
 static sshc_memory_allocation_t *
@@ -230,17 +230,18 @@ static void *sshc_memory_context_alloc(sshc_memory_context_t *ctx, size_t size,
 }
 
 static void *sshc_memory_context_realloc(sshc_memory_context_t *ctx, void *ptr,
-                                         size_t size, bool zero) {
+                                         size_t size, bool zero)
+{
     if (ctx == nullptr) {
         ctx = sshc_memory_context_current();
     }
 
-    if(size == 0U) {
+    if (size == 0U) {
         size = 1U;
     }
 
     // If ptr is null, just allocate new memory
-    if(ptr == nullptr) {
+    if (ptr == nullptr) {
         return sshc_memory_context_alloc(ctx, size, zero);
     }
 
@@ -272,12 +273,13 @@ static void *sshc_memory_context_realloc(sshc_memory_context_t *ctx, void *ptr,
     // Create a new allocation entry for the reallocated memory
     sshc_memory_allocation_t *allocation =
         (sshc_memory_allocation_t *)malloc(sizeof(*allocation));
-    if(allocation == nullptr) {
+    if (allocation == nullptr) {
         // Can't track the allocation, but the memory was reallocated successfully
         // Clean up the old allocation entry if it exists
         if (old_allocation != nullptr) {
             if (old_allocation->context != nullptr) {
-                sshc_memory_context_remove_allocation(old_allocation->context, ptr);
+                sshc_memory_context_remove_allocation(old_allocation->context,
+                                                      ptr);
             }
             free(old_allocation);
         }
@@ -291,7 +293,7 @@ static void *sshc_memory_context_realloc(sshc_memory_context_t *ctx, void *ptr,
     allocation->context = ctx;
     allocation->next_in_context = nullptr;
     allocation->next_global = nullptr;
-    
+
     // Clean up the old allocation entry
     if (old_allocation != nullptr) {
         if (old_allocation->context != nullptr) {
@@ -338,7 +340,8 @@ void *GC_MALLOC(size_t size)
                                      false);
 }
 
-void *GC_REALLOC(void *ptr, size_t size) {
+void *GC_REALLOC(void *ptr, size_t size)
+{
     return sshc_memory_context_realloc(sshc_memory_context_current(), ptr, size,
                                        false);
 }

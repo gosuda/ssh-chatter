@@ -66,7 +66,8 @@ static void session_game_show_camouflage(session_ctx_t *ctx);
 
 static void session_send_plain_line(session_ctx_t *ctx, const char *message)
 {
-    if (ctx == nullptr || !session_transport_active(ctx) || message == nullptr) {
+    if (ctx == nullptr || !session_transport_active(ctx) ||
+        message == nullptr) {
         return;
     }
 
@@ -162,7 +163,8 @@ static void session_send_reply_tree(session_ctx_t *ctx,
 static bool host_lookup_member_ip(host_t *host, const char *username, char *ip,
                                   size_t length)
 {
-    if (host == nullptr || username == nullptr || ip == nullptr || length == 0U) {
+    if (host == nullptr || username == nullptr || ip == nullptr ||
+        length == 0U) {
         return false;
     }
 
@@ -461,7 +463,7 @@ static bool session_token_is_suspicious_command(const char *token)
         return true;
     }
     if (token[0] == '/') {
-        // Check if it looks like a file path (contains another slash or 
+        // Check if it looks like a file path (contains another slash or
         // is suspiciously long for a command name)
         const char *second_slash = strchr(token + 1, '/');
         if (second_slash != nullptr) {
@@ -1008,7 +1010,8 @@ static bool session_message_contains_breaking(const char *message)
         return true;
     }
 
-    if (strstr(message, "속보") != nullptr || strstr(message, "速報") != nullptr) {
+    if (strstr(message, "속보") != nullptr ||
+        strstr(message, "速報") != nullptr) {
         return true;
     }
 
@@ -1324,7 +1327,8 @@ static bool session_should_hide_entry(session_ctx_t *ctx,
 // this displays a message to a chatting room.
 static void session_send_system_line(session_ctx_t *ctx, const char *message)
 {
-    if (ctx == nullptr || !session_transport_active(ctx) || message == nullptr) {
+    if (ctx == nullptr || !session_transport_active(ctx) ||
+        message == nullptr) {
         return;
     }
 
@@ -2454,7 +2458,8 @@ static bool session_try_command_completion(session_ctx_t *ctx)
     // SLASH_COMPATIBLE: Check for slash or slash-compatible characters
     const bool has_slash_compatible =
         session_is_slash_compatible_char(ctx->input_buffer[first_visible]);
-    if (!has_slash_compatible && ctx->input_mode != SESSION_INPUT_MODE_COMMAND) {
+    if (!has_slash_compatible &&
+        ctx->input_mode != SESSION_INPUT_MODE_COMMAND) {
         return false;
     }
 
@@ -2707,7 +2712,7 @@ static void session_history_navigate(session_ctx_t *ctx, int direction)
     // If scrollback is active (scrolled back), clear it before navigating command history
     // This prevents blank lines from appearing when switching from scrollback to command history
     bool was_scrolled_back = (ctx->history_scroll_position > 0U);
-    
+
     session_scrollback_reset_position(ctx);
 
     // Clear the current line to remove any scrollback content
@@ -2746,8 +2751,8 @@ static void session_history_navigate(session_ctx_t *ctx, int direction)
 
 void session_scrollback_navigate(session_ctx_t *ctx, int direction)
 {
-    if (ctx == nullptr || ctx->owner == nullptr || !session_transport_active(ctx) ||
-        direction == 0) {
+    if (ctx == nullptr || ctx->owner == nullptr ||
+        !session_transport_active(ctx) || direction == 0) {
         return;
     }
 
@@ -2904,8 +2909,8 @@ cleanup:
 
 static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
 {
-    if (ctx == nullptr || ctx->owner == nullptr || !session_transport_active(ctx) ||
-        direction == 0) {
+    if (ctx == nullptr || ctx->owner == nullptr ||
+        !session_transport_active(ctx) || direction == 0) {
         return;
     }
 
@@ -2959,7 +2964,8 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     }
 
     // Calculate sliding window - always show 100 messages (MESSAGE CHUNK)
-    size_t visible_lines = SSH_CHATTER_SCROLLBACK_CHUNK; // Always show 100 messages
+    size_t visible_lines =
+        SSH_CHATTER_SCROLLBACK_CHUNK; // Always show 100 messages
     size_t newest_visible = total - 1U - new_position;
     size_t chunk = visible_lines;
     if (chunk > newest_visible + 1U) {
@@ -3300,8 +3306,8 @@ static void session_send_private_message_line(session_ctx_t *ctx,
                                               const char *label,
                                               const char *message)
 {
-    if (ctx == nullptr || !session_transport_active(ctx) || color_source == nullptr ||
-        label == nullptr || message == nullptr) {
+    if (ctx == nullptr || !session_transport_active(ctx) ||
+        color_source == nullptr || label == nullptr || message == nullptr) {
         return;
     }
 
@@ -3327,7 +3333,8 @@ static void session_send_private_message_line(session_ctx_t *ctx,
 static void session_send_multiline_message(session_ctx_t *ctx,
                                            const char *message)
 {
-    if (ctx == nullptr || message == nullptr || !session_transport_active(ctx)) {
+    if (ctx == nullptr || message == nullptr ||
+        !session_transport_active(ctx)) {
         return;
     }
 
@@ -3421,8 +3428,8 @@ static void session_send_history_entry(session_ctx_t *ctx,
                                    sizeof(id_label))) {
             id_display = id_label;
         }
-        snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s", color, bold,
-                 id_display, entry->username, ANSI_RESET);
+        snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s", color,
+                 bold, id_display, entry->username, ANSI_RESET);
         strncat(formatted, name_block,
                 sizeof(formatted) - strlen(formatted) - 1U);
 
@@ -3452,14 +3459,15 @@ static void session_send_history_entry(session_ctx_t *ctx,
             const char *label =
                 chat_attachment_type_label(entry->attachment_type);
             char attachment_line[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(attachment_line, sizeof(attachment_line), "    (%s)" ANSI_RESET " %s",
-                     label, entry->attachment_target);
+            snprintf(attachment_line, sizeof(attachment_line),
+                     "    (%s)" ANSI_RESET " %s", label,
+                     entry->attachment_target);
             session_send_plain_line(ctx, attachment_line);
 
             if (entry->attachment_caption[0] != '\0') {
                 char caption_line[SSH_CHATTER_MESSAGE_LIMIT];
-                snprintf(caption_line, sizeof(caption_line), "    \342\206\263 %s",
-                         entry->attachment_caption);
+                snprintf(caption_line, sizeof(caption_line),
+                         "    \342\206\263 %s", entry->attachment_caption);
                 session_send_plain_line(ctx, caption_line);
             }
         }
@@ -3913,7 +3921,8 @@ static int session_prepare_shell(session_ctx_t *ctx)
     ssh_message message = nullptr;
     bool shell_ready = false;
 
-    while (!shell_ready && (message = ssh_message_get(ctx->session)) != nullptr) {
+    while (!shell_ready &&
+           (message = ssh_message_get(ctx->session)) != nullptr) {
         if (ssh_message_type(message) == SSH_REQUEST_CHANNEL) {
             const int subtype = ssh_message_subtype(message);
             if (subtype == SSH_CHANNEL_REQUEST_PTY ||
@@ -4126,7 +4135,8 @@ static void session_send_captcha_prompt(session_ctx_t *ctx,
                                         const captcha_language_t *order,
                                         size_t count)
 {
-    if (ctx == nullptr || prompt == nullptr || order == nullptr || count == 0U) {
+    if (ctx == nullptr || prompt == nullptr || order == nullptr ||
+        count == 0U) {
         return;
     }
 
@@ -4372,7 +4382,8 @@ static void session_print_help(session_ctx_t *ctx)
                                           help_buffer, sizeof(help_buffer));
     session_send_raw_text(ctx, help_buffer);
 
-    if (locale->help_hint_extra != nullptr && locale->help_hint_extra[0] != '\0') {
+    if (locale->help_hint_extra != nullptr &&
+        locale->help_hint_extra[0] != '\0') {
         const char *args[] = {prefix};
         char line[SSH_CHATTER_MESSAGE_LIMIT];
         session_format_template(locale->help_hint_extra, args,
@@ -5111,8 +5122,7 @@ static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    static const char *kUsage =
-        "Usage: /ircserver status|reconnect|disconnect";
+    static const char *kUsage = "Usage: /ircserver status|reconnect|disconnect";
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/ircserver", kUsage, usage,
                                  sizeof(usage));
@@ -5134,7 +5144,8 @@ static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments)
                  connected ? "connected" : "disconnected");
         session_send_system_line(ctx, message);
     } else if (strcmp(command, "reconnect") == 0) {
-        session_send_system_line(ctx, "Attempting to reconnect to IRC server...");
+        session_send_system_line(ctx,
+                                 "Attempting to reconnect to IRC server...");
         if (irc_client_reconnect(host->irc_client)) {
             session_send_system_line(ctx, "IRC reconnection initiated.");
         } else {
@@ -5736,8 +5747,7 @@ static void session_handle_chat_lookup(session_ctx_t *ctx,
         if (!host_compact_id_encode(message_id, label, sizeof(label))) {
             snprintf(label, sizeof(label), "%" PRIu64, message_id);
         }
-        snprintf(message, sizeof(message), "Message #%s was not found.",
-                 label);
+        snprintf(message, sizeof(message), "Message #%s was not found.", label);
         session_send_system_line(ctx, message);
         return;
     }

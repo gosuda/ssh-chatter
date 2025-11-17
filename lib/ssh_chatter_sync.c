@@ -149,8 +149,8 @@ void ssh_chatter_sync_init()
     pthread_mutex_init(&history_mutex, nullptr);
     ssh_chatter_sync_load_settings();
 
-    if (pthread_create(&retry_thread, nullptr, retry_connection_thread, nullptr) !=
-        0) {
+    if (pthread_create(&retry_thread, nullptr, retry_connection_thread,
+                       nullptr) != 0) {
         fprintf(stderr, "[SSH_SYNC] Failed to create retry thread.\n\n");
     }
     pthread_detach(retry_thread);
@@ -207,7 +207,8 @@ void ssh_chatter_sync_start()
     clock_gettime(CLOCK_MONOTONIC, &current_settings.last_sync_attempt);
     ssh_chatter_sync_save_settings();
 
-    if (pthread_create(&read_thread, nullptr, read_channel_thread, nullptr) != 0)
+    if (pthread_create(&read_thread, nullptr, read_channel_thread, nullptr) !=
+        0)
         goto fail_exit;
 
     fprintf(stderr, "[SSH_SYNC] Synchronization started.\n\n");

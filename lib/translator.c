@@ -1181,7 +1181,8 @@ static bool translator_extract_plaintext_response(const char *response,
 static bool translator_extract_json_value(const char *json, const char *key,
                                           char *dest, size_t dest_len)
 {
-    if (json == nullptr || key == nullptr || dest == nullptr || dest_len == 0U) {
+    if (json == nullptr || key == nullptr || dest == nullptr ||
+        dest_len == 0U) {
         return false;
     }
 
@@ -1414,7 +1415,8 @@ static CURLcode translator_issue_gemini_request(
     bool stream_mode, const volatile bool *cancel_flag,
     translator_buffer_t *buffer, long *status)
 {
-    if (curl == nullptr || url == nullptr || body == nullptr || buffer == nullptr) {
+    if (curl == nullptr || url == nullptr || body == nullptr ||
+        buffer == nullptr) {
         return CURLE_FAILED_INIT;
     }
 
@@ -1469,7 +1471,8 @@ static bool translator_handle_payload(const char *response, char *translation,
                                       char *detected_language,
                                       size_t detected_len)
 {
-    if (response == nullptr || translation == nullptr || translation_len == 0U) {
+    if (response == nullptr || translation == nullptr ||
+        translation_len == 0U) {
         return false;
     }
 
@@ -1511,7 +1514,8 @@ static CURLcode translator_issue_json_post(
     const char *auth_header_value, const char *const *extra_headers,
     const volatile bool *cancel_flag, translator_buffer_t *buffer, long *status)
 {
-    if (curl == nullptr || url == nullptr || body == nullptr || buffer == nullptr) {
+    if (curl == nullptr || url == nullptr || body == nullptr ||
+        buffer == nullptr) {
         return CURLE_FAILED_INIT;
     }
 
@@ -1730,7 +1734,8 @@ static bool translator_try_gemini(const translator_candidate_t *candidate,
         "\"generationConfig\":{\"responseMimeType\":\"application/json\"}"
         "}";
 
-    int computed = snprintf(nullptr, 0, body_format, escaped_target, escaped_text);
+    int computed =
+        snprintf(nullptr, 0, body_format, escaped_target, escaped_text);
     if (computed < 0) {
         translator_set_error("Failed to prepare translation request payload.");
         if (retryable != nullptr) {
@@ -2294,7 +2299,8 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
         "Target language: %s\nText: %s\nRespond only with JSON containing "
         "detected_language and translation.";
 
-    int prompt_length = snprintf(nullptr, 0, prompt_format, target_language, text);
+    int prompt_length =
+        snprintf(nullptr, 0, prompt_format, target_language, text);
     if (prompt_length < 0) {
         translator_set_error("Failed to prepare translation prompt.");
         return false;
@@ -2323,8 +2329,8 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
                                       "\"stream\":false"
                                       "}";
 
-    int body_length = snprintf(nullptr, 0, body_format, model_name, escaped_prompt,
-                               escaped_system);
+    int body_length = snprintf(nullptr, 0, body_format, model_name,
+                               escaped_prompt, escaped_system);
     if (body_length < 0) {
         translator_set_error("Failed to prepare translation request.");
         return false;
@@ -2348,8 +2354,9 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
 
     translator_buffer_t buffer = {0};
     long status = 0L;
-    CURLcode result = translator_issue_json_post(
-        curl, url, body, nullptr, nullptr, nullptr, cancel_flag, &buffer, &status);
+    CURLcode result =
+        translator_issue_json_post(curl, url, body, nullptr, nullptr, nullptr,
+                                   cancel_flag, &buffer, &status);
 
     bool success = false;
     if (result == CURLE_ABORTED_BY_CALLBACK ||
@@ -2501,8 +2508,8 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
 
     translator_buffer_t buffer = {0};
     long status = 0L;
-    CURLcode result = translator_issue_json_post(curl, url, body, nullptr, nullptr,
-                                                 nullptr, nullptr, &buffer, &status);
+    CURLcode result = translator_issue_json_post(
+        curl, url, body, nullptr, nullptr, nullptr, nullptr, &buffer, &status);
 
     bool success = false;
     if (result != CURLE_OK) {
@@ -2595,8 +2602,8 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
         "Category: %s\nText:\n%s\nRespond strictly with JSON containing block "
         "(boolean) and reason (string).";
 
-    int prompt_length =
-        snprintf(nullptr, 0, prompt_format, label, content != nullptr ? content : "");
+    int prompt_length = snprintf(nullptr, 0, prompt_format, label,
+                                 content != nullptr ? content : "");
     if (prompt_length < 0) {
         translator_set_error("Failed to prepare moderation prompt.");
         return false;
@@ -2626,8 +2633,8 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
                                       "\"stream\":false"
                                       "}";
 
-    int body_length = snprintf(nullptr, 0, body_format, model_name, escaped_prompt,
-                               escaped_system);
+    int body_length = snprintf(nullptr, 0, body_format, model_name,
+                               escaped_prompt, escaped_system);
     if (body_length < 0) {
         translator_set_error("Failed to prepare moderation request.");
         return false;
@@ -2651,8 +2658,8 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
 
     translator_buffer_t buffer = {0};
     long status = 0L;
-    CURLcode result = translator_issue_json_post(curl, url, body, nullptr, nullptr,
-                                                 nullptr, nullptr, &buffer, &status);
+    CURLcode result = translator_issue_json_post(
+        curl, url, body, nullptr, nullptr, nullptr, nullptr, &buffer, &status);
 
     bool success = false;
     if (result != CURLE_OK) {
@@ -2756,8 +2763,8 @@ translator_translate_internal(const char *text, const char *target_language,
                               char *detected_language, size_t detected_len,
                               const volatile bool *cancel_flag)
 {
-    if (text == nullptr || target_language == nullptr || translation == nullptr ||
-        translation_len == 0U) {
+    if (text == nullptr || target_language == nullptr ||
+        translation == nullptr || translation_len == 0U) {
         return false;
     }
 

@@ -1793,7 +1793,8 @@ bool session_user_data_load(session_ctx_t *ctx)
     }
 
     // Use a placeholder IP for loading if ctx->client_ip is not available or empty
-    const char *ip_to_use = ctx->client_ip[0] != '\0' ? ctx->client_ip : nullptr;
+    const char *ip_to_use =
+        ctx->client_ip[0] != '\0' ? ctx->client_ip : nullptr;
 
     if (!user_data_load(ctx->owner->user_data_root, ctx->user.name, ip_to_use,
                         &ctx->user_data)) {
@@ -1815,7 +1816,8 @@ bool session_user_data_commit(session_ctx_t *ctx)
     }
 
     // Use a placeholder IP for saving if ctx->client_ip is not available or empty
-    const char *ip_to_use = ctx->client_ip[0] != '\0' ? ctx->client_ip : nullptr;
+    const char *ip_to_use =
+        ctx->client_ip[0] != '\0' ? ctx->client_ip : nullptr;
 
     return user_data_save(ctx->owner->user_data_root, &ctx->user_data,
                           ip_to_use);
@@ -2752,7 +2754,8 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
             (job->type == TRANSLATION_JOB_PRIVATE_MESSAGE);
         const char *source_text = is_private_message ? job->data.pm.original
                                                      : job->data.input.original;
-        char *detected_target = is_private_message ? nullptr : detected_language;
+        char *detected_target =
+            is_private_message ? nullptr : detected_language;
         size_t detected_length =
             is_private_message ? 0U : sizeof(detected_language);
 
@@ -2765,7 +2768,8 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
             }
             session_translation_publish_result(
                 ctx, job, translated_body,
-                is_private_message ? nullptr : detected_language, nullptr, true);
+                is_private_message ? nullptr : detected_language, nullptr,
+                true);
         } else {
             const char *error = translator_last_error();
             char message[128];
@@ -2799,8 +2803,8 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
             if (ctx->translation_thread_stop) {
                 return;
             }
-            session_translation_publish_result(ctx, job, nullptr, nullptr, message,
-                                               false);
+            session_translation_publish_result(ctx, job, nullptr, nullptr,
+                                               message, false);
         }
         return;
     }
@@ -2928,7 +2932,8 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
             }
             return true;
         }
-        if (jobs[idx] == nullptr || jobs[idx]->type != TRANSLATION_JOB_CAPTION) {
+        if (jobs[idx] == nullptr ||
+            jobs[idx]->type != TRANSLATION_JOB_CAPTION) {
             return false;
         }
 
@@ -3213,7 +3218,8 @@ static void session_channel_log_write_failure(session_ctx_t *ctx,
 static bool session_telnet_write_block(session_ctx_t *ctx,
                                        const unsigned char *data, size_t length)
 {
-    if (ctx == nullptr || data == nullptr || length == 0U || ctx->telnet_fd < 0) {
+    if (ctx == nullptr || data == nullptr || length == 0U ||
+        ctx->telnet_fd < 0) {
         return true;
     }
 
@@ -3694,7 +3700,8 @@ static void session_output_buffer_flush(session_ctx_t *ctx)
     if (ctx->output_buffer_length > 0U) {
         // Temporarily disable buffering to avoid infinite recursion
         ctx->output_buffering_enabled = false;
-        session_channel_write(ctx, ctx->output_buffer, ctx->output_buffer_length);
+        session_channel_write(ctx, ctx->output_buffer,
+                              ctx->output_buffer_length);
         ctx->output_buffer_length = 0U;
         ctx->output_buffering_enabled = true;
     }
@@ -3722,7 +3729,7 @@ static bool session_output_buffer_append(session_ctx_t *ctx, const void *data,
         // Buffer is full, flush it first
         session_output_buffer_flush(ctx);
         session_output_buffer_clear(ctx);
-        
+
         // If still not enough space after flush, this write is too large
         if (length > SSH_CHATTER_OUTPUT_BUFFER_SIZE) {
             // Write directly without buffering
@@ -4263,7 +4270,8 @@ static void session_write_rendered_line(session_ctx_t *ctx,
 
 static void session_send_caption_line(session_ctx_t *ctx, const char *message)
 {
-    if (ctx == nullptr || message == nullptr || !session_transport_active(ctx)) {
+    if (ctx == nullptr || message == nullptr ||
+        !session_transport_active(ctx)) {
         return;
     }
 
@@ -4283,7 +4291,8 @@ static void session_render_caption_with_offset(session_ctx_t *ctx,
                                                const char *message,
                                                size_t move_up)
 {
-    if (ctx == nullptr || message == nullptr || !session_transport_active(ctx)) {
+    if (ctx == nullptr || message == nullptr ||
+        !session_transport_active(ctx)) {
         return;
     }
 
@@ -5209,7 +5218,7 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
     char trimmed[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(trimmed, sizeof(trimmed), "%s", message);
     trim_whitespace_inplace(trimmed);
-    
+
     if (trimmed[0] == '\0') {
         // Don't send empty messages
         return;
@@ -5228,27 +5237,27 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
 
     // Show the latest MESSAGE_CHUNK of history to the sender
     session_scrollback_reset_position(ctx);
-    
+
     // Clear screen and show latest chunk of messages
     session_clear_screen(ctx);
-    
+
     size_t total = host_history_total(ctx->owner);
     size_t chunk_size = SSH_CHATTER_SCROLLBACK_CHUNK;
     if (chunk_size > total) {
         chunk_size = total;
     }
-    
+
     // Show header
     char header[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(header, sizeof(header), "Latest messages (1-%zu of %zu)",
              chunk_size, total);
     session_send_system_line(ctx, header);
-    
+
     // Display the latest chunk
     chat_history_entry_t buffer[SSH_CHATTER_SCROLLBACK_CHUNK];
     size_t start_index = (total > chunk_size) ? (total - chunk_size) : 0U;
-    size_t copied = host_history_copy_range(ctx->owner, start_index, 
-                                            buffer, chunk_size);
+    size_t copied =
+        host_history_copy_range(ctx->owner, start_index, buffer, chunk_size);
     for (size_t i = 0; i < copied; ++i) {
         session_send_history_entry(ctx, &buffer[i]);
     }
@@ -5278,7 +5287,8 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
 // clearing the row with the palette tint before printing.
 static void session_send_line(session_ctx_t *ctx, const char *message)
 {
-    if (ctx == nullptr || !session_transport_active(ctx) || message == nullptr) {
+    if (ctx == nullptr || !session_transport_active(ctx) ||
+        message == nullptr) {
         return;
     }
 
@@ -5313,8 +5323,8 @@ static void session_send_line(session_ctx_t *ctx, const char *message)
         placeholder_lines = spacing + 1U;
     }
 
-    if (translation_ready &&
-        session_translation_queue_caption(ctx, render_text, placeholder_lines)) {
+    if (translation_ready && session_translation_queue_caption(
+                                 ctx, render_text, placeholder_lines)) {
         if (placeholder_lines > 0U) {
             session_translation_reserve_placeholders(ctx, placeholder_lines);
         }

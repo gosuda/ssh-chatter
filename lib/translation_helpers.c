@@ -261,8 +261,8 @@ static bool is_ansi_char(char c)
 static size_t extract_ansi_sequence(const char *text, size_t max_len,
                                     char *buffer, size_t buffer_len)
 {
-    if (text == nullptr || buffer == nullptr || buffer_len == 0 || max_len == 0 ||
-        text[0] != '\033') {
+    if (text == nullptr || buffer == nullptr || buffer_len == 0 ||
+        max_len == 0 || text[0] != '\033') {
         if (buffer)
             buffer[0] = '\0';
         return 0;

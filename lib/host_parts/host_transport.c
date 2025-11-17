@@ -362,7 +362,8 @@ static bool host_bind_load_key(ssh_bind bind_handle,
                                const host_key_definition_t *definition,
                                const char *key_path)
 {
-    if (bind_handle == nullptr || definition == nullptr || key_path == nullptr) {
+    if (bind_handle == nullptr || definition == nullptr ||
+        key_path == nullptr) {
         return false;
     }
 
@@ -384,9 +385,9 @@ static bool host_bind_load_key(ssh_bind bind_handle,
             char message[256];
             snprintf(message, sizeof(message), "failed to load %s host key",
                      definition->algorithm);
-            humanized_log_error("host",
-                                error_message != nullptr ? error_message : message,
-                                errno != 0 ? errno : EIO);
+            humanized_log_error(
+                "host", error_message != nullptr ? error_message : message,
+                errno != 0 ? errno : EIO);
             return false;
         }
         require_import = true;
@@ -473,7 +474,8 @@ typedef struct connection_guard_result {
 static void host_connection_guard_prune_locked(host_t *host,
                                                const struct timespec *now)
 {
-    if (host == nullptr || now == nullptr || host->connection_guard_count == 0U) {
+    if (host == nullptr || now == nullptr ||
+        host->connection_guard_count == 0U) {
         return;
     }
 
@@ -543,7 +545,7 @@ host_ensure_connection_guard_locked(host_t *host, const char *ip)
                                   : 16U;
         connection_guard_entry_t *resized =
             GC_REALLOC(host->connection_guard,
-                    new_capacity * sizeof(connection_guard_entry_t));
+                       new_capacity * sizeof(connection_guard_entry_t));
         if (resized == nullptr) {
             return nullptr;
         }
@@ -778,7 +780,8 @@ static void session_build_captcha_prompt(session_ctx_t *ctx,
 
     memset(prompt, 0, sizeof(*prompt));
 
-    unsigned basis = session_simple_hash(ctx != nullptr ? ctx->user.name : "user");
+    unsigned basis =
+        session_simple_hash(ctx != nullptr ? ctx->user.name : "user");
     basis ^= session_simple_hash(ctx != nullptr ? ctx->client_ip : "ip");
 
     unsigned entropy = 0U;
@@ -4056,11 +4059,12 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         if (from != nullptr) {
             // Format message directly for real-time delivery
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-            const char *color = from->user_color_code != nullptr ? from->user_color_code : "";
+            const char *color =
+                from->user_color_code != nullptr ? from->user_color_code : "";
             const char *bold = from->user_is_bold ? ANSI_BOLD : "";
-            
-            snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s", 
-                     color, bold, from->user.name, ANSI_RESET, message);
+
+            snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s", color,
+                     bold, from->user.name, ANSI_RESET, message);
             session_send_plain_line(member, formatted);
         } else {
             session_send_system_line(member, message);
@@ -4159,35 +4163,40 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
-        
+
         if (entry->is_user_message) {
             // Format user message directly
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-            const char *color = entry->user_color_code != nullptr ? entry->user_color_code : "";
+            const char *color =
+                entry->user_color_code != nullptr ? entry->user_color_code : "";
             const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
-            
+
             char id_label[32] = "-";
             if (entry->message_id > 0U) {
-                host_compact_id_encode(entry->message_id, id_label, sizeof(id_label));
+                host_compact_id_encode(entry->message_id, id_label,
+                                       sizeof(id_label));
             }
-            
-            snprintf(formatted, sizeof(formatted), "%s%s [%s] <%s>%s %s", 
-                     color, bold, id_label, entry->username, ANSI_RESET, entry->message);
+
+            snprintf(formatted, sizeof(formatted), "%s%s [%s] <%s>%s %s", color,
+                     bold, id_label, entry->username, ANSI_RESET,
+                     entry->message);
             session_send_plain_line(member, formatted);
-            
+
             // Send attachment if present
             if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&
                 entry->attachment_target[0] != '\0') {
-                const char *label = chat_attachment_type_label(entry->attachment_type);
+                const char *label =
+                    chat_attachment_type_label(entry->attachment_type);
                 char attachment_line[SSH_CHATTER_MESSAGE_LIMIT];
-                snprintf(attachment_line, sizeof(attachment_line), "    (%s)" ANSI_RESET " %s",
-                         label, entry->attachment_target);
+                snprintf(attachment_line, sizeof(attachment_line),
+                         "    (%s)" ANSI_RESET " %s", label,
+                         entry->attachment_target);
                 session_send_plain_line(member, attachment_line);
-                
+
                 if (entry->attachment_caption[0] != '\0') {
                     char caption_line[SSH_CHATTER_MESSAGE_LIMIT];
-                    snprintf(caption_line, sizeof(caption_line), "    \342\206\263 %s",
-                             entry->attachment_caption);
+                    snprintf(caption_line, sizeof(caption_line),
+                             "    \342\206\263 %s", entry->attachment_caption);
                     session_send_plain_line(member, caption_line);
                 }
             }
@@ -4195,7 +4204,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             // System message
             session_send_plain_line(member, entry->message);
         }
-        
+
         if (member->history_scroll_position == 0U) {
             session_refresh_input_line(member);
         }
@@ -4240,27 +4249,27 @@ chat_room_broadcast_reaction_update(host_t *host,
 //     if (host == nullptr || entry == nullptr) {
 //         return;
 //     }
-// 
+//
 //     const char *target_prefix = (entry->parent_reply_id == 0U) ? "#" : "r#";
 //     uint64_t target_id = (entry->parent_reply_id == 0U)
 //                              ? entry->parent_message_id
 //                              : entry->parent_reply_id;
-// 
+//
 //     char reply_label[32];
 //     if (!host_compact_id_encode(entry->reply_id, reply_label,
 //                                 sizeof(reply_label))) {
 //         snprintf(reply_label, sizeof(reply_label), "%" PRIu64, entry->reply_id);
 //     }
-// 
+//
 //     char target_label[32];
 //     if (!host_compact_id_encode(target_id, target_label, sizeof(target_label))) {
 //         snprintf(target_label, sizeof(target_label), "%" PRIu64, target_id);
 //     }
-// 
+//
 //     char line[SSH_CHATTER_MESSAGE_LIMIT];
 //     snprintf(line, sizeof(line), "↳ [r#%s → %s%s] %s: %s", reply_label,
 //              target_prefix, target_label, entry->username, entry->message);
-// 
+//
 //     chat_room_broadcast(&host->room, line, nullptr);
 // }
 
@@ -4563,8 +4572,8 @@ static bool host_state_write_history_entry(FILE *fp,
 static bool host_state_stream_open(const char *path, FILE **out_fp,
                                    uint32_t *version, uint32_t *history_count)
 {
-    if (path == nullptr || path[0] == '\0' || out_fp == nullptr || version == nullptr ||
-        history_count == nullptr) {
+    if (path == nullptr || path[0] == '\0' || out_fp == nullptr ||
+        version == nullptr || history_count == nullptr) {
         return false;
     }
 
@@ -4753,7 +4762,7 @@ static size_t host_history_copy_range(host_t *host, size_t start_index,
 
     if (cache_portion > 0U) {
         cached_copy = (chat_history_entry_t *)GC_MALLOC(cache_portion *
-                                                     sizeof(*cached_copy));
+                                                        sizeof(*cached_copy));
         if (cached_copy == nullptr) {
             pthread_mutex_unlock(&host->lock);
             return 0U;
@@ -4926,7 +4935,8 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
         *replies_removed = 0U;
     }
 
-    if (host == nullptr || start_id == 0U || end_id == 0U || start_id > end_id) {
+    if (host == nullptr || start_id == 0U || end_id == 0U ||
+        start_id > end_id) {
         return 0U;
     }
 
@@ -4950,7 +4960,7 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
             entry_count = (size_t)file_history_count;
             if (entry_count > 0U) {
                 entries = (chat_history_entry_t *)GC_MALLOC(entry_count *
-                                                         sizeof(*entries));
+                                                            sizeof(*entries));
                 if (entries != nullptr) {
                     history_loaded = true;
                     for (size_t idx = 0U; idx < entry_count; ++idx) {
@@ -4971,8 +4981,8 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
     if (!history_loaded) {
         entry_count = host->history_count;
         if (entry_count > 0U) {
-            entries =
-                (chat_history_entry_t *)GC_MALLOC(entry_count * sizeof(*entries));
+            entries = (chat_history_entry_t *)GC_MALLOC(entry_count *
+                                                        sizeof(*entries));
             if (entries == nullptr) {
                 pthread_mutex_unlock(&host->lock);
                 return 0U;
@@ -5292,7 +5302,8 @@ static bool host_history_record_user(host_t *host, const session_ctx_t *from,
                                      bool preserve_whitespace,
                                      chat_history_entry_t *stored_entry)
 {
-    if (host == nullptr || from == nullptr || message == nullptr || message[0] == '\0') {
+    if (host == nullptr || from == nullptr || message == nullptr ||
+        message[0] == '\0') {
         return false;
     }
 
@@ -5323,7 +5334,7 @@ static bool host_history_record_system(host_t *host, const char *message,
     if (!host_history_commit_entry(host, &entry, stored_entry)) {
         return false;
     }
-    
+
     chat_history_entry_t notification_entry;
     if (stored_entry != nullptr) {
         notification_entry = *stored_entry;
@@ -5822,7 +5833,8 @@ static void host_revoke_grant_from_ip(host_t *host, const char *ip)
 static bool host_lookup_user_os(host_t *host, const char *username,
                                 char *buffer, size_t length)
 {
-    if (host == nullptr || username == nullptr || buffer == nullptr || length == 0U) {
+    if (host == nullptr || username == nullptr || buffer == nullptr ||
+        length == 0U) {
         return false;
     }
 
@@ -6166,7 +6178,8 @@ static bool host_security_execute_clamav_backend(host_t *host, char *notice,
         }
 
         // execute clamscan without shell parsing issues
-        const char *argv[] = {"sh", "-c", host->security_clamav_command, nullptr};
+        const char *argv[] = {"sh", "-c", host->security_clamav_command,
+                              nullptr};
         execvp(argv[0], (char *const *)argv);
 
         // only runs if exec failed

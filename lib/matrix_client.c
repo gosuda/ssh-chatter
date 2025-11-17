@@ -87,7 +87,8 @@ static size_t matrix_curl_write(void *contents, size_t size, size_t nmemb,
         return 0U;
     }
 
-    char *new_data = (char *)GC_REALLOC(buffer->data, buffer->length + total + 1U);
+    char *new_data =
+        (char *)GC_REALLOC(buffer->data, buffer->length + total + 1U);
     if (new_data == nullptr) {
         return 0U;
     }
@@ -462,7 +463,7 @@ static bool matrix_json_decode_string(const char *input, char *output,
 static const char *matrix_skip_whitespace(const char *cursor)
 {
     while (cursor != nullptr && (*cursor == ' ' || *cursor == '\n' ||
-                              *cursor == '\r' || *cursor == '\t')) {
+                                 *cursor == '\r' || *cursor == '\t')) {
         ++cursor;
     }
     return cursor;
@@ -471,7 +472,8 @@ static const char *matrix_skip_whitespace(const char *cursor)
 static bool matrix_json_extract_string(const char *json, const char *key,
                                        char *output, size_t output_len)
 {
-    if (json == nullptr || key == nullptr || output == nullptr || output_len == 0U) {
+    if (json == nullptr || key == nullptr || output == nullptr ||
+        output_len == 0U) {
         return false;
     }
 
@@ -846,7 +848,8 @@ static bool matrix_client_send_entry(matrix_client_t *client,
 static void matrix_client_on_message(client_connection_t *connection,
                                      const chat_history_entry_t *entry)
 {
-    if (connection == nullptr || entry == nullptr || connection->user_data == nullptr) {
+    if (connection == nullptr || entry == nullptr ||
+        connection->user_data == nullptr) {
         return;
     }
 
@@ -992,8 +995,8 @@ static void matrix_client_inject_message(matrix_client_t *client,
     if (payload->system) {
         char line[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(line, sizeof(line), "[matrix] %s", payload->message);
-        if (!host_post_client_message(client->host, "matrix-system", line, nullptr,
-                                      nullptr, false)) {
+        if (!host_post_client_message(client->host, "matrix-system", line,
+                                      nullptr, nullptr, false)) {
             humanized_log_error("matrix", "failed to inject system notice",
                                 errno != 0 ? errno : EIO);
         }
@@ -1232,8 +1235,8 @@ static bool matrix_client_sync(matrix_client_t *client)
 
     matrix_buffer_t response = {0};
     long status = 0;
-    bool ok = matrix_client_issue_request(client, "GET", url, nullptr, &response,
-                                          &status);
+    bool ok = matrix_client_issue_request(client, "GET", url, nullptr,
+                                          &response, &status);
     if (!ok) {
         int saved_errno = errno;
         char message[256];
@@ -1311,7 +1314,8 @@ matrix_client_t *matrix_client_create(host_t *host, client_manager_t *manager,
     const char *homeserver = matrix_getenv("CHATTER_MATRIX_HOMESERVER");
     const char *access_token = matrix_getenv("CHATTER_MATRIX_ACCESS_TOKEN");
     const char *room_id = matrix_getenv("CHATTER_MATRIX_ROOM_ID");
-    if (homeserver == nullptr || access_token == nullptr || room_id == nullptr) {
+    if (homeserver == nullptr || access_token == nullptr ||
+        room_id == nullptr) {
         return nullptr;
     }
 

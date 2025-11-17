@@ -73,39 +73,81 @@ confirm the build still succeeds before pushing the result.
 - Suspicious submissions that trip the layered filter are now tracked per-IP; repeated hits trigger an automatic kick and ban, while the rapid reconnect detector allows longer recovery windows so unstable network sessions can rejoin without being penalized.
 - Operators can mark trusted ingress points (VPN exits, reverse proxies, localhost) with `CHATTER_PROTECTED_IPS` (comma-separated, defaults to `127.0.0.1,::1,192.168.0.1`) so emergency bans never lock the daemon out of its own control plane.
 
-## MRC Server relay
+## IRC Integration
 
-SSH-Chatter supports connecting to MRC (Multi Relay Chat) servers, allowing integration with external IRC-like relay networks such as magviz.ca. The MRC relay automatically forwards messages between the SSH chat room and the configured relay server.
+SSH-Chatter supports bidirectional integration with IRC (Internet Relay Chat) servers, enabling seamless communication between SSH chat users and IRC channel participants. The integration automatically forwards messages in both directions while preserving user identity.
 
 ### Configuration
 
-Set these environment variables to enable the MRC relay:
+Set these environment variables to enable IRC integration:
 
-- `CHATTER_MRC_SERVER` – hostname or IP address of the MRC server (e.g., `irc.magviz.ca`)
-- `CHATTER_MRC_PORT` – port number (defaults to `6667` if not specified)
-- `CHATTER_MRC_CHANNEL` – IRC-style channel to join (e.g., `#chat`)
-- `CHATTER_MRC_NICKNAME` – nickname for the bot (defaults to `ssh-chatter`)
+- `CHATTER_IRC_SERVER` – hostname or IP address of the IRC server (e.g., `irc.libera.chat`)
+- `CHATTER_IRC_PORT` – port number (defaults to `6667` if not specified)
+- `CHATTER_IRC_CHANNEL` – IRC channel to join (e.g., `#mychannel`)
+- `CHATTER_IRC_NICKNAME` – nickname for the bot (defaults to `ssh-chatter`)
 
 Example configuration in `chatter.env`:
 
 ```bash
-CHATTER_MRC_SERVER=irc.magviz.ca
-CHATTER_MRC_PORT=6667
-CHATTER_MRC_CHANNEL=#general
-CHATTER_MRC_NICKNAME=chatbot
+CHATTER_IRC_SERVER=irc.libera.chat
+CHATTER_IRC_PORT=6667
+CHATTER_IRC_CHANNEL=#test
+CHATTER_IRC_NICKNAME=ssh-chatter-bot
 ```
 
-### Managing the connection
+### Bidirectional Communication
 
-Operators can manage the MRC relay connection using the `/mrcserver` command:
+The IRC integration ensures clear identity display on both sides:
+
+**SSH Chat → IRC**: Messages from SSH chat users are sent to IRC in the format `<username> message`, preserving the original sender's identity.
+
+**IRC → SSH Chat**: Messages from IRC users appear in SSH chat with the format `[IRC] message` and show the IRC nickname as the sender, making it clear the message originated from IRC.
+
+### User Identity Preservation
+
+- SSH chat usernames are wrapped in angle brackets (`<username>`) when sent to IRC
+- IRC nicknames are preserved and displayed as the message sender in SSH chat
+- The `[IRC]` prefix in messages clearly indicates IRC origin
+- Echo prevention ensures messages are not sent back to their source
+
+### Managing the Connection
+
+Operators can manage the IRC connection using the `/mrcserver` command:
 
 ```bash
 /mrcserver status        # Check connection status
-/mrcserver reconnect     # Reconnect to the MRC server
-/mrcserver disconnect    # Disconnect from the MRC server
+/mrcserver reconnect     # Reconnect to the IRC server
+/mrcserver disconnect    # Disconnect from the IRC server
 ```
 
-Messages received from the MRC relay appear in the chat with a `[MRC]` prefix and the sender's nickname. The relay automatically handles reconnections if the connection drops, with a 30-second delay between attempts.
+The IRC relay automatically handles reconnections if the connection drops, with a 30-second delay between reconnection attempts.
+
+### Testing
+
+Run the IRC integration test suite:
+
+```bash
+make irc-test
+```
+
+This validates IRC message formatting, nickname handling, bidirectional communication, and identity preservation.
+
+## MRC Server relay (Legacy Documentation)
+
+**Note**: MRC (Multi Relay Chat) refers to the same IRC integration described above. The environment variables have been standardized to use `CHATTER_IRC_*` prefix. The MRC terminology is maintained for backward compatibility, but new deployments should use the IRC configuration section above.
+
+SSH-Chatter supports connecting to MRC (Multi Relay Chat) servers, allowing integration with external IRC-like relay networks such as magviz.ca. The MRC relay automatically forwards messages between the SSH chat room and the configured relay server.
+
+### Configuration (Legacy Variable Names)
+
+For backward compatibility, these variable names may still be referenced in some contexts:
+
+- `CHATTER_MRC_SERVER` – hostname or IP address of the IRC server (use `CHATTER_IRC_SERVER` instead)
+- `CHATTER_MRC_PORT` – port number (use `CHATTER_IRC_PORT` instead)
+- `CHATTER_MRC_CHANNEL` – IRC-style channel to join (use `CHATTER_IRC_CHANNEL` instead)
+- `CHATTER_MRC_NICKNAME` – nickname for the bot (use `CHATTER_IRC_NICKNAME` instead)
+
+The `/mrcserver` command continues to work for managing IRC connections for backward compatibility.
 
 ## Matrix bridge(WIP, Unusable)
 

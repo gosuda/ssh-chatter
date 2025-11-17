@@ -5285,6 +5285,15 @@ static void host_notify_external_clients(host_t *host,
         return;
     }
     client_manager_notify_history(host->clients, entry);
+    
+    // Send user messages to IRC if connected
+    if (host->irc_client != NULL && entry->is_user_message) {
+        // Don't echo IRC messages back to IRC
+        if (strncmp(entry->message, "[IRC]", 5) != 0) {
+            irc_client_send_message(host->irc_client, entry->username,
+                                   entry->message);
+        }
+    }
 }
 
 static bool host_history_record_user(host_t *host, const session_ctx_t *from,

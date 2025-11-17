@@ -90,8 +90,12 @@ STRESS_TARGET := stress-test
 STRESS_SRC := tests/stress_main.c
 STRESS_OBJ := $(STRESS_SRC:.c=.o)
 
+IRC_TEST_TARGET := irc-integration-test
+IRC_TEST_SRC := tests/irc_integration_test.c
+IRC_TEST_OBJ := $(IRC_TEST_SRC:.c=.o)
 
-.PHONY: all clean run stress-test
+
+.PHONY: all clean run stress-test irc-test test
 
 # ==============================================================================
 # BUILD RULES (Single Stage)
@@ -111,6 +115,9 @@ $(SHARED_TARGET): $(SHARED_OBJ)
 $(STRESS_TARGET): $(filter-out main.o,$(OBJ)) $(STRESS_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
+$(IRC_TEST_TARGET): $(IRC_TEST_OBJ) lib/irc_client.o lib/memory_manager.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
 # Rule for compiling object files
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -118,9 +125,15 @@ $(STRESS_TARGET): $(filter-out main.o,$(OBJ)) $(STRESS_OBJ)
 run: $(TARGET)
 	./$(TARGET)
 
+test: $(IRC_TEST_TARGET)
+	./$(IRC_TEST_TARGET)
+
+irc-test: $(IRC_TEST_TARGET)
+	./$(IRC_TEST_TARGET)
+
 clean:
 # Cleanup only for LTO/standard build files
-	rm -f $(OBJ) $(TARGET) $(SHARED_TARGET) $(DEP) $(STRESS_OBJ) $(STRESS_TARGET)
+	rm -f $(OBJ) $(TARGET) $(SHARED_TARGET) $(DEP) $(STRESS_OBJ) $(STRESS_TARGET) $(IRC_TEST_OBJ) $(IRC_TEST_TARGET)
 
 # Include dependency files
 -include $(DEP)

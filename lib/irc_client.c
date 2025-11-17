@@ -445,3 +445,34 @@ void irc_client_disconnect(irc_client_t *client)
     atomic_store(&client->disabled, true);
     irc_disconnect_socket(client);
 }
+
+bool irc_client_send_message(irc_client_t *client, const char *username,
+                             const char *message)
+{
+    if (client == NULL || username == NULL || message == NULL) {
+        return false;
+    }
+
+    if (!atomic_load(&client->connected) || client->socket_fd < 0) {
+        return false;
+    }
+
+    // Format: PRIVMSG #channel :<username> message
+    char buffer[IRC_BUFFER_SIZE];
+    int len = snprintf(buffer, sizeof(buffer), "PRIVMSG %s :<%s> %s\r\n",
+                      client->channel, username, message);
+    
+    if (len < 0 || (size_t)len >= sizeof(buffer)) {
+        return false;
+    }
+
+    pthread_mutex_lock(&client->lock);
+    ssize_t sent = send(client->socket_fd, buffer, (size_t)len, 0);
+    pthread_mutex_unlock(&client->lock);
+
+    if (sent < 0 || sent != len) {
+        return false;
+    }
+
+    return true;
+}

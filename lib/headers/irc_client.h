@@ -25,4 +25,8 @@ bool irc_client_reconnect(irc_client_t *client);
 // Disconnect from IRC server
 void irc_client_disconnect(irc_client_t *client);
 
+// Send a message to IRC channel
+bool irc_client_send_message(irc_client_t *client, const char *username,
+                             const char *message);
+
 #endif

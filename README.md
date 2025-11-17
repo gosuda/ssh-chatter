@@ -5,6 +5,7 @@
 **General BBS Software**
 
 SSH-Chatter has started from a C reimplementation of the Go [`ssh-chat`](https://github.com/gosuda/ssh-chat) server. It mirrors/extends the original behaviour while using modern C patterns and a small, testable core. The server listens for SSH/TELNET connections and places every authenticated user into a shared chat room that exposes the same command surface as the Go reference implementation.
+
 *Do you know why it takes so long to understand C? Because it is an instinct.*
 
 ## Recent enhancements

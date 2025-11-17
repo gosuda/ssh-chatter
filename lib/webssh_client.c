@@ -20,7 +20,7 @@ struct webssh_client {
 static void webssh_client_on_message(client_connection_t *connection,
                                      const chat_history_entry_t *entry)
 {
-    if (connection == NULL || entry == NULL || connection->user_data == NULL) {
+    if (connection == nullptr || entry == nullptr || connection->user_data == nullptr) {
         return;
     }
 
@@ -49,21 +49,21 @@ static void webssh_client_on_detach(client_connection_t *connection)
 webssh_client_t *webssh_client_create(struct host *host,
                                       client_manager_t *manager)
 {
-    if (host == NULL || manager == NULL) {
-        return NULL;
+    if (host == nullptr || manager == nullptr) {
+        return nullptr;
     }
 
     webssh_client_t *client =
         (webssh_client_t *)calloc(1U, sizeof(webssh_client_t));
-    if (client == NULL) {
-        return NULL;
+    if (client == nullptr) {
+        return nullptr;
     }
 
     client->host = host;
     client->manager = manager;
     client->history_start = 0U;
     client->history_count = 0U;
-    pthread_mutex_init(&client->lock, NULL);
+    pthread_mutex_init(&client->lock, nullptr);
     memset(&client->connection, 0, sizeof(client->connection));
     client->connection.kind = CLIENT_KIND_WEBSSH;
     snprintf(client->connection.identifier,
@@ -73,12 +73,12 @@ webssh_client_t *webssh_client_create(struct host *host,
     client->connection.on_message = webssh_client_on_message;
     client->connection.on_detach = webssh_client_on_detach;
     client->connection.user_data = client;
-    client->connection.owner = NULL;
+    client->connection.owner = nullptr;
 
     if (!client_manager_register(manager, &client->connection)) {
         pthread_mutex_destroy(&client->lock);
-        free(client);
-        return NULL;
+        GC_FREE(client);
+        return nullptr;
     }
 
     return client;
@@ -86,21 +86,21 @@ webssh_client_t *webssh_client_create(struct host *host,
 
 void webssh_client_destroy(webssh_client_t *client)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return;
     }
 
-    if (client->manager != NULL) {
+    if (client->manager != nullptr) {
         client_manager_unregister(client->manager, &client->connection);
     }
     pthread_mutex_destroy(&client->lock);
-    free(client);
+    GC_FREE(client);
 }
 
 size_t webssh_client_snapshot(webssh_client_t *client,
                               chat_history_entry_t *buffer, size_t capacity)
 {
-    if (client == NULL || buffer == NULL || capacity == 0U) {
+    if (client == nullptr || buffer == nullptr || capacity == 0U) {
         return 0U;
     }
 
@@ -122,9 +122,9 @@ size_t webssh_client_snapshot(webssh_client_t *client,
 bool webssh_client_send_message(webssh_client_t *client, const char *username,
                                 const char *message)
 {
-    if (client == NULL || client->host == NULL) {
+    if (client == nullptr || client->host == nullptr) {
         return false;
     }
-    return host_post_client_message(client->host, username, message, NULL, NULL,
+    return host_post_client_message(client->host, username, message, nullptr, nullptr,
                                     false);
 }

@@ -46,15 +46,15 @@ struct irc_client {
 static const char *irc_getenv(const char *name)
 {
     const char *value = getenv(name);
-    if (value == NULL || value[0] == '\0') {
-        return NULL;
+    if (value == nullptr || value[0] == '\0') {
+        return nullptr;
     }
     return value;
 }
 
 static void irc_set_status(irc_client_t *client, const char *status)
 {
-    if (client == NULL || status == NULL) {
+    if (client == nullptr || status == nullptr) {
         return;
     }
     pthread_mutex_lock(&client->lock);
@@ -67,7 +67,7 @@ __attribute__((unused))
 static void irc_client_disable(irc_client_t *client, const char *message,
                                int error_code)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return;
     }
 
@@ -77,7 +77,7 @@ static void irc_client_disable(irc_client_t *client, const char *message,
     }
 
     int log_code = (error_code != 0) ? error_code : EIO;
-    if (message != NULL && message[0] != '\0') {
+    if (message != nullptr && message[0] != '\0') {
         humanized_log_error("irc", message, log_code);
     } else {
         humanized_log_error("irc", "IRC relay disabled after failure", log_code);
@@ -89,7 +89,7 @@ static void irc_client_disable(irc_client_t *client, const char *message,
 
 static bool irc_connect_socket(irc_client_t *client)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return false;
     }
 
@@ -115,7 +115,7 @@ static bool irc_connect_socket(irc_client_t *client)
         return false;
     }
 
-    for (rp = result; rp != NULL; rp = rp->ai_next) {
+    for (rp = result; rp != nullptr; rp = rp->ai_next) {
         client->socket_fd =
             socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (client->socket_fd == -1) {
@@ -166,7 +166,7 @@ static bool irc_connect_socket(irc_client_t *client)
     }
 
     atomic_store(&client->connected, true);
-    client->last_ping = time(NULL);
+    client->last_ping = time(nullptr);
     irc_set_status(client, "Connected");
 
     return true;
@@ -174,7 +174,7 @@ static bool irc_connect_socket(irc_client_t *client)
 
 static void irc_disconnect_socket(irc_client_t *client)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return;
     }
 
@@ -193,15 +193,15 @@ static void irc_disconnect_socket(irc_client_t *client)
 
 static void irc_handle_message(irc_client_t *client, const char *line)
 {
-    if (client == NULL || line == NULL || client->host == NULL) {
+    if (client == nullptr || line == nullptr || client->host == nullptr) {
         return;
     }
 
     // Parse IRC-style PRIVMSG
     // Format: :nick!user@host PRIVMSG #channel :message
-    if (strncmp(line, "PRIVMSG ", 8) == 0 || strstr(line, " PRIVMSG ") != NULL) {
+    if (strncmp(line, "PRIVMSG ", 8) == 0 || strstr(line, " PRIVMSG ") != nullptr) {
         const char *privmsg = strstr(line, " PRIVMSG ");
-        if (privmsg == NULL) {
+        if (privmsg == nullptr) {
             privmsg = line;
         } else {
             privmsg += 9; // Skip " PRIVMSG "
@@ -209,7 +209,7 @@ static void irc_handle_message(irc_client_t *client, const char *line)
 
         // Extract channel
         const char *msg_start = strchr(privmsg, ':');
-        if (msg_start != NULL) {
+        if (msg_start != nullptr) {
             msg_start++; // Skip ':'
             
             // Check for CTCP message (starts and ends with \x01)
@@ -220,7 +220,7 @@ static void irc_handle_message(irc_client_t *client, const char *line)
                 
                 // Extract CTCP command for potential response
                 const char *ctcp_end = strchr(msg_start + 1, '\x01');
-                if (ctcp_end != NULL) {
+                if (ctcp_end != nullptr) {
                     size_t ctcp_len = (size_t)(ctcp_end - (msg_start + 1));
                     
                     // Check if it's a CTCP VERSION query (no parameters after VERSION)
@@ -228,7 +228,7 @@ static void irc_handle_message(irc_client_t *client, const char *line)
                         // Extract the sender's nickname to reply
                         if (line[0] == ':') {
                             const char *nick_end = strchr(line + 1, '!');
-                            if (nick_end != NULL) {
+                            if (nick_end != nullptr) {
                                 char sender_nick[64] = {0};
                                 size_t nick_len = (size_t)(nick_end - (line + 1));
                                 if (nick_len < sizeof(sender_nick)) {
@@ -254,7 +254,7 @@ static void irc_handle_message(irc_client_t *client, const char *line)
             char nick[64] = {0};
             if (line[0] == ':') {
                 const char *nick_end = strchr(line + 1, '!');
-                if (nick_end != NULL) {
+                if (nick_end != nullptr) {
                     size_t nick_len = (size_t)(nick_end - (line + 1));
                     if (nick_len < sizeof(nick)) {
                         memcpy(nick, line + 1, nick_len);
@@ -269,17 +269,17 @@ static void irc_handle_message(irc_client_t *client, const char *line)
             const char *username = nick[0] != '\0' ? nick : "irc-relay";
             
             if (!host_post_client_message(client->host, username, formatted, 
-                                         NULL, NULL, false)) {
+                                         nullptr, nullptr, false)) {
                 // Silently fail - don't flood logs
             }
         }
     }
     // Handle PING
     // Format: PING :server or :server PING :server
-    else if (strncmp(line, "PING ", 5) == 0 || strstr(line, " PING ") != NULL) {
+    else if (strncmp(line, "PING ", 5) == 0 || strstr(line, " PING ") != nullptr) {
         const char *ping_pos = strstr(line, " PING ");
         const char *ping_param;
-        if (ping_pos == NULL) {
+        if (ping_pos == nullptr) {
             // Line starts with "PING ", skip "PING "
             ping_param = line + 5;
         } else {
@@ -296,8 +296,8 @@ static void irc_handle_message(irc_client_t *client, const char *line)
 static void *irc_client_thread(void *arg)
 {
     irc_client_t *client = (irc_client_t *)arg;
-    if (client == NULL) {
-        return NULL;
+    if (client == nullptr) {
+        return nullptr;
     }
 
     atomic_store(&client->running, true);
@@ -315,7 +315,7 @@ static void *irc_client_thread(void *arg)
         }
 
         // Send periodic PING
-        time_t now = time(NULL);
+        time_t now = time(nullptr);
         if (now - client->last_ping > IRC_PING_INTERVAL_SECONDS) {
             const char *ping_msg = "PING :keepalive\r\n";
             if (send(client->socket_fd, ping_msg, strlen(ping_msg), 0) < 0) {
@@ -334,7 +334,7 @@ static void *irc_client_thread(void *arg)
         timeout.tv_sec = 1;
         timeout.tv_usec = 0;
 
-        int ret = select(client->socket_fd + 1, &read_fds, NULL, NULL, &timeout);
+        int ret = select(client->socket_fd + 1, &read_fds, nullptr, nullptr, &timeout);
         if (ret < 0) {
             irc_disconnect_socket(client);
             continue;
@@ -358,7 +358,7 @@ static void *irc_client_thread(void *arg)
         // Process complete lines
         char *line_start = buffer;
         char *line_end;
-        while ((line_end = strstr(line_start, "\r\n")) != NULL) {
+        while ((line_end = strstr(line_start, "\r\n")) != nullptr) {
             *line_end = '\0';
             irc_handle_message(client, line_start);
             line_start = line_end + 2;
@@ -383,13 +383,13 @@ static void *irc_client_thread(void *arg)
     atomic_store(&client->running, false);
     irc_set_status(client, "Stopped");
 
-    return NULL;
+    return nullptr;
 }
 
 irc_client_t *irc_client_create(host_t *host)
 {
-    if (host == NULL) {
-        return NULL;
+    if (host == nullptr) {
+        return nullptr;
     }
 
     const char *server = irc_getenv("CHATTER_IRC_SERVER");
@@ -399,14 +399,14 @@ irc_client_t *irc_client_create(host_t *host)
     const char *username = irc_getenv("CHATTER_IRC_USERNAME");
     const char *realname = irc_getenv("CHATTER_IRC_REALNAME");
 
-    // IRC is optional, return NULL if not configured
-    if (server == NULL || channel == NULL) {
-        return NULL;
+    // IRC is optional, return nullptr if not configured
+    if (server == nullptr || channel == nullptr) {
+        return nullptr;
     }
 
     irc_client_t *client = (irc_client_t *)calloc(1, sizeof(irc_client_t));
-    if (client == NULL) {
-        return NULL;
+    if (client == nullptr) {
+        return nullptr;
     }
 
     client->host = host;
@@ -417,27 +417,27 @@ irc_client_t *irc_client_create(host_t *host)
     atomic_init(&client->connected, false);
 
     snprintf(client->server_host, sizeof(client->server_host), "%s", server);
-    client->server_port = (port_str != NULL) ? atoi(port_str) : 6667;
+    client->server_port = (port_str != nullptr) ? atoi(port_str) : 6667;
     snprintf(client->channel, sizeof(client->channel), "%s", channel);
     snprintf(client->nickname, sizeof(client->nickname), "%s",
-             nickname != NULL ? nickname : "ssh-chatter");
+             nickname != nullptr ? nickname : "ssh-chatter");
     snprintf(client->username, sizeof(client->username), "%s",
-             username != NULL ? username : (nickname != NULL ? nickname : "ssh-chatter"));
+             username != nullptr ? username : (nickname != nullptr ? nickname : "ssh-chatter"));
     snprintf(client->realname, sizeof(client->realname), "%s",
-             realname != NULL ? realname : "SSH-Chatter Bot");
+             realname != nullptr ? realname : "SSH-Chatter Bot");
 
-    if (pthread_mutex_init(&client->lock, NULL) != 0) {
-        free(client);
-        return NULL;
+    if (pthread_mutex_init(&client->lock, nullptr) != 0) {
+        GC_FREE(client);
+        return nullptr;
     }
     client->lock_initialized = true;
 
     irc_set_status(client, "Initializing");
 
-    if (pthread_create(&client->thread, NULL, irc_client_thread, client) != 0) {
+    if (pthread_create(&client->thread, nullptr, irc_client_thread, client) != 0) {
         pthread_mutex_destroy(&client->lock);
-        free(client);
-        return NULL;
+        GC_FREE(client);
+        return nullptr;
     }
     client->thread_initialized = true;
 
@@ -446,14 +446,14 @@ irc_client_t *irc_client_create(host_t *host)
 
 void irc_client_destroy(irc_client_t *client)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return;
     }
 
     atomic_store(&client->stop, true);
 
     if (client->thread_initialized) {
-        pthread_join(client->thread, NULL);
+        pthread_join(client->thread, nullptr);
     }
 
     irc_disconnect_socket(client);
@@ -462,12 +462,12 @@ void irc_client_destroy(irc_client_t *client)
         pthread_mutex_destroy(&client->lock);
     }
 
-    free(client);
+    GC_FREE(client);
 }
 
 bool irc_client_is_connected(irc_client_t *client)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return false;
     }
     return atomic_load(&client->connected);
@@ -475,7 +475,7 @@ bool irc_client_is_connected(irc_client_t *client)
 
 const char *irc_client_get_status(irc_client_t *client)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return "Not initialized";
     }
     return client->status_message;
@@ -483,7 +483,7 @@ const char *irc_client_get_status(irc_client_t *client)
 
 bool irc_client_reconnect(irc_client_t *client)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return false;
     }
 
@@ -495,7 +495,7 @@ bool irc_client_reconnect(irc_client_t *client)
 
 void irc_client_disconnect(irc_client_t *client)
 {
-    if (client == NULL) {
+    if (client == nullptr) {
         return;
     }
 

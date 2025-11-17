@@ -18,7 +18,7 @@
 
 static bool looks_like_ip_address(const char *text)
 {
-    if (text == NULL) {
+    if (text == nullptr) {
         return false;
     }
 
@@ -46,19 +46,19 @@ static bool door_file_load(const char *path,
                            char lines[][SSH_CHATTER_MESSAGE_LIMIT],
                            size_t max_lines, size_t *line_count)
 {
-    if (path == NULL || path[0] == '\0' || lines == NULL ||
-        line_count == NULL) {
+    if (path == nullptr || path[0] == '\0' || lines == nullptr ||
+        line_count == nullptr) {
         return false;
     }
 
     FILE *fp = fopen(path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return false;
     }
 
     size_t count = 0U;
     while (count < max_lines &&
-           fgets(lines[count], (int)SSH_CHATTER_MESSAGE_LIMIT, fp) != NULL) {
+           fgets(lines[count], (int)SSH_CHATTER_MESSAGE_LIMIT, fp) != nullptr) {
         lines[count][strcspn(lines[count], "\r\n")] = '\0';
         trim_whitespace_inplace(lines[count]);
         ++count;
@@ -78,7 +78,7 @@ static bool door_file_load(const char *path,
 static void synchronet_apply_security_level(session_ctx_t *ctx,
                                             unsigned long security_level)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -92,25 +92,25 @@ static bool parse_door32_lines(session_ctx_t *ctx,
                                char lines[][SSH_CHATTER_MESSAGE_LIMIT],
                                size_t line_count)
 {
-    if (ctx == NULL || lines == NULL || line_count < 6U) {
+    if (ctx == nullptr || lines == nullptr || line_count < 6U) {
         return false;
     }
 
-    char *endptr = NULL;
+    char *endptr = nullptr;
     (void)strtoul(lines[0], &endptr, 10);
-    if (lines[0][0] == '\0' || (endptr != NULL && *endptr != '\0')) {
+    if (lines[0][0] == '\0' || (endptr != nullptr && *endptr != '\0')) {
         return false;
     }
 
-    const char *alias = NULL;
+    const char *alias = nullptr;
     if (line_count > 5U && lines[5][0] != '\0') {
         alias = lines[5];
     }
-    if ((alias == NULL || alias[0] == '\0') && line_count > 4U &&
+    if ((alias == nullptr || alias[0] == '\0') && line_count > 4U &&
         lines[4][0] != '\0') {
         alias = lines[4];
     }
-    if (alias == NULL || alias[0] == '\0') {
+    if (alias == nullptr || alias[0] == '\0') {
         return false;
     }
 
@@ -119,7 +119,7 @@ static bool parse_door32_lines(session_ctx_t *ctx,
 
     if (line_count > 6U) {
         unsigned long security_level = strtoul(lines[6], &endptr, 10);
-        if (lines[6][0] != '\0' && endptr != NULL && *endptr == '\0') {
+        if (lines[6][0] != '\0' && endptr != nullptr && *endptr == '\0') {
             synchronet_apply_security_level(ctx, security_level);
         }
     }
@@ -140,7 +140,7 @@ static bool parse_classic_door_lines(session_ctx_t *ctx,
                                      char lines[][SSH_CHATTER_MESSAGE_LIMIT],
                                      size_t line_count)
 {
-    if (ctx == NULL || lines == NULL || line_count < 7U) {
+    if (ctx == nullptr || lines == nullptr || line_count < 7U) {
         return false;
     }
 
@@ -179,9 +179,9 @@ static bool parse_classic_door_lines(session_ctx_t *ctx,
     ctx->user.is_authenticated = true;
 
     for (size_t idx = 7U; idx < line_count && idx < 12U; ++idx) {
-        char *endptr = NULL;
+        char *endptr = nullptr;
         unsigned long maybe_level = strtoul(lines[idx], &endptr, 10);
-        if (lines[idx][0] != '\0' && endptr != NULL && *endptr == '\0') {
+        if (lines[idx][0] != '\0' && endptr != nullptr && *endptr == '\0') {
             synchronet_apply_security_level(ctx, maybe_level);
             break;
         }
@@ -218,11 +218,11 @@ static bool try_parse_drop_file(session_ctx_t *ctx, const char *path)
 static bool append_path(char *dest, size_t length, const char *base,
                         const char *suffix)
 {
-    if (dest == NULL || length == 0U || base == NULL || base[0] == '\0') {
+    if (dest == nullptr || length == 0U || base == nullptr || base[0] == '\0') {
         return false;
     }
 
-    if (suffix == NULL) {
+    if (suffix == nullptr) {
         return snprintf(dest, length, "%s", base) > 0;
     }
 
@@ -236,7 +236,7 @@ static bool append_path(char *dest, size_t length, const char *base,
 
 static bool parse_door_sys(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return false;
     }
 
@@ -254,13 +254,13 @@ static bool parse_door_sys(session_ctx_t *ctx)
     for (size_t base_idx = 0; base_idx < sizeof(bases) / sizeof(bases[0]);
          ++base_idx) {
         const char *base = bases[base_idx];
-        if (base == NULL || base[0] == '\0') {
+        if (base == nullptr || base[0] == '\0') {
             continue;
         }
 
         bool base_is_file = false;
         const char *dot = strrchr(base, '.');
-        if (dot != NULL) {
+        if (dot != nullptr) {
             char ext[8];
             snprintf(ext, sizeof(ext), "%s", dot);
             for (size_t idx = 0;
@@ -273,7 +273,7 @@ static bool parse_door_sys(session_ctx_t *ctx)
         }
 
         if (base_is_file) {
-            if (append_path(candidate, sizeof(candidate), base, NULL) &&
+            if (append_path(candidate, sizeof(candidate), base, nullptr) &&
                 try_parse_drop_file(ctx, candidate)) {
                 return true;
             }
@@ -306,27 +306,27 @@ int synchronet_door_run(void)
 
     // Initialize a dummy host for the session context
     host_t *host = calloc(1, sizeof(*host));
-    if (host == NULL) {
+    if (host == nullptr) {
         fprintf(stderr, "Failed to allocate host for Synchronet door.\n");
         return EXIT_FAILURE;
     }
     host->memory_context = sshc_memory_context_create("synchronet_host");
-    if (host->memory_context == NULL) {
+    if (host->memory_context == nullptr) {
         fprintf(stderr,
                 "Failed to create memory context for Synchronet host.\n");
-        free(host);
+        GC_FREE(host);
         return EXIT_FAILURE;
     }
-    host_init(host, NULL); // Initialize host with default profile
+    host_init(host, nullptr); // Initialize host with default profile
 
     // Create a session context for the Synchronet user
     session_ctx_t *ctx = session_create();
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         fprintf(stderr,
                 "Failed to create session context for Synchronet door.\n");
         host_shutdown(host);
         sshc_memory_context_destroy(host->memory_context);
-        free(host);
+        GC_FREE(host);
         return EXIT_FAILURE;
     }
     ctx->owner = host;
@@ -340,7 +340,7 @@ int synchronet_door_run(void)
 
     // Main loop for Synchronet door
     char input_buffer[SSH_CHATTER_MESSAGE_LIMIT];
-    while (fgets(input_buffer, sizeof(input_buffer), stdin) != NULL) {
+    while (fgets(input_buffer, sizeof(input_buffer), stdin) != nullptr) {
         // Remove newline characters
         input_buffer[strcspn(input_buffer, "\r\n")] = 0;
 
@@ -364,7 +364,7 @@ int synchronet_door_run(void)
     session_destroy(ctx);
     host_shutdown(host);
     sshc_memory_context_destroy(host->memory_context);
-    free(host);
+    GC_FREE(host);
 
     return EXIT_SUCCESS;
 }

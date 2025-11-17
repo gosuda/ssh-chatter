@@ -4,7 +4,7 @@
 
 static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -12,7 +12,7 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
     snprintf(usage, sizeof(usage), "Usage: %s <message-id|r<reply-id>> <text>",
              session_command_alias_preferred_by_canonical(ctx, "/reply"));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -26,22 +26,22 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    char *saveptr = NULL;
+    char *saveptr = nullptr;
     char *target = strtok_r(working, " \t", &saveptr);
-    if (target == NULL) {
+    if (target == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
 
-    char *text = NULL;
-    if (saveptr != NULL) {
+    char *text = nullptr;
+    if (saveptr != nullptr) {
         text = saveptr;
         while (*text == ' ' || *text == '\t') {
             ++text;
         }
     }
 
-    if (text == NULL || *text == '\0') {
+    if (text == nullptr || *text == '\0') {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -131,7 +131,7 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
     chat_reply_entry_t entry = {0};
     entry.parent_message_id = parent_message_id;
     entry.parent_reply_id = parent_reply_id;
-    entry.created_at = time(NULL);
+    entry.created_at = time(nullptr);
     snprintf(entry.username, sizeof(entry.username), "%s", ctx->user.name);
     snprintf(entry.message, sizeof(entry.message), "%s", normalized);
 
@@ -185,14 +185,14 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
 static void session_handle_image(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage = "Usage: /image <url> [caption]";
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/image", kUsage, usage, sizeof(usage));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -206,21 +206,21 @@ static void session_handle_image(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    char *saveptr = NULL;
+    char *saveptr = nullptr;
     char *url = strtok_r(working, " \t", &saveptr);
-    if (url == NULL) {
+    if (url == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
 
-    char *caption = NULL;
-    if (saveptr != NULL) {
+    char *caption = nullptr;
+    if (saveptr != nullptr) {
         caption = saveptr;
         while (*caption == ' ' || *caption == '\t') {
             ++caption;
         }
         if (*caption == '\0') {
-            caption = NULL;
+            caption = nullptr;
         }
     }
 
@@ -235,7 +235,7 @@ static void session_handle_image(session_ctx_t *ctx, const char *arguments)
     entry.attachment_type = CHAT_ATTACHMENT_IMAGE;
     snprintf(entry.attachment_target, sizeof(entry.attachment_target), "%s",
              url);
-    if (caption != NULL) {
+    if (caption != nullptr) {
         trim_whitespace_inplace(caption);
         snprintf(entry.attachment_caption, sizeof(entry.attachment_caption),
                  "%s", caption);
@@ -255,14 +255,14 @@ static void session_handle_image(session_ctx_t *ctx, const char *arguments)
 static void session_handle_video(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage = "Usage: /video <url> [caption]";
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/video", kUsage, usage, sizeof(usage));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -276,21 +276,21 @@ static void session_handle_video(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    char *saveptr = NULL;
+    char *saveptr = nullptr;
     char *url = strtok_r(working, " \t", &saveptr);
-    if (url == NULL) {
+    if (url == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
 
-    char *caption = NULL;
-    if (saveptr != NULL) {
+    char *caption = nullptr;
+    if (saveptr != nullptr) {
         caption = saveptr;
         while (*caption == ' ' || *caption == '\t') {
             ++caption;
         }
         if (*caption == '\0') {
-            caption = NULL;
+            caption = nullptr;
         }
     }
 
@@ -305,7 +305,7 @@ static void session_handle_video(session_ctx_t *ctx, const char *arguments)
     entry.attachment_type = CHAT_ATTACHMENT_VIDEO;
     snprintf(entry.attachment_target, sizeof(entry.attachment_target), "%s",
              url);
-    if (caption != NULL) {
+    if (caption != nullptr) {
         trim_whitespace_inplace(caption);
         snprintf(entry.attachment_caption, sizeof(entry.attachment_caption),
                  "%s", caption);
@@ -325,14 +325,14 @@ static void session_handle_video(session_ctx_t *ctx, const char *arguments)
 static void session_handle_audio(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage = "Usage: /audio <url> [caption]";
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/audio", kUsage, usage, sizeof(usage));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -346,21 +346,21 @@ static void session_handle_audio(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    char *saveptr = NULL;
+    char *saveptr = nullptr;
     char *url = strtok_r(working, " \t", &saveptr);
-    if (url == NULL) {
+    if (url == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
 
-    char *caption = NULL;
-    if (saveptr != NULL) {
+    char *caption = nullptr;
+    if (saveptr != nullptr) {
         caption = saveptr;
         while (*caption == ' ' || *caption == '\t') {
             ++caption;
         }
         if (*caption == '\0') {
-            caption = NULL;
+            caption = nullptr;
         }
     }
 
@@ -375,7 +375,7 @@ static void session_handle_audio(session_ctx_t *ctx, const char *arguments)
     entry.attachment_type = CHAT_ATTACHMENT_AUDIO;
     snprintf(entry.attachment_target, sizeof(entry.attachment_target), "%s",
              url);
-    if (caption != NULL) {
+    if (caption != nullptr) {
         trim_whitespace_inplace(caption);
         snprintf(entry.attachment_caption, sizeof(entry.attachment_caption),
                  "%s", caption);
@@ -395,14 +395,14 @@ static void session_handle_audio(session_ctx_t *ctx, const char *arguments)
 static void session_handle_files(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage = "Usage: /files <url> [caption]";
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/files", kUsage, usage, sizeof(usage));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -416,21 +416,21 @@ static void session_handle_files(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    char *saveptr = NULL;
+    char *saveptr = nullptr;
     char *url = strtok_r(working, " \t", &saveptr);
-    if (url == NULL) {
+    if (url == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
 
-    char *caption = NULL;
-    if (saveptr != NULL) {
+    char *caption = nullptr;
+    if (saveptr != nullptr) {
         caption = saveptr;
         while (*caption == ' ' || *caption == '\t') {
             ++caption;
         }
         if (*caption == '\0') {
-            caption = NULL;
+            caption = nullptr;
         }
     }
 
@@ -445,7 +445,7 @@ static void session_handle_files(session_ctx_t *ctx, const char *arguments)
     entry.attachment_type = CHAT_ATTACHMENT_FILE;
     snprintf(entry.attachment_target, sizeof(entry.attachment_target), "%s",
              url);
-    if (caption != NULL) {
+    if (caption != nullptr) {
         trim_whitespace_inplace(caption);
         snprintf(entry.attachment_caption, sizeof(entry.attachment_caption),
                  "%s", caption);
@@ -464,7 +464,7 @@ static void session_handle_files(session_ctx_t *ctx, const char *arguments)
 
 static void session_mail_render_inbox(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -489,7 +489,7 @@ static void session_mail_render_inbox(session_ctx_t *ctx)
         time_t stamp = (time_t)entry->timestamp;
         struct tm when;
         char stamp_text[32];
-        if (stamp != 0 && localtime_r(&stamp, &when) != NULL) {
+        if (stamp != 0 && localtime_r(&stamp, &when) != nullptr) {
             if (strftime(stamp_text, sizeof(stamp_text), "%Y-%m-%d %H:%M",
                          &when) == 0U) {
                 snprintf(stamp_text, sizeof(stamp_text), "%s",
@@ -520,7 +520,7 @@ static void session_mail_render_inbox(session_ctx_t *ctx)
 
 static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -529,7 +529,7 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    const char *cursor = arguments != NULL ? arguments : "";
+    const char *cursor = arguments != nullptr ? arguments : "";
     char command[16];
     cursor = session_consume_token(cursor, command, sizeof(command));
 
@@ -542,7 +542,7 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
         char target_token[SSH_CHATTER_USERNAME_LEN + SSH_CHATTER_IP_LEN];
         cursor =
             session_consume_token(cursor, target_token, sizeof(target_token));
-        if (target_token[0] == '\0' || cursor == NULL || cursor[0] == '\0') {
+        if (target_token[0] == '\0' || cursor == nullptr || cursor[0] == '\0') {
             session_send_system_line(ctx,
                                      "Usage: /mail send <user[@ip]> <message>");
             return;
@@ -552,7 +552,7 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
         char target_ip[SSH_CHATTER_IP_LEN];
         target_ip[0] = '\0';
         const char *at = strchr(target_token, '@');
-        if (at != NULL) {
+        if (at != nullptr) {
             size_t name_len = (size_t)(at - target_token);
             if (name_len == 0U || name_len >= sizeof(target)) {
                 session_send_system_line(ctx, "Invalid mailbox recipient.");
@@ -587,7 +587,7 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
 
         char error[128];
         if (!host_user_data_send_mail(
-                ctx->owner, target, target_ip[0] != '\0' ? target_ip : NULL,
+                ctx->owner, target, target_ip[0] != '\0' ? target_ip : nullptr,
                 ctx->user.name, message, error, sizeof(error))) {
             if (error[0] != '\0') {
                 session_send_system_line(ctx, error);
@@ -632,12 +632,12 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
 static void session_profile_picture_normalize(const char *input, char *output,
                                               size_t length)
 {
-    if (output == NULL || length == 0U) {
+    if (output == nullptr || length == 0U) {
         return;
     }
 
     output[0] = '\0';
-    if (input == NULL) {
+    if (input == nullptr) {
         return;
     }
 
@@ -672,7 +672,7 @@ static void session_profile_picture_normalize(const char *input, char *output,
 static void session_handle_profile_picture(session_ctx_t *ctx,
                                            const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -681,7 +681,7 @@ static void session_handle_profile_picture(session_ctx_t *ctx,
         return;
     }
 
-    const char *cursor = arguments != NULL ? arguments : "";
+    const char *cursor = arguments != nullptr ? arguments : "";
     char mode[16];
     cursor = session_consume_token(cursor, mode, sizeof(mode));
 
@@ -690,7 +690,7 @@ static void session_handle_profile_picture(session_ctx_t *ctx,
         return;
     }
 
-    if (cursor != NULL && *cursor != '\0') {
+    if (cursor != nullptr && *cursor != '\0') {
         session_send_system_line(ctx, "Usage: /profilepic");
         return;
     }
@@ -701,7 +701,7 @@ static void session_handle_profile_picture(session_ctx_t *ctx,
 static void session_handle_reaction(session_ctx_t *ctx, size_t reaction_index,
                                     const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL ||
+    if (ctx == nullptr || ctx->owner == nullptr ||
         reaction_index >= SSH_CHATTER_REACTION_KIND_COUNT) {
         return;
     }
@@ -719,15 +719,15 @@ static void session_handle_reaction(session_ctx_t *ctx, size_t reaction_index,
     const char *command_label =
         canonical[0] != '\0'
             ? session_command_alias_preferred_by_canonical(ctx, canonical)
-            : NULL;
-    if (command_label == NULL || command_label[0] == '\0') {
+            : nullptr;
+    if (command_label == nullptr || command_label[0] == '\0') {
         command_label = canonical;
     }
 
     snprintf(usage, sizeof(usage), "Usage: %s <message-id>",
-             command_label != NULL ? command_label : "");
+             command_label != nullptr ? command_label : "");
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -776,7 +776,7 @@ static void session_handle_reaction(session_ctx_t *ctx, size_t reaction_index,
 
 static void session_handle_usercount(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -806,26 +806,26 @@ static void session_handle_usercount(session_ctx_t *ctx)
                  displayed == 1U ? "" : "s");
     }
 
-    host_history_record_system(ctx->owner, message, NULL);
+    host_history_record_system(ctx->owner, message, nullptr);
     session_send_system_line(ctx, message);
 }
 
 static void session_handle_today(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
-    time_t now = time(NULL);
+    time_t now = time(nullptr);
     struct tm tm_now;
 #if defined(_POSIX_THREAD_SAFE_FUNCTIONS)
-    if (localtime_r(&now, &tm_now) == NULL) {
+    if (localtime_r(&now, &tm_now) == nullptr) {
         session_send_system_line(ctx, "Unable to determine local time.");
         return;
     }
 #else
     struct tm *tmp = localtime(&now);
-    if (tmp == NULL) {
+    if (tmp == nullptr) {
         session_send_system_line(ctx, "Unable to determine local time.");
         return;
     }
@@ -839,7 +839,7 @@ static void session_handle_today(session_ctx_t *ctx)
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name);
-    if (pref == NULL) {
+    if (pref == nullptr) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx,
                                  "Unable to track today's function right now.");
@@ -852,7 +852,7 @@ static void session_handle_today(session_ctx_t *ctx)
         host->random_seeded = true;
     }
 
-    const char *chosen = NULL;
+    const char *chosen = nullptr;
     bool already = false;
     if (pref->daily_year == year && pref->daily_yday == yday &&
         pref->daily_function[0] != '\0') {
@@ -896,14 +896,14 @@ static void session_handle_date(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage = "Usage: /date <Area/Location>";
 
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/date", kUsage, usage, sizeof(usage));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -937,7 +937,7 @@ static void session_handle_date(session_ctx_t *ctx, const char *arguments)
     const char *previous_tz = getenv("TZ");
     char previous_copy[PATH_MAX];
     bool had_previous = false;
-    if (previous_tz != NULL) {
+    if (previous_tz != nullptr) {
         int prev_written =
             snprintf(previous_copy, sizeof(previous_copy), "%s", previous_tz);
         if (prev_written >= 0 && (size_t)prev_written < sizeof(previous_copy)) {
@@ -955,7 +955,7 @@ static void session_handle_date(session_ctx_t *ctx, const char *arguments)
     tzset();
     tz_applied = true;
 
-    time_t now = time(NULL);
+    time_t now = time(nullptr);
     if (now == (time_t)-1) {
         session_send_system_line(ctx, "Unable to determine current time.");
         goto cleanup;
@@ -963,14 +963,14 @@ static void session_handle_date(session_ctx_t *ctx, const char *arguments)
 
     struct tm tm_now;
 #if defined(_POSIX_THREAD_SAFE_FUNCTIONS)
-    if (localtime_r(&now, &tm_now) == NULL) {
+    if (localtime_r(&now, &tm_now) == nullptr) {
         session_send_system_line(ctx,
                                  "Unable to compute the requested local time.");
         goto cleanup;
     }
 #else
     struct tm *tmp = localtime(&now);
-    if (tmp == NULL) {
+    if (tmp == nullptr) {
         session_send_system_line(ctx,
                                  "Unable to compute the requested local time.");
         goto cleanup;
@@ -1007,14 +1007,14 @@ static void session_handle_os(session_ctx_t *ctx, const char *arguments)
         "<windows|macos|linux|freebsd|ios|android|watchos|solaris|openbsd|"
         "netbsd|dragonflybsd|reactos|tyzen|kdos|pcdos|msdos|drdos|bsd|haiku|"
         "zealos|templeos>";
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/os", kUsage, usage, sizeof(usage));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -1032,7 +1032,7 @@ static void session_handle_os(session_ctx_t *ctx, const char *arguments)
     }
 
     const os_descriptor_t *descriptor = session_lookup_os_descriptor(working);
-    if (descriptor == NULL) {
+    if (descriptor == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -1050,14 +1050,14 @@ static void session_handle_os(session_ctx_t *ctx, const char *arguments)
 static void session_handle_getos(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage = "Usage: /getos <username>";
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/getos", kUsage, usage, sizeof(usage));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -1081,7 +1081,7 @@ static void session_handle_getos(session_ctx_t *ctx, const char *arguments)
     }
 
     const os_descriptor_t *descriptor = session_lookup_os_descriptor(os_buffer);
-    const char *display = descriptor != NULL ? descriptor->display : os_buffer;
+    const char *display = descriptor != nullptr ? descriptor->display : os_buffer;
 
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(message, sizeof(message), "%s reports using %s.", target, display);
@@ -1090,7 +1090,7 @@ static void session_handle_getos(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_pair(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -1108,7 +1108,7 @@ static void session_handle_pair(session_ctx_t *ctx)
     pthread_mutex_lock(&ctx->owner->room.lock);
     for (size_t idx = 0U; idx < ctx->owner->room.member_count; ++idx) {
         session_ctx_t *member = ctx->owner->room.members[idx];
-        if (member == NULL || member == ctx) {
+        if (member == nullptr || member == ctx) {
             continue;
         }
         if (member->os_name[0] == '\0') {
@@ -1137,7 +1137,7 @@ static void session_handle_pair(session_ctx_t *ctx)
     const os_descriptor_t *descriptor =
         session_lookup_os_descriptor(ctx->os_name);
     const char *display =
-        descriptor != NULL ? descriptor->display : ctx->os_name;
+        descriptor != nullptr ? descriptor->display : ctx->os_name;
 
     if (match_count == 0U) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
@@ -1155,7 +1155,7 @@ static void session_handle_pair(session_ctx_t *ctx)
 
 static void session_handle_connected(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -1166,7 +1166,7 @@ static void session_handle_connected(session_ctx_t *ctx)
     pthread_mutex_lock(&ctx->owner->room.lock);
     for (size_t idx = 0U; idx < ctx->owner->room.member_count; ++idx) {
         session_ctx_t *member = ctx->owner->room.members[idx];
-        if (member == NULL) {
+        if (member == nullptr) {
             continue;
         }
 
@@ -1196,7 +1196,7 @@ static void session_handle_connected(session_ctx_t *ctx)
 
 static void session_handle_alpha_centauri_landers(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -1231,7 +1231,7 @@ static void session_handle_alpha_centauri_landers(session_ctx_t *ctx)
         if (lander->last_flag_timestamp != 0U) {
             time_t when_time = (time_t)lander->last_flag_timestamp;
             struct tm tm_buf;
-            if (gmtime_r(&when_time, &tm_buf) != NULL) {
+            if (gmtime_r(&when_time, &tm_buf) != nullptr) {
                 strftime(when, sizeof(when), "%Y-%m-%d %H:%M UTC", &tm_buf);
             }
         }
@@ -1258,7 +1258,7 @@ static void session_handle_alpha_centauri_landers(session_ctx_t *ctx)
 static bool session_parse_birthday(const char *input, char *normalized,
                                    size_t length)
 {
-    if (input == NULL || normalized == NULL || length < 11U) {
+    if (input == nullptr || normalized == nullptr || length < 11U) {
         return false;
     }
 
@@ -1313,11 +1313,11 @@ static bool session_parse_birthday(const char *input, char *normalized,
 
 static void session_handle_birthday(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, "Usage: /birthday YYYY-MM-DD");
         return;
     }
@@ -1340,7 +1340,7 @@ static void session_handle_birthday(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_soulmate(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -1396,11 +1396,11 @@ static void session_handle_soulmate(session_ctx_t *ctx)
 static void session_pw_auth_hex_encode(const uint8_t *input, size_t length,
                                        char *output, size_t output_length)
 {
-    if (output == NULL || output_length == 0U) {
+    if (output == nullptr || output_length == 0U) {
         return;
     }
 
-    if (input == NULL || length == 0U) {
+    if (input == nullptr || length == 0U) {
         output[0] = '\0';
         return;
     }
@@ -1424,7 +1424,7 @@ static bool session_pw_auth_format_line(const char *username,
                                         const uint8_t *hash, size_t hash_length,
                                         char *buffer, size_t buffer_length)
 {
-    if (username == NULL || buffer == NULL || buffer_length == 0U) {
+    if (username == nullptr || buffer == nullptr || buffer_length == 0U) {
         return false;
     }
 
@@ -1443,7 +1443,7 @@ static bool session_pw_auth_update(host_t *host, const char *username,
                                    const uint8_t *hash, size_t hash_length,
                                    bool has_password)
 {
-    if (host == NULL || username == NULL || username[0] == '\0') {
+    if (host == nullptr || username == nullptr || username[0] == '\0') {
         return false;
     }
 
@@ -1463,16 +1463,16 @@ static bool session_pw_auth_update(host_t *host, const char *username,
     }
 
     FILE *output = fopen(temp_path, "wb");
-    if (output == NULL) {
+    if (output == nullptr) {
         return false;
     }
 
     bool success = true;
     bool replaced = false;
     FILE *input = fopen(host->pw_auth_file_path, "rb");
-    if (input != NULL) {
+    if (input != nullptr) {
         char line[SSH_CHATTER_MESSAGE_LIMIT];
-        while (success && fgets(line, sizeof(line), input) != NULL) {
+        while (success && fgets(line, sizeof(line), input) != nullptr) {
             size_t length = strcspn(line, "\r\n");
             line[length] = '\0';
 
@@ -1511,7 +1511,7 @@ static bool session_pw_auth_update(host_t *host, const char *username,
             }
         }
 
-        if (input != NULL) {
+        if (input != nullptr) {
             int read_error = ferror(input);
             if (fclose(input) != 0) {
                 success = false;
@@ -1568,11 +1568,11 @@ static bool session_pw_auth_update(host_t *host, const char *username,
 
 static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
-    if (arguments != NULL && strlen(arguments) > 128) {
+    if (arguments != nullptr && strlen(arguments) > 128) {
         session_send_system_line(ctx,
                                  "Password is too long (max 128 characters).");
         return;
@@ -1583,7 +1583,7 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    if (arguments == NULL || arguments[0] == '\0') {
+    if (arguments == nullptr || arguments[0] == '\0') {
         memset(ctx->user_data.password_salt, 0,
                sizeof(ctx->user_data.password_salt));
         memset(ctx->user_data.password_hash, 0,
@@ -1591,8 +1591,8 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
 
         if (session_user_data_commit(ctx)) {
             session_send_system_line(ctx, "Password removed.");
-            if (!session_pw_auth_update(ctx->owner, ctx->user.name, NULL, 0U,
-                                        NULL, 0U, false)) {
+            if (!session_pw_auth_update(ctx->owner, ctx->user.name, nullptr, 0U,
+                                        nullptr, 0U, false)) {
                 session_send_system_line(
                     ctx, "Warning: unable to update pw_auth.dat.");
             }
@@ -1623,7 +1623,7 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
         }
 
         // Add user's nickname to reserved list if password was set
-        if (ctx->owner != NULL && ctx->owner->reserved_nicknames_len <
+        if (ctx->owner != nullptr && ctx->owner->reserved_nicknames_len <
                                       SSH_CHATTER_MAX_RESERVED_NAMES) {
             pthread_mutex_lock(&ctx->owner->nickname_reserve_lock);
             // Check if nickname is already reserved to avoid duplicates
@@ -1651,12 +1651,12 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     char target_user[SSH_CHATTER_USERNAME_LEN];
-    bool self_delete = (arguments == NULL || arguments[0] == '\0' ||
+    bool self_delete = (arguments == nullptr || arguments[0] == '\0' ||
                         strcasecmp(arguments, ctx->user.name) == 0);
 
     if (self_delete) {
@@ -1681,7 +1681,7 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
         }
     } else {
         data_loaded = host_user_data_load_existing(ctx->owner, target_user,
-                                                   NULL, &user_data, false);
+                                                   nullptr, &user_data, false);
     }
 
     if (!data_loaded) {
@@ -1736,7 +1736,7 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
         }
 
         // Remove from reserved nicknames if password was deleted
-        if (ctx->owner != NULL && ctx->owner->reserved_nicknames_len > 0) {
+        if (ctx->owner != nullptr && ctx->owner->reserved_nicknames_len > 0) {
             pthread_mutex_lock(&ctx->owner->nickname_reserve_lock);
             for (size_t i = 0; i < ctx->owner->reserved_nicknames_len; ++i) {
                 if (strncmp(ctx->owner->reserved_nicknames[i], target_user,
@@ -1758,7 +1758,7 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
             pthread_mutex_unlock(&ctx->owner->nickname_reserve_lock);
         }
 
-        if (!session_pw_auth_update(ctx->owner, target_user, NULL, 0U, NULL, 0U,
+        if (!session_pw_auth_update(ctx->owner, target_user, nullptr, 0U, nullptr, 0U,
                                     false)) {
             session_send_system_line(ctx,
                                      "Warning: unable to update pw_auth.dat.");
@@ -1771,7 +1771,7 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -1781,7 +1781,7 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    if (arguments == NULL || arguments[0] == '\0') {
+    if (arguments == nullptr || arguments[0] == '\0') {
         session_send_system_line(ctx, "Usage: /resetpw <nickname>");
         return;
     }
@@ -1801,9 +1801,9 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
     // First, try to find the user in the current session list.
     session_ctx_t *target_session =
         chat_room_find_user(&ctx->owner->room, target_nickname);
-    const char *target_ip = NULL;
+    const char *target_ip = nullptr;
 
-    if (target_session != NULL) {
+    if (target_session != nullptr) {
         target_ip = target_session->client_ip;
     } else {
         // If offline, try to find their last known IP from user data
@@ -1814,7 +1814,7 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
         }
     }
 
-    if (target_ip == NULL || target_ip[0] == '\0') {
+    if (target_ip == nullptr || target_ip[0] == '\0') {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(message, sizeof(message),
                  "Could not find IP for user '%s'. Cannot reset password.",
@@ -1846,14 +1846,14 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
                  target_nickname);
         session_send_system_line(ctx, message);
 
-        if (!session_pw_auth_update(ctx->owner, target_nickname, NULL, 0U, NULL,
+        if (!session_pw_auth_update(ctx->owner, target_nickname, nullptr, 0U, nullptr,
                                     0U, false)) {
             session_send_system_line(ctx,
                                      "Warning: unable to update pw_auth.dat.");
         }
 
         // If the user is currently online, notify them or clear their session password state
-        if (target_session != NULL) {
+        if (target_session != nullptr) {
             // Ideally, we'd also clear the password state in the session_ctx if it's cached,
             // but for now, just notifying the operator is sufficient.
             // A more robust solution might involve a signal to the target_session.
@@ -1867,7 +1867,7 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
 }
 static void session_handle_revoke(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -1877,7 +1877,7 @@ static void session_handle_revoke(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, "Usage: /revoke <ip-address>");
         return;
     }
@@ -1921,7 +1921,7 @@ static void session_handle_revoke(session_ctx_t *ctx, const char *arguments)
 static void session_handle_delete_message(session_ctx_t *ctx,
                                           const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -1935,7 +1935,7 @@ static void session_handle_delete_message(session_ctx_t *ctx,
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/delete-msg", kUsage, usage,
                                  sizeof(usage));
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -1951,7 +1951,7 @@ static void session_handle_delete_message(session_ctx_t *ctx,
     uint64_t start_id = 0U;
     uint64_t end_id = 0U;
     char *dash = strchr(working, '-');
-    if (dash != NULL) {
+    if (dash != nullptr) {
         *dash = '\0';
         char *end_token = dash + 1;
         trim_whitespace_inplace(working);
@@ -2030,8 +2030,8 @@ static void session_handle_delete_message(session_ctx_t *ctx,
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(notice, sizeof(notice), "* [%s] removed %s %s%s.", ctx->user.name,
              removed == 1U ? "message" : "messages", range_label, reply_note);
-    host_history_record_system(ctx->owner, notice, NULL);
-    chat_room_broadcast(&ctx->owner->room, notice, NULL);
+    host_history_record_system(ctx->owner, notice, nullptr);
+    chat_room_broadcast(&ctx->owner->room, notice, nullptr);
 }
 
 static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
@@ -2040,14 +2040,14 @@ static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
         "Usage: /poll "
         "<question>|<option1>|<option2>[|option3][|option4][|option5] or /poll "
         "to view current poll";
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/poll", kUsage, usage, sizeof(usage));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_poll_summary(ctx);
         return;
     }
@@ -2069,14 +2069,14 @@ static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
     char *tokens[1 + 5];
     size_t token_count = 0U;
     char *cursor = working;
-    while (cursor != NULL && token_count < sizeof(tokens) / sizeof(tokens[0])) {
+    while (cursor != nullptr && token_count < sizeof(tokens) / sizeof(tokens[0])) {
         char *next = strchr(cursor, '|');
-        if (next != NULL) {
+        if (next != nullptr) {
             *next = '\0';
         }
         trim_whitespace_inplace(cursor);
         tokens[token_count++] = cursor;
-        cursor = next != NULL ? next + 1 : NULL;
+        cursor = next != nullptr ? next + 1 : nullptr;
     }
 
     if (token_count < 3U) {
@@ -2123,13 +2123,13 @@ static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
     char announce[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(announce, sizeof(announce), "* [%s] started poll #%" PRIu64 ": %s",
              ctx->user.name, host->poll.id, tokens[0]);
-    chat_room_broadcast(&host->room, announce, NULL);
+    chat_room_broadcast(&host->room, announce, nullptr);
 
     for (size_t idx = 0U; idx < option_count; ++idx) {
         char option_line[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(option_line, sizeof(option_line), "  /%zu - %s", idx + 1U,
                  tokens[idx + 1U]);
-        chat_room_broadcast(&host->room, option_line, NULL);
+        chat_room_broadcast(&host->room, option_line, nullptr);
     }
 
     session_send_system_line(ctx, "Poll created successfully.");
@@ -2138,7 +2138,7 @@ static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_vote(session_ctx_t *ctx, size_t option_index)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -2153,7 +2153,7 @@ static void session_handle_vote(session_ctx_t *ctx, size_t option_index)
 
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name);
-    if (pref == NULL) {
+    if (pref == nullptr) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "Unable to record your vote right now.");
         return;
@@ -2192,7 +2192,7 @@ static void session_handle_vote(session_ctx_t *ctx, size_t option_index)
 static void session_handle_named_vote(session_ctx_t *ctx, size_t option_index,
                                       const char *label)
 {
-    if (ctx == NULL || ctx->owner == NULL || label == NULL ||
+    if (ctx == nullptr || ctx->owner == nullptr || label == nullptr ||
         label[0] == '\0') {
         return;
     }
@@ -2200,7 +2200,7 @@ static void session_handle_named_vote(session_ctx_t *ctx, size_t option_index,
     host_t *host = ctx->owner;
     pthread_mutex_lock(&host->lock);
     named_poll_state_t *poll = host_find_named_poll_locked(host, label);
-    if (poll == NULL || !poll->poll.active ||
+    if (poll == nullptr || !poll->poll.active ||
         option_index >= poll->poll.option_count) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx,
@@ -2291,14 +2291,14 @@ static void session_handle_elect_command(session_ctx_t *ctx,
                                          const char *arguments)
 {
     static const char *kUsage = "Usage: /elect <label> <choice>";
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/elect", kUsage, usage, sizeof(usage));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -2333,7 +2333,7 @@ static void session_handle_elect_command(session_ctx_t *ctx,
     host_t *host = ctx->owner;
     pthread_mutex_lock(&host->lock);
     named_poll_state_t *poll = host_find_named_poll_locked(host, label);
-    if (poll == NULL || !poll->poll.active) {
+    if (poll == nullptr || !poll->poll.active) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx,
                                  "There is no active poll with that label.");
@@ -2351,9 +2351,9 @@ static void session_handle_elect_command(session_ctx_t *ctx,
         ++numeric_start;
     }
     if (*numeric_start != '\0') {
-        char *endptr = NULL;
+        char *endptr = nullptr;
         unsigned long parsed = strtoul(numeric_start, &endptr, 10);
-        if (endptr != NULL && endptr != numeric_start && *endptr == '\0' &&
+        if (endptr != nullptr && endptr != numeric_start && *endptr == '\0' &&
             parsed >= 1UL && parsed <= option_count) {
             option_index = (size_t)(parsed - 1UL);
         }
@@ -2397,11 +2397,11 @@ static void session_handle_vote_command(session_ctx_t *ctx,
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, canonical, usage_template, usage,
                                  sizeof(usage));
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_list_named_polls(ctx);
         return;
     }
@@ -2414,7 +2414,7 @@ static void session_handle_vote_command(session_ctx_t *ctx,
         return;
     }
 
-    const char *close_command = NULL;
+    const char *close_command = nullptr;
     if (strncmp(working, "@close", 6) == 0 &&
         (working[6] == '\0' || isspace((unsigned char)working[6]))) {
         close_command = "@close";
@@ -2423,7 +2423,7 @@ static void session_handle_vote_command(session_ctx_t *ctx,
         close_command = "@종료";
     }
 
-    if (close_command != NULL) {
+    if (close_command != nullptr) {
         const char *label_start = working + strlen(close_command);
         while (*label_start != '\0' && isspace((unsigned char)*label_start)) {
             ++label_start;
@@ -2455,7 +2455,7 @@ static void session_handle_vote_command(session_ctx_t *ctx,
         host_t *host = ctx->owner;
         pthread_mutex_lock(&host->lock);
         named_poll_state_t *poll = host_find_named_poll_locked(host, label);
-        if (poll == NULL || !poll->poll.active) {
+        if (poll == nullptr || !poll->poll.active) {
             pthread_mutex_unlock(&host->lock);
             session_send_system_line(ctx, "That poll is not currently active.");
             return;
@@ -2481,7 +2481,7 @@ static void session_handle_vote_command(session_ctx_t *ctx,
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(message, sizeof(message), "* [%s] closed poll [%s].",
                  ctx->user.name, label);
-        chat_room_broadcast(&host->room, message, NULL);
+        chat_room_broadcast(&host->room, message, nullptr);
         session_send_system_line(ctx, "Poll closed.");
         return;
     }
@@ -2512,12 +2512,12 @@ static void session_handle_vote_command(session_ctx_t *ctx,
         pthread_mutex_lock(&host->lock);
         named_poll_state_t *poll = host_find_named_poll_locked(host, label);
         named_poll_state_t snapshot = {0};
-        if (poll != NULL) {
+        if (poll != nullptr) {
             snapshot = *poll;
         }
         pthread_mutex_unlock(&host->lock);
 
-        if (poll == NULL) {
+        if (poll == nullptr) {
             session_send_system_line(ctx, "No poll exists with that label.");
             return;
         }
@@ -2537,15 +2537,15 @@ static void session_handle_vote_command(session_ctx_t *ctx,
     char *tokens[1 + 5];
     size_t token_count = 0U;
     char *token_cursor = definition;
-    while (token_cursor != NULL &&
+    while (token_cursor != nullptr &&
            token_count < sizeof(tokens) / sizeof(tokens[0])) {
         char *next = strchr(token_cursor, '|');
-        if (next != NULL) {
+        if (next != nullptr) {
             *next = '\0';
         }
         trim_whitespace_inplace(token_cursor);
         tokens[token_count++] = token_cursor;
-        token_cursor = next != NULL ? next + 1 : NULL;
+        token_cursor = next != nullptr ? next + 1 : nullptr;
     }
 
     if (token_count < 3U) {
@@ -2569,7 +2569,7 @@ static void session_handle_vote_command(session_ctx_t *ctx,
     host_t *host = ctx->owner;
     pthread_mutex_lock(&host->lock);
     named_poll_state_t *poll = host_ensure_named_poll_locked(host, label);
-    if (poll == NULL) {
+    if (poll == nullptr) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(
             ctx, "Too many named polls are already registered.");
@@ -2625,13 +2625,13 @@ static void session_handle_vote_command(session_ctx_t *ctx,
     snprintf(announce, sizeof(announce),
              "* [%s] started poll [%s] #%" PRIu64 ": %.*s", ctx->user.name,
              label, snapshot.poll.id, question_preview, snapshot.poll.question);
-    chat_room_broadcast(&host->room, announce, NULL);
+    chat_room_broadcast(&host->room, announce, nullptr);
 
     for (size_t idx = 0U; idx < snapshot.poll.option_count; ++idx) {
         char option_line[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(option_line, sizeof(option_line), "  /%zu %s - %s", idx + 1U,
                  label, snapshot.poll.options[idx].text);
-        chat_room_broadcast(&host->room, option_line, NULL);
+        chat_room_broadcast(&host->room, option_line, nullptr);
     }
 
     session_send_system_line(ctx, "Named poll created successfully.");
@@ -2641,7 +2641,7 @@ static void session_handle_vote_command(session_ctx_t *ctx,
 static void __attribute__((unused))
 session_handle_gameopt(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -2650,7 +2650,7 @@ session_handle_gameopt(session_ctx_t *ctx, const char *arguments)
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/gameopt", kUsage, usage, sizeof(usage));
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -2667,11 +2667,11 @@ session_handle_gameopt(session_ctx_t *ctx, const char *arguments)
     if (strcasecmp(working, "reset") == 0) {
         snprintf(ctx->game.chosen_camouflage_language,
                  sizeof(ctx->game.chosen_camouflage_language), "c");
-        if (ctx->owner != NULL) {
+        if (ctx->owner != nullptr) {
             pthread_mutex_lock(&ctx->owner->lock);
             user_preference_t *pref =
                 host_ensure_preference_locked(ctx->owner, ctx->user.name);
-            if (pref != NULL) {
+            if (pref != nullptr) {
                 snprintf(pref->camouflage_language,
                          sizeof(pref->camouflage_language), "c");
                 host_state_save_locked(ctx->owner);
@@ -2688,14 +2688,14 @@ session_handle_gameopt(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     bool is_operator = ctx->user.is_operator || ctx->user.is_lan_operator;
 
     char delegated_buffer[SSH_CHATTER_MESSAGE_LIMIT];
-    if (arguments != NULL) {
+    if (arguments != nullptr) {
         snprintf(delegated_buffer, sizeof(delegated_buffer), "%s", arguments);
         trim_whitespace_inplace(delegated_buffer);
 
@@ -2705,7 +2705,7 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
                 session_consume_token(delegated_buffer, token, sizeof(token));
             if (strcasecmp(token, "ssh-chat-server") == 0) {
                 char forwarded[SSH_CHATTER_MESSAGE_LIMIT];
-                if (remaining != NULL) {
+                if (remaining != nullptr) {
                     snprintf(forwarded, sizeof(forwarded), "%s", remaining);
                     trim_whitespace_inplace(forwarded);
                 } else {
@@ -2729,7 +2729,7 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
     const char *prefix = session_command_prefix(ctx);
     char help_buffer[SSH_CHATTER_MESSAGE_LIMIT * 32];
 
-    if (locale != NULL && locale->help_extra_title != NULL &&
+    if (locale != nullptr && locale->help_extra_title != nullptr &&
         locale->help_extra_title[0] != '\0') {
         session_send_system_line(ctx, locale->help_extra_title);
     }
@@ -2741,7 +2741,7 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
                                           help_buffer, sizeof(help_buffer));
     session_send_raw_text(ctx, help_buffer);
 
-    if (locale != NULL && locale->help_extra_hint != NULL &&
+    if (locale != nullptr && locale->help_extra_hint != nullptr &&
         locale->help_extra_hint[0] != '\0') {
         const char *args[] = {prefix};
         char line[SSH_CHATTER_MESSAGE_LIMIT];
@@ -2752,7 +2752,7 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
     }
 
     if (is_operator) {
-        if (locale != NULL && locale->help_operator_title != NULL &&
+        if (locale != nullptr && locale->help_operator_title != nullptr &&
             locale->help_operator_title[0] != '\0') {
             session_send_system_line(ctx, locale->help_operator_title);
         }
@@ -2766,7 +2766,7 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
 
         const char *ssh_command = session_command_alias_preferred_by_canonical(
             ctx, "/ssh-chat-server");
-        if (ssh_command == NULL || ssh_command[0] == '\0') {
+        if (ssh_command == nullptr || ssh_command[0] == '\0') {
             ssh_command = "/ssh-chat-server";
         }
 
@@ -2812,11 +2812,11 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
 // Format a timestamp for BBS displays in a compact form.
 static void bbs_format_time(time_t value, char *buffer, size_t length)
 {
-    if (buffer == NULL || length == 0U) {
+    if (buffer == nullptr || length == 0U) {
         return;
     }
     struct tm tm_value;
-    if (localtime_r(&value, &tm_value) == NULL) {
+    if (localtime_r(&value, &tm_value) == nullptr) {
         snprintf(buffer, length, "-");
         return;
     }
@@ -2826,8 +2826,8 @@ static void bbs_format_time(time_t value, char *buffer, size_t length)
 // Return a post by identifier while the host lock is held.
 static bbs_post_t *host_find_bbs_post_locked(host_t *host, uint64_t id)
 {
-    if (host == NULL || id == 0U) {
-        return NULL;
+    if (host == nullptr || id == 0U) {
+        return nullptr;
     }
     for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
         if (!host->bbs_posts[idx].in_use) {
@@ -2837,14 +2837,14 @@ static bbs_post_t *host_find_bbs_post_locked(host_t *host, uint64_t id)
             return &host->bbs_posts[idx];
         }
     }
-    return NULL;
+    return nullptr;
 }
 
-// Allocate a new post slot, returning NULL if capacity has been reached.
+// Allocate a new post slot, returning nullptr if capacity has been reached.
 static bbs_post_t *host_allocate_bbs_post_locked(host_t *host)
 {
-    if (host == NULL) {
-        return NULL;
+    if (host == nullptr) {
+        return nullptr;
     }
     for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
         if (host->bbs_posts[idx].in_use) {
@@ -2855,7 +2855,7 @@ static bbs_post_t *host_allocate_bbs_post_locked(host_t *host)
         post->id = host->next_bbs_id++;
         post->tag_count = 0U;
         post->comment_count = 0U;
-        post->created_at = time(NULL);
+        post->created_at = time(nullptr);
         post->bumped_at = post->created_at;
         post->title[0] = '\0';
         post->body[0] = '\0';
@@ -2874,12 +2874,12 @@ static bbs_post_t *host_allocate_bbs_post_locked(host_t *host)
         }
         return post;
     }
-    return NULL;
+    return nullptr;
 }
 
 static void host_reset_bbs_post(bbs_post_t *post)
 {
-    if (post == NULL) {
+    if (post == nullptr) {
         return;
     }
 
@@ -2905,7 +2905,7 @@ static void host_reset_bbs_post(bbs_post_t *post)
 
 static void host_clear_bbs_post_locked(host_t *host, bbs_post_t *post)
 {
-    if (host == NULL || post == NULL) {
+    if (host == nullptr || post == nullptr) {
         return;
     }
 
@@ -2935,7 +2935,7 @@ static void host_clear_bbs_post_locked(host_t *host, bbs_post_t *post)
 
 static bool session_bbs_refresh_view(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL || !ctx->bbs_view_active ||
+    if (ctx == nullptr || ctx->owner == nullptr || !ctx->bbs_view_active ||
         ctx->bbs_view_post_id == 0U) {
         return false;
     }
@@ -2944,12 +2944,12 @@ static bool session_bbs_refresh_view(session_ctx_t *ctx)
     pthread_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, ctx->bbs_view_post_id);
     bbs_post_t snapshot = {0};
-    if (post != NULL) {
+    if (post != nullptr) {
         snapshot = *post;
     }
     pthread_mutex_unlock(&host->lock);
 
-    if (post == NULL || !snapshot.in_use) {
+    if (post == nullptr || !snapshot.in_use) {
         ctx->bbs_view_active = false;
         ctx->bbs_view_post_id = 0U;
         ctx->bbs_view_total_lines = 0U;
@@ -2958,13 +2958,13 @@ static bool session_bbs_refresh_view(session_ctx_t *ctx)
         return false;
     }
 
-    session_bbs_render_post(ctx, &snapshot, NULL, false);
+    session_bbs_render_post(ctx, &snapshot, nullptr, false);
     return true;
 }
 
 static bool session_bbs_scroll(session_ctx_t *ctx, int direction, size_t step)
 {
-    if (ctx == NULL || ctx->owner == NULL || !ctx->bbs_view_active ||
+    if (ctx == nullptr || ctx->owner == nullptr || !ctx->bbs_view_active ||
         direction == 0) {
         return false;
     }
@@ -3044,7 +3044,7 @@ static bool session_bbs_scroll(session_ctx_t *ctx, int direction, size_t step)
 // Show the BBS dashboard and mark the session as being in BBS mode.
 static void session_bbs_show_dashboard(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
     ctx->in_bbs_mode = true;
@@ -3061,7 +3061,7 @@ static void session_bbs_show_dashboard(session_ctx_t *ctx)
 // List posts sorted by most recent activity.
 static void session_bbs_list(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -3236,12 +3236,12 @@ static void session_bbs_list(session_ctx_t *ctx)
 
 static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     char working_topic[SSH_CHATTER_BBS_TAG_LEN];
-    if (topic != NULL) {
+    if (topic != nullptr) {
         snprintf(working_topic, sizeof(working_topic), "%s", topic);
     } else {
         working_topic[0] = '\0';
@@ -3392,7 +3392,7 @@ static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
 // Display a single post to the user.
 static void session_bbs_read(session_ctx_t *ctx, uint64_t id)
 {
-    if (ctx == NULL || ctx->owner == NULL || id == 0U) {
+    if (ctx == nullptr || ctx->owner == nullptr || id == 0U) {
         return;
     }
 
@@ -3400,23 +3400,23 @@ static void session_bbs_read(session_ctx_t *ctx, uint64_t id)
     pthread_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     bbs_post_t snapshot = {0};
-    if (post != NULL) {
+    if (post != nullptr) {
         snapshot = *post;
     }
     pthread_mutex_unlock(&host->lock);
 
-    if (post == NULL || !snapshot.in_use) {
+    if (post == nullptr || !snapshot.in_use) {
         session_send_system_line(ctx, "No post exists with that identifier.");
         return;
     }
 
-    session_bbs_render_post(ctx, &snapshot, NULL, true);
+    session_bbs_render_post(ctx, &snapshot, nullptr, true);
 }
 
 // Create a new post using the provided argument format.
 static bool session_bbs_is_admin_only_tag(const char *tag)
 {
-    if (tag == NULL || tag[0] == '\0') {
+    if (tag == nullptr || tag[0] == '\0') {
         return false;
     }
 
@@ -3434,11 +3434,11 @@ static bool session_bbs_is_admin_only_tag(const char *tag)
 static void session_bbs_compact_preview(const char *input, char *output,
                                         size_t length)
 {
-    if (output == NULL || length == 0U) {
+    if (output == nullptr || length == 0U) {
         return;
     }
     output[0] = '\0';
-    if (input == NULL) {
+    if (input == nullptr) {
         return;
     }
 
@@ -3487,7 +3487,7 @@ static void session_bbs_compact_preview(const char *input, char *output,
 
 static void session_bbs_announce_post(host_t *host, const bbs_post_t *post)
 {
-    if (host == NULL || post == NULL || host->matrix_client == NULL) {
+    if (host == nullptr || post == nullptr || host->matrix_client == nullptr) {
         return;
     }
 
@@ -3515,14 +3515,14 @@ static void session_bbs_announce_post(host_t *host, const bbs_post_t *post)
                  title[0] != '\0' ? title : "(untitled)");
     }
 
-    host_history_record_system(host, notice, NULL);
+    host_history_record_system(host, notice, nullptr);
 }
 
 static void session_bbs_announce_comment(host_t *host, const bbs_post_t *post,
                                          const bbs_comment_t *comment)
 {
-    if (host == NULL || post == NULL || comment == NULL ||
-        host->matrix_client == NULL) {
+    if (host == nullptr || post == nullptr || comment == nullptr ||
+        host->matrix_client == nullptr) {
         return;
     }
 
@@ -3551,12 +3551,12 @@ static void session_bbs_announce_comment(host_t *host, const bbs_post_t *post,
                  title[0] != '\0' ? title : "(untitled)");
     }
 
-    host_history_record_system(host, notice, NULL);
+    host_history_record_system(host, notice, nullptr);
 }
 
 static void session_bbs_reset_pending_post(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -3580,7 +3580,7 @@ static void session_bbs_reset_pending_post(session_ctx_t *ctx)
 
 static void session_bbs_commit_pending_post(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -3620,7 +3620,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
     }
 
     host_t *host = ctx->owner;
-    if (host == NULL) {
+    if (host == nullptr) {
         session_bbs_reset_pending_post(ctx);
         return;
     }
@@ -3630,7 +3630,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
     if (ctx->editor_mode == SESSION_EDITOR_MODE_BBS_EDIT) {
         uint64_t edit_id = ctx->pending_bbs_edit_id;
         bbs_post_t *post = host_find_bbs_post_locked(host, edit_id);
-        if (post == NULL || !post->in_use) {
+        if (post == nullptr || !post->in_use) {
             pthread_mutex_unlock(&host->lock);
             session_send_system_line(
                 ctx, "No post exists with that identifier anymore.");
@@ -3662,7 +3662,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
             host_strip_column_reset(post->tags[idx]);
         }
 
-        post->bumped_at = time(NULL);
+        post->bumped_at = time(nullptr);
         snapshot = *post;
         host_bbs_state_save_locked(host);
         pthread_mutex_unlock(&host->lock);
@@ -3673,7 +3673,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
     }
 
     bbs_post_t *post = host_allocate_bbs_post_locked(host);
-    if (post == NULL) {
+    if (post == nullptr) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "The bulletin board is full right now.");
         return;
@@ -3705,7 +3705,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
 
 static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -3724,7 +3724,7 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
     ctx->bbs_view_active = false;
     ctx->bbs_view_post_id = 0U;
 
-    if (ctx->owner == NULL) {
+    if (ctx->owner == nullptr) {
         session_send_system_line(
             ctx, "The bulletin board is unavailable right now.");
         return;
@@ -3732,7 +3732,7 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
 
     session_bbs_reset_pending_post(ctx);
 
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         session_bbs_send_usage(ctx, "post", "<title>[|tags...]");
         session_send_system_line(
             ctx, "Use | to separate tags when the title has spaces.");
@@ -3751,9 +3751,9 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
 
     char title[SSH_CHATTER_BBS_TITLE_LEN];
     title[0] = '\0';
-    char *tag_cursor = NULL;
+    char *tag_cursor = nullptr;
     char *separator = strchr(working, '|');
-    if (separator != NULL) {
+    if (separator != nullptr) {
         *separator = '\0';
         char *title_part = working;
         char *tags_part = separator + 1;
@@ -3776,7 +3776,7 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
         if (*cursor == '\"' || *cursor == '\'') {
             char quote = *cursor++;
             char *closing = strchr(cursor, quote);
-            if (closing == NULL) {
+            if (closing == nullptr) {
                 session_send_system_line(
                     ctx, "Missing closing quote for the title.");
                 return;
@@ -3814,7 +3814,7 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
     size_t tag_count = 0U;
     bool discarded_tags = false;
     bool default_tag_applied = false;
-    while (tag_cursor != NULL && *tag_cursor != '\0') {
+    while (tag_cursor != nullptr && *tag_cursor != '\0') {
         while (isspace((unsigned char)*tag_cursor)) {
             ++tag_cursor;
         }
@@ -3886,12 +3886,12 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
                 sizeof(notice) - strlen(notice) - 1U);
     }
 
-    session_bbs_render_editor(ctx, notice[0] != '\0' ? notice : NULL);
+    session_bbs_render_editor(ctx, notice[0] != '\0' ? notice : nullptr);
 }
 
 static void session_bbs_capture_body_text(session_ctx_t *ctx, const char *text)
 {
-    if (ctx == NULL || !ctx->bbs_post_pending || text == NULL) {
+    if (ctx == nullptr || !ctx->bbs_post_pending || text == nullptr) {
         return;
     }
 
@@ -3901,19 +3901,19 @@ static void session_bbs_capture_body_text(session_ctx_t *ctx, const char *text)
 
 static void session_bbs_capture_body_line(session_ctx_t *ctx, const char *line)
 {
-    if (ctx == NULL || !ctx->bbs_post_pending) {
+    if (ctx == nullptr || !ctx->bbs_post_pending) {
         return;
     }
 
     char trimmed[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(trimmed, sizeof(trimmed), "%s", line != NULL ? line : "");
+    snprintf(trimmed, sizeof(trimmed), "%s", line != nullptr ? line : "");
     trim_whitespace_inplace(trimmed);
     if (session_editor_matches_terminator(ctx, trimmed)) {
         session_bbs_commit_pending_post(ctx);
         return;
     }
 
-    if (line == NULL) {
+    if (line == nullptr) {
         line = "";
     }
 
@@ -3938,12 +3938,12 @@ static void session_bbs_capture_body_line(session_ctx_t *ctx, const char *line)
                  "Unable to update the draft right now.");
     }
 
-    session_bbs_render_editor(ctx, status[0] != '\0' ? status : NULL);
+    session_bbs_render_editor(ctx, status[0] != '\0' ? status : nullptr);
 }
 
 static void session_bbs_begin_edit(session_ctx_t *ctx, uint64_t id)
 {
-    if (ctx == NULL || id == 0U) {
+    if (ctx == nullptr || id == 0U) {
         session_send_system_line(ctx, "Invalid post identifier.");
         return;
     }
@@ -3964,7 +3964,7 @@ static void session_bbs_begin_edit(session_ctx_t *ctx, uint64_t id)
         return;
     }
 
-    if (ctx->owner == NULL) {
+    if (ctx->owner == nullptr) {
         session_send_system_line(
             ctx, "The bulletin board is unavailable right now.");
         return;
@@ -3974,12 +3974,12 @@ static void session_bbs_begin_edit(session_ctx_t *ctx, uint64_t id)
     pthread_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     bbs_post_t snapshot = {0};
-    if (post != NULL && post->in_use) {
+    if (post != nullptr && post->in_use) {
         snapshot = *post;
     }
     pthread_mutex_unlock(&host->lock);
 
-    if (post == NULL || !snapshot.in_use) {
+    if (post == nullptr || !snapshot.in_use) {
         session_send_system_line(ctx, "No post exists with that identifier.");
         return;
     }
@@ -4026,7 +4026,7 @@ static void session_bbs_begin_edit(session_ctx_t *ctx, uint64_t id)
 // Append a comment to a post.
 static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL || arguments == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr || arguments == nullptr) {
         session_bbs_send_usage(ctx, "comment", "<id>|<text>");
         return;
     }
@@ -4040,7 +4040,7 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
     }
 
     char *separator = strchr(working, '|');
-    if (separator == NULL) {
+    if (separator == nullptr) {
         session_bbs_send_usage(ctx, "comment", "<id>|<text>");
         return;
     }
@@ -4055,7 +4055,7 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    uint64_t id = (uint64_t)strtoull(id_text, NULL, 10);
+    uint64_t id = (uint64_t)strtoull(id_text, nullptr, 10);
     if (id == 0U) {
         session_send_system_line(ctx, "Invalid post identifier.");
         return;
@@ -4072,7 +4072,7 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
     host_t *host = ctx->owner;
     pthread_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
-    if (post == NULL || !post->in_use) {
+    if (post == nullptr || !post->in_use) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "No post exists with that identifier.");
         return;
@@ -4094,7 +4094,7 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
     comment->text[comment_len] = '\0';
     host_strip_column_reset(comment->author);
     host_strip_column_reset(comment->text);
-    comment->created_at = time(NULL);
+    comment->created_at = time(nullptr);
     post->bumped_at = comment->created_at;
     bbs_post_t snapshot = *post;
     host_bbs_state_save_locked(host);
@@ -4109,7 +4109,7 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
 
 static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -4121,7 +4121,7 @@ static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
     host_t *host = ctx->owner;
     pthread_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
-    if (post == NULL || !post->in_use) {
+    if (post == nullptr || !post->in_use) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "No post exists with that identifier.");
         return;
@@ -4147,20 +4147,20 @@ static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
 // Bump a post to the top of the list by refreshing its activity time.
 static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id)
 {
-    if (ctx == NULL || ctx->owner == NULL || id == 0U) {
+    if (ctx == nullptr || ctx->owner == nullptr || id == 0U) {
         return;
     }
 
     host_t *host = ctx->owner;
     pthread_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
-    if (post == NULL || !post->in_use) {
+    if (post == nullptr || !post->in_use) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "No post exists with that identifier.");
         return;
     }
 
-    post->bumped_at = time(NULL);
+    post->bumped_at = time(nullptr);
     bbs_post_t snapshot = *post;
     host_bbs_state_save_locked(host);
     pthread_mutex_unlock(&host->lock);
@@ -4170,7 +4170,7 @@ static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id)
 
 static void session_rss_clear(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -4180,14 +4180,14 @@ static void session_rss_clear(session_ctx_t *ctx)
 
 static void session_rss_exit(session_ctx_t *ctx, const char *reason)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
     const bool was_active = ctx->in_rss_mode;
     session_rss_clear(ctx);
 
-    if (reason != NULL && reason[0] != '\0') {
+    if (reason != nullptr && reason[0] != '\0') {
         session_send_system_line(ctx, reason);
     } else if (was_active) {
         session_send_system_line(ctx, "RSS reader closed.");
@@ -4200,7 +4200,7 @@ static void session_rss_exit(session_ctx_t *ctx, const char *reason)
 
 static void session_rss_show_current(session_ctx_t *ctx)
 {
-    if (ctx == NULL || !ctx->rss_view.active ||
+    if (ctx == nullptr || !ctx->rss_view.active ||
         ctx->rss_view.item_count == 0U) {
         return;
     }
@@ -4235,15 +4235,15 @@ static void session_rss_show_current(session_ctx_t *ctx)
         session_send_system_line(ctx, "Summary:");
         char working[SSH_CHATTER_RSS_SUMMARY_LEN];
         snprintf(working, sizeof(working), "%s", item->summary);
-        char *saveptr = NULL;
+        char *saveptr = nullptr;
         char *fragment = strtok_r(working, "\r\n", &saveptr);
-        while (fragment != NULL) {
+        while (fragment != nullptr) {
             rss_trim_whitespace(fragment);
             if (fragment[0] != '\0') {
                 snprintf(line, sizeof(line), "  %s", fragment);
                 session_send_system_line(ctx, line);
             }
-            fragment = strtok_r(NULL, "\r\n", &saveptr);
+            fragment = strtok_r(nullptr, "\r\n", &saveptr);
         }
     } else {
         session_send_system_line(ctx, "Summary: (none)");
@@ -4253,7 +4253,7 @@ static void session_rss_show_current(session_ctx_t *ctx)
 static void session_rss_begin(session_ctx_t *ctx, const char *tag,
                               const rss_session_item_t *items, size_t count)
 {
-    if (ctx == NULL || tag == NULL || tag[0] == '\0' || items == NULL ||
+    if (ctx == nullptr || tag == nullptr || tag[0] == '\0' || items == nullptr ||
         count == 0U) {
         return;
     }
@@ -4286,7 +4286,7 @@ static void session_rss_begin(session_ctx_t *ctx, const char *tag,
 
 static bool session_rss_move(session_ctx_t *ctx, int delta)
 {
-    if (ctx == NULL || !ctx->rss_view.active ||
+    if (ctx == nullptr || !ctx->rss_view.active ||
         ctx->rss_view.item_count == 0U || delta == 0) {
         return false;
     }
@@ -4315,7 +4315,7 @@ static bool session_rss_move(session_ctx_t *ctx, int delta)
 
 static void session_rss_list(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -4359,7 +4359,7 @@ static void session_rss_list(session_ctx_t *ctx)
 
 static void session_rss_read(session_ctx_t *ctx, const char *tag)
 {
-    if (ctx == NULL || ctx->owner == NULL || tag == NULL || tag[0] == '\0') {
+    if (ctx == nullptr || ctx->owner == nullptr || tag == nullptr || tag[0] == '\0') {
         session_send_system_line(ctx, "Usage: /rss read <tag>");
         return;
     }
@@ -4376,7 +4376,7 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
     rss_feed_t feed_snapshot = {0};
     pthread_mutex_lock(&ctx->owner->lock);
     rss_feed_t *entry = host_find_rss_feed_locked(ctx->owner, working);
-    if (entry != NULL) {
+    if (entry != nullptr) {
         feed_snapshot = *entry;
     }
     pthread_mutex_unlock(&ctx->owner->lock);
@@ -4404,10 +4404,10 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
         return;
     }
 
-    time_t now = time(NULL);
+    time_t now = time(nullptr);
     pthread_mutex_lock(&ctx->owner->lock);
     entry = host_find_rss_feed_locked(ctx->owner, working);
-    if (entry != NULL) {
+    if (entry != nullptr) {
         entry->last_checked = now;
         snprintf(entry->last_title, sizeof(entry->last_title), "%s",
                  items[0].title);
@@ -4422,7 +4422,7 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
 
 static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -4433,7 +4433,7 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
     session_command_format_usage(ctx, "/rss", kUsage, usage, sizeof(usage));
 
     char working[SSH_CHATTER_MAX_INPUT_LEN];
-    if (arguments == NULL) {
+    if (arguments == nullptr) {
         working[0] = '\0';
     } else {
         snprintf(working, sizeof(working), "%s", arguments);
@@ -4445,9 +4445,9 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    char *saveptr = NULL;
+    char *saveptr = nullptr;
     char *command = strtok_r(working, " \t", &saveptr);
-    if (command == NULL) {
+    if (command == nullptr) {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -4463,9 +4463,9 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
             return;
         }
 
-        char *url = strtok_r(NULL, " \t", &saveptr);
-        char *tag = strtok_r(NULL, " \t", &saveptr);
-        if (url == NULL || tag == NULL) {
+        char *url = strtok_r(nullptr, " \t", &saveptr);
+        char *tag = strtok_r(nullptr, " \t", &saveptr);
+        if (url == nullptr || tag == nullptr) {
             session_send_system_line(ctx, "Usage: /rss add <url> <tag>");
             return;
         }
@@ -4500,8 +4500,8 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
             return;
         }
 
-        char *tag = strtok_r(NULL, " \t", &saveptr);
-        if (tag == NULL) {
+        char *tag = strtok_r(nullptr, " \t", &saveptr);
+        if (tag == nullptr) {
             session_send_system_line(ctx, "Usage: /rss del <tag>");
             return;
         }
@@ -4527,8 +4527,8 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
     }
 
     if (strcasecmp(command, "read") == 0) {
-        char *tag = strtok_r(NULL, " \t", &saveptr);
-        if (tag == NULL) {
+        char *tag = strtok_r(nullptr, " \t", &saveptr);
+        if (tag == nullptr) {
             session_send_system_line(ctx, "Usage: /rss read <tag>");
             return;
         }
@@ -4543,18 +4543,18 @@ static bool host_asciiart_cooldown_active(host_t *host, const char *ip,
                                           const struct timespec *now,
                                           long *remaining_seconds)
 {
-    if (host == NULL || ip == NULL || ip[0] == '\0') {
-        if (remaining_seconds != NULL) {
+    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
+        if (remaining_seconds != nullptr) {
             *remaining_seconds = 0L;
         }
         return false;
     }
 
     struct timespec current = {0, 0};
-    if (now != NULL) {
+    if (now != nullptr) {
         current = *now;
     } else if (clock_gettime(CLOCK_MONOTONIC, &current) != 0) {
-        current.tv_sec = time(NULL);
+        current.tv_sec = time(nullptr);
         current.tv_nsec = 0L;
     }
 
@@ -4563,7 +4563,7 @@ static bool host_asciiart_cooldown_active(host_t *host, const char *ip,
 
     pthread_mutex_lock(&host->lock);
     join_activity_entry_t *entry = host_find_join_activity_locked(host, ip);
-    if (entry != NULL && entry->asciiart_has_cooldown) {
+    if (entry != nullptr && entry->asciiart_has_cooldown) {
         struct timespec expiry = entry->last_asciiart_post;
         expiry.tv_sec += SSH_CHATTER_ASCIIART_COOLDOWN_SECONDS;
         if (timespec_compare(&current, &expiry) >= 0) {
@@ -4582,7 +4582,7 @@ static bool host_asciiart_cooldown_active(host_t *host, const char *ip,
     }
     pthread_mutex_unlock(&host->lock);
 
-    if (remaining_seconds != NULL) {
+    if (remaining_seconds != nullptr) {
         *remaining_seconds = active ? remaining : 0L;
     }
 
@@ -4592,13 +4592,13 @@ static bool host_asciiart_cooldown_active(host_t *host, const char *ip,
 static void host_asciiart_register_post(host_t *host, const char *ip,
                                         const struct timespec *when)
 {
-    if (host == NULL || ip == NULL || ip[0] == '\0' || when == NULL) {
+    if (host == nullptr || ip == nullptr || ip[0] == '\0' || when == nullptr) {
         return;
     }
 
     pthread_mutex_lock(&host->lock);
     join_activity_entry_t *entry = host_ensure_join_activity_locked(host, ip);
-    if (entry != NULL) {
+    if (entry != nullptr) {
         entry->last_asciiart_post = *when;
         entry->asciiart_has_cooldown = true;
     }
@@ -4607,7 +4607,7 @@ static void host_asciiart_register_post(host_t *host, const char *ip,
 
 static void session_asciiart_reset(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -4622,17 +4622,17 @@ static bool session_asciiart_cooldown_active(session_ctx_t *ctx,
                                              struct timespec *now,
                                              long *remaining_seconds)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return false;
     }
 
     struct timespec current;
     if (clock_gettime(CLOCK_MONOTONIC, &current) != 0) {
-        current.tv_sec = time(NULL);
+        current.tv_sec = time(nullptr);
         current.tv_nsec = 0L;
     }
 
-    if (now != NULL) {
+    if (now != nullptr) {
         *now = current;
     }
 
@@ -4661,7 +4661,7 @@ static bool session_asciiart_cooldown_active(session_ctx_t *ctx,
                                                    &current, &ip_remaining);
 
     if (!session_active && !ip_active) {
-        if (remaining_seconds != NULL) {
+        if (remaining_seconds != nullptr) {
             *remaining_seconds = 0L;
         }
         return false;
@@ -4672,7 +4672,7 @@ static bool session_asciiart_cooldown_active(session_ctx_t *ctx,
         max_remaining = ip_remaining;
     }
 
-    if (remaining_seconds != NULL) {
+    if (remaining_seconds != nullptr) {
         *remaining_seconds = max_remaining;
     }
 
@@ -4682,7 +4682,7 @@ static bool session_asciiart_cooldown_active(session_ctx_t *ctx,
 static void session_asciiart_begin(session_ctx_t *ctx,
                                    session_asciiart_target_t target)
 {
-    if (ctx == NULL || target == SESSION_ASCIIART_TARGET_NONE) {
+    if (ctx == nullptr || target == SESSION_ASCIIART_TARGET_NONE) {
         return;
     }
 
@@ -4760,7 +4760,7 @@ static void session_asciiart_begin(session_ctx_t *ctx,
 
 static void session_asciiart_import_from_editor(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -4784,7 +4784,7 @@ static void session_asciiart_import_from_editor(session_ctx_t *ctx)
 
 static void session_asciiart_commit(session_ctx_t *ctx)
 {
-    if (ctx == NULL || !ctx->asciiart_pending) {
+    if (ctx == nullptr || !ctx->asciiart_pending) {
         return;
     }
 
@@ -4799,7 +4799,7 @@ static void session_asciiart_commit(session_ctx_t *ctx)
         return;
     }
 
-    if (ctx->owner == NULL) {
+    if (ctx->owner == nullptr) {
         session_asciiart_reset(ctx);
         return;
     }
@@ -4851,7 +4851,7 @@ static void session_asciiart_commit(session_ctx_t *ctx)
 
     struct timespec now;
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
-        now.tv_sec = time(NULL);
+        now.tv_sec = time(nullptr);
         now.tv_nsec = 0L;
     }
 
@@ -4878,7 +4878,7 @@ static void session_asciiart_commit(session_ctx_t *ctx)
 
 static void session_asciiart_cancel(session_ctx_t *ctx, const char *reason)
 {
-    if (ctx == NULL || !ctx->asciiart_pending) {
+    if (ctx == nullptr || !ctx->asciiart_pending) {
         return;
     }
 
@@ -4887,27 +4887,27 @@ static void session_asciiart_cancel(session_ctx_t *ctx, const char *reason)
     if (used_editor) {
         session_bbs_reset_pending_post(ctx);
     }
-    if (reason != NULL && reason[0] != '\0') {
+    if (reason != nullptr && reason[0] != '\0') {
         session_send_system_line(ctx, reason);
     }
 }
 
 static bool session_asciiart_capture_continue(const session_ctx_t *ctx)
 {
-    return ctx != NULL && ctx->asciiart_pending;
+    return ctx != nullptr && ctx->asciiart_pending;
 }
 
 static bool session_bbs_capture_continue(const session_ctx_t *ctx)
 {
-    return ctx != NULL && ctx->bbs_post_pending;
+    return ctx != nullptr && ctx->bbs_post_pending;
 }
 
 static void session_capture_multiline_text(
     session_ctx_t *ctx, const char *text, session_text_line_consumer_t consumer,
     session_text_continue_predicate_t should_continue)
 {
-    if (ctx == NULL || text == NULL || consumer == NULL ||
-        should_continue == NULL) {
+    if (ctx == nullptr || text == nullptr || consumer == nullptr ||
+        should_continue == nullptr) {
         return;
     }
 
@@ -4989,7 +4989,7 @@ static void session_capture_multiline_text(
 
 static void session_asciiart_capture_text(session_ctx_t *ctx, const char *text)
 {
-    if (ctx == NULL || !ctx->asciiart_pending || text == NULL) {
+    if (ctx == nullptr || !ctx->asciiart_pending || text == nullptr) {
         return;
     }
 
@@ -4999,12 +4999,12 @@ static void session_asciiart_capture_text(session_ctx_t *ctx, const char *text)
 
 static void session_asciiart_capture_line(session_ctx_t *ctx, const char *line)
 {
-    if (ctx == NULL || !ctx->asciiart_pending) {
+    if (ctx == nullptr || !ctx->asciiart_pending) {
         return;
     }
 
     char trimmed[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(trimmed, sizeof(trimmed), "%s", line != NULL ? line : "");
+    snprintf(trimmed, sizeof(trimmed), "%s", line != nullptr ? line : "");
     trim_whitespace_inplace(trimmed);
     if (session_asciiart_matches_terminator(trimmed)) {
         session_asciiart_commit(ctx);
@@ -5017,7 +5017,7 @@ static void session_asciiart_capture_line(session_ctx_t *ctx, const char *line)
         return;
     }
 
-    if (line == NULL) {
+    if (line == nullptr) {
         line = "";
     }
 

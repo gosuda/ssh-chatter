@@ -17,7 +17,7 @@ ssh_session ssh_new(void)
 
 void ssh_free(ssh_session session)
 {
-    free(session);
+    GC_FREE(session);
 }
 
 int ssh_handle_key_exchange(ssh_session session)
@@ -35,18 +35,18 @@ const char *ssh_get_error(void *error_source)
 const char *ssh_get_clientbanner(ssh_session session)
 {
     (void)session;
-    return NULL;
+    return nullptr;
 }
 
 ssh_message ssh_message_get(ssh_session session)
 {
     (void)session;
-    return NULL;
+    return nullptr;
 }
 
 int ssh_message_type(ssh_message message)
 {
-    if (message == NULL) {
+    if (message == nullptr) {
         return -1;
     }
     return message->type;
@@ -54,7 +54,7 @@ int ssh_message_type(ssh_message message)
 
 int ssh_message_subtype(ssh_message message)
 {
-    if (message == NULL) {
+    if (message == nullptr) {
         return -1;
     }
     return message->subtype;
@@ -62,8 +62,8 @@ int ssh_message_subtype(ssh_message message)
 
 const char *ssh_message_auth_user(ssh_message message)
 {
-    if (message == NULL) {
-        return NULL;
+    if (message == nullptr) {
+        return nullptr;
     }
     return message->user;
 }
@@ -76,8 +76,8 @@ void ssh_message_auth_reply_success(ssh_message message, int partial)
 
 const char *ssh_message_service_service(ssh_message message)
 {
-    if (message == NULL) {
-        return NULL;
+    if (message == nullptr) {
+        return nullptr;
     }
     return message->service;
 }
@@ -90,7 +90,7 @@ int ssh_message_service_reply_success(ssh_message message)
 
 void ssh_message_free(ssh_message message)
 {
-    free(message);
+    GC_FREE(message);
 }
 
 void ssh_message_reply_default(ssh_message message)
@@ -108,7 +108,7 @@ int ssh_message_channel_request_open_reply_accept_channel(ssh_message message,
                                                           ssh_channel channel)
 {
     (void)message;
-    return channel != NULL ? SSH_OK : SSH_ERROR;
+    return channel != nullptr ? SSH_OK : SSH_ERROR;
 }
 
 void ssh_message_channel_request_reply_success(ssh_message message)
@@ -159,7 +159,7 @@ int ssh_channel_close(ssh_channel channel)
 
 void ssh_channel_free(ssh_channel channel)
 {
-    free(channel);
+    GC_FREE(channel);
 }
 
 unsigned int ssh_message_channel_request_pty_width(ssh_message message)
@@ -205,7 +205,7 @@ ssh_bind ssh_bind_new(void)
 
 void ssh_bind_free(ssh_bind bind)
 {
-    free(bind);
+    GC_FREE(bind);
 }
 
 int ssh_bind_options_set(ssh_bind bind, ssh_bind_options_e type,
@@ -237,11 +237,11 @@ int ssh_pki_import_privkey_file(const char *filename, const char *passphrase,
     (void)passphrase;
     (void)auth_fn;
     (void)auth_data;
-    if (pkey == NULL) {
+    if (pkey == nullptr) {
         return SSH_ERROR;
     }
     *pkey = calloc(1, sizeof(struct ssh_key_struct));
-    if (*pkey == NULL) {
+    if (*pkey == nullptr) {
         return SSH_ERROR;
     }
     return SSH_OK;
@@ -249,5 +249,5 @@ int ssh_pki_import_privkey_file(const char *filename, const char *passphrase,
 
 void ssh_key_free(ssh_key key)
 {
-    free(key);
+    GC_FREE(key);
 }

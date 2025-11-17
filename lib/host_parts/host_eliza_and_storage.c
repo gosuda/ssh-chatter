@@ -8,7 +8,7 @@
 static void __attribute__((unused))
 host_eliza_memory_store(host_t *host, const char *prompt, const char *reply)
 {
-    if (host == NULL || prompt == NULL || reply == NULL) {
+    if (host == nullptr || prompt == nullptr || reply == nullptr) {
         return;
     }
 
@@ -36,7 +36,7 @@ host_eliza_memory_store(host_t *host, const char *prompt, const char *reply)
     if (host->eliza_memory_next_id < UINT64_MAX) {
         host->eliza_memory_next_id += 1U;
     }
-    entry->stored_at = time(NULL);
+    entry->stored_at = time(nullptr);
     snprintf(entry->prompt, sizeof(entry->prompt), "%s", clean_prompt);
     snprintf(entry->reply, sizeof(entry->reply), "%s", clean_reply);
 
@@ -48,7 +48,7 @@ static size_t __attribute__((unused))
 host_eliza_memory_collect_tokens(const char *prompt, char tokens[][32],
                                  size_t max_tokens)
 {
-    if (tokens == NULL || max_tokens == 0U || prompt == NULL) {
+    if (tokens == nullptr || max_tokens == 0U || prompt == nullptr) {
         return 0U;
     }
 
@@ -104,12 +104,12 @@ static size_t __attribute__((unused))
 host_eliza_memory_collect_context(host_t *host, const char *prompt,
                                   char *context, size_t context_length)
 {
-    if (context == NULL || context_length == 0U) {
+    if (context == nullptr || context_length == 0U) {
         return 0U;
     }
 
     context[0] = '\0';
-    if (host == NULL || prompt == NULL) {
+    if (host == nullptr || prompt == nullptr) {
         return 0U;
     }
 
@@ -209,7 +209,7 @@ host_eliza_memory_collect_context(host_t *host, const char *prompt,
         time_buffer[0] = '\0';
         if (entry->stored_at != 0) {
             struct tm tm_value;
-            if (localtime_r(&entry->stored_at, &tm_value) != NULL) {
+            if (localtime_r(&entry->stored_at, &tm_value) != nullptr) {
                 strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M",
                          &tm_value);
             }
@@ -256,7 +256,7 @@ host_eliza_memory_collect_context(host_t *host, const char *prompt,
 static void __attribute__((unused))
 host_eliza_history_normalize_line(char *text)
 {
-    if (text == NULL) {
+    if (text == nullptr) {
         return;
     }
 
@@ -294,12 +294,12 @@ static size_t __attribute__((unused))
 host_eliza_history_collect_context(host_t *host, char *context,
                                    size_t context_length)
 {
-    if (context == NULL || context_length == 0U) {
+    if (context == nullptr || context_length == 0U) {
         return 0U;
     }
 
     context[0] = '\0';
-    if (host == NULL) {
+    if (host == nullptr) {
         return 0U;
     }
 
@@ -341,7 +341,7 @@ host_eliza_history_collect_context(host_t *host, char *context,
             const char *label =
                 chat_attachment_type_label(entry->attachment_type);
             snprintf(working, sizeof(working), "shared a %s" ANSI_RESET,
-                     label != NULL ? label : "attachment");
+                     label != nullptr ? label : "attachment");
         }
 
         if (entry->attachment_caption[0] != '\0') {
@@ -436,12 +436,12 @@ host_eliza_history_collect_context(host_t *host, char *context,
 static void __attribute__((unused))
 host_eliza_prepare_preview(const char *source, char *dest, size_t dest_length)
 {
-    if (dest == NULL || dest_length == 0U) {
+    if (dest == nullptr || dest_length == 0U) {
         return;
     }
 
     dest[0] = '\0';
-    if (source == NULL || source[0] == '\0') {
+    if (source == nullptr || source[0] == '\0') {
         return;
     }
 
@@ -473,12 +473,12 @@ static size_t __attribute__((unused))
 host_eliza_bbs_collect_context(host_t *host, char *context,
                                size_t context_length)
 {
-    if (context == NULL || context_length == 0U) {
+    if (context == nullptr || context_length == 0U) {
         return 0U;
     }
 
     context[0] = '\0';
-    if (host == NULL) {
+    if (host == nullptr) {
         return 0U;
     }
 
@@ -682,12 +682,12 @@ host_eliza_bbs_collect_context(host_t *host, char *context,
 
 static void host_bbs_resolve_path(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     const char *bbs_path = getenv("CHATTER_BBS_FILE");
-    if (bbs_path == NULL || bbs_path[0] == '\0') {
+    if (bbs_path == nullptr || bbs_path[0] == '\0') {
         bbs_path = "bbs_state.dat";
     }
 
@@ -702,7 +702,7 @@ static void host_bbs_resolve_path(host_t *host)
 
 static size_t host_column_reset_sequence_length(const char *text)
 {
-    if (text == NULL) {
+    if (text == nullptr) {
         return 0U;
     }
 
@@ -720,7 +720,7 @@ static size_t host_column_reset_sequence_length(const char *text)
 
 static void host_strip_column_reset(char *text)
 {
-    if (text == NULL || text[0] == '\0') {
+    if (text == nullptr || text[0] == '\0') {
         return;
     }
 
@@ -741,7 +741,7 @@ static void host_strip_column_reset(char *text)
 
 static void host_bbs_state_save_locked(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -771,7 +771,7 @@ static void host_bbs_state_save_locked(host_t *host)
     }
 
     FILE *fp = fdopen(temp_fd, "wb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         int saved_errno = errno;
         close(temp_fd);
         unlink(temp_path);
@@ -882,7 +882,7 @@ static void host_bbs_state_save_locked(host_t *host)
 
 static void host_bbs_state_load(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -896,7 +896,7 @@ static void host_bbs_state_load(host_t *host)
     }
 
     FILE *fp = fopen(host->bbs_state_file_path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return;
     }
 
@@ -1134,7 +1134,7 @@ static void host_bbs_state_load(host_t *host)
 
 static void host_bbs_watchdog_scan(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -1148,7 +1148,7 @@ static void host_bbs_watchdog_scan(host_t *host)
 
     bbs_post_t *snapshot =
         GC_CALLOC(SSH_CHATTER_BBS_MAX_POSTS, sizeof(*snapshot));
-    if (snapshot == NULL) {
+    if (snapshot == nullptr) {
         humanized_log_error("bbs", "failed to allocate watchdog snapshot",
                             ENOMEM);
         return;
@@ -1176,7 +1176,7 @@ static void host_bbs_watchdog_scan(host_t *host)
         SSH_CHATTER_BBS_BODY_LEN +
         (SSH_CHATTER_BBS_COMMENT_LEN * SSH_CHATTER_BBS_MAX_COMMENTS) + 1024U;
     char *content = (char *)GC_MALLOC(content_capacity);
-    if (content == NULL) {
+    if (content == nullptr) {
         humanized_log_error("bbs", "failed to allocate watchdog buffer",
                             ENOMEM);
         return;
@@ -1262,7 +1262,7 @@ static void host_bbs_watchdog_scan(host_t *host)
         if (!translator_moderate_text("bbs_post", content, &blocked, reason,
                                       sizeof(reason))) {
             const char *error = translator_last_error();
-            if (error != NULL && error[0] != '\0') {
+            if (error != nullptr && error[0] != '\0') {
                 printf("[bbs] moderation unavailable for post #%" PRIu64
                        ": %s\n",
                        post->id, error);
@@ -1283,13 +1283,13 @@ static void host_bbs_watchdog_scan(host_t *host)
 
         pthread_mutex_lock(&host->lock);
         bbs_post_t *live = host_find_bbs_post_locked(host, post->id);
-        if (live != NULL) {
+        if (live != nullptr) {
             host_clear_bbs_post_locked(host, live);
             host_bbs_state_save_locked(host);
         }
         pthread_mutex_unlock(&host->lock);
 
-        if (live == NULL) {
+        if (live == nullptr) {
             continue;
         }
 
@@ -1301,16 +1301,16 @@ static void host_bbs_watchdog_scan(host_t *host)
                  "* [eliza] removed BBS post #%" PRIu64 " by %s (%s).",
                  post->id, post->author[0] != '\0' ? post->author : "unknown",
                  diagnostic);
-        host_history_record_system(host, notice, NULL);
-        chat_room_broadcast(&host->room, notice, NULL);
+        host_history_record_system(host, notice, nullptr);
+        chat_room_broadcast(&host->room, notice, nullptr);
     }
 }
 
 static void *host_bbs_watchdog_thread(void *arg)
 {
     host_t *host = (host_t *)arg;
-    if (host == NULL) {
-        return NULL;
+    if (host == nullptr) {
+        return nullptr;
     }
 
     sshc_memory_context_t *memory_scope =
@@ -1347,12 +1347,12 @@ static void *host_bbs_watchdog_thread(void *arg)
     atomic_store(&host->bbs_watchdog_thread_running, false);
     printf("[bbs] watchdog thread stopped\n");
     sshc_memory_context_pop(memory_scope);
-    return NULL;
+    return nullptr;
 }
 
 static void host_bbs_start_watchdog(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -1363,7 +1363,7 @@ static void host_bbs_start_watchdog(host_t *host)
     atomic_store(&host->bbs_watchdog_thread_stop, false);
     atomic_store(&host->bbs_watchdog_thread_running, false);
 
-    int error = pthread_create(&host->bbs_watchdog_thread, NULL,
+    int error = pthread_create(&host->bbs_watchdog_thread, nullptr,
                                host_bbs_watchdog_thread, host);
     if (error != 0) {
         printf("[bbs] failed to start watchdog thread: %s\n", strerror(error));
@@ -1375,7 +1375,7 @@ static void host_bbs_start_watchdog(host_t *host)
 
 static void session_refresh_output_encoding(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -1383,7 +1383,7 @@ static void session_refresh_output_encoding(session_ctx_t *ctx)
     if (ctx->os_name[0] != '\0') {
         const os_descriptor_t *descriptor =
             session_lookup_os_descriptor(ctx->os_name);
-        if (descriptor != NULL &&
+        if (descriptor != nullptr &&
             strcasecmp(descriptor->name, "windows") == 0) {
             use_utf16 = true;
         }
@@ -1413,7 +1413,7 @@ static void session_refresh_output_encoding(session_ctx_t *ctx)
     if (use_cp437 != previous_cp437) {
         const char *subject =
             ctx->user.name[0] != '\0' ? ctx->user.name : ctx->client_ip;
-        if (subject == NULL || subject[0] == '\0') {
+        if (subject == nullptr || subject[0] == '\0') {
             subject = "unknown";
         }
 
@@ -1465,7 +1465,7 @@ static void session_refresh_output_encoding(session_ctx_t *ctx)
 
 static bool session_detect_retro_client(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return false;
     }
 
@@ -1493,15 +1493,15 @@ static bool session_detect_retro_client(session_ctx_t *ctx)
         ctx->client_banner,
     };
 
-    const char *label = NULL;
-    const char *identity_label = NULL;
+    const char *label = nullptr;
+    const char *identity_label = nullptr;
     bool detected = false;
 
     for (size_t source_idx = 0U;
          source_idx < sizeof(sources) / sizeof(sources[0]) && !detected;
          ++source_idx) {
         const char *candidate = sources[source_idx];
-        if (candidate == NULL || candidate[0] == '\0') {
+        if (candidate == nullptr || candidate[0] == '\0') {
             continue;
         }
         for (size_t marker_idx = 0U;
@@ -1600,7 +1600,7 @@ static bool session_detect_retro_client(session_ctx_t *ctx)
              idx < sizeof(kDosFamilies) / sizeof(kDosFamilies[0]); ++idx) {
             if (strcasecmp(ctx->os_name, kDosFamilies[idx]) == 0) {
                 label = "DOS OS";
-                identity_label = NULL;
+                identity_label = nullptr;
                 detected = true;
                 break;
             }
@@ -1609,12 +1609,12 @@ static bool session_detect_retro_client(session_ctx_t *ctx)
 
     if (detected) {
         const char *display =
-            (label != NULL && label[0] != '\0') ? label : "Retro terminal";
+            (label != nullptr && label[0] != '\0') ? label : "Retro terminal";
         snprintf(ctx->retro_client_marker, sizeof(ctx->retro_client_marker),
                  "%s", display);
     }
 
-    session_format_telnet_identity(ctx, detected ? identity_label : NULL);
+    session_format_telnet_identity(ctx, detected ? identity_label : nullptr);
 
     ctx->cp437_input_enabled = detected;
 
@@ -1623,7 +1623,7 @@ static bool session_detect_retro_client(session_ctx_t *ctx)
 
 static void session_apply_saved_preferences(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -1633,7 +1633,7 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref = host_find_preference_locked(host, ctx->user.name);
-    if (pref != NULL) {
+    if (pref != nullptr) {
         snapshot = *pref;
         has_snapshot = true;
     }
@@ -1677,7 +1677,7 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
                 HIGHLIGHT_COLOR_MAP,
                 sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
                 snapshot.user_highlight_name);
-            if (color_code != NULL && highlight_code != NULL) {
+            if (color_code != nullptr && highlight_code != nullptr) {
                 ctx->user_color_code = color_code;
                 ctx->user_highlight_code = highlight_code;
                 ctx->user_is_bold = snapshot.user_is_bold;
@@ -1698,7 +1698,7 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
                 HIGHLIGHT_COLOR_MAP,
                 sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
                 snapshot.system_bg_name);
-            if (fg_code != NULL && bg_code != NULL) {
+            if (fg_code != nullptr && bg_code != nullptr) {
                 const char *highlight_code = ctx->system_highlight_code;
                 if (snapshot.system_highlight_name[0] != '\0') {
                     const char *candidate =
@@ -1706,7 +1706,7 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
                                           sizeof(HIGHLIGHT_COLOR_MAP) /
                                               sizeof(HIGHLIGHT_COLOR_MAP[0]),
                                           snapshot.system_highlight_name);
-                    if (candidate != NULL) {
+                    if (candidate != nullptr) {
                         highlight_code = candidate;
                     }
                 }
@@ -1784,7 +1784,7 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
 
 bool session_user_data_load(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return false;
     }
 
@@ -1793,7 +1793,7 @@ bool session_user_data_load(session_ctx_t *ctx)
     }
 
     // Use a placeholder IP for loading if ctx->client_ip is not available or empty
-    const char *ip_to_use = ctx->client_ip[0] != '\0' ? ctx->client_ip : NULL;
+    const char *ip_to_use = ctx->client_ip[0] != '\0' ? ctx->client_ip : nullptr;
 
     if (!user_data_load(ctx->owner->user_data_root, ctx->user.name, ip_to_use,
                         &ctx->user_data)) {
@@ -1810,12 +1810,12 @@ bool session_user_data_load(session_ctx_t *ctx)
 
 bool session_user_data_commit(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL || !ctx->user_data_loaded) {
+    if (ctx == nullptr || ctx->owner == nullptr || !ctx->user_data_loaded) {
         return false;
     }
 
     // Use a placeholder IP for saving if ctx->client_ip is not available or empty
-    const char *ip_to_use = ctx->client_ip[0] != '\0' ? ctx->client_ip : NULL;
+    const char *ip_to_use = ctx->client_ip[0] != '\0' ? ctx->client_ip : nullptr;
 
     return user_data_save(ctx->owner->user_data_root, &ctx->user_data,
                           ip_to_use);
@@ -1823,7 +1823,7 @@ bool session_user_data_commit(session_ctx_t *ctx)
 
 static bool session_argument_is_disable(const char *token)
 {
-    if (token == NULL) {
+    if (token == nullptr) {
         return false;
     }
 
@@ -1838,7 +1838,7 @@ static bool session_argument_is_disable(const char *token)
 
 static bool session_argument_is_enable(const char *token)
 {
-    if (token == NULL) {
+    if (token == nullptr) {
         return false;
     }
 
@@ -1855,12 +1855,12 @@ static bool session_argument_is_enable(const char *token)
 static void session_language_normalize(const char *input, char *normalized,
                                        size_t length)
 {
-    if (normalized == NULL || length == 0U) {
+    if (normalized == nullptr || length == 0U) {
         return;
     }
 
     normalized[0] = '\0';
-    if (input == NULL) {
+    if (input == nullptr) {
         return;
     }
 
@@ -1892,7 +1892,7 @@ static void session_language_normalize(const char *input, char *normalized,
 
 static bool session_language_equals(const char *lhs, const char *rhs)
 {
-    if (lhs == NULL || rhs == NULL) {
+    if (lhs == nullptr || rhs == nullptr) {
         return false;
     }
 
@@ -1951,7 +1951,7 @@ typedef struct translation_result {
 static translation_job_t *session_translation_job_alloc(void)
 {
     translation_job_t *job = (translation_job_t *)GC_MALLOC(sizeof(*job));
-    if (job != NULL) {
+    if (job != nullptr) {
         memset(job, 0, sizeof(*job));
     }
     return job;
@@ -1961,7 +1961,7 @@ static translation_result_t *session_translation_result_alloc(void)
 {
     translation_result_t *result =
         (translation_result_t *)GC_MALLOC(sizeof(*result));
-    if (result != NULL) {
+    if (result != nullptr) {
         memset(result, 0, sizeof(*result));
     }
     return result;
@@ -1969,19 +1969,19 @@ static translation_result_t *session_translation_result_alloc(void)
 
 static bool session_translation_worker_ensure(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return false;
     }
 
     if (!ctx->translation_mutex_initialized) {
-        if (pthread_mutex_init(&ctx->translation_mutex, NULL) != 0) {
+        if (pthread_mutex_init(&ctx->translation_mutex, nullptr) != 0) {
             return false;
         }
         ctx->translation_mutex_initialized = true;
     }
 
     if (!ctx->translation_cond_initialized) {
-        if (pthread_cond_init(&ctx->translation_cond, NULL) != 0) {
+        if (pthread_cond_init(&ctx->translation_cond, nullptr) != 0) {
             pthread_mutex_destroy(&ctx->translation_mutex);
             ctx->translation_mutex_initialized = false;
             return false;
@@ -1991,7 +1991,7 @@ static bool session_translation_worker_ensure(session_ctx_t *ctx)
 
     if (!ctx->translation_thread_started) {
         ctx->translation_thread_stop = false;
-        if (pthread_create(&ctx->translation_thread, NULL,
+        if (pthread_create(&ctx->translation_thread, nullptr,
                            session_translation_worker, ctx) != 0) {
             pthread_cond_destroy(&ctx->translation_cond);
             ctx->translation_cond_initialized = false;
@@ -2007,28 +2007,28 @@ static bool session_translation_worker_ensure(session_ctx_t *ctx)
 
 static void session_translation_clear_queue(session_ctx_t *ctx)
 {
-    if (ctx == NULL || !ctx->translation_mutex_initialized) {
+    if (ctx == nullptr || !ctx->translation_mutex_initialized) {
         return;
     }
 
-    translation_job_t *pending = NULL;
-    translation_result_t *ready = NULL;
+    translation_job_t *pending = nullptr;
+    translation_result_t *ready = nullptr;
 
     pthread_mutex_lock(&ctx->translation_mutex);
     pending = ctx->translation_pending_head;
-    ctx->translation_pending_head = NULL;
-    ctx->translation_pending_tail = NULL;
+    ctx->translation_pending_head = nullptr;
+    ctx->translation_pending_tail = nullptr;
     ready = ctx->translation_ready_head;
-    ctx->translation_ready_head = NULL;
-    ctx->translation_ready_tail = NULL;
+    ctx->translation_ready_head = nullptr;
+    ctx->translation_ready_tail = nullptr;
     pthread_mutex_unlock(&ctx->translation_mutex);
 
-    while (pending != NULL) {
+    while (pending != nullptr) {
         translation_job_t *next = pending->next;
         pending = next;
     }
 
-    while (ready != NULL) {
+    while (ready != nullptr) {
         translation_result_t *next = ready->next;
         ready = next;
     }
@@ -2040,7 +2040,7 @@ static bool session_translation_queue_caption(session_ctx_t *ctx,
                                               const char *message,
                                               size_t placeholder_lines)
 {
-    if (ctx == NULL || message == NULL) {
+    if (ctx == nullptr || message == nullptr) {
         return false;
     }
 
@@ -2060,7 +2060,7 @@ static bool session_translation_queue_caption(session_ctx_t *ctx,
     }
 
     translation_job_t *job = session_translation_job_alloc();
-    if (job == NULL) {
+    if (job == nullptr) {
         return false;
     }
 
@@ -2083,8 +2083,8 @@ static bool session_translation_queue_caption(session_ctx_t *ctx,
              ctx->output_translation_language);
 
     pthread_mutex_lock(&ctx->translation_mutex);
-    job->next = NULL;
-    if (ctx->translation_pending_tail != NULL) {
+    job->next = nullptr;
+    if (ctx->translation_pending_tail != nullptr) {
         ctx->translation_pending_tail->next = job;
     } else {
         ctx->translation_pending_head = job;
@@ -2099,7 +2099,7 @@ static bool session_translation_queue_caption(session_ctx_t *ctx,
 static void session_translation_reserve_placeholders(session_ctx_t *ctx,
                                                      size_t placeholder_lines)
 {
-    if (ctx == NULL || !session_transport_active(ctx) ||
+    if (ctx == nullptr || !session_transport_active(ctx) ||
         placeholder_lines == 0U) {
         return;
     }
@@ -2122,7 +2122,7 @@ static void session_translation_reserve_placeholders(session_ctx_t *ctx,
 
 static bool session_translation_push_scope_override(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return false;
     }
 
@@ -2134,7 +2134,7 @@ static bool session_translation_push_scope_override(session_ctx_t *ctx)
 static void session_translation_pop_scope_override(session_ctx_t *ctx,
                                                    bool previous)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -2145,7 +2145,7 @@ static bool session_translation_queue_private_message(session_ctx_t *ctx,
                                                       session_ctx_t *target,
                                                       const char *message)
 {
-    if (ctx == NULL || target == NULL || message == NULL) {
+    if (ctx == nullptr || target == nullptr || message == nullptr) {
         return false;
     }
 
@@ -2159,7 +2159,7 @@ static bool session_translation_queue_private_message(session_ctx_t *ctx,
     }
 
     translation_job_t *job = session_translation_job_alloc();
-    if (job == NULL) {
+    if (job == nullptr) {
         return false;
     }
 
@@ -2177,8 +2177,8 @@ static bool session_translation_queue_private_message(session_ctx_t *ctx,
              "you -> %s", target->user.name);
 
     pthread_mutex_lock(&ctx->translation_mutex);
-    job->next = NULL;
-    if (ctx->translation_pending_tail != NULL) {
+    job->next = nullptr;
+    if (ctx->translation_pending_tail != nullptr) {
         ctx->translation_pending_tail->next = job;
     } else {
         ctx->translation_pending_head = job;
@@ -2193,7 +2193,7 @@ static bool session_translation_queue_private_message(session_ctx_t *ctx,
 static bool session_translation_queue_input(session_ctx_t *ctx,
                                             const char *text)
 {
-    if (ctx == NULL || text == NULL || text[0] == '\0') {
+    if (ctx == nullptr || text == nullptr || text[0] == '\0') {
         return false;
     }
 
@@ -2207,7 +2207,7 @@ static bool session_translation_queue_input(session_ctx_t *ctx,
     }
 
     translation_job_t *job = session_translation_job_alloc();
-    if (job == NULL) {
+    if (job == nullptr) {
         return false;
     }
 
@@ -2219,8 +2219,8 @@ static bool session_translation_queue_input(session_ctx_t *ctx,
              text);
 
     pthread_mutex_lock(&ctx->translation_mutex);
-    job->next = NULL;
-    if (ctx->translation_pending_tail != NULL) {
+    job->next = nullptr;
+    if (ctx->translation_pending_tail != nullptr) {
         ctx->translation_pending_tail->next = job;
     } else {
         ctx->translation_pending_head = job;
@@ -2234,7 +2234,7 @@ static bool session_translation_queue_input(session_ctx_t *ctx,
 
 static void session_translation_normalize_output(char *text)
 {
-    if (text == NULL) {
+    if (text == nullptr) {
         return;
     }
 
@@ -2270,7 +2270,7 @@ static void session_translation_normalize_output(char *text)
 
 static bool host_motd_contains_translation_notice(const char *motd_text)
 {
-    if (motd_text == NULL) {
+    if (motd_text == nullptr) {
         return false;
     }
 
@@ -2300,12 +2300,12 @@ static bool host_motd_contains_translation_notice(const char *motd_text)
 static void host_prepend_translation_notice_in_memory(host_t *host,
                                                       const char *existing_motd)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
     char updated[sizeof(host->motd)];
-    if (existing_motd != NULL && existing_motd[0] != '\0') {
+    if (existing_motd != nullptr && existing_motd[0] != '\0') {
         snprintf(updated, sizeof(updated), "%s\n\n%s", kTranslationQuotaNotice,
                  existing_motd);
     } else {
@@ -2320,7 +2320,7 @@ static void host_prepend_translation_notice_in_memory(host_t *host,
 
 static void host_handle_translation_quota_exhausted(host_t *host)
 {
-    if (host == NULL) {
+    if (host == nullptr) {
         return;
     }
 
@@ -2360,7 +2360,7 @@ static void host_handle_translation_quota_exhausted(host_t *host)
     size_t existing_len = 0U;
 
     FILE *motd_file = fopen(motd_path, "rb");
-    if (motd_file != NULL) {
+    if (motd_file != nullptr) {
         existing_len = fread(existing, 1U, sizeof(existing) - 1U, motd_file);
         if (ferror(motd_file)) {
             const int read_error = errno;
@@ -2391,7 +2391,7 @@ static void host_handle_translation_quota_exhausted(host_t *host)
     }
 
     FILE *out = fopen(motd_path, "wb");
-    if (out == NULL) {
+    if (out == nullptr) {
         const int write_error = errno != 0 ? errno : EIO;
         humanized_log_error("host", "failed to update motd file", write_error);
         host_prepend_translation_notice_in_memory(host, motd_snapshot);
@@ -2415,7 +2415,7 @@ static void host_handle_translation_quota_exhausted(host_t *host)
 static void session_handle_translation_quota_exhausted(session_ctx_t *ctx,
                                                        const char *error_detail)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
@@ -2434,7 +2434,7 @@ static void session_handle_translation_quota_exhausted(session_ctx_t *ctx,
 
     if (!ctx->translation_quota_notified) {
         char message[256];
-        if (error_detail != NULL && error_detail[0] != '\0') {
+        if (error_detail != nullptr && error_detail[0] != '\0') {
             (void)snprintf(message, sizeof(message), "%s (%s)",
                            kTranslationQuotaSystemMessage, error_detail);
         } else {
@@ -2448,19 +2448,19 @@ static void session_handle_translation_quota_exhausted(session_ctx_t *ctx,
 
 static void session_translation_flush_ready(session_ctx_t *ctx)
 {
-    if (ctx == NULL || !ctx->translation_mutex_initialized) {
+    if (ctx == nullptr || !ctx->translation_mutex_initialized) {
         return;
     }
 
-    translation_result_t *ready = NULL;
+    translation_result_t *ready = nullptr;
 
     pthread_mutex_lock(&ctx->translation_mutex);
     ready = ctx->translation_ready_head;
-    ctx->translation_ready_head = NULL;
-    ctx->translation_ready_tail = NULL;
+    ctx->translation_ready_head = nullptr;
+    ctx->translation_ready_tail = nullptr;
     pthread_mutex_unlock(&ctx->translation_mutex);
 
-    if (ready == NULL) {
+    if (ready == nullptr) {
         return;
     }
 
@@ -2469,7 +2469,7 @@ static void session_translation_flush_ready(session_ctx_t *ctx)
                                     ctx->output_translation_language[0] != '\0';
 
     bool refreshed = false;
-    while (ready != NULL) {
+    while (ready != nullptr) {
         translation_result_t *next = ready->next;
         if (ready->type == TRANSLATION_JOB_INPUT) {
             if (ready->success) {
@@ -2493,14 +2493,14 @@ static void session_translation_flush_ready(session_ctx_t *ctx)
         }
 
         if (ready->type == TRANSLATION_JOB_PRIVATE_MESSAGE) {
-            session_ctx_t *target = NULL;
-            if (ctx->owner != NULL && ready->pm_target_name[0] != '\0') {
+            session_ctx_t *target = nullptr;
+            if (ctx->owner != nullptr && ready->pm_target_name[0] != '\0') {
                 target = chat_room_find_user(&ctx->owner->room,
                                              ready->pm_target_name);
             }
 
             if (ready->success) {
-                if (target != NULL) {
+                if (target != nullptr) {
                     session_send_private_message_line(target, ctx,
                                                       ready->pm_to_target_label,
                                                       ready->translated);
@@ -2521,7 +2521,7 @@ static void session_translation_flush_ready(session_ctx_t *ctx)
                         ? ready->error_message
                         : "Translation failed; sending your original message.";
                 session_send_system_line(ctx, error_message);
-                if (target != NULL) {
+                if (target != nullptr) {
                     session_send_private_message_line(target, ctx,
                                                       ready->pm_to_target_label,
                                                       ready->original);
@@ -2560,9 +2560,9 @@ static void session_translation_flush_ready(session_ctx_t *ctx)
 
             const char *line_cursor = body;
             size_t line_index = 0U;
-            while (line_cursor != NULL) {
+            while (line_cursor != nullptr) {
                 const char *line_end = strchr(line_cursor, '\n');
-                size_t line_length = (line_end != NULL)
+                size_t line_length = (line_end != nullptr)
                                          ? (size_t)(line_end - line_cursor)
                                          : strlen(line_cursor);
                 if (line_length >= SSH_CHATTER_TRANSLATION_WORKING_LEN) {
@@ -2580,7 +2580,7 @@ static void session_translation_flush_ready(session_ctx_t *ctx)
                     ctx, annotated, line_index == 0U ? move_up : 0U);
                 refreshed = true;
 
-                if (line_end == NULL) {
+                if (line_end == nullptr) {
                     break;
                 }
 
@@ -2608,7 +2608,7 @@ static void session_translation_flush_ready(session_ctx_t *ctx)
 
 static void session_translation_worker_shutdown(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -2618,7 +2618,7 @@ static void session_translation_worker_shutdown(session_ctx_t *ctx)
             ctx->translation_thread_stop = true;
             pthread_cond_broadcast(&ctx->translation_cond);
             pthread_mutex_unlock(&ctx->translation_mutex);
-            pthread_join(ctx->translation_thread, NULL);
+            pthread_join(ctx->translation_thread, nullptr);
             ctx->translation_thread_started = false;
         } else {
             pthread_mutex_unlock(&ctx->translation_mutex);
@@ -2643,12 +2643,12 @@ static void session_translation_publish_result(
     session_ctx_t *ctx, const translation_job_t *job, const char *payload,
     const char *detected_language, const char *error_message, bool success)
 {
-    if (ctx == NULL || job == NULL) {
+    if (ctx == nullptr || job == nullptr) {
         return;
     }
 
     translation_result_t *result = session_translation_result_alloc();
-    if (result == NULL) {
+    if (result == nullptr) {
         return;
     }
 
@@ -2659,20 +2659,20 @@ static void session_translation_publish_result(
     if (job->type == TRANSLATION_JOB_INPUT) {
         snprintf(result->original, sizeof(result->original), "%s",
                  job->data.input.original);
-        if (payload != NULL) {
+        if (payload != nullptr) {
             snprintf(result->translated, sizeof(result->translated), "%s",
                      payload);
         } else {
             result->translated[0] = '\0';
         }
-        if (detected_language != NULL) {
+        if (detected_language != nullptr) {
             snprintf(result->detected_language,
                      sizeof(result->detected_language), "%s",
                      detected_language);
         } else {
             result->detected_language[0] = '\0';
         }
-        if (error_message != NULL) {
+        if (error_message != nullptr) {
             snprintf(result->error_message, sizeof(result->error_message), "%s",
                      error_message);
         } else {
@@ -2682,13 +2682,13 @@ static void session_translation_publish_result(
     } else if (job->type == TRANSLATION_JOB_PRIVATE_MESSAGE) {
         snprintf(result->original, sizeof(result->original), "%s",
                  job->data.pm.original);
-        if (payload != NULL) {
+        if (payload != nullptr) {
             snprintf(result->translated, sizeof(result->translated), "%s",
                      payload);
         } else {
             result->translated[0] = '\0';
         }
-        if (error_message != NULL) {
+        if (error_message != nullptr) {
             snprintf(result->error_message, sizeof(result->error_message), "%s",
                      error_message);
         } else {
@@ -2704,7 +2704,7 @@ static void session_translation_publish_result(
         session_translation_normalize_output(result->translated);
     } else {
         const char *message = payload;
-        if (message == NULL || message[0] == '\0') {
+        if (message == nullptr || message[0] == '\0') {
             if (success) {
                 message = "";
             } else {
@@ -2720,8 +2720,8 @@ static void session_translation_publish_result(
     }
 
     pthread_mutex_lock(&ctx->translation_mutex);
-    result->next = NULL;
-    if (ctx->translation_ready_tail != NULL) {
+    result->next = nullptr;
+    if (ctx->translation_ready_tail != nullptr) {
         ctx->translation_ready_tail->next = result;
     } else {
         ctx->translation_ready_head = result;
@@ -2733,7 +2733,7 @@ static void session_translation_publish_result(
 static void session_translation_process_single_job(session_ctx_t *ctx,
                                                    translation_job_t *job)
 {
-    if (ctx == NULL || job == NULL) {
+    if (ctx == nullptr || job == nullptr) {
         return;
     }
 
@@ -2752,7 +2752,7 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
             (job->type == TRANSLATION_JOB_PRIVATE_MESSAGE);
         const char *source_text = is_private_message ? job->data.pm.original
                                                      : job->data.input.original;
-        char *detected_target = is_private_message ? NULL : detected_language;
+        char *detected_target = is_private_message ? nullptr : detected_language;
         size_t detected_length =
             is_private_message ? 0U : sizeof(detected_language);
 
@@ -2765,7 +2765,7 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
             }
             session_translation_publish_result(
                 ctx, job, translated_body,
-                is_private_message ? NULL : detected_language, NULL, true);
+                is_private_message ? nullptr : detected_language, nullptr, true);
         } else {
             const char *error = translator_last_error();
             char message[128];
@@ -2774,7 +2774,7 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
                 return;
             }
             if (quota_failure) {
-                if (error != NULL && error[0] != '\0') {
+                if (error != nullptr && error[0] != '\0') {
                     snprintf(message, sizeof(message),
                              "⚠️ translation unavailable (quota exhausted: %s); "
                              "sending "
@@ -2787,7 +2787,7 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
                              "original message.");
                 }
                 session_handle_translation_quota_exhausted(ctx, error);
-            } else if (error != NULL && error[0] != '\0') {
+            } else if (error != nullptr && error[0] != '\0') {
                 snprintf(
                     message, sizeof(message),
                     "Translation failed (%s); sending your original message.",
@@ -2799,7 +2799,7 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
             if (ctx->translation_thread_stop) {
                 return;
             }
-            session_translation_publish_result(ctx, job, NULL, NULL, message,
+            session_translation_publish_result(ctx, job, nullptr, nullptr, message,
                                                false);
         }
         return;
@@ -2823,7 +2823,7 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
 
         if (!translator_translate_with_cancel(
                 job->data.caption.sanitized, job->target_language,
-                translated_body, sizeof(translated_body), NULL, 0U,
+                translated_body, sizeof(translated_body), nullptr, 0U,
                 &ctx->translation_thread_stop)) {
             const char *error = translator_last_error();
             const bool quota_failure = translator_last_error_was_quota();
@@ -2831,7 +2831,7 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
                 return;
             }
             if (quota_failure) {
-                if (error != NULL && error[0] != '\0') {
+                if (error != nullptr && error[0] != '\0') {
                     snprintf(failure_message, sizeof(failure_message),
                              "⚠️ translation unavailable (quota exhausted: %s)",
                              error);
@@ -2843,7 +2843,7 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
                 break;
             }
 
-            if (error != NULL && error[0] != '\0') {
+            if (error != nullptr && error[0] != '\0') {
                 snprintf(failure_message, sizeof(failure_message),
                          "⚠️ translation failed: %s", error);
             } else {
@@ -2881,11 +2881,11 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
     }
 
     if (success) {
-        session_translation_publish_result(ctx, job, restored, NULL, NULL,
+        session_translation_publish_result(ctx, job, restored, nullptr, nullptr,
                                            true);
     } else {
-        session_translation_publish_result(ctx, job, failure_message, NULL,
-                                           NULL, false);
+        session_translation_publish_result(ctx, job, failure_message, nullptr,
+                                           nullptr, false);
     }
 }
 
@@ -2893,18 +2893,18 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
                                               translation_job_t **jobs,
                                               size_t job_count)
 {
-    if (ctx == NULL || jobs == NULL || job_count == 0U) {
+    if (ctx == nullptr || jobs == nullptr || job_count == 0U) {
         return false;
     }
 
-    if (jobs[0] == NULL || jobs[0]->type != TRANSLATION_JOB_CAPTION) {
+    if (jobs[0] == nullptr || jobs[0]->type != TRANSLATION_JOB_CAPTION) {
         return false;
     }
 
     if (ctx->translation_thread_stop) {
         for (size_t idx = 0U; idx < job_count; ++idx) {
-            if (jobs[idx] != NULL) {
-                jobs[idx] = NULL;
+            if (jobs[idx] != nullptr) {
+                jobs[idx] = nullptr;
             }
         }
         return true;
@@ -2914,7 +2914,7 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
         GC_CALLOC(SSH_CHATTER_TRANSLATION_BATCH_BUFFER, sizeof(char));
     char *translated =
         GC_CALLOC(SSH_CHATTER_TRANSLATION_BATCH_BUFFER, sizeof(char));
-    if (combined == NULL || translated == NULL) {
+    if (combined == nullptr || translated == nullptr) {
         return false;
     }
 
@@ -2922,13 +2922,13 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
     for (size_t idx = 0U; idx < job_count; ++idx) {
         if (ctx->translation_thread_stop) {
             for (size_t release = idx; release < job_count; ++release) {
-                if (jobs[release] != NULL) {
-                    jobs[release] = NULL;
+                if (jobs[release] != nullptr) {
+                    jobs[release] = nullptr;
                 }
             }
             return true;
         }
-        if (jobs[idx] == NULL || jobs[idx]->type != TRANSLATION_JOB_CAPTION) {
+        if (jobs[idx] == nullptr || jobs[idx]->type != TRANSLATION_JOB_CAPTION) {
             return false;
         }
 
@@ -2956,12 +2956,12 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
 
     if (!translator_translate_with_cancel(
             combined, jobs[0]->target_language, translated,
-            SSH_CHATTER_TRANSLATION_BATCH_BUFFER, NULL, 0U,
+            SSH_CHATTER_TRANSLATION_BATCH_BUFFER, nullptr, 0U,
             &ctx->translation_thread_stop)) {
         if (ctx->translation_thread_stop) {
             for (size_t idx = 0U; idx < job_count; ++idx) {
-                if (jobs[idx] != NULL) {
-                    jobs[idx] = NULL;
+                if (jobs[idx] != nullptr) {
+                    jobs[idx] = nullptr;
                 }
             }
             return true;
@@ -2971,8 +2971,8 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
 
     if (ctx->translation_thread_stop) {
         for (size_t idx = 0U; idx < job_count; ++idx) {
-            if (jobs[idx] != NULL) {
-                jobs[idx] = NULL;
+            if (jobs[idx] != nullptr) {
+                jobs[idx] = nullptr;
             }
         }
         return true;
@@ -2990,7 +2990,7 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
         }
 
         char *marker_pos = strstr(search_cursor, marker);
-        if (marker_pos == NULL) {
+        if (marker_pos == nullptr) {
             return false;
         }
 
@@ -3012,7 +3012,7 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
         }
 
         char *next_pos = strstr(segment_starts[idx], marker);
-        if (next_pos == NULL) {
+        if (next_pos == nullptr) {
             return false;
         }
 
@@ -3034,7 +3034,7 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
     char restored_segments[SSH_CHATTER_TRANSLATION_BATCH_MAX]
                           [SSH_CHATTER_TRANSLATION_WORKING_LEN];
     for (size_t idx = 0U; idx < job_count; ++idx) {
-        if (segment_starts[idx] == NULL || segment_ends[idx] == NULL ||
+        if (segment_starts[idx] == nullptr || segment_ends[idx] == nullptr ||
             segment_ends[idx] < segment_starts[idx]) {
             return false;
         }
@@ -3059,8 +3059,8 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
 
     if (ctx->translation_thread_stop) {
         for (size_t idx = 0U; idx < job_count; ++idx) {
-            if (jobs[idx] != NULL) {
-                jobs[idx] = NULL;
+            if (jobs[idx] != nullptr) {
+                jobs[idx] = nullptr;
             }
         }
         return true;
@@ -3068,7 +3068,7 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
 
     for (size_t idx = 0U; idx < job_count; ++idx) {
         session_translation_publish_result(
-            ctx, jobs[idx], restored_segments[idx], NULL, NULL, true);
+            ctx, jobs[idx], restored_segments[idx], nullptr, nullptr, true);
     }
 
     return true;
@@ -3077,12 +3077,12 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
 static void *session_translation_worker(void *arg)
 {
     session_ctx_t *ctx = (session_ctx_t *)arg;
-    if (ctx == NULL) {
-        return NULL;
+    if (ctx == nullptr) {
+        return nullptr;
     }
 
-    sshc_memory_context_t *memory_scope = NULL;
-    if (ctx->owner != NULL) {
+    sshc_memory_context_t *memory_scope = nullptr;
+    if (ctx->owner != nullptr) {
         memory_scope = sshc_memory_context_push(ctx->owner->memory_context);
     }
 
@@ -3092,7 +3092,7 @@ static void *session_translation_worker(void *arg)
 
         pthread_mutex_lock(&ctx->translation_mutex);
         while (!ctx->translation_thread_stop &&
-               ctx->translation_pending_head == NULL) {
+               ctx->translation_pending_head == nullptr) {
             pthread_cond_wait(&ctx->translation_cond, &ctx->translation_mutex);
         }
 
@@ -3102,12 +3102,12 @@ static void *session_translation_worker(void *arg)
         }
 
         translation_job_t *job = ctx->translation_pending_head;
-        if (job != NULL) {
+        if (job != nullptr) {
             ctx->translation_pending_head = job->next;
-            if (ctx->translation_pending_head == NULL) {
-                ctx->translation_pending_tail = NULL;
+            if (ctx->translation_pending_head == nullptr) {
+                ctx->translation_pending_tail = nullptr;
             }
-            job->next = NULL;
+            job->next = nullptr;
             batch[batch_count++] = job;
         }
         pthread_mutex_unlock(&ctx->translation_mutex);
@@ -3128,7 +3128,7 @@ static void *session_translation_worker(void *arg)
             bool delay_needed = false;
             pthread_mutex_lock(&ctx->translation_mutex);
             if (!ctx->translation_thread_stop &&
-                ctx->translation_pending_head == NULL) {
+                ctx->translation_pending_head == nullptr) {
                 delay_needed = true;
             }
             pthread_mutex_unlock(&ctx->translation_mutex);
@@ -3143,9 +3143,9 @@ static void *session_translation_worker(void *arg)
 
         pthread_mutex_lock(&ctx->translation_mutex);
         while (batch_count < SSH_CHATTER_TRANSLATION_BATCH_MAX &&
-               ctx->translation_pending_head != NULL) {
+               ctx->translation_pending_head != nullptr) {
             translation_job_t *candidate = ctx->translation_pending_head;
-            if (candidate == NULL) {
+            if (candidate == nullptr) {
                 break;
             }
 
@@ -3166,10 +3166,10 @@ static void *session_translation_worker(void *arg)
             }
 
             ctx->translation_pending_head = candidate->next;
-            if (ctx->translation_pending_head == NULL) {
-                ctx->translation_pending_tail = NULL;
+            if (ctx->translation_pending_head == nullptr) {
+                ctx->translation_pending_tail = nullptr;
             }
-            candidate->next = NULL;
+            candidate->next = nullptr;
             batch[batch_count++] = candidate;
             estimate += candidate_len;
         }
@@ -3188,20 +3188,20 @@ static void *session_translation_worker(void *arg)
         }
     }
 
-    if (memory_scope != NULL) {
+    if (memory_scope != nullptr) {
         sshc_memory_context_pop(memory_scope);
     }
-    return NULL;
+    return nullptr;
 }
 
 static void session_channel_log_write_failure(session_ctx_t *ctx,
                                               const char *reason)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
-    if (reason == NULL || reason[0] == '\0') {
+    if (reason == nullptr || reason[0] == '\0') {
         reason = "transport write failure";
     }
 
@@ -3213,7 +3213,7 @@ static void session_channel_log_write_failure(session_ctx_t *ctx,
 static bool session_telnet_write_block(session_ctx_t *ctx,
                                        const unsigned char *data, size_t length)
 {
-    if (ctx == NULL || data == NULL || length == 0U || ctx->telnet_fd < 0) {
+    if (ctx == nullptr || data == nullptr || length == 0U || ctx->telnet_fd < 0) {
         return true;
     }
 
@@ -3257,7 +3257,7 @@ static bool session_telnet_write_block(session_ctx_t *ctx,
 
 static bool session_channel_wait_writable(session_ctx_t *ctx, int timeout_ms)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return false;
     }
 
@@ -3297,7 +3297,7 @@ static bool session_channel_wait_writable(session_ctx_t *ctx, int timeout_ms)
         }
     }
 
-    if (ctx->session == NULL) {
+    if (ctx->session == nullptr) {
         return false;
     }
 
@@ -3345,7 +3345,7 @@ static bool session_channel_wait_writable(session_ctx_t *ctx, int timeout_ms)
 static bool session_channel_write_all(session_ctx_t *ctx, const void *data,
                                       size_t length)
 {
-    if (ctx == NULL || data == NULL || length == 0U ||
+    if (ctx == nullptr || data == nullptr || length == 0U ||
         !session_transport_active(ctx)) {
         return true;
     }
@@ -3386,7 +3386,7 @@ static bool session_channel_write_all(session_ctx_t *ctx, const void *data,
         if (written == SSH_ERROR) {
             const char *error = ssh_get_error(ctx->session);
             session_channel_log_write_failure(
-                ctx, (error != NULL && error[0] != '\0')
+                ctx, (error != nullptr && error[0] != '\0')
                          ? error
                          : "channel write error");
             return false;
@@ -3436,26 +3436,26 @@ static const char *session_cp437_ascii_replacement(uint32_t codepoint)
             return kCp437AsciiReplacements[idx].replacement;
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 static char *session_cp437_normalize_utf8(const char *data, size_t length,
                                           size_t *normalized_length)
 {
-    if (data == NULL || length == 0U) {
-        if (normalized_length != NULL) {
+    if (data == nullptr || length == 0U) {
+        if (normalized_length != nullptr) {
             *normalized_length = length;
         }
-        return NULL;
+        return nullptr;
     }
 
     size_t capacity = length + 16U;
-    char *buffer = (char *)malloc(capacity);
-    if (buffer == NULL) {
-        if (normalized_length != NULL) {
+    char *buffer = (char *)GC_MALLOC(capacity);
+    if (buffer == nullptr) {
+        if (normalized_length != nullptr) {
             *normalized_length = length;
         }
-        return NULL;
+        return nullptr;
     }
 
     size_t output = 0U;
@@ -3473,7 +3473,7 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
         }
 
         const char *replacement = session_cp437_ascii_replacement(codepoint);
-        if (replacement != NULL) {
+        if (replacement != nullptr) {
             modified = true;
             size_t rep_len = strlen(replacement);
             size_t needed = output + rep_len + 1U;
@@ -3482,13 +3482,13 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
                 if (new_capacity < needed) {
                     new_capacity = needed + 16U;
                 }
-                char *resized = (char *)realloc(buffer, new_capacity);
-                if (resized == NULL) {
-                    free(buffer);
-                    if (normalized_length != NULL) {
+                char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                if (resized == nullptr) {
+                    GC_FREE(buffer);
+                    if (normalized_length != nullptr) {
                         *normalized_length = length;
                     }
-                    return NULL;
+                    return nullptr;
                 }
                 buffer = resized;
                 capacity = new_capacity;
@@ -3502,13 +3502,13 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
                 if (new_capacity < needed) {
                     new_capacity = needed + 16U;
                 }
-                char *resized = (char *)realloc(buffer, new_capacity);
-                if (resized == NULL) {
-                    free(buffer);
-                    if (normalized_length != NULL) {
+                char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                if (resized == nullptr) {
+                    GC_FREE(buffer);
+                    if (normalized_length != nullptr) {
                         *normalized_length = length;
                     }
-                    return NULL;
+                    return nullptr;
                 }
                 buffer = resized;
                 capacity = new_capacity;
@@ -3522,15 +3522,15 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
     }
 
     if (!modified) {
-        free(buffer);
-        if (normalized_length != NULL) {
+        GC_FREE(buffer);
+        if (normalized_length != nullptr) {
             *normalized_length = length;
         }
-        return NULL;
+        return nullptr;
     }
 
     buffer[output] = '\0';
-    if (normalized_length != NULL) {
+    if (normalized_length != nullptr) {
         *normalized_length = output;
     }
     return buffer;
@@ -3539,7 +3539,7 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
 static bool session_channel_write_cp437(session_ctx_t *ctx, const char *data,
                                         size_t length)
 {
-    if (ctx == NULL || data == NULL || length == 0U) {
+    if (ctx == nullptr || data == nullptr || length == 0U) {
         return true;
     }
 
@@ -3550,7 +3550,7 @@ static bool session_channel_write_cp437(session_ctx_t *ctx, const char *data,
 
     size_t capacity = (length > 0U ? length : 1U) * 4U + 16U;
     char *buffer = (char *)GC_MALLOC(capacity);
-    if (buffer == NULL) {
+    if (buffer == nullptr) {
         iconv_close(descriptor);
         return session_channel_write_all(ctx, data, length);
     }
@@ -3559,8 +3559,8 @@ static bool session_channel_write_cp437(session_ctx_t *ctx, const char *data,
     char *normalized =
         session_cp437_normalize_utf8(data, length, &normalized_length);
 
-    const char *input_cursor = normalized != NULL ? normalized : data;
-    size_t input_remaining = normalized != NULL ? normalized_length : length;
+    const char *input_cursor = normalized != nullptr ? normalized : data;
+    size_t input_remaining = normalized != nullptr ? normalized_length : length;
     char *output_cursor = buffer;
     size_t output_remaining = capacity;
 
@@ -3577,8 +3577,8 @@ static bool session_channel_write_cp437(session_ctx_t *ctx, const char *data,
                 if (new_capacity <= capacity) {
                     new_capacity = capacity + length + 32U;
                 }
-                char *resized = (char *)realloc(buffer, new_capacity);
-                if (resized == NULL) {
+                char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                if (resized == nullptr) {
                     fallback_to_plaintext = true;
                     goto cleanup;
                 }
@@ -3597,8 +3597,8 @@ static bool session_channel_write_cp437(session_ctx_t *ctx, const char *data,
                     if (new_capacity <= capacity) {
                         new_capacity = capacity + length + 32U;
                     }
-                    char *resized = (char *)realloc(buffer, new_capacity);
-                    if (resized == NULL) {
+                    char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                    if (resized == nullptr) {
                         fallback_to_plaintext = true;
                         goto cleanup;
                     }
@@ -3620,24 +3620,25 @@ cleanup:
     iconv_close(descriptor);
     bool success = false;
     if (fallback_to_plaintext) {
-        const char *fallback_data = normalized != NULL ? normalized : data;
+        const char *fallback_data = normalized != nullptr ? normalized : data;
         size_t fallback_length =
-            normalized != NULL ? normalized_length : length;
+            normalized != nullptr ? normalized_length : length;
         success =
             session_channel_write_all(ctx, fallback_data, fallback_length);
     } else {
         size_t produced = capacity - output_remaining;
         success = session_channel_write_all(ctx, buffer, produced);
     }
-    if (normalized != NULL) {
-        free(normalized);
+    GC_FREE(buffer);
+    if (normalized != nullptr) {
+        GC_FREE(normalized);
     }
     return success;
 }
 
 static bool session_output_lock(session_ctx_t *ctx)
 {
-    if (ctx == NULL || !ctx->output_lock_initialized) {
+    if (ctx == nullptr || !ctx->output_lock_initialized) {
         return false;
     }
 
@@ -3654,7 +3655,7 @@ static bool session_output_lock(session_ctx_t *ctx)
 
 static void session_output_unlock(session_ctx_t *ctx)
 {
-    if (ctx == NULL || !ctx->output_lock_initialized) {
+    if (ctx == nullptr || !ctx->output_lock_initialized) {
         return;
     }
 
@@ -3669,7 +3670,7 @@ static void session_output_unlock(session_ctx_t *ctx)
 // Output buffering functions to prevent flickering
 static void session_output_buffer_start(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
     ctx->output_buffering_enabled = true;
@@ -3678,7 +3679,7 @@ static void session_output_buffer_start(session_ctx_t *ctx)
 
 static void session_output_buffer_clear(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
     ctx->output_buffer_length = 0U;
@@ -3686,7 +3687,7 @@ static void session_output_buffer_clear(session_ctx_t *ctx)
 
 static void session_output_buffer_flush(session_ctx_t *ctx)
 {
-    if (ctx == NULL || !ctx->output_buffering_enabled) {
+    if (ctx == nullptr || !ctx->output_buffering_enabled) {
         return;
     }
 
@@ -3701,7 +3702,7 @@ static void session_output_buffer_flush(session_ctx_t *ctx)
 
 static void session_output_buffer_stop(session_ctx_t *ctx)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
     session_output_buffer_flush(ctx);
@@ -3712,7 +3713,7 @@ static void session_output_buffer_stop(session_ctx_t *ctx)
 static bool session_output_buffer_append(session_ctx_t *ctx, const void *data,
                                          size_t length)
 {
-    if (ctx == NULL || data == NULL || length == 0U) {
+    if (ctx == nullptr || data == nullptr || length == 0U) {
         return false;
     }
 
@@ -3741,7 +3742,7 @@ static bool session_output_buffer_append(session_ctx_t *ctx, const void *data,
 static void session_channel_write(session_ctx_t *ctx, const void *data,
                                   size_t length)
 {
-    if (ctx == NULL || data == NULL || length == 0U || ctx->should_exit ||
+    if (ctx == nullptr || data == nullptr || length == 0U || ctx->should_exit ||
         !session_transport_active(ctx)) {
         return;
     }
@@ -3793,7 +3794,7 @@ static void session_channel_write(session_ctx_t *ctx, const void *data,
 static bool session_channel_write_utf16(session_ctx_t *ctx, const char *data,
                                         size_t length)
 {
-    if (ctx == NULL || data == NULL) {
+    if (ctx == nullptr || data == nullptr) {
         return true;
     }
 
@@ -3865,7 +3866,7 @@ static bool session_channel_write_utf16(session_ctx_t *ctx, const char *data,
 static bool session_channel_write_utf16_segment(session_ctx_t *ctx,
                                                 const char *data, size_t length)
 {
-    if (ctx == NULL || data == NULL || length == 0U) {
+    if (ctx == nullptr || data == nullptr || length == 0U) {
         return true;
     }
 
@@ -3875,13 +3876,13 @@ static bool session_channel_write_utf16_segment(session_ctx_t *ctx,
     }
 
     unsigned char stack_buffer[512];
-    unsigned char *buffer = NULL;
+    unsigned char *buffer = nullptr;
     bool use_stack = max_output <= sizeof(stack_buffer);
     if (use_stack) {
         buffer = stack_buffer;
     } else {
         buffer = (unsigned char *)GC_MALLOC(max_output);
-        if (buffer == NULL) {
+        if (buffer == nullptr) {
             return session_channel_write_all(ctx, data, length);
         }
     }
@@ -3905,7 +3906,7 @@ static bool session_channel_write_utf16_segment(session_ctx_t *ctx,
 static size_t session_utf8_decode_codepoint(const unsigned char *data,
                                             size_t length, uint32_t *codepoint)
 {
-    if (data == NULL || length == 0U || codepoint == NULL) {
+    if (data == nullptr || length == 0U || codepoint == nullptr) {
         return 0U;
     }
 
@@ -3979,7 +3980,7 @@ static bool session_utf8_to_utf16le(const char *input, size_t length,
                                     unsigned char *output, size_t capacity,
                                     size_t *produced)
 {
-    if (input == NULL || output == NULL) {
+    if (input == nullptr || output == nullptr) {
         return false;
     }
 
@@ -4019,7 +4020,7 @@ static bool session_utf8_to_utf16le(const char *input, size_t length,
         output[out_idx++] = (unsigned char)((low >> 8U) & 0xFFU);
     }
 
-    if (produced != NULL) {
+    if (produced != nullptr) {
         *produced = out_idx;
     }
     return true;
@@ -4029,11 +4030,11 @@ static const char SESSION_COLUMN_RESET[] = "\033[1G";
 
 static void session_fill_line_with_theme(session_ctx_t *ctx)
 {
-    if (ctx == NULL || !session_transport_active(ctx)) {
+    if (ctx == nullptr || !session_transport_active(ctx)) {
         return;
     }
 
-    const char *bg = ctx->system_bg_code != NULL ? ctx->system_bg_code : "";
+    const char *bg = ctx->system_bg_code != nullptr ? ctx->system_bg_code : "";
     const size_t bg_len = strlen(bg);
 
     static const char ERASE_ENTIRE_LINE[] = "\033[2K";
@@ -4058,7 +4059,7 @@ static void session_fill_line_with_theme(session_ctx_t *ctx)
 
 static void session_apply_background_fill(session_ctx_t *ctx)
 {
-    if (ctx == NULL || !session_transport_active(ctx)) {
+    if (ctx == nullptr || !session_transport_active(ctx)) {
         return;
     }
 
@@ -4078,7 +4079,7 @@ static bool session_sequence_resets_theme(const char *sequence_start,
                                           bool *reset_fg, bool *reset_bg,
                                           bool *reset_bold)
 {
-    if (sequence_start == NULL || sequence_length == 0U) {
+    if (sequence_start == nullptr || sequence_length == 0U) {
         return false;
     }
 
@@ -4091,13 +4092,13 @@ static bool session_sequence_resets_theme(const char *sequence_start,
         return false;
     }
 
-    if (reset_fg != NULL) {
+    if (reset_fg != nullptr) {
         *reset_fg = false;
     }
-    if (reset_bg != NULL) {
+    if (reset_bg != nullptr) {
         *reset_bg = false;
     }
-    if (reset_bold != NULL) {
+    if (reset_bold != nullptr) {
         *reset_bold = false;
     }
 
@@ -4115,7 +4116,7 @@ static bool session_sequence_resets_theme(const char *sequence_start,
             continue;
         }
 
-        char *parse_end = NULL;
+        char *parse_end = nullptr;
         long value = strtol(params_start, &parse_end, 10);
         if (parse_end == params_start) {
             reset_all = true;
@@ -4126,13 +4127,13 @@ static bool session_sequence_resets_theme(const char *sequence_start,
             reset_all = true;
             break;
         }
-        if (value == 39L && reset_fg != NULL) {
+        if (value == 39L && reset_fg != nullptr) {
             *reset_fg = true;
         }
-        if (value == 49L && reset_bg != NULL) {
+        if (value == 49L && reset_bg != nullptr) {
             *reset_bg = true;
         }
-        if ((value == 21L || value == 22L) && reset_bold != NULL) {
+        if ((value == 21L || value == 22L) && reset_bold != nullptr) {
             *reset_bold = true;
         }
 
@@ -4140,34 +4141,34 @@ static bool session_sequence_resets_theme(const char *sequence_start,
     }
 
     if (reset_all) {
-        if (reset_fg != NULL) {
+        if (reset_fg != nullptr) {
             *reset_fg = true;
         }
-        if (reset_bg != NULL) {
+        if (reset_bg != nullptr) {
             *reset_bg = true;
         }
-        if (reset_bold != NULL) {
+        if (reset_bold != nullptr) {
             *reset_bold = true;
         }
     }
 
-    return reset_all || (reset_fg != NULL && *reset_fg) ||
-           (reset_bg != NULL && *reset_bg) ||
-           (reset_bold != NULL && *reset_bold);
+    return reset_all || (reset_fg != nullptr && *reset_fg) ||
+           (reset_bg != nullptr && *reset_bg) ||
+           (reset_bold != nullptr && *reset_bold);
 }
 
 static size_t session_prepare_themed_output(session_ctx_t *ctx,
                                             const char *render_source,
                                             char *dest, size_t dest_size)
 {
-    if (dest == NULL || dest_size == 0U) {
+    if (dest == nullptr || dest_size == 0U) {
         return 0U;
     }
 
     dest[0] = '\0';
 
-    const char *bg = ctx->system_bg_code != NULL ? ctx->system_bg_code : "";
-    const char *fg = ctx->system_fg_code != NULL ? ctx->system_fg_code : "";
+    const char *bg = ctx->system_bg_code != nullptr ? ctx->system_bg_code : "";
+    const char *fg = ctx->system_fg_code != nullptr ? ctx->system_fg_code : "";
     const char *bold = ctx->system_is_bold ? ANSI_BOLD : "";
 
     size_t offset = 0U;
@@ -4176,7 +4177,7 @@ static size_t session_prepare_themed_output(session_ctx_t *ctx,
     offset = session_append_fragment(dest, dest_size, offset, bold);
 
     const char *cursor = render_source;
-    while (cursor != NULL && *cursor != '\0') {
+    while (cursor != nullptr && *cursor != '\0') {
         if ((size_t)offset >= dest_size - 1U) {
             break;
         }
@@ -4232,7 +4233,7 @@ static size_t session_prepare_themed_output(session_ctx_t *ctx,
 static void session_write_rendered_line(session_ctx_t *ctx,
                                         const char *render_source)
 {
-    if (ctx == NULL || render_source == NULL ||
+    if (ctx == nullptr || render_source == nullptr ||
         !session_transport_active(ctx)) {
         return;
     }
@@ -4262,7 +4263,7 @@ static void session_write_rendered_line(session_ctx_t *ctx,
 
 static void session_send_caption_line(session_ctx_t *ctx, const char *message)
 {
-    if (ctx == NULL || message == NULL || !session_transport_active(ctx)) {
+    if (ctx == nullptr || message == nullptr || !session_transport_active(ctx)) {
         return;
     }
 
@@ -4282,7 +4283,7 @@ static void session_render_caption_with_offset(session_ctx_t *ctx,
                                                const char *message,
                                                size_t move_up)
 {
-    if (ctx == NULL || message == NULL || !session_transport_active(ctx)) {
+    if (ctx == nullptr || message == nullptr || !session_transport_active(ctx)) {
         return;
     }
 
@@ -4314,7 +4315,7 @@ static void session_telnet_send_option(session_ctx_t *ctx,
                                        unsigned char command,
                                        unsigned char option)
 {
-    if (ctx == NULL || ctx->telnet_fd < 0) {
+    if (ctx == nullptr || ctx->telnet_fd < 0) {
         return;
     }
 
@@ -4324,7 +4325,7 @@ static void session_telnet_send_option(session_ctx_t *ctx,
 
 static void session_telnet_request_terminal_type(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->telnet_fd < 0 ||
+    if (ctx == nullptr || ctx->telnet_fd < 0 ||
         ctx->telnet_terminal_type_requested) {
         return;
     }
@@ -4340,7 +4341,7 @@ static void session_telnet_handle_option(session_ctx_t *ctx,
                                          unsigned char command,
                                          unsigned char option)
 {
-    if (ctx == NULL) {
+    if (ctx == nullptr) {
         return;
     }
 
@@ -4381,7 +4382,7 @@ static void session_telnet_handle_option(session_ctx_t *ctx,
 
 static void session_telnet_initialize(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->telnet_fd < 0 || ctx->telnet_negotiated) {
+    if (ctx == nullptr || ctx->telnet_fd < 0 || ctx->telnet_negotiated) {
         return;
     }
 
@@ -4404,7 +4405,7 @@ static void session_telnet_initialize(session_ctx_t *ctx)
 static int session_telnet_read_byte(session_ctx_t *ctx, unsigned char *out,
                                     int timeout_ms)
 {
-    if (ctx == NULL || out == NULL || ctx->telnet_fd < 0) {
+    if (ctx == nullptr || out == nullptr || ctx->telnet_fd < 0) {
         return SSH_ERROR;
     }
 
@@ -4661,7 +4662,7 @@ static int session_telnet_read_byte(session_ctx_t *ctx, unsigned char *out,
 static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
                                         size_t length)
 {
-    if (ctx == NULL || buffer == NULL || length == 0U) {
+    if (ctx == nullptr || buffer == nullptr || length == 0U) {
         return false;
     }
 
@@ -4778,7 +4779,7 @@ static int session_pw_auth_hex_value(char ch)
 static bool session_pw_auth_decode_hex(const char *hex, uint8_t *out,
                                        size_t out_len)
 {
-    if (hex == NULL || out == NULL || out_len == 0U) {
+    if (hex == nullptr || out == nullptr || out_len == 0U) {
         return false;
     }
 
@@ -4803,8 +4804,8 @@ static bool session_telnet_pw_auth_lookup(host_t *host, const char *username,
                                           uint8_t *salt_out, size_t salt_len,
                                           uint8_t *hash_out, size_t hash_len)
 {
-    if (host == NULL || username == NULL || username[0] == '\0' ||
-        salt_out == NULL || hash_out == NULL || salt_len == 0U ||
+    if (host == nullptr || username == nullptr || username[0] == '\0' ||
+        salt_out == nullptr || hash_out == nullptr || salt_len == 0U ||
         hash_len == 0U) {
         return false;
     }
@@ -4814,23 +4815,23 @@ static bool session_telnet_pw_auth_lookup(host_t *host, const char *username,
     }
 
     FILE *fp = fopen(host->pw_auth_file_path, "rb");
-    if (fp == NULL) {
+    if (fp == nullptr) {
         return false;
     }
 
     char line[SSH_CHATTER_MESSAGE_LIMIT];
     bool found = false;
 
-    while (fgets(line, sizeof(line), fp) != NULL) {
+    while (fgets(line, sizeof(line), fp) != nullptr) {
         size_t length = strcspn(line, "\r\n");
         line[length] = '\0';
 
         char *first = strchr(line, ':');
-        if (first == NULL) {
+        if (first == nullptr) {
             continue;
         }
         char *second = strchr(first + 1, ':');
-        if (second == NULL) {
+        if (second == nullptr) {
             continue;
         }
 
@@ -4887,8 +4888,8 @@ static bool session_telnet_pw_auth_lookup(host_t *host, const char *username,
 static bool session_telnet_pw_auth_verify(host_t *host, const char *username,
                                           const char *password)
 {
-    if (host == NULL || username == NULL || username[0] == '\0' ||
-        password == NULL) {
+    if (host == nullptr || username == nullptr || username[0] == '\0' ||
+        password == nullptr) {
         return false;
     }
 
@@ -4914,7 +4915,7 @@ static bool session_telnet_pw_auth_exists(host_t *host, const char *username)
 
 static bool session_telnet_prompt_unicode_check(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return false;
     }
 
@@ -4961,7 +4962,7 @@ static bool session_telnet_prompt_unicode_check(session_ctx_t *ctx)
 
 bool session_telnet_login_prompt(session_ctx_t *ctx)
 {
-    if (ctx == NULL || ctx->owner == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr) {
         return false;
     }
 
@@ -4988,9 +4989,9 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
         }
 
         const char separators[] = " ,;.";
-        char *password_inline = NULL;
+        char *password_inline = nullptr;
         for (char *cursor = input_line; *cursor != '\0'; ++cursor) {
-            if (strchr(separators, *cursor) != NULL) {
+            if (strchr(separators, *cursor) != nullptr) {
                 *cursor = '\0';
                 password_inline = cursor + 1;
                 break;
@@ -5007,7 +5008,7 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
 
         char provided_password[128];
         provided_password[0] = '\0';
-        if (password_inline != NULL) {
+        if (password_inline != nullptr) {
             snprintf(provided_password, sizeof(provided_password), "%s",
                      password_inline);
         }
@@ -5015,7 +5016,7 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
         user_data_record_t user_data;
         memset(&user_data, 0, sizeof(user_data));
         const char *ip_for_lookup =
-            (ctx->client_ip[0] != '\0') ? ctx->client_ip : NULL;
+            (ctx->client_ip[0] != '\0') ? ctx->client_ip : nullptr;
         bool user_data_loaded = false;
         bool user_data_has_password = false;
 
@@ -5028,7 +5029,7 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
 
         if (!user_data_has_password) {
             user_data_record_t fallback_data;
-            if (host_user_data_load_existing(ctx->owner, id_buffer, NULL,
+            if (host_user_data_load_existing(ctx->owner, id_buffer, nullptr,
                                              &fallback_data, false)) {
                 bool fallback_has_password = !security_layer_is_zero_hash(
                     fallback_data.password_hash,
@@ -5043,11 +5044,11 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
             }
         }
 
-        lan_operator_credential_t *lan_credential = NULL;
-        if (ctx->owner != NULL) {
+        lan_operator_credential_t *lan_credential = nullptr;
+        if (ctx->owner != nullptr) {
             lan_credential =
                 host_find_lan_operator_credential(ctx->owner, id_buffer);
-            if (lan_credential != NULL &&
+            if (lan_credential != nullptr &&
                 !session_is_lan_client(ctx->client_ip)) {
                 session_send_system_line(
                     ctx, "That nickname is reserved for LAN operators.");
@@ -5059,11 +5060,11 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
             session_telnet_pw_auth_exists(ctx->owner, id_buffer);
         bool requires_password = user_data_has_password || pw_auth_available;
 
-        if (lan_credential != NULL) {
+        if (lan_credential != nullptr) {
             requires_password = true;
         }
 
-        const char *password_to_check = NULL;
+        const char *password_to_check = nullptr;
         if (provided_password[0] != '\0') {
             password_to_check = provided_password;
         }
@@ -5075,7 +5076,7 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
             return true;
         }
 
-        if (password_to_check == NULL) {
+        if (password_to_check == nullptr) {
             session_send_system_line(ctx, "Password required. Enter password:");
             session_channel_write(ctx, "> ", 2U);
 
@@ -5098,7 +5099,7 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
             password_to_check = provided_password;
         }
 
-        if (lan_credential != NULL) {
+        if (lan_credential != nullptr) {
             if (lan_credential->password[0] != '\0' &&
                 strcmp(lan_credential->password, password_to_check) == 0) {
                 snprintf(ctx->user.name, sizeof(ctx->user.name), "%s",
@@ -5152,7 +5153,7 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
 static int session_transport_read(session_ctx_t *ctx, void *buffer,
                                   size_t length, int timeout_ms)
 {
-    if (ctx == NULL || buffer == NULL || length == 0U) {
+    if (ctx == nullptr || buffer == nullptr || length == 0U) {
         return SSH_ERROR;
     }
 
@@ -5200,7 +5201,7 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
                                              const char *message,
                                              bool clear_prompt_text)
 {
-    if (ctx == NULL || ctx->owner == NULL || message == NULL) {
+    if (ctx == nullptr || ctx->owner == nullptr || message == nullptr) {
         return;
     }
 
@@ -5262,7 +5263,7 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
     chat_room_broadcast_entry(&ctx->owner->room, &entry, ctx);
     host_notify_external_clients(ctx->owner, &entry);
 
-    (void)host_eliza_intervene(ctx, trimmed, NULL, false);
+    (void)host_eliza_intervene(ctx, trimmed, nullptr, false);
 
     size_t message_length = strnlen(trimmed, SSH_CHATTER_MESSAGE_LIMIT);
 
@@ -5277,7 +5278,7 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
 // clearing the row with the palette tint before printing.
 static void session_send_line(session_ctx_t *ctx, const char *message)
 {
-    if (ctx == NULL || !session_transport_active(ctx) || message == NULL) {
+    if (ctx == nullptr || !session_transport_active(ctx) || message == nullptr) {
         return;
     }
 
@@ -5325,7 +5326,7 @@ static void session_send_line(session_ctx_t *ctx, const char *message)
 static size_t session_append_fragment(char *dest, size_t dest_size,
                                       size_t offset, const char *fragment)
 {
-    if (dest == NULL || dest_size == 0U) {
+    if (dest == nullptr || dest_size == 0U) {
         return offset;
     }
 
@@ -5333,7 +5334,7 @@ static size_t session_append_fragment(char *dest, size_t dest_size,
         return dest_size > 0U ? dest_size - 1U : offset;
     }
 
-    if (fragment == NULL) {
+    if (fragment == nullptr) {
         dest[offset] = '\0';
         return offset;
     }

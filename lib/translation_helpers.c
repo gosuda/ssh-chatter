@@ -5,7 +5,7 @@
 
 #include <ctype.h>
 #include <stdio.h>
-#include <stdlib.h> // For malloc, realloc, free
+#include <stdlib.h> // For GC_MALLOC, GC_REALLOC, free
 #include <string.h>
 #include <wchar.h>  // For wcwidth
 #include <locale.h> // For setlocale
@@ -15,8 +15,8 @@ bool translation_prepare_text(const char *message, char *sanitized,
                               translation_placeholder_t *placeholders,
                               size_t *placeholder_count)
 {
-    if (message == NULL || sanitized == NULL || sanitized_len == 0U ||
-        placeholders == NULL || placeholder_count == NULL) {
+    if (message == nullptr || sanitized == nullptr || sanitized_len == 0U ||
+        placeholders == nullptr || placeholder_count == nullptr) {
         return false;
     }
 
@@ -95,7 +95,7 @@ bool translation_restore_text(const char *translated, char *output,
                               const translation_placeholder_t *placeholders,
                               size_t placeholder_count)
 {
-    if (translated == NULL || output == NULL || output_len == 0U) {
+    if (translated == nullptr || output == nullptr || output_len == 0U) {
         return false;
     }
 
@@ -153,11 +153,11 @@ bool translation_restore_text(const char *translated, char *output,
 bool translation_strip_no_translate_prefix(const char *message, char *stripped,
                                            size_t stripped_len)
 {
-    if (stripped != NULL && stripped_len > 0U) {
+    if (stripped != nullptr && stripped_len > 0U) {
         stripped[0] = '\0';
     }
 
-    if (message == NULL || stripped == NULL || stripped_len == 0U) {
+    if (message == nullptr || stripped == nullptr || stripped_len == 0U) {
         return false;
     }
 
@@ -217,7 +217,7 @@ static int get_utf8_char_display_width(const char *s, size_t max_len,
 
 int get_display_width(const char *text)
 {
-    if (text == NULL) {
+    if (text == nullptr) {
         return 0;
     }
 
@@ -261,7 +261,7 @@ static bool is_ansi_char(char c)
 static size_t extract_ansi_sequence(const char *text, size_t max_len,
                                     char *buffer, size_t buffer_len)
 {
-    if (text == NULL || buffer == NULL || buffer_len == 0 || max_len == 0 ||
+    if (text == nullptr || buffer == nullptr || buffer_len == 0 || max_len == 0 ||
         text[0] != '\033') {
         if (buffer)
             buffer[0] = '\0';
@@ -300,20 +300,20 @@ static size_t extract_ansi_sequence(const char *text, size_t max_len,
 
 char **wrap_text_to_width(const char *text, int max_width, size_t *line_count)
 {
-    if (text == NULL || max_width <= 0 || line_count == NULL) {
+    if (text == nullptr || max_width <= 0 || line_count == nullptr) {
         if (line_count)
             *line_count = 0;
-        return NULL;
+        return nullptr;
     }
 
-    char **lines = NULL;
+    char **lines = nullptr;
     size_t current_line_count = 0;
     size_t lines_capacity = 8; // Initial capacity for lines array
 
     lines = (char **)calloc(lines_capacity, sizeof(char *));
-    if (lines == NULL) {
+    if (lines == nullptr) {
         *line_count = 0;
-        return NULL;
+        return nullptr;
     }
 
     const char *current_pos = text;
@@ -429,28 +429,28 @@ char **wrap_text_to_width(const char *text, int max_width, size_t *line_count)
         if (current_line_count >= lines_capacity) {
             lines_capacity *= 2;
             char **new_lines =
-                (char **)realloc(lines, lines_capacity * sizeof(char *));
-            if (new_lines == NULL) {
+                (char **)GC_REALLOC(lines, lines_capacity * sizeof(char *));
+            if (new_lines == nullptr) {
                 // Free all previously allocated lines
                 for (size_t i = 0; i < current_line_count; i++) {
-                    free(lines[i]);
+                    GC_FREE(lines[i]);
                 }
-                free(lines);
+                GC_FREE(lines);
                 *line_count = 0;
-                return NULL;
+                return nullptr;
             }
             lines = new_lines;
         }
 
         lines[current_line_count] = strdup(current_line_buffer);
-        if (lines[current_line_count] == NULL) {
+        if (lines[current_line_count] == nullptr) {
             // Free all previously allocated lines
             for (size_t i = 0; i < current_line_count; i++) {
-                free(lines[i]);
+                GC_FREE(lines[i]);
             }
-            free(lines);
+            GC_FREE(lines);
             *line_count = 0;
-            return NULL;
+            return nullptr;
         }
         current_line_count++;
     }
@@ -461,7 +461,7 @@ char **wrap_text_to_width(const char *text, int max_width, size_t *line_count)
 
 void to_lowercase(char *str)
 {
-    if (str == NULL) {
+    if (str == nullptr) {
         return;
     }
     for (size_t i = 0; str[i] != '\0'; ++i) {

@@ -28,7 +28,7 @@ client_manager_t *client_manager_create(struct host *host)
 
     manager->host = host;
     if (pthread_mutex_init(&manager->lock, nullptr) != 0) {
-        free(manager);
+        GC_FREE(manager);
         return nullptr;
     }
     manager->lock_initialized = true;
@@ -44,7 +44,7 @@ void client_manager_destroy(client_manager_t *manager)
     }
 
     if (!manager->lock_initialized) {
-        free(manager);
+        GC_FREE(manager);
         return;
     }
 
@@ -72,7 +72,7 @@ void client_manager_destroy(client_manager_t *manager)
 
     pthread_mutex_destroy(&manager->lock);
     manager->lock_initialized = false;
-    free(manager);
+    GC_FREE(manager);
 }
 
 bool client_manager_register(client_manager_t *manager,

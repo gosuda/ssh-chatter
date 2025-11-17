@@ -12,18 +12,18 @@
 #include <gc/gc.h>
 #endif
 
-static ssh_session session = NULL;
-static ssh_channel channel = NULL;
+static ssh_session session = nullptr;
+static ssh_channel channel = nullptr;
 static pthread_t read_thread;
 static pthread_t retry_thread;
 static bool sync_running = false;
 static bool retry_pending = false;
-static message_received_callback_t msg_callback = NULL;
+static message_received_callback_t msg_callback = nullptr;
 
 #define MAX_CHAT_HISTORY_SIZE 50
 #define RETRY_INTERVAL_SECONDS 5
 
-static chat_message_t *chat_history_head = NULL;
+static chat_message_t *chat_history_head = nullptr;
 static int chat_history_size = 0;
 static pthread_mutex_t history_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -74,7 +74,7 @@ static void *retry_connection_thread(void *arg)
         sleep(10);
     }
     fprintf(stderr, "[SSH_SYNC] Retry thread stopped.\n\n");
-    return NULL;
+    return nullptr;
 }
 
 void ssh_chatter_sync_add_message_to_history(const chat_message_t *new_msg)
@@ -103,7 +103,7 @@ void ssh_chatter_sync_add_message_to_history(const chat_message_t *new_msg)
 
     if (chat_history_size > MAX_CHAT_HISTORY_SIZE) {
         chat_message_t *cur = chat_history_head;
-        chat_message_t *prev = NULL;
+        chat_message_t *prev = nullptr;
         for (int i = 0; i < MAX_CHAT_HISTORY_SIZE - 1 && cur; i++) {
             prev = cur;
             cur = cur->next;
@@ -112,7 +112,7 @@ void ssh_chatter_sync_add_message_to_history(const chat_message_t *new_msg)
             GC_FREE(cur->username);
             GC_FREE(cur->message_body);
             GC_FREE(cur);
-            prev->next = NULL;
+            prev->next = nullptr;
             chat_history_size--;
         }
     }
@@ -131,7 +131,7 @@ void ssh_chatter_sync_free_history()
         GC_FREE(cur);
         cur = next;
     }
-    chat_history_head = NULL;
+    chat_history_head = nullptr;
     chat_history_size = 0;
     pthread_mutex_unlock(&history_mutex);
     pthread_mutex_destroy(&history_mutex);
@@ -140,16 +140,16 @@ void ssh_chatter_sync_free_history()
 chat_message_t *ssh_chatter_sync_get_last_messages(int count)
 {
     (void)count;
-    return NULL;
+    return nullptr;
 }
 
 void ssh_chatter_sync_init()
 {
     fprintf(stderr, "[SSH_SYNC] Initialized SSH Chatter Sync module.\n");
-    pthread_mutex_init(&history_mutex, NULL);
+    pthread_mutex_init(&history_mutex, nullptr);
     ssh_chatter_sync_load_settings();
 
-    if (pthread_create(&retry_thread, NULL, retry_connection_thread, NULL) !=
+    if (pthread_create(&retry_thread, nullptr, retry_connection_thread, nullptr) !=
         0) {
         fprintf(stderr, "[SSH_SYNC] Failed to create retry thread.\n\n");
     }
@@ -172,7 +172,7 @@ void ssh_chatter_sync_start()
     int rc = ssh_connect(session);
     if (rc != SSH_OK) {
         ssh_free(session);
-        session = NULL;
+        session = nullptr;
         clock_gettime(CLOCK_MONOTONIC, &current_settings.last_sync_attempt);
         retry_pending = true;
         ssh_chatter_sync_save_settings();
@@ -182,7 +182,7 @@ void ssh_chatter_sync_start()
     if (authenticate_ssh_session(session) != SSH_OK) {
         ssh_disconnect(session);
         ssh_free(session);
-        session = NULL;
+        session = nullptr;
         clock_gettime(CLOCK_MONOTONIC, &current_settings.last_sync_attempt);
         retry_pending = true;
         ssh_chatter_sync_save_settings();
@@ -207,7 +207,7 @@ void ssh_chatter_sync_start()
     clock_gettime(CLOCK_MONOTONIC, &current_settings.last_sync_attempt);
     ssh_chatter_sync_save_settings();
 
-    if (pthread_create(&read_thread, NULL, read_channel_thread, NULL) != 0)
+    if (pthread_create(&read_thread, nullptr, read_channel_thread, nullptr) != 0)
         goto fail_exit;
 
     fprintf(stderr, "[SSH_SYNC] Synchronization started.\n\n");
@@ -217,12 +217,12 @@ fail_exit:
     if (channel) {
         ssh_channel_close(channel);
         ssh_channel_free(channel);
-        channel = NULL;
+        channel = nullptr;
     }
     if (session) {
         ssh_disconnect(session);
         ssh_free(session);
-        session = NULL;
+        session = nullptr;
     }
 }
 
@@ -235,17 +235,17 @@ void ssh_chatter_sync_stop()
     retry_pending = false;
 
     if (read_thread)
-        pthread_join(read_thread, NULL);
+        pthread_join(read_thread, nullptr);
 
     if (channel) {
         ssh_channel_close(channel);
         ssh_channel_free(channel);
-        channel = NULL;
+        channel = nullptr;
     }
     if (session) {
         ssh_disconnect(session);
         ssh_free(session);
-        session = NULL;
+        session = nullptr;
     }
 
     ssh_chatter_sync_free_history();
@@ -368,7 +368,7 @@ static void *read_channel_thread(void *arg)
             buffer[nbytes] = '\0';
             char *line = buffer;
             char *next;
-            while ((next = strchr(line, '\n')) != NULL) {
+            while ((next = strchr(line, '\n')) != nullptr) {
                 *next = '\0';
 
                 char *trim = line;
@@ -389,7 +389,7 @@ static void *read_channel_thread(void *arg)
                         chat_message_t msg;
                         msg.username = trim;
                         msg.message_body = colon + 2;
-                        msg.timestamp = time(NULL);
+                        msg.timestamp = time(nullptr);
                         ssh_chatter_sync_add_message_to_history(&msg);
                         msg_callback(&msg);
                     }
@@ -408,18 +408,18 @@ static void *read_channel_thread(void *arg)
         if (channel) {
             ssh_channel_close(channel);
             ssh_channel_free(channel);
-            channel = NULL;
+            channel = nullptr;
         }
         if (session) {
             ssh_disconnect(session);
             ssh_free(session);
-            session = NULL;
+            session = nullptr;
         }
         retry_pending = true;
         clock_gettime(CLOCK_MONOTONIC, &current_settings.last_sync_attempt);
     }
 
-    return NULL;
+    return nullptr;
 }
 
 static int authenticate_ssh_session(ssh_session sess)

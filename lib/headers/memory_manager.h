@@ -43,7 +43,7 @@ static inline sshc_memory_context_t *
 sshc_memory_context_push(sshc_memory_context_t *ctx)
 {
     (void)ctx;
-    return NULL;
+    return nullptr;
 }
 
 static inline void sshc_memory_context_pop(sshc_memory_context_t *previous)
@@ -58,7 +58,7 @@ static inline void sshc_memory_context_reset(sshc_memory_context_t *ctx)
 
 static inline sshc_memory_context_t *sshc_memory_context_current(void)
 {
-    return NULL;
+    return nullptr;
 }
 
 static inline void *GC_CALLOC(size_t count, size_t size)
@@ -68,13 +68,13 @@ static inline void *GC_CALLOC(size_t count, size_t size)
     }
 
     if (count > SIZE_MAX / size) {
-        return NULL;
+        return nullptr;
     }
 
     size_t total = count * size;
     void *ptr = GC_MALLOC(total);
-    if (ptr == NULL) {
-        return NULL;
+    if (ptr == nullptr) {
+        return nullptr;
     }
     memset(ptr, 0, total);
     return ptr;
@@ -82,8 +82,8 @@ static inline void *GC_CALLOC(size_t count, size_t size)
 
 static inline char *sshc_strdup(const char *text)
 {
-    if (text == NULL) {
-        return NULL;
+    if (text == nullptr) {
+        return nullptr;
     }
     return GC_strdup(text);
 }
@@ -104,20 +104,21 @@ sshc_memory_context_t *sshc_memory_context_current(void);
 
 void GC_INIT(void);
 void *GC_MALLOC(size_t size);
+void *GC_REALLOC(void *ptr, size_t size);
 void GC_free(void *ptr);
 #define GC_FREE(x) GC_free(x)
 void *GC_CALLOC(size_t count, size_t size);
 
 static inline char *sshc_strdup(const char *text)
 {
-    if (text == NULL) {
-        return NULL;
+    if (text == nullptr) {
+        return nullptr;
     }
 
     size_t length = strlen(text) + 1U;
     char *copy = (char *)GC_MALLOC(length);
-    if (copy == NULL) {
-        return NULL;
+    if (copy == nullptr) {
+        return nullptr;
     }
 
     memcpy(copy, text, length);

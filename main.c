@@ -26,7 +26,7 @@
 #define HOST_STABLE_RESET_SECONDS 10.0
 
 static volatile sig_atomic_t g_shutdown_flag = 0;
-static char *g_welcome_banner_content = NULL;
+static char *g_welcome_banner_content = nullptr;
 
 static void signal_handler(int signum)
 {
@@ -49,7 +49,7 @@ static void print_usage(const char *prog_name)
 static double timespec_elapsed_seconds(const struct timespec *start,
                                        const struct timespec *end)
 {
-    if (start == nullptr || end == NULL) {
+    if (start == nullptr || end == nullptr) {
         return 0.0;
     }
 
@@ -102,8 +102,8 @@ int main(int argc, char **argv)
     sa.sa_handler = signal_handler;
     sa.sa_flags =
         0; // Do NOT use SA_RESTART - we want signals to interrupt accept()
-    sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, nullptr);
+    sigaction(SIGTERM, &sa, nullptr);
     signal(SIGPIPE, SIG_IGN);
 
     setlocale(LC_ALL, "");
@@ -319,7 +319,7 @@ int main(int argc, char **argv)
             printf("[daemon] retrying host startup (attempt %u)\n",
                    restart_attempts);
 
-            free(host);
+            GC_FREE(host);
 
             sleep_before_restart(restart_attempts);
 
@@ -362,9 +362,9 @@ int main(int argc, char **argv)
         const char *welcome_banner_path = getenv("CHATTER_WELCOME_BANNER");
         g_welcome_banner_content =
             session_show_welcome_banner(welcome_banner_path);
-        if (g_welcome_banner_content == NULL) {
+        if (g_welcome_banner_content == nullptr) {
             // Optionally log an error if banner path is set but file is not found/readable
-            if (welcome_banner_path != NULL) {
+            if (welcome_banner_path != nullptr) {
                 fprintf(
                     stderr,
                     "[main] Warning: Could not load welcome banner from %s\n",
@@ -397,7 +397,7 @@ int main(int argc, char **argv)
 
         host->memory_context = nullptr;
 
-        free(host);
+        GC_FREE(host);
 
         host = nullptr;
 
@@ -453,9 +453,9 @@ int main(int argc, char **argv)
     }
 
     // Cleanup before exit
-    if (g_welcome_banner_content != NULL) {
-        free(g_welcome_banner_content);
-        g_welcome_banner_content = NULL;
+    if (g_welcome_banner_content != nullptr) {
+        GC_FREE(g_welcome_banner_content);
+        g_welcome_banner_content = nullptr;
     }
     ssh_chatter_sync_stop();
     ssh_chatter_sync_free_history();

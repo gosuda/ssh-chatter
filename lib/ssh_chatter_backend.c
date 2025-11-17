@@ -13,11 +13,11 @@ void ssh_chatter_backend_init(void)
 
 static void backend_copy_string(char *dest, size_t dest_len, const char *source)
 {
-    if (dest == NULL || dest_len == 0U) {
+    if (dest == nullptr || dest_len == 0U) {
         return;
     }
 
-    if (source == NULL) {
+    if (source == nullptr) {
         dest[0] = '\0';
         return;
     }
@@ -37,14 +37,14 @@ bool ssh_chatter_backend_translate_line(const char *message,
                                         char *detected_language,
                                         size_t detected_len)
 {
-    if (translated != NULL && translated_len > 0U) {
+    if (translated != nullptr && translated_len > 0U) {
         translated[0] = '\0';
     }
-    if (detected_language != NULL && detected_len > 0U) {
+    if (detected_language != nullptr && detected_len > 0U) {
         detected_language[0] = '\0';
     }
 
-    if (message == NULL || target_language == NULL || translated == NULL ||
+    if (message == nullptr || target_language == nullptr || translated == nullptr ||
         translated_len == 0U) {
         return false;
     }
@@ -53,7 +53,7 @@ bool ssh_chatter_backend_translate_line(const char *message,
     if (translation_strip_no_translate_prefix(message, stripped,
                                               sizeof(stripped))) {
         backend_copy_string(translated, translated_len, stripped);
-        if (detected_language != NULL && detected_len > 0U) {
+        if (detected_language != nullptr && detected_len > 0U) {
             detected_language[0] = '\0';
         }
         return true;
@@ -89,7 +89,7 @@ bool ssh_chatter_backend_translate_line(const char *message,
     }
 
     backend_copy_string(translated, translated_len, restored);
-    if (detected_language != NULL) {
+    if (detected_language != nullptr) {
         backend_copy_string(detected_language, detected_len, detected_buffer);
     }
 
@@ -100,18 +100,18 @@ bool ssh_chatter_backend_translate_line(const char *message,
  * Reads a welcome banner from a file specified by the CHATTER_WELCOME_BANNER
  * environment variable. The banner content is returned as a dynamically allocated
  * string. The caller is responsible for freeing the returned string.
- * Returns NULL on error or if the path is NULL.
+ * Returns nullptr on error or if the path is nullptr.
  */
 char *session_show_welcome_banner(const char *path)
 {
-    if (path == NULL) {
-        return NULL;
+    if (path == nullptr) {
+        return nullptr;
     }
 
     FILE *banner_file = fopen(path, "r");
-    if (banner_file == NULL) {
-        // Error opening file, return NULL
-        return NULL;
+    if (banner_file == nullptr) {
+        // Error opening file, return nullptr
+        return nullptr;
     }
 
     // Determine file size to allocate buffer
@@ -119,15 +119,15 @@ char *session_show_welcome_banner(const char *path)
     long file_size = ftell(banner_file);
     if (file_size < 0) {
         fclose(banner_file);
-        return NULL; // Error getting file size
+        return nullptr; // Error getting file size
     }
     rewind(banner_file);
 
     // Allocate memory for the banner content + null terminator
-    char *banner_content = (char *)malloc((size_t)file_size + 1);
-    if (banner_content == NULL) {
+    char *banner_content = (char *)GC_MALLOC((size_t)file_size + 1);
+    if (banner_content == nullptr) {
         fclose(banner_file);
-        return NULL; // Memory allocation failed
+        return nullptr; // Memory allocation failed
     }
 
     // Read file content into the buffer
@@ -135,9 +135,9 @@ char *session_show_welcome_banner(const char *path)
         fread(banner_content, 1, (size_t)file_size, banner_file);
     if (bytes_read != (size_t)file_size) {
         // Error reading file content
-        free(banner_content);
+        GC_FREE(banner_content);
         fclose(banner_file);
-        return NULL;
+        return nullptr;
     }
     banner_content[file_size] = '\0'; // Null-terminate the string
 
@@ -145,8 +145,8 @@ char *session_show_welcome_banner(const char *path)
 
     // Ensure there is at least a newline at the end if the file didn't have one
     if (file_size == 0 || banner_content[file_size - 1] != '\n') {
-        char *temp = (char *)realloc(banner_content, (size_t)file_size + 2);
-        if (temp == NULL) {
+        char *temp = (char *)GC_REALLOC(banner_content, (size_t)file_size + 2);
+        if (temp == nullptr) {
             // Realloc failed, return original content (might be missing newline)
             return banner_content;
         }

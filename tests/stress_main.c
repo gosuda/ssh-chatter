@@ -16,11 +16,11 @@ typedef struct stress_client {
 
 static size_t parse_size_arg(const char *text, size_t fallback)
 {
-    if (text == NULL || text[0] == '\0') {
+    if (text == nullptr || text[0] == '\0') {
         return fallback;
     }
 
-    char *endptr = NULL;
+    char *endptr = nullptr;
     unsigned long parsed = strtoul(text, &endptr, 10);
     if (endptr == text || *endptr != '\0') {
         return fallback;
@@ -48,10 +48,10 @@ static void *stress_client_thread(void *arg)
         }
 
         host_session_process_line_for_testing(client->ctx, buffer);
-        nanosleep(&pause, NULL);
+        nanosleep(&pause, nullptr);
     }
 
-    return NULL;
+    return nullptr;
 }
 
 int main(int argc, char **argv)
@@ -73,7 +73,7 @@ int main(int argc, char **argv)
     volatile sig_atomic_t shutdown_flag = 0;
     host.shutdown_flag = &shutdown_flag;
     host.memory_context = sshc_memory_context_create("stress-host");
-    if (host.memory_context == NULL) {
+    if (host.memory_context == nullptr) {
         fprintf(stderr, "failed to create host memory context\n");
         sshc_memory_runtime_shutdown();
         return EXIT_FAILURE;
@@ -83,7 +83,7 @@ int main(int argc, char **argv)
     sshc_memory_context_t *init_scope =
         sshc_memory_context_push(host.memory_context);
     host_init(&host, &auth);
-    if (init_scope != NULL) {
+    if (init_scope != nullptr) {
         sshc_memory_context_pop(init_scope);
     }
 
@@ -97,7 +97,7 @@ int main(int argc, char **argv)
     size_t created_sessions = 0U;
     size_t launched_threads = 0U;
 
-    if (sessions == NULL || threads == NULL || clients == NULL) {
+    if (sessions == nullptr || threads == nullptr || clients == nullptr) {
         fprintf(stderr, "failed to allocate stress test structures\n");
         exit_code = EXIT_FAILURE;
         goto cleanup;
@@ -111,7 +111,7 @@ int main(int argc, char **argv)
 
         sessions[created_sessions] =
             host_session_create_for_testing(&host, username, ip, false);
-        if (sessions[created_sessions] == NULL) {
+        if (sessions[created_sessions] == nullptr) {
             fprintf(stderr, "failed to prepare session %zu\n",
                     created_sessions);
             exit_code = EXIT_FAILURE;
@@ -122,7 +122,7 @@ int main(int argc, char **argv)
         clients[created_sessions].id = created_sessions;
         clients[created_sessions].rounds = rounds;
 
-        if (pthread_create(&threads[created_sessions], NULL,
+        if (pthread_create(&threads[created_sessions], nullptr,
                            stress_client_thread,
                            &clients[created_sessions]) != 0) {
             fprintf(stderr, "failed to launch thread %zu\n", created_sessions);
@@ -134,11 +134,11 @@ int main(int argc, char **argv)
 
 cleanup:
     for (size_t idx = 0U; idx < launched_threads; ++idx) {
-        pthread_join(threads[idx], NULL);
+        pthread_join(threads[idx], nullptr);
     }
 
     for (size_t idx = 0U; idx < created_sessions; ++idx) {
-        if (sessions[idx] != NULL) {
+        if (sessions[idx] != nullptr) {
             host_session_destroy_for_testing(sessions[idx]);
         }
     }

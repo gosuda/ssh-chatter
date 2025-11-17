@@ -73,6 +73,40 @@ confirm the build still succeeds before pushing the result.
 - Suspicious submissions that trip the layered filter are now tracked per-IP; repeated hits trigger an automatic kick and ban, while the rapid reconnect detector allows longer recovery windows so unstable network sessions can rejoin without being penalized.
 - Operators can mark trusted ingress points (VPN exits, reverse proxies, localhost) with `CHATTER_PROTECTED_IPS` (comma-separated, defaults to `127.0.0.1,::1,192.168.0.1`) so emergency bans never lock the daemon out of its own control plane.
 
+## MRC Server relay
+
+SSH-Chatter supports connecting to MRC (Multi Relay Chat) servers, allowing integration with external IRC-like relay networks such as magviz.ca. The MRC relay automatically forwards messages between the SSH chat room and the configured relay server.
+
+### Configuration
+
+Set these environment variables to enable the MRC relay:
+
+- `CHATTER_MRC_SERVER` – hostname or IP address of the MRC server (e.g., `irc.magviz.ca`)
+- `CHATTER_MRC_PORT` – port number (defaults to `6667` if not specified)
+- `CHATTER_MRC_CHANNEL` – IRC-style channel to join (e.g., `#chat`)
+- `CHATTER_MRC_NICKNAME` – nickname for the bot (defaults to `ssh-chatter`)
+
+Example configuration in `chatter.env`:
+
+```bash
+CHATTER_MRC_SERVER=irc.magviz.ca
+CHATTER_MRC_PORT=6667
+CHATTER_MRC_CHANNEL=#general
+CHATTER_MRC_NICKNAME=chatbot
+```
+
+### Managing the connection
+
+Operators can manage the MRC relay connection using the `/mrcserver` command:
+
+```bash
+/mrcserver status        # Check connection status
+/mrcserver reconnect     # Reconnect to the MRC server
+/mrcserver disconnect    # Disconnect from the MRC server
+```
+
+Messages received from the MRC relay appear in the chat with a `[MRC]` prefix and the sender's nickname. The relay automatically handles reconnections if the connection drops, with a 30-second delay between attempts.
+
 ## Matrix bridge(WIP, Unusable)
 
 Set these environment variables (either inside `chatter.env` or the systemd unit) to synchronise the room with Matrix while preserving onion-style secrecy:

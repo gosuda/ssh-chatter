@@ -235,7 +235,7 @@ ssh -p 2222 user@server-address
 The public server is available at `chat.korokorok.com` on the default SSH port:
 
 ```bash
-ssh -p 22 yourname@chat.korokorok.com
+ssh -p 2222 yourname@chat.korokorok.com
 ```
 
 Usernames provided at the SSH prompt are used as your chat nickname.

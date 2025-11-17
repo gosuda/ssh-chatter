@@ -1205,7 +1205,7 @@ static void host_eliza_announce_join(host_t *host)
         return;
     }
 
-    host_history_record_system(host, "* [eliza] has joined the chat");
+    host_history_record_system(host, "* [eliza] has joined the chat", NULL);
     host_eliza_say(host,
                    "Hey everyone, I'm eliza. Just another chatter keeping "
                    "an eye on things.");
@@ -1218,7 +1218,7 @@ static void host_eliza_announce_depart(host_t *host)
     }
 
     host_eliza_say(host, "I'm heading out. Stay safe!");
-    host_history_record_system(host, "* [eliza] has left the chat");
+    host_history_record_system(host, "* [eliza] has left the chat", NULL);
 }
 
 static void host_eliza_say(host_t *host, const char *message)
@@ -1661,7 +1661,7 @@ static void host_eliza_intervene_execute(session_ctx_t *ctx, const char *reason,
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(notice, sizeof(notice),
              "* [eliza] removed [%s] for severe content.", ctx->user.name);
-    host_history_record_system(host, notice);
+    host_history_record_system(host, notice, NULL);
 
     clock_gettime(CLOCK_MONOTONIC, &host->eliza_last_action);
     if (from_filter && reason != NULL && reason[0] != '\0') {
@@ -4728,7 +4728,7 @@ static void *host_rss_backend(void *arg)
                     }
 
                     printf("%s\n", notice);
-                    host_history_record_system(host, notice);
+                    host_history_record_system(host, notice, NULL);
                     // Iterate through all active sessions and send the notice only to those with breaking_alerts_enabled
                     pthread_mutex_lock(&host->room.lock);
                     for (size_t i = 0; i < host->room.member_count; ++i) {

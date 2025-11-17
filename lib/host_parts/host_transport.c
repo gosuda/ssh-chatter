@@ -2135,7 +2135,7 @@ static bool host_replies_commit_entry(host_t *host, chat_reply_entry_t *entry,
 static void session_send_reply_tree(session_ctx_t *ctx,
                                     uint64_t parent_message_id,
                                     uint64_t parent_reply_id, size_t depth);
-static void host_broadcast_reply(host_t *host, const chat_reply_entry_t *entry);
+// static void host_broadcast_reply(host_t *host, const chat_reply_entry_t *entry);
 static void session_send_private_message_line(session_ctx_t *ctx,
                                               const session_ctx_t *color_source,
                                               const char *label,
@@ -2381,7 +2381,8 @@ static bool session_parse_color_arguments(char *working, char **tokens,
                                           size_t *token_count);
 static size_t session_utf8_prev_char_len(const char *buffer, size_t length);
 static int session_utf8_char_width(const char *bytes, size_t length);
-static void host_history_record_system(host_t *host, const char *message);
+static bool host_history_record_system(host_t *host, const char *message,
+                                       chat_history_entry_t *stored_entry);
 static void session_send_history_entry(session_ctx_t *ctx,
                                        const chat_history_entry_t *entry);
 static void session_deliver_outgoing_message(session_ctx_t *ctx,
@@ -4273,34 +4274,36 @@ chat_room_broadcast_reaction_update(host_t *host,
     chat_room_broadcast_caption(&host->room, line);
 }
 
-static void host_broadcast_reply(host_t *host, const chat_reply_entry_t *entry)
-{
-    if (host == NULL || entry == NULL) {
-        return;
-    }
-
-    const char *target_prefix = (entry->parent_reply_id == 0U) ? "#" : "r#";
-    uint64_t target_id = (entry->parent_reply_id == 0U)
-                             ? entry->parent_message_id
-                             : entry->parent_reply_id;
-
-    char reply_label[32];
-    if (!host_compact_id_encode(entry->reply_id, reply_label,
-                                sizeof(reply_label))) {
-        snprintf(reply_label, sizeof(reply_label), "%" PRIu64, entry->reply_id);
-    }
-
-    char target_label[32];
-    if (!host_compact_id_encode(target_id, target_label, sizeof(target_label))) {
-        snprintf(target_label, sizeof(target_label), "%" PRIu64, target_id);
-    }
-
-    char line[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(line, sizeof(line), "↳ [r#%s → %s%s] %s: %s", reply_label,
-             target_prefix, target_label, entry->username, entry->message);
-
-    chat_room_broadcast(&host->room, line, NULL);
-}
+// This function is no longer used - replies are now broadcast using
+// chat_room_broadcast_entry to ensure proper integration with chat buffer
+// static void host_broadcast_reply(host_t *host, const chat_reply_entry_t *entry)
+// {
+//     if (host == NULL || entry == NULL) {
+//         return;
+//     }
+// 
+//     const char *target_prefix = (entry->parent_reply_id == 0U) ? "#" : "r#";
+//     uint64_t target_id = (entry->parent_reply_id == 0U)
+//                              ? entry->parent_message_id
+//                              : entry->parent_reply_id;
+// 
+//     char reply_label[32];
+//     if (!host_compact_id_encode(entry->reply_id, reply_label,
+//                                 sizeof(reply_label))) {
+//         snprintf(reply_label, sizeof(reply_label), "%" PRIu64, entry->reply_id);
+//     }
+// 
+//     char target_label[32];
+//     if (!host_compact_id_encode(target_id, target_label, sizeof(target_label))) {
+//         snprintf(target_label, sizeof(target_label), "%" PRIu64, target_id);
+//     }
+// 
+//     char line[SSH_CHATTER_MESSAGE_LIMIT];
+//     snprintf(line, sizeof(line), "↳ [r#%s → %s%s] %s: %s", reply_label,
+//              target_prefix, target_label, entry->username, entry->message);
+// 
+//     chat_room_broadcast(&host->room, line, NULL);
+// }
 
 static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
 {
@@ -5339,10 +5342,11 @@ static bool host_history_record_user(host_t *host, const session_ctx_t *from,
     return host_history_commit_entry(host, &entry, stored_entry);
 }
 
-static void host_history_record_system(host_t *host, const char *message)
+static bool host_history_record_system(host_t *host, const char *message,
+                                       chat_history_entry_t *stored_entry)
 {
     if (host == NULL || message == NULL || message[0] == '\0') {
-        return;
+        return false;
     }
 
     chat_history_entry_t entry = {0};
@@ -5357,10 +5361,18 @@ static void host_history_record_system(host_t *host, const char *message)
         entry.created_at = now;
     }
 
-    if (!host_history_commit_entry(host, &entry, NULL)) {
-        return;
+    if (!host_history_commit_entry(host, &entry, stored_entry)) {
+        return false;
     }
-    host_notify_external_clients(host, &entry);
+    
+    chat_history_entry_t notification_entry;
+    if (stored_entry != NULL) {
+        notification_entry = *stored_entry;
+    } else {
+        notification_entry = entry;
+    }
+    host_notify_external_clients(host, &notification_entry);
+    return true;
 }
 
 static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
@@ -6363,7 +6375,7 @@ static void *host_security_clamav_backend(void *arg)
                                                      sizeof(notice)) &&
                 notice[0] != '\0') {
                 printf("%s\n", notice);
-                host_history_record_system(host, notice);
+                host_history_record_system(host, notice, NULL);
                 chat_room_broadcast(&host->room, notice, NULL);
             }
         }

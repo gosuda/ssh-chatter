@@ -1301,7 +1301,7 @@ static void host_bbs_watchdog_scan(host_t *host)
                  "* [eliza] removed BBS post #%" PRIu64 " by %s (%s).",
                  post->id, post->author[0] != '\0' ? post->author : "unknown",
                  diagnostic);
-        host_history_record_system(host, notice);
+        host_history_record_system(host, notice, NULL);
         chat_room_broadcast(&host->room, notice, NULL);
     }
 }

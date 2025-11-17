@@ -224,11 +224,9 @@ static void mrc_handle_message(mrc_client_t *client, const char *line)
             }
 
             // Post message to chat room
-            char formatted[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(formatted, sizeof(formatted), "[MRC] %s", msg_start);
             const char *username = nick[0] != '\0' ? nick : "mrc-relay";
             
-            if (!host_post_client_message(client->host, username, formatted, 
+            if (!host_post_client_message(client->host, username, msg_start, 
                                          NULL, NULL, false)) {
                 // Silently fail - don't flood logs
             }

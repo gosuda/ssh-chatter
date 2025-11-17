@@ -990,9 +990,7 @@ static void matrix_client_inject_message(matrix_client_t *client,
     }
 
     if (payload->system) {
-        char line[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(line, sizeof(line), "[matrix] %s", payload->message);
-        if (!host_post_client_message(client->host, "matrix-system", line, NULL,
+        if (!host_post_client_message(client->host, "matrix-system", payload->message, NULL,
                                       NULL, false)) {
             humanized_log_error("matrix", "failed to inject system notice",
                                 errno != 0 ? errno : EIO);

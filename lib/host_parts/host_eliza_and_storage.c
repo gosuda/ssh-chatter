@@ -5204,8 +5204,18 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
         return;
     }
 
+    // Trim whitespace and check if message is empty
+    char trimmed[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(trimmed, sizeof(trimmed), "%s", message);
+    trim_whitespace_inplace(trimmed);
+    
+    if (trimmed[0] == '\0') {
+        // Don't send empty messages
+        return;
+    }
+
     chat_history_entry_t entry = {0};
-    if (!host_history_record_user(ctx->owner, ctx, message, false, &entry)) {
+    if (!host_history_record_user(ctx->owner, ctx, trimmed, false, &entry)) {
         return;
     }
 
@@ -5252,12 +5262,12 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
     chat_room_broadcast_entry(&ctx->owner->room, &entry, ctx);
     host_notify_external_clients(ctx->owner, &entry);
 
-    (void)host_eliza_intervene(ctx, message, NULL, false);
+    (void)host_eliza_intervene(ctx, trimmed, NULL, false);
 
-    size_t message_length = strnlen(message, SSH_CHATTER_MESSAGE_LIMIT);
+    size_t message_length = strnlen(trimmed, SSH_CHATTER_MESSAGE_LIMIT);
 
-    if (!host_moderation_queue_chat(ctx, message, message_length)) {
-        (void)session_security_check_text(ctx, "chat message", message,
+    if (!host_moderation_queue_chat(ctx, trimmed, message_length)) {
+        (void)session_security_check_text(ctx, "chat message", trimmed,
                                           message_length, true);
     }
 }

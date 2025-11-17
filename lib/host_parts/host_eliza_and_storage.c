@@ -3705,6 +3705,7 @@ static void session_output_buffer_stop(session_ctx_t *ctx)
         return;
     }
     session_output_buffer_flush(ctx);
+    session_output_buffer_clear(ctx);
     ctx->output_buffering_enabled = false;
 }
 
@@ -3719,6 +3720,7 @@ static bool session_output_buffer_append(session_ctx_t *ctx, const void *data,
     if (ctx->output_buffer_length + length > SSH_CHATTER_OUTPUT_BUFFER_SIZE) {
         // Buffer is full, flush it first
         session_output_buffer_flush(ctx);
+        session_output_buffer_clear(ctx);
         
         // If still not enough space after flush, this write is too large
         if (length > SSH_CHATTER_OUTPUT_BUFFER_SIZE) {

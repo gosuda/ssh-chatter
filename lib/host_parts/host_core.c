@@ -1259,6 +1259,8 @@ static void host_version_ip_rules_load_env(host_t *host)
                    pattern, cidr);
         }
     }
+
+    free(copy);
 }
 
 static bool

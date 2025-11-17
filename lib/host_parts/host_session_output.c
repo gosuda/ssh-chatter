@@ -2704,7 +2704,17 @@ static void session_history_navigate(session_ctx_t *ctx, int direction)
         return;
     }
 
+    // If scrollback is active (scrolled back), clear it before navigating command history
+    // This prevents blank lines from appearing when switching from scrollback to command history
+    bool was_scrolled_back = (ctx->history_scroll_position > 0U);
+    
     session_scrollback_reset_position(ctx);
+
+    // Clear the current line to remove any scrollback content
+    if (was_scrolled_back) {
+        const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
+        session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
+    }
 
     if (ctx->input_history_count == 0U) {
         ctx->input_history_position = (int)ctx->input_history_count;

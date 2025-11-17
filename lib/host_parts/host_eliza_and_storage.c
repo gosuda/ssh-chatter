@@ -3549,7 +3549,7 @@ static bool session_channel_write_cp437(session_ctx_t *ctx, const char *data,
     }
 
     size_t capacity = (length > 0U ? length : 1U) * 4U + 16U;
-    char *buffer = (char *)GC_MALLOC(capacity);
+    char *buffer = (char *)malloc(capacity);
     if (buffer == NULL) {
         iconv_close(descriptor);
         return session_channel_write_all(ctx, data, length);
@@ -3629,6 +3629,7 @@ cleanup:
         size_t produced = capacity - output_remaining;
         success = session_channel_write_all(ctx, buffer, produced);
     }
+    free(buffer);
     if (normalized != NULL) {
         free(normalized);
     }

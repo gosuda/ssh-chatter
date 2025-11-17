@@ -10,6 +10,7 @@ SSH-Chatter has started from a C reimplementation of the Go [`ssh-chat`](https:/
 
 ## Recent enhancements
 
+- **Bidirectional IRC integration** – Full IRC relay with message forwarding in both directions, automatic nickname preservation, and IRC scraping support. Messages from SSH chat appear in IRC as `<username> message`, while IRC messages show in SSH chat with `[IRC]` prefix and sender nickname. Configure with `CHATTER_IRC_SERVER`, `CHATTER_IRC_PORT`, `CHATTER_IRC_CHANNEL`, and `CHATTER_IRC_NICKNAME` environment variables.
 - Named poll management via `/vote` for multiple-choice polls (vote with `/1 <label>` or `/elect <label> <choice>`) plus `/vote-single` for classic single-choice runs, including graceful shutdown with `/vote @close <label>`.
 - Terminal-friendly RSS reader accessible with `/rss list`, `/rss read <tag>`, plus `/rss add <url> <tag>` and `/rss del <tag>` (operators only) so the room can browse headlines together.
 - Talk with the eliza persona by sending `/pm eliza <message>`; the dedicated `/eliza-chat` command has been retired in favour of private messages.

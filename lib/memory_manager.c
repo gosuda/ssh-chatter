@@ -239,28 +239,72 @@ static void *sshc_memory_context_realloc(sshc_memory_context_t *ctx, void *ptr,
         size = 1U;
     }
 
-    if(ptr != nullptr) {
-        ptr = realloc(ptr, size);
-    } else if(ptr == nullptr) {
+    // If ptr is null, just allocate new memory
+    if(ptr == nullptr) {
         return sshc_memory_context_alloc(ctx, size, zero);
     }
 
+    // Find and remove the old allocation entry
+    pthread_mutex_lock(&sshc_registry_mutex);
+    sshc_memory_allocation_t **prev = &sshc_allocations;
+    sshc_memory_allocation_t *old_allocation = nullptr;
+    while (*prev != nullptr) {
+        if ((*prev)->ptr == ptr) {
+            old_allocation = *prev;
+            *prev = (*prev)->next_global;
+            break;
+        }
+        prev = &(*prev)->next_global;
+    }
+    pthread_mutex_unlock(&sshc_registry_mutex);
+
+    // Perform the realloc
+    void *new_ptr = realloc(ptr, size);
+    if (new_ptr == nullptr) {
+        // Realloc failed, restore the old allocation entry
+        if (old_allocation != nullptr) {
+            sshc_memory_registry_add(old_allocation);
+        }
+        errno = ENOMEM;
+        return nullptr;
+    }
+
+    // Create a new allocation entry for the reallocated memory
     sshc_memory_allocation_t *allocation =
         (sshc_memory_allocation_t *)malloc(sizeof(*allocation));
     if(allocation == nullptr) {
-        return ptr; 
+        // Can't track the allocation, but the memory was reallocated successfully
+        // Clean up the old allocation entry if it exists
+        if (old_allocation != nullptr) {
+            if (old_allocation->context != nullptr) {
+                sshc_memory_context_remove_allocation(old_allocation->context, ptr);
+            }
+            free(old_allocation);
+        }
+        errno = ENOMEM;
+        return new_ptr;
     }
-    allocation->ptr = ptr;
+
+    // Set up the new allocation entry
+    allocation->ptr = new_ptr;
     allocation->size = size;
     allocation->context = ctx;
     allocation->next_in_context = nullptr;
     allocation->next_global = nullptr;
     
-    sshc_memory_registry_remove(allocation);
+    // Clean up the old allocation entry
+    if (old_allocation != nullptr) {
+        if (old_allocation->context != nullptr) {
+            sshc_memory_context_remove_allocation(old_allocation->context, ptr);
+        }
+        free(old_allocation);
+    }
+
+    // Register the new allocation
     sshc_memory_context_register_allocation(ctx, allocation);
     sshc_memory_registry_add(allocation);
 
-    return ptr;
+    return new_ptr;
 }
 
 void sshc_memory_context_reset(sshc_memory_context_t *ctx)

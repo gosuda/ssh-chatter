@@ -212,6 +212,44 @@ static void irc_handle_message(irc_client_t *client, const char *line)
         if (msg_start != NULL) {
             msg_start++; // Skip ':'
             
+            // Check for CTCP message (starts and ends with \x01)
+            // CTCP format: \x01COMMAND [parameters]\x01
+            if (msg_start[0] == '\x01') {
+                // This is a CTCP message - filter it out
+                // Common CTCP messages: VERSION, PING, TIME, FINGER, etc.
+                
+                // Extract CTCP command for potential response
+                const char *ctcp_end = strchr(msg_start + 1, '\x01');
+                if (ctcp_end != NULL) {
+                    size_t ctcp_len = (size_t)(ctcp_end - (msg_start + 1));
+                    
+                    // Check if it's a CTCP VERSION query (no parameters after VERSION)
+                    if (ctcp_len == 7 && strncmp(msg_start + 1, "VERSION", 7) == 0) {
+                        // Extract the sender's nickname to reply
+                        if (line[0] == ':') {
+                            const char *nick_end = strchr(line + 1, '!');
+                            if (nick_end != NULL) {
+                                char sender_nick[64] = {0};
+                                size_t nick_len = (size_t)(nick_end - (line + 1));
+                                if (nick_len < sizeof(sender_nick)) {
+                                    memcpy(sender_nick, line + 1, nick_len);
+                                    sender_nick[nick_len] = '\0';
+                                    
+                                    // Send CTCP VERSION reply
+                                    char reply[512];
+                                    snprintf(reply, sizeof(reply), 
+                                            "NOTICE %s :\x01VERSION SSH-Chatter IRC Bridge v1.0\x01\r\n",
+                                            sender_nick);
+                                    send(client->socket_fd, reply, strlen(reply), 0);
+                                }
+                            }
+                        }
+                    }
+                }
+                // Don't post CTCP messages to the chat room
+                return;
+            }
+            
             // Extract nickname from prefix
             char nick[64] = {0};
             if (line[0] == ':') {

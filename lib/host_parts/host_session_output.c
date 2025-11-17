@@ -3442,7 +3442,7 @@ static void session_send_history_entry(session_ctx_t *ctx,
             const char *label =
                 chat_attachment_type_label(entry->attachment_type);
             char attachment_line[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(attachment_line, sizeof(attachment_line), "    (%s) %s",
+            snprintf(attachment_line, sizeof(attachment_line), "    (%s)" ANSI_RESET " %s",
                      label, entry->attachment_target);
             session_send_plain_line(ctx, attachment_line);
 
@@ -4768,7 +4768,7 @@ static void session_handle_kick(session_ctx_t *ctx, const char *arguments)
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(notice, sizeof(notice), "* [%s] has been kicked by [%s]",
              target->user.name, ctx->user.name);
-    host_history_record_system(ctx->owner, notice);
+    host_history_record_system(ctx->owner, notice, NULL);
     chat_room_broadcast(&ctx->owner->room, notice, NULL);
 
     const bool target_active = session_transport_active(target);
@@ -4846,7 +4846,7 @@ static void session_handle_ban_name(session_ctx_t *ctx, const char *arguments)
     snprintf(notice, sizeof(notice),
              "* Nickname '%s' blocked for bot detection by [%s]", target_name,
              ctx->user.name);
-    host_history_record_system(ctx->owner, notice);
+    host_history_record_system(ctx->owner, notice, NULL);
     chat_room_broadcast(&ctx->owner->room, notice, NULL);
     session_send_system_line(ctx, "Nickname ban applied.");
     printf("[banname] %s banned nickname %s\n", ctx->user.name, target_name);
@@ -4937,7 +4937,7 @@ static void session_handle_ban(session_ctx_t *ctx, const char *arguments)
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(notice, sizeof(notice), "* [%s] has been banned by [%s]",
              target->user.name, ctx->user.name);
-    host_history_record_system(ctx->owner, notice);
+    host_history_record_system(ctx->owner, notice, NULL);
     chat_room_broadcast(&ctx->owner->room, notice, NULL);
     session_send_system_line(ctx, "Ban applied.");
     printf("[ban] %s banned %s (%s)\n", ctx->user.name, target->user.name,

@@ -139,7 +139,7 @@ static void session_handle_gemini_unfreeze(session_ctx_t *ctx)
         snprintf(notice, sizeof(notice),
                  "* [%s] cleared the automatic Gemini cooldown.",
                  ctx->user.name);
-        host_history_record_system(ctx->owner, notice);
+        host_history_record_system(ctx->owner, notice, NULL);
         chat_room_broadcast(&ctx->owner->room, notice, NULL);
     } else {
         session_send_system_line(ctx,
@@ -511,7 +511,7 @@ static void session_handle_nick(session_ctx_t *ctx, const char *arguments)
     char announcement[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(announcement, sizeof(announcement), "* [%s] is now known as [%s]",
              old_name, ctx->user.name);
-    host_history_record_system(ctx->owner, announcement);
+    host_history_record_system(ctx->owner, announcement, NULL);
     chat_room_broadcast(&ctx->owner->room, announcement, NULL);
     session_apply_saved_preferences(ctx);
     session_send_system_line(ctx, "Display name updated.");
@@ -3571,7 +3571,7 @@ static void *session_thread(void *arg)
         char join_message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(join_message, sizeof(join_message),
                  "* [%s] has joined the chat", ctx->user.name);
-        host_history_record_system(ctx->owner, join_message);
+        host_history_record_system(ctx->owner, join_message, NULL);
         chat_room_broadcast(&ctx->owner->room, join_message, NULL);
     }
 
@@ -3960,7 +3960,7 @@ static void *session_thread(void *arg)
         char part_message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(part_message, sizeof(part_message), "* [%s] has left the chat",
                  ctx->user.name);
-        host_history_record_system(ctx->owner, part_message);
+        host_history_record_system(ctx->owner, part_message, NULL);
         chat_room_broadcast(&ctx->owner->room, part_message, NULL);
         chat_room_remove(&ctx->owner->room, ctx);
     }

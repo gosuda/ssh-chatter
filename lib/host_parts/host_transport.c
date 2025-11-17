@@ -2135,7 +2135,7 @@ static bool host_replies_commit_entry(host_t *host, chat_reply_entry_t *entry,
 static void session_send_reply_tree(session_ctx_t *ctx,
                                     uint64_t parent_message_id,
                                     uint64_t parent_reply_id, size_t depth);
-static void host_broadcast_reply(host_t *host, const chat_reply_entry_t *entry);
+// static void host_broadcast_reply(host_t *host, const chat_reply_entry_t *entry);
 static void session_send_private_message_line(session_ctx_t *ctx,
                                               const session_ctx_t *color_source,
                                               const char *label,
@@ -2381,7 +2381,8 @@ static bool session_parse_color_arguments(char *working, char **tokens,
                                           size_t *token_count);
 static size_t session_utf8_prev_char_len(const char *buffer, size_t length);
 static int session_utf8_char_width(const char *bytes, size_t length);
-static void host_history_record_system(host_t *host, const char *message);
+static bool host_history_record_system(host_t *host, const char *message,
+                                       chat_history_entry_t *stored_entry);
 static void session_send_history_entry(session_ctx_t *ctx,
                                        const chat_history_entry_t *entry);
 static void session_deliver_outgoing_message(session_ctx_t *ctx,
@@ -4023,11 +4024,6 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     size_t target_count = 0U;
     size_t expected_targets = 0U;
 
-    chat_history_entry_t entry = {0};
-    if (from != NULL) {
-        chat_history_entry_prepare_user(&entry, from, message, false);
-    }
-
     pthread_mutex_lock(&room->lock);
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
@@ -4053,38 +4049,18 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         return;
     }
 
+    // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
         if (from != NULL) {
-            // If member is at latest position, show MESSAGE_CHUNK of history
-            if (member->history_scroll_position == 0U) {
-                // Clear screen and show latest chunk of messages
-                session_clear_screen(member);
-                
-                size_t total = host_history_total(member->owner);
-                size_t chunk_size = SSH_CHATTER_SCROLLBACK_CHUNK;
-                if (chunk_size > total) {
-                    chunk_size = total;
-                }
-                
-                // Show header
-                char header[SSH_CHATTER_MESSAGE_LIMIT];
-                snprintf(header, sizeof(header), "Latest messages (1-%zu of %zu)",
-                         chunk_size, total);
-                session_send_system_line(member, header);
-                
-                // Display the latest chunk
-                chat_history_entry_t buffer[SSH_CHATTER_SCROLLBACK_CHUNK];
-                size_t start_index = (total > chunk_size) ? (total - chunk_size) : 0U;
-                size_t copied = host_history_copy_range(member->owner, start_index, 
-                                                        buffer, chunk_size);
-                for (size_t i = 0; i < copied; ++i) {
-                    session_send_history_entry(member, &buffer[i]);
-                }
-            } else {
-                // If scrolled back, just append the message normally
-                session_send_history_entry(member, &entry);
-            }
+            // Format message directly for real-time delivery
+            char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
+            const char *color = from->user_color_code != NULL ? from->user_color_code : "";
+            const char *bold = from->user_is_bold ? ANSI_BOLD : "";
+            
+            snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s", 
+                     color, bold, from->user.name, ANSI_RESET, message);
+            session_send_plain_line(member, formatted);
         } else {
             session_send_system_line(member, message);
         }
@@ -4092,12 +4068,6 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         if (member->history_scroll_position == 0U) {
             session_refresh_input_line(member);
         }
-    }
-
-    if (from != NULL) {
-        // printf("\033[1G[broadcast:%s] %s\n", from->user.name, message);
-    } else {
-        // printf("\033[1G[broadcast] %s\n", message);
     }
 
     free(targets);
@@ -4185,59 +4155,48 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         return;
     }
 
+    // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
-        // If member is at latest position, show MESSAGE_CHUNK of history
-        if (member->history_scroll_position == 0U) {
-            // Clear screen and show latest chunk of messages
-            session_clear_screen(member);
+        
+        if (entry->is_user_message) {
+            // Format user message directly
+            char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
+            const char *color = entry->user_color_code != NULL ? entry->user_color_code : "";
+            const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
             
-            size_t total = host_history_total(member->owner);
-            size_t chunk_size = SSH_CHATTER_SCROLLBACK_CHUNK;
-            if (chunk_size > total) {
-                chunk_size = total;
+            char id_label[32] = "-";
+            if (entry->message_id > 0U) {
+                host_compact_id_encode(entry->message_id, id_label, sizeof(id_label));
             }
             
-            // Show header
-            char header[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(header, sizeof(header), "Latest messages (1-%zu of %zu)",
-                     chunk_size, total);
-            session_send_system_line(member, header);
+            snprintf(formatted, sizeof(formatted), "%s%s [%s] <%s>%s %s", 
+                     color, bold, id_label, entry->username, ANSI_RESET, entry->message);
+            session_send_plain_line(member, formatted);
             
-            // Display the latest chunk
-            chat_history_entry_t buffer[SSH_CHATTER_SCROLLBACK_CHUNK];
-            size_t start_index = (total > chunk_size) ? (total - chunk_size) : 0U;
-            size_t copied = host_history_copy_range(member->owner, start_index, 
-                                                    buffer, chunk_size);
-            for (size_t i = 0; i < copied; ++i) {
-                session_send_history_entry(member, &buffer[i]);
+            // Send attachment if present
+            if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&
+                entry->attachment_target[0] != '\0') {
+                const char *label = chat_attachment_type_label(entry->attachment_type);
+                char attachment_line[SSH_CHATTER_MESSAGE_LIMIT];
+                snprintf(attachment_line, sizeof(attachment_line), "    (%s)" ANSI_RESET " %s",
+                         label, entry->attachment_target);
+                session_send_plain_line(member, attachment_line);
+                
+                if (entry->attachment_caption[0] != '\0') {
+                    char caption_line[SSH_CHATTER_MESSAGE_LIMIT];
+                    snprintf(caption_line, sizeof(caption_line), "    \342\206\263 %s",
+                             entry->attachment_caption);
+                    session_send_plain_line(member, caption_line);
+                }
             }
-            session_refresh_input_line(member);
         } else {
-            // If scrolled back, just append the message normally
-            session_send_history_entry(member, entry);
+            // System message
+            session_send_plain_line(member, entry->message);
         }
-    }
-
-    if (entry->is_user_message) {
-        const char *message_text = entry->message;
-        char fallback[SSH_CHATTER_MESSAGE_LIMIT];
-        if ((message_text == NULL || message_text[0] == '\0') &&
-            entry->attachment_type != CHAT_ATTACHMENT_NONE) {
-            const char *label =
-                chat_attachment_type_label(entry->attachment_type);
-            snprintf(fallback, sizeof(fallback), "shared a %s", label);
-            message_text = fallback;
-        } else if (message_text == NULL) {
-            message_text = "";
-        }
-
-        // printf("\033[1G[broadcast:%s#%" PRIu64 "] %s\n", entry->username,
-        //        entry->message_id, message_text);
-        if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&
-            entry->attachment_target[0] != '\0') {
-            // const char *label =
-            //     chat_attachment_type_label(entry->attachment_type);
+        
+        if (member->history_scroll_position == 0U) {
+            session_refresh_input_line(member);
         }
     }
 
@@ -4273,34 +4232,36 @@ chat_room_broadcast_reaction_update(host_t *host,
     chat_room_broadcast_caption(&host->room, line);
 }
 
-static void host_broadcast_reply(host_t *host, const chat_reply_entry_t *entry)
-{
-    if (host == NULL || entry == NULL) {
-        return;
-    }
-
-    const char *target_prefix = (entry->parent_reply_id == 0U) ? "#" : "r#";
-    uint64_t target_id = (entry->parent_reply_id == 0U)
-                             ? entry->parent_message_id
-                             : entry->parent_reply_id;
-
-    char reply_label[32];
-    if (!host_compact_id_encode(entry->reply_id, reply_label,
-                                sizeof(reply_label))) {
-        snprintf(reply_label, sizeof(reply_label), "%" PRIu64, entry->reply_id);
-    }
-
-    char target_label[32];
-    if (!host_compact_id_encode(target_id, target_label, sizeof(target_label))) {
-        snprintf(target_label, sizeof(target_label), "%" PRIu64, target_id);
-    }
-
-    char line[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(line, sizeof(line), "↳ [r#%s → %s%s] %s: %s", reply_label,
-             target_prefix, target_label, entry->username, entry->message);
-
-    chat_room_broadcast(&host->room, line, NULL);
-}
+// This function is no longer used - replies are now broadcast using
+// chat_room_broadcast_entry to ensure proper integration with chat buffer
+// static void host_broadcast_reply(host_t *host, const chat_reply_entry_t *entry)
+// {
+//     if (host == NULL || entry == NULL) {
+//         return;
+//     }
+// 
+//     const char *target_prefix = (entry->parent_reply_id == 0U) ? "#" : "r#";
+//     uint64_t target_id = (entry->parent_reply_id == 0U)
+//                              ? entry->parent_message_id
+//                              : entry->parent_reply_id;
+// 
+//     char reply_label[32];
+//     if (!host_compact_id_encode(entry->reply_id, reply_label,
+//                                 sizeof(reply_label))) {
+//         snprintf(reply_label, sizeof(reply_label), "%" PRIu64, entry->reply_id);
+//     }
+// 
+//     char target_label[32];
+//     if (!host_compact_id_encode(target_id, target_label, sizeof(target_label))) {
+//         snprintf(target_label, sizeof(target_label), "%" PRIu64, target_id);
+//     }
+// 
+//     char line[SSH_CHATTER_MESSAGE_LIMIT];
+//     snprintf(line, sizeof(line), "↳ [r#%s → %s%s] %s: %s", reply_label,
+//              target_prefix, target_label, entry->username, entry->message);
+// 
+//     chat_room_broadcast(&host->room, line, NULL);
+// }
 
 static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
 {
@@ -5339,10 +5300,11 @@ static bool host_history_record_user(host_t *host, const session_ctx_t *from,
     return host_history_commit_entry(host, &entry, stored_entry);
 }
 
-static void host_history_record_system(host_t *host, const char *message)
+static bool host_history_record_system(host_t *host, const char *message,
+                                       chat_history_entry_t *stored_entry)
 {
     if (host == NULL || message == NULL || message[0] == '\0') {
-        return;
+        return false;
     }
 
     chat_history_entry_t entry = {0};
@@ -5357,10 +5319,18 @@ static void host_history_record_system(host_t *host, const char *message)
         entry.created_at = now;
     }
 
-    if (!host_history_commit_entry(host, &entry, NULL)) {
-        return;
+    if (!host_history_commit_entry(host, &entry, stored_entry)) {
+        return false;
     }
-    host_notify_external_clients(host, &entry);
+    
+    chat_history_entry_t notification_entry;
+    if (stored_entry != NULL) {
+        notification_entry = *stored_entry;
+    } else {
+        notification_entry = entry;
+    }
+    host_notify_external_clients(host, &notification_entry);
+    return true;
 }
 
 static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
@@ -6363,7 +6333,7 @@ static void *host_security_clamav_backend(void *arg)
                                                      sizeof(notice)) &&
                 notice[0] != '\0') {
                 printf("%s\n", notice);
-                host_history_record_system(host, notice);
+                host_history_record_system(host, notice, NULL);
                 chat_room_broadcast(&host->room, notice, NULL);
             }
         }

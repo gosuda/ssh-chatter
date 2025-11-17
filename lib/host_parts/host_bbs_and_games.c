@@ -3902,7 +3902,7 @@ static void session_game_alpha_log_completion(session_ctx_t *ctx)
     snprintf(notice, sizeof(notice),
              "* [alpha-centauri] Immigrants' Flag planted by %s.",
              ctx->user.name);
-    host_history_record_system(ctx->owner, notice);
+    host_history_record_system(ctx->owner, notice, NULL);
     chat_room_broadcast(&ctx->owner->room, notice, NULL);
 
     ctx->translation_suppress_output = previous_translation;
@@ -6003,7 +6003,7 @@ static void session_handle_translate_scope(session_ctx_t *ctx,
         snprintf(notice, sizeof(notice),
                  "* [%s] limited translation scope to chat and BBS posts.",
                  ctx->user.name);
-        host_history_record_system(ctx->owner, notice);
+        host_history_record_system(ctx->owner, notice, NULL);
         chat_room_broadcast(&ctx->owner->room, notice, NULL);
         return;
     }
@@ -6030,7 +6030,7 @@ static void session_handle_translate_scope(session_ctx_t *ctx,
             "* [%s] limited translation scope to chat/BBS posts and disabled "
             "scrollback translation.",
             ctx->user.name);
-        host_history_record_system(ctx->owner, notice);
+        host_history_record_system(ctx->owner, notice, NULL);
         chat_room_broadcast(&ctx->owner->room, notice, NULL);
         return;
     }
@@ -6063,7 +6063,7 @@ static void session_handle_translate_scope(session_ctx_t *ctx,
         snprintf(notice, sizeof(notice),
                  "* [%s] restored full translation scope for translations.",
                  ctx->user.name);
-        host_history_record_system(ctx->owner, notice);
+        host_history_record_system(ctx->owner, notice, NULL);
         chat_room_broadcast(&ctx->owner->room, notice, NULL);
         return;
     }
@@ -6176,7 +6176,7 @@ static void session_handle_gemini(session_ctx_t *ctx, const char *arguments)
                  "* [%s] enabled Gemini translation; Ollama fallback remains "
                  "available.",
                  ctx->user.name);
-        host_history_record_system(ctx->owner, notice);
+        host_history_record_system(ctx->owner, notice, NULL);
         chat_room_broadcast(&ctx->owner->room, notice, NULL);
         return;
     }
@@ -6192,7 +6192,7 @@ static void session_handle_gemini(session_ctx_t *ctx, const char *arguments)
              "* [%s] disabled Gemini translation; using Ollama fallback only "
              "(chat and BBS posts).",
              ctx->user.name);
-    host_history_record_system(ctx->owner, notice);
+    host_history_record_system(ctx->owner, notice, NULL);
     chat_room_broadcast(&ctx->owner->room, notice, NULL);
     return;
 }
@@ -6253,7 +6253,7 @@ static void session_handle_captcha(session_ctx_t *ctx, const char *arguments)
             snprintf(notice, sizeof(notice),
                      "* [%s] enabled captcha for new connections.",
                      ctx->user.name);
-            host_history_record_system(host, notice);
+            host_history_record_system(host, notice, NULL);
             chat_room_broadcast(&host->room, notice, NULL);
             pthread_mutex_lock(&host->lock);
             host_state_save_locked(host);
@@ -6272,7 +6272,7 @@ static void session_handle_captcha(session_ctx_t *ctx, const char *arguments)
         snprintf(notice, sizeof(notice),
                  "* [%s] disabled captcha for new connections.",
                  ctx->user.name);
-        host_history_record_system(host, notice);
+        host_history_record_system(host, notice, NULL);
         chat_room_broadcast(&host->room, notice, NULL);
         pthread_mutex_lock(&host->lock);
         host_state_save_locked(host);

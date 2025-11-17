@@ -169,9 +169,14 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
              "↳ [r#%s → %s%s] %s: %s", reply_label, target_prefix,
              target_label, stored.username, stored.message);
 
-    host_history_record_system(ctx->owner, reply_message);
+    chat_history_entry_t reply_entry = {0};
+    if (!host_history_record_system(ctx->owner, reply_message, &reply_entry)) {
+        session_send_system_line(ctx, "Unable to broadcast reply.");
+        return;
+    }
 
-    host_broadcast_reply(ctx->owner, &stored);
+    // Broadcast the reply entry to all users so it appears in chat buffer
+    chat_room_broadcast_entry(&ctx->owner->room, &reply_entry, NULL);
 }
 
 static void session_handle_image(session_ctx_t *ctx, const char *arguments)
@@ -798,7 +803,7 @@ static void session_handle_usercount(session_ctx_t *ctx)
                  displayed == 1U ? "" : "s");
     }
 
-    host_history_record_system(ctx->owner, message);
+    host_history_record_system(ctx->owner, message, NULL);
     session_send_system_line(ctx, message);
 }
 
@@ -2022,7 +2027,7 @@ static void session_handle_delete_message(session_ctx_t *ctx,
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(notice, sizeof(notice), "* [%s] removed %s %s%s.", ctx->user.name,
              removed == 1U ? "message" : "messages", range_label, reply_note);
-    host_history_record_system(ctx->owner, notice);
+    host_history_record_system(ctx->owner, notice, NULL);
     chat_room_broadcast(&ctx->owner->room, notice, NULL);
 }
 
@@ -3507,7 +3512,7 @@ static void session_bbs_announce_post(host_t *host, const bbs_post_t *post)
                  title[0] != '\0' ? title : "(untitled)");
     }
 
-    host_history_record_system(host, notice);
+    host_history_record_system(host, notice, NULL);
 }
 
 static void session_bbs_announce_comment(host_t *host, const bbs_post_t *post,
@@ -3543,7 +3548,7 @@ static void session_bbs_announce_comment(host_t *host, const bbs_post_t *post,
                  title[0] != '\0' ? title : "(untitled)");
     }
 
-    host_history_record_system(host, notice);
+    host_history_record_system(host, notice, NULL);
 }
 
 static void session_bbs_reset_pending_post(session_ctx_t *ctx)

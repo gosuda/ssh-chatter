@@ -1490,6 +1490,9 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
         return;
     }
 
+    // Start buffering to send entire post in one flush
+    session_output_buffer_start(ctx);
+
     session_bbs_prepare_canvas(ctx);
 
     if (reset_scroll) {
@@ -1531,6 +1534,9 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
     }
 
     session_render_prompt(ctx, true);
+
+    // Flush all buffered output at once
+    session_output_buffer_stop(ctx);
 }
 
 static void session_bbs_recalculate_line_count(session_ctx_t *ctx)
@@ -1837,6 +1843,9 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
         return;
     }
 
+    // Start buffering to send entire editor screen in one flush
+    session_output_buffer_start(ctx);
+
     const bool ascii_mode = ctx->editor_mode == SESSION_EDITOR_MODE_ASCIIART;
     const bool editing_post = ctx->editor_mode == SESSION_EDITOR_MODE_BBS_EDIT;
 
@@ -2002,6 +2011,10 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
     }
 
     session_render_prompt(ctx, false);
+
+    // Flush all buffered output at once
+    session_output_buffer_stop(ctx);
+
     ctx->bbs_rendering_editor = false;
 }
 

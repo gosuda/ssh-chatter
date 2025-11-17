@@ -175,8 +175,11 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
+    // Show the reply to the sender immediately (just like regular chat messages)
+    session_send_history_entry(ctx, &reply_entry);
+    
     // Broadcast the reply entry to all users so it appears in chat buffer
-    chat_room_broadcast_entry(&ctx->owner->room, &reply_entry, NULL);
+    chat_room_broadcast_entry(&ctx->owner->room, &reply_entry, ctx);
 }
 
 static void session_handle_image(session_ctx_t *ctx, const char *arguments)

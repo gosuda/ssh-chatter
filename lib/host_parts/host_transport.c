@@ -4057,35 +4057,8 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
         if (from != NULL) {
-            // If member is at latest position, show MESSAGE_CHUNK of history
-            if (member->history_scroll_position == 0U) {
-                // Clear screen and show latest chunk of messages
-                session_clear_screen(member);
-                
-                size_t total = host_history_total(member->owner);
-                size_t chunk_size = SSH_CHATTER_SCROLLBACK_CHUNK;
-                if (chunk_size > total) {
-                    chunk_size = total;
-                }
-                
-                // Show header
-                char header[SSH_CHATTER_MESSAGE_LIMIT];
-                snprintf(header, sizeof(header), "Latest messages (1-%zu of %zu)",
-                         chunk_size, total);
-                session_send_system_line(member, header);
-                
-                // Display the latest chunk
-                chat_history_entry_t buffer[SSH_CHATTER_SCROLLBACK_CHUNK];
-                size_t start_index = (total > chunk_size) ? (total - chunk_size) : 0U;
-                size_t copied = host_history_copy_range(member->owner, start_index, 
-                                                        buffer, chunk_size);
-                for (size_t i = 0; i < copied; ++i) {
-                    session_send_history_entry(member, &buffer[i]);
-                }
-            } else {
-                // If scrolled back, just append the message normally
-                session_send_history_entry(member, &entry);
-            }
+            // Simply append the new message without clearing screen
+            session_send_history_entry(member, &entry);
         } else {
             session_send_system_line(member, message);
         }
@@ -4188,35 +4161,11 @@ static void chat_room_broadcast_entry(chat_room_t *room,
 
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
-        // If member is at latest position, show MESSAGE_CHUNK of history
+        // Simply append the message without clearing screen
+        session_send_history_entry(member, entry);
+        
         if (member->history_scroll_position == 0U) {
-            // Clear screen and show latest chunk of messages
-            session_clear_screen(member);
-            
-            size_t total = host_history_total(member->owner);
-            size_t chunk_size = SSH_CHATTER_SCROLLBACK_CHUNK;
-            if (chunk_size > total) {
-                chunk_size = total;
-            }
-            
-            // Show header
-            char header[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(header, sizeof(header), "Latest messages (1-%zu of %zu)",
-                     chunk_size, total);
-            session_send_system_line(member, header);
-            
-            // Display the latest chunk
-            chat_history_entry_t buffer[SSH_CHATTER_SCROLLBACK_CHUNK];
-            size_t start_index = (total > chunk_size) ? (total - chunk_size) : 0U;
-            size_t copied = host_history_copy_range(member->owner, start_index, 
-                                                    buffer, chunk_size);
-            for (size_t i = 0; i < copied; ++i) {
-                session_send_history_entry(member, &buffer[i]);
-            }
             session_refresh_input_line(member);
-        } else {
-            // If scrolled back, just append the message normally
-            session_send_history_entry(member, entry);
         }
     }
 
@@ -4227,7 +4176,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             entry->attachment_type != CHAT_ATTACHMENT_NONE) {
             const char *label =
                 chat_attachment_type_label(entry->attachment_type);
-            snprintf(fallback, sizeof(fallback), "shared a %s", label);
+            snprintf(fallback, sizeof(fallback), "shared a %s" ANSI_RESET, label);
             message_text = fallback;
         } else if (message_text == NULL) {
             message_text = "";

@@ -340,7 +340,7 @@ host_eliza_history_collect_context(host_t *host, char *context,
         } else if (entry->attachment_type != CHAT_ATTACHMENT_NONE) {
             const char *label =
                 chat_attachment_type_label(entry->attachment_type);
-            snprintf(working, sizeof(working), "shared a %s",
+            snprintf(working, sizeof(working), "shared a %s" ANSI_RESET,
                      label != NULL ? label : "attachment");
         }
 

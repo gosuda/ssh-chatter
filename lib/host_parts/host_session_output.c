@@ -3442,7 +3442,7 @@ static void session_send_history_entry(session_ctx_t *ctx,
             const char *label =
                 chat_attachment_type_label(entry->attachment_type);
             char attachment_line[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(attachment_line, sizeof(attachment_line), "    (%s) %s",
+            snprintf(attachment_line, sizeof(attachment_line), "    (%s)" ANSI_RESET " %s",
                      label, entry->attachment_target);
             session_send_plain_line(ctx, attachment_line);
 

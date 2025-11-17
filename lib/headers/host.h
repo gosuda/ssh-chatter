@@ -110,7 +110,7 @@ struct session_ctx;
 struct client_manager;
 struct webssh_client;
 struct matrix_client;
-struct mrc_client;
+struct irc_client;
 struct translation_job;
 struct translation_result;
 
@@ -830,7 +830,7 @@ typedef struct host {
     client_manager_t *clients;
     webssh_client_t *web_client;
     struct matrix_client *matrix_client;
-    struct mrc_client *mrc_client;
+    struct irc_client *irc_client;
     security_layer_t security_layer;
     bool security_layer_initialized;
     _Atomic bool eliza_enabled;

@@ -1537,9 +1537,9 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
                                          &args)) {
         session_handle_getaddr(ctx, args);
         return;
-    } else if (session_parse_command_any(ctx, "/mrcserver", effective_line,
+    } else if (session_parse_command_any(ctx, "/ircserver", effective_line,
                                          &args)) {
-        session_handle_mrcserver(ctx, args);
+        session_handle_ircserver(ctx, args);
         return;
     } else if (session_parse_command_any(ctx, "/birthday", effective_line,
                                          &args)) {
@@ -4260,9 +4260,9 @@ void host_init(host_t *host, auth_profile_t *auth)
                                     EINVAL);
             }
             
-            host->mrc_client = mrc_client_create(host);
-            if (host->mrc_client == NULL) {
-                humanized_log_error("mrc",
+            host->irc_client = irc_client_create(host);
+            if (host->irc_client == NULL) {
+                humanized_log_error("irc",
                                     "MRC relay inactive; check "
                                     "CHATTER_MRC_* configuration",
                                     EINVAL);
@@ -4781,9 +4781,9 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         matrix_client_destroy(host->matrix_client);
         host->matrix_client = NULL;
     }
-    if (host->mrc_client != NULL) {
-        mrc_client_destroy(host->mrc_client);
-        host->mrc_client = NULL;
+    if (host->irc_client != NULL) {
+        irc_client_destroy(host->irc_client);
+        host->irc_client = NULL;
     }
     if (host->web_client != NULL) {
         webssh_client_destroy(host->web_client);

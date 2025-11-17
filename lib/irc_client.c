@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "headers/mrc_client.h"
+#include "headers/irc_client.h"
 #include "headers/host.h"
 #include "headers/humanized/humanized.h"
 
@@ -18,11 +18,11 @@
 #include <time.h>
 #include <unistd.h>
 
-#define MRC_BUFFER_SIZE 4096
-#define MRC_RECONNECT_DELAY_SECONDS 30
-#define MRC_PING_INTERVAL_SECONDS 60
+#define IRC_BUFFER_SIZE 4096
+#define IRC_RECONNECT_DELAY_SECONDS 30
+#define IRC_PING_INTERVAL_SECONDS 60
 
-struct mrc_client {
+struct irc_client {
     host_t *host;
     pthread_mutex_t lock;
     bool lock_initialized;
@@ -41,7 +41,7 @@ struct mrc_client {
     time_t last_ping;
 };
 
-static const char *mrc_getenv(const char *name)
+static const char *irc_getenv(const char *name)
 {
     const char *value = getenv(name);
     if (value == NULL || value[0] == '\0') {
@@ -50,7 +50,7 @@ static const char *mrc_getenv(const char *name)
     return value;
 }
 
-static void mrc_set_status(mrc_client_t *client, const char *status)
+static void irc_set_status(irc_client_t *client, const char *status)
 {
     if (client == NULL || status == NULL) {
         return;
@@ -62,7 +62,7 @@ static void mrc_set_status(mrc_client_t *client, const char *status)
 }
 
 __attribute__((unused))
-static void mrc_client_disable(mrc_client_t *client, const char *message,
+static void irc_client_disable(irc_client_t *client, const char *message,
                                int error_code)
 {
     if (client == NULL) {
@@ -76,16 +76,16 @@ static void mrc_client_disable(mrc_client_t *client, const char *message,
 
     int log_code = (error_code != 0) ? error_code : EIO;
     if (message != NULL && message[0] != '\0') {
-        humanized_log_error("mrc", message, log_code);
+        humanized_log_error("irc", message, log_code);
     } else {
-        humanized_log_error("mrc", "MRC relay disabled after failure", log_code);
+        humanized_log_error("irc", "IRC relay disabled after failure", log_code);
     }
 
-    mrc_set_status(client, "Disabled");
+    irc_set_status(client, "Disabled");
     atomic_store(&client->stop, true);
 }
 
-static bool mrc_connect_socket(mrc_client_t *client)
+static bool irc_connect_socket(irc_client_t *client)
 {
     if (client == NULL) {
         return false;
@@ -107,9 +107,9 @@ static bool mrc_connect_socket(mrc_client_t *client)
     int ret = getaddrinfo(client->server_host, port_str, &hints, &result);
     if (ret != 0) {
         char msg[512];
-        snprintf(msg, sizeof(msg), "Failed to resolve MRC server %s: %s",
+        snprintf(msg, sizeof(msg), "Failed to resolve IRC server %s: %s",
                  client->server_host, gai_strerror(ret));
-        mrc_set_status(client, msg);
+        irc_set_status(client, msg);
         return false;
     }
 
@@ -132,9 +132,9 @@ static bool mrc_connect_socket(mrc_client_t *client)
 
     if (client->socket_fd == -1) {
         char msg[512];
-        snprintf(msg, sizeof(msg), "Failed to connect to MRC server %s:%d",
+        snprintf(msg, sizeof(msg), "Failed to connect to IRC server %s:%d",
                  client->server_host, client->server_port);
-        mrc_set_status(client, msg);
+        irc_set_status(client, msg);
         return false;
     }
 
@@ -165,12 +165,12 @@ static bool mrc_connect_socket(mrc_client_t *client)
 
     atomic_store(&client->connected, true);
     client->last_ping = time(NULL);
-    mrc_set_status(client, "Connected");
+    irc_set_status(client, "Connected");
 
     return true;
 }
 
-static void mrc_disconnect_socket(mrc_client_t *client)
+static void irc_disconnect_socket(irc_client_t *client)
 {
     if (client == NULL) {
         return;
@@ -186,10 +186,10 @@ static void mrc_disconnect_socket(mrc_client_t *client)
         client->socket_fd = -1;
     }
 
-    mrc_set_status(client, "Disconnected");
+    irc_set_status(client, "Disconnected");
 }
 
-static void mrc_handle_message(mrc_client_t *client, const char *line)
+static void irc_handle_message(irc_client_t *client, const char *line)
 {
     if (client == NULL || line == NULL || client->host == NULL) {
         return;
@@ -225,8 +225,8 @@ static void mrc_handle_message(mrc_client_t *client, const char *line)
 
             // Post message to chat room
             char formatted[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(formatted, sizeof(formatted), "[MRC] %s", msg_start);
-            const char *username = nick[0] != '\0' ? nick : "mrc-relay";
+            snprintf(formatted, sizeof(formatted), "[IRC] %s", msg_start);
+            const char *username = nick[0] != '\0' ? nick : "irc-relay";
             
             if (!host_post_client_message(client->host, username, formatted, 
                                          NULL, NULL, false)) {
@@ -242,33 +242,33 @@ static void mrc_handle_message(mrc_client_t *client, const char *line)
     }
 }
 
-static void *mrc_client_thread(void *arg)
+static void *irc_client_thread(void *arg)
 {
-    mrc_client_t *client = (mrc_client_t *)arg;
+    irc_client_t *client = (irc_client_t *)arg;
     if (client == NULL) {
         return NULL;
     }
 
     atomic_store(&client->running, true);
-    mrc_set_status(client, "Starting");
+    irc_set_status(client, "Starting");
 
-    char buffer[MRC_BUFFER_SIZE];
+    char buffer[IRC_BUFFER_SIZE];
     size_t buffer_pos = 0;
 
     while (!atomic_load(&client->stop)) {
         if (!atomic_load(&client->connected)) {
-            if (!mrc_connect_socket(client)) {
-                sleep(MRC_RECONNECT_DELAY_SECONDS);
+            if (!irc_connect_socket(client)) {
+                sleep(IRC_RECONNECT_DELAY_SECONDS);
                 continue;
             }
         }
 
         // Send periodic PING
         time_t now = time(NULL);
-        if (now - client->last_ping > MRC_PING_INTERVAL_SECONDS) {
+        if (now - client->last_ping > IRC_PING_INTERVAL_SECONDS) {
             const char *ping_msg = "PING :keepalive\r\n";
             if (send(client->socket_fd, ping_msg, strlen(ping_msg), 0) < 0) {
-                mrc_disconnect_socket(client);
+                irc_disconnect_socket(client);
                 continue;
             }
             client->last_ping = now;
@@ -285,7 +285,7 @@ static void *mrc_client_thread(void *arg)
 
         int ret = select(client->socket_fd + 1, &read_fds, NULL, NULL, &timeout);
         if (ret < 0) {
-            mrc_disconnect_socket(client);
+            irc_disconnect_socket(client);
             continue;
         }
 
@@ -297,7 +297,7 @@ static void *mrc_client_thread(void *arg)
             recv(client->socket_fd, buffer + buffer_pos,
                  sizeof(buffer) - buffer_pos - 1, 0);
         if (bytes <= 0) {
-            mrc_disconnect_socket(client);
+            irc_disconnect_socket(client);
             continue;
         }
 
@@ -309,7 +309,7 @@ static void *mrc_client_thread(void *arg)
         char *line_end;
         while ((line_end = strstr(line_start, "\r\n")) != NULL) {
             *line_end = '\0';
-            mrc_handle_message(client, line_start);
+            irc_handle_message(client, line_start);
             line_start = line_end + 2;
         }
 
@@ -328,30 +328,30 @@ static void *mrc_client_thread(void *arg)
         }
     }
 
-    mrc_disconnect_socket(client);
+    irc_disconnect_socket(client);
     atomic_store(&client->running, false);
-    mrc_set_status(client, "Stopped");
+    irc_set_status(client, "Stopped");
 
     return NULL;
 }
 
-mrc_client_t *mrc_client_create(host_t *host)
+irc_client_t *irc_client_create(host_t *host)
 {
     if (host == NULL) {
         return NULL;
     }
 
-    const char *server = mrc_getenv("CHATTER_MRC_SERVER");
-    const char *port_str = mrc_getenv("CHATTER_MRC_PORT");
-    const char *channel = mrc_getenv("CHATTER_MRC_CHANNEL");
-    const char *nickname = mrc_getenv("CHATTER_MRC_NICKNAME");
+    const char *server = irc_getenv("CHATTER_IRC_SERVER");
+    const char *port_str = irc_getenv("CHATTER_IRC_PORT");
+    const char *channel = irc_getenv("CHATTER_IRC_CHANNEL");
+    const char *nickname = irc_getenv("CHATTER_IRC_NICKNAME");
 
-    // MRC is optional, return NULL if not configured
+    // IRC is optional, return NULL if not configured
     if (server == NULL || channel == NULL) {
         return NULL;
     }
 
-    mrc_client_t *client = (mrc_client_t *)calloc(1, sizeof(mrc_client_t));
+    irc_client_t *client = (irc_client_t *)calloc(1, sizeof(irc_client_t));
     if (client == NULL) {
         return NULL;
     }
@@ -375,9 +375,9 @@ mrc_client_t *mrc_client_create(host_t *host)
     }
     client->lock_initialized = true;
 
-    mrc_set_status(client, "Initializing");
+    irc_set_status(client, "Initializing");
 
-    if (pthread_create(&client->thread, NULL, mrc_client_thread, client) != 0) {
+    if (pthread_create(&client->thread, NULL, irc_client_thread, client) != 0) {
         pthread_mutex_destroy(&client->lock);
         free(client);
         return NULL;
@@ -387,7 +387,7 @@ mrc_client_t *mrc_client_create(host_t *host)
     return client;
 }
 
-void mrc_client_destroy(mrc_client_t *client)
+void irc_client_destroy(irc_client_t *client)
 {
     if (client == NULL) {
         return;
@@ -399,7 +399,7 @@ void mrc_client_destroy(mrc_client_t *client)
         pthread_join(client->thread, NULL);
     }
 
-    mrc_disconnect_socket(client);
+    irc_disconnect_socket(client);
 
     if (client->lock_initialized) {
         pthread_mutex_destroy(&client->lock);
@@ -408,7 +408,7 @@ void mrc_client_destroy(mrc_client_t *client)
     free(client);
 }
 
-bool mrc_client_is_connected(mrc_client_t *client)
+bool irc_client_is_connected(irc_client_t *client)
 {
     if (client == NULL) {
         return false;
@@ -416,7 +416,7 @@ bool mrc_client_is_connected(mrc_client_t *client)
     return atomic_load(&client->connected);
 }
 
-const char *mrc_client_get_status(mrc_client_t *client)
+const char *irc_client_get_status(irc_client_t *client)
 {
     if (client == NULL) {
         return "Not initialized";
@@ -424,24 +424,24 @@ const char *mrc_client_get_status(mrc_client_t *client)
     return client->status_message;
 }
 
-bool mrc_client_reconnect(mrc_client_t *client)
+bool irc_client_reconnect(irc_client_t *client)
 {
     if (client == NULL) {
         return false;
     }
 
-    mrc_disconnect_socket(client);
+    irc_disconnect_socket(client);
     atomic_store(&client->disabled, false);
     
-    return mrc_connect_socket(client);
+    return irc_connect_socket(client);
 }
 
-void mrc_client_disconnect(mrc_client_t *client)
+void irc_client_disconnect(irc_client_t *client)
 {
     if (client == NULL) {
         return;
     }
 
     atomic_store(&client->disabled, true);
-    mrc_disconnect_socket(client);
+    irc_disconnect_socket(client);
 }

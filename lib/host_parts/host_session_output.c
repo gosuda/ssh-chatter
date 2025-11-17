@@ -5075,7 +5075,7 @@ static void session_handle_getaddr(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, message);
 }
 
-static void session_handle_mrcserver(session_ctx_t *ctx, const char *arguments)
+static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == NULL) {
         return;
@@ -5093,18 +5093,18 @@ static void session_handle_mrcserver(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    if (host->mrc_client == NULL) {
+    if (host->irc_client == NULL) {
         session_send_system_line(
             ctx,
-            "MRC relay is not configured. Set CHATTER_MRC_SERVER, "
-            "CHATTER_MRC_PORT, and CHATTER_MRC_CHANNEL environment variables.");
+            "IRC relay is not configured. Set CHATTER_MRC_SERVER, "
+            "CHATTER_IRC_PORT, and CHATTER_MRC_CHANNEL environment variables.");
         return;
     }
 
     static const char *kUsage =
-        "Usage: /mrcserver status|reconnect|disconnect";
+        "Usage: /ircserver status|reconnect|disconnect";
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
-    session_command_format_usage(ctx, "/mrcserver", kUsage, usage,
+    session_command_format_usage(ctx, "/ircserver", kUsage, usage,
                                  sizeof(usage));
 
     if (arguments == NULL || *arguments == '\0') {
@@ -5117,22 +5117,22 @@ static void session_handle_mrcserver(session_ctx_t *ctx, const char *arguments)
     trim_whitespace_inplace(command);
 
     if (strcmp(command, "status") == 0) {
-        const char *status = mrc_client_get_status(host->mrc_client);
-        bool connected = mrc_client_is_connected(host->mrc_client);
+        const char *status = irc_client_get_status(host->irc_client);
+        bool connected = irc_client_is_connected(host->irc_client);
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "MRC Relay Status: %s (%s)", status,
+        snprintf(message, sizeof(message), "IRC Relay Status: %s (%s)", status,
                  connected ? "connected" : "disconnected");
         session_send_system_line(ctx, message);
     } else if (strcmp(command, "reconnect") == 0) {
-        session_send_system_line(ctx, "Attempting to reconnect to MRC server...");
-        if (mrc_client_reconnect(host->mrc_client)) {
-            session_send_system_line(ctx, "MRC reconnection initiated.");
+        session_send_system_line(ctx, "Attempting to reconnect to IRC server...");
+        if (irc_client_reconnect(host->irc_client)) {
+            session_send_system_line(ctx, "IRC reconnection initiated.");
         } else {
-            session_send_system_line(ctx, "Failed to reconnect to MRC server.");
+            session_send_system_line(ctx, "Failed to reconnect to IRC server.");
         }
     } else if (strcmp(command, "disconnect") == 0) {
-        mrc_client_disconnect(host->mrc_client);
-        session_send_system_line(ctx, "Disconnected from MRC server.");
+        irc_client_disconnect(host->irc_client);
+        session_send_system_line(ctx, "Disconnected from IRC server.");
     } else {
         session_send_system_line(ctx, usage);
     }

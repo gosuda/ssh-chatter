@@ -13,7 +13,7 @@
 #include "../headers/client.h"
 #include "../headers/webssh_client.h"
 #include "../headers/matrix_client.h"
-#include "../headers/mrc_client.h"
+#include "../headers/irc_client.h"
 #include "../headers/translator.h"
 #include "../headers/translation_helpers.h"
 

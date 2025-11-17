@@ -36,6 +36,8 @@ struct irc_client {
     int server_port;
     char channel[128];
     char nickname[64];
+    char username[64];
+    char realname[128];
     char status_message[256];
     int socket_fd;
     time_t last_ping;
@@ -147,8 +149,8 @@ static bool irc_connect_socket(irc_client_t *client)
         return false;
     }
 
-    snprintf(buffer, sizeof(buffer), "USER %s 0 * :SSH-Chatter Bot\r\n",
-             client->nickname);
+    snprintf(buffer, sizeof(buffer), "USER %s 0 * :%s\r\n",
+             client->username, client->realname);
     if (send(client->socket_fd, buffer, strlen(buffer), 0) < 0) {
         close(client->socket_fd);
         client->socket_fd = -1;
@@ -345,6 +347,8 @@ irc_client_t *irc_client_create(host_t *host)
     const char *port_str = irc_getenv("CHATTER_IRC_PORT");
     const char *channel = irc_getenv("CHATTER_IRC_CHANNEL");
     const char *nickname = irc_getenv("CHATTER_IRC_NICKNAME");
+    const char *username = irc_getenv("CHATTER_IRC_USERNAME");
+    const char *realname = irc_getenv("CHATTER_IRC_REALNAME");
 
     // IRC is optional, return NULL if not configured
     if (server == NULL || channel == NULL) {
@@ -368,6 +372,10 @@ irc_client_t *irc_client_create(host_t *host)
     snprintf(client->channel, sizeof(client->channel), "%s", channel);
     snprintf(client->nickname, sizeof(client->nickname), "%s",
              nickname != NULL ? nickname : "ssh-chatter");
+    snprintf(client->username, sizeof(client->username), "%s",
+             username != NULL ? username : (nickname != NULL ? nickname : "ssh-chatter"));
+    snprintf(client->realname, sizeof(client->realname), "%s",
+             realname != NULL ? realname : "SSH-Chatter Bot");
 
     if (pthread_mutex_init(&client->lock, NULL) != 0) {
         free(client);

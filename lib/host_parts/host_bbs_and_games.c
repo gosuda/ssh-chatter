@@ -1084,7 +1084,11 @@ static void session_game_tetris_render(session_ctx_t *ctx)
     // Only send if the buffer has changed
     if (strcmp(ctx->tetris_screen_buffer, ctx->tetris_prev_screen_buffer) !=
         0) {
+        // Enable output buffering to send entire screen in one flush
+        session_output_buffer_start(ctx);
         session_send_raw_text(ctx, ctx->tetris_screen_buffer);
+        session_output_buffer_stop(ctx);
+        
         strncpy(ctx->tetris_prev_screen_buffer, ctx->tetris_screen_buffer,
                 SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE);
         ctx->tetris_prev_screen_buffer[SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE -
@@ -2099,6 +2103,9 @@ static void session_game_othello_render(session_ctx_t *ctx)
     bool previous_translation = ctx->translation_suppress_output;
     ctx->translation_suppress_output = true;
 
+    // Start buffering to send entire game board in one flush
+    session_output_buffer_start(ctx);
+
     session_render_separator(ctx, "Othello");
     session_send_system_line(ctx, "    a b c d e f g h");
     for (int row = 0; row < SSH_CHATTER_OTHELLO_BOARD_SIZE; ++row) {
@@ -2158,6 +2165,9 @@ static void session_game_othello_render(session_ctx_t *ctx)
         }
         session_send_system_line(ctx, last_line);
     }
+
+    // Flush all buffered output at once
+    session_output_buffer_stop(ctx);
 
     ctx->translation_suppress_output = previous_translation;
 }

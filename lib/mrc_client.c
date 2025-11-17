@@ -147,8 +147,8 @@ static bool mrc_connect_socket(mrc_client_t *client)
         return false;
     }
 
-    snprintf(buffer, sizeof(buffer), "USER %s 0 * :SSH-Chatter Bot\r\n",
-             client->nickname);
+    snprintf(buffer, sizeof(buffer), "USER %s 0 * :%s\r\n",
+             client->nickname, client->nickname);
     if (send(client->socket_fd, buffer, strlen(buffer), 0) < 0) {
         close(client->socket_fd);
         client->socket_fd = -1;

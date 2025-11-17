@@ -3912,6 +3912,27 @@ static const session_help_entry_t kSessionHelpOperator[] = {
         .label_arg_count = 0U,
         .label_args = {},
     },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "mrcserver <status|reconnect|disconnect>",
+        .description =
+            {
+                "Manage MRC relay server connection (operator only).",
+                "MRC 릴레이 서버 연결을 관리합니다 (운영자 전용).",
+                "MRC リレーサーバー接続を管理します（オペレーター専用）。",
+                "管理 MRC 中继服务器连接（仅限管理员）。",
+                "Управление подключением к MRC-серверу (оператор).",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "MRC서버 <상태|재연결|연결해제>",
+                [SESSION_UI_LANGUAGE_JP] = "MRCサーバー <状態|再接続|切断>",
+                [SESSION_UI_LANGUAGE_ZH] = "MRC服务器 <状态|重连|断开>",
+                [SESSION_UI_LANGUAGE_RU] = "mrc-сервер <статус|переподключить|отключить>",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
 };
 
 static const int kSessionHelpLabelWidth = 26;

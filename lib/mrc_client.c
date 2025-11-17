@@ -1,0 +1,447 @@
+#define _POSIX_C_SOURCE 200809L
+
+#include "headers/mrc_client.h"
+#include "headers/host.h"
+#include "headers/humanized/humanized.h"
+
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <time.h>
+#include <unistd.h>
+
+#define MRC_BUFFER_SIZE 4096
+#define MRC_RECONNECT_DELAY_SECONDS 30
+#define MRC_PING_INTERVAL_SECONDS 60
+
+struct mrc_client {
+    host_t *host;
+    pthread_mutex_t lock;
+    bool lock_initialized;
+    pthread_t thread;
+    bool thread_initialized;
+    _Atomic bool stop;
+    _Atomic bool running;
+    _Atomic bool disabled;
+    _Atomic bool connected;
+    char server_host[256];
+    int server_port;
+    char channel[128];
+    char nickname[64];
+    char status_message[256];
+    int socket_fd;
+    time_t last_ping;
+};
+
+static const char *mrc_getenv(const char *name)
+{
+    const char *value = getenv(name);
+    if (value == NULL || value[0] == '\0') {
+        return NULL;
+    }
+    return value;
+}
+
+static void mrc_set_status(mrc_client_t *client, const char *status)
+{
+    if (client == NULL || status == NULL) {
+        return;
+    }
+    pthread_mutex_lock(&client->lock);
+    snprintf(client->status_message, sizeof(client->status_message), "%s",
+             status);
+    pthread_mutex_unlock(&client->lock);
+}
+
+__attribute__((unused))
+static void mrc_client_disable(mrc_client_t *client, const char *message,
+                               int error_code)
+{
+    if (client == NULL) {
+        return;
+    }
+
+    bool expected = false;
+    if (!atomic_compare_exchange_strong(&client->disabled, &expected, true)) {
+        return;
+    }
+
+    int log_code = (error_code != 0) ? error_code : EIO;
+    if (message != NULL && message[0] != '\0') {
+        humanized_log_error("mrc", message, log_code);
+    } else {
+        humanized_log_error("mrc", "MRC relay disabled after failure", log_code);
+    }
+
+    mrc_set_status(client, "Disabled");
+    atomic_store(&client->stop, true);
+}
+
+static bool mrc_connect_socket(mrc_client_t *client)
+{
+    if (client == NULL) {
+        return false;
+    }
+
+    if (client->socket_fd >= 0) {
+        close(client->socket_fd);
+        client->socket_fd = -1;
+    }
+
+    struct addrinfo hints, *result, *rp;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    char port_str[16];
+    snprintf(port_str, sizeof(port_str), "%d", client->server_port);
+
+    int ret = getaddrinfo(client->server_host, port_str, &hints, &result);
+    if (ret != 0) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Failed to resolve MRC server %s: %s",
+                 client->server_host, gai_strerror(ret));
+        mrc_set_status(client, msg);
+        return false;
+    }
+
+    for (rp = result; rp != NULL; rp = rp->ai_next) {
+        client->socket_fd =
+            socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (client->socket_fd == -1) {
+            continue;
+        }
+
+        if (connect(client->socket_fd, rp->ai_addr, rp->ai_addrlen) != -1) {
+            break; // Success
+        }
+
+        close(client->socket_fd);
+        client->socket_fd = -1;
+    }
+
+    freeaddrinfo(result);
+
+    if (client->socket_fd == -1) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "Failed to connect to MRC server %s:%d",
+                 client->server_host, client->server_port);
+        mrc_set_status(client, msg);
+        return false;
+    }
+
+    // Send IRC-style handshake
+    char buffer[512];
+    snprintf(buffer, sizeof(buffer), "NICK %s\r\n", client->nickname);
+    if (send(client->socket_fd, buffer, strlen(buffer), 0) < 0) {
+        close(client->socket_fd);
+        client->socket_fd = -1;
+        return false;
+    }
+
+    snprintf(buffer, sizeof(buffer), "USER %s 0 * :SSH-Chatter Bot\r\n",
+             client->nickname);
+    if (send(client->socket_fd, buffer, strlen(buffer), 0) < 0) {
+        close(client->socket_fd);
+        client->socket_fd = -1;
+        return false;
+    }
+
+    // Join channel
+    snprintf(buffer, sizeof(buffer), "JOIN %s\r\n", client->channel);
+    if (send(client->socket_fd, buffer, strlen(buffer), 0) < 0) {
+        close(client->socket_fd);
+        client->socket_fd = -1;
+        return false;
+    }
+
+    atomic_store(&client->connected, true);
+    client->last_ping = time(NULL);
+    mrc_set_status(client, "Connected");
+
+    return true;
+}
+
+static void mrc_disconnect_socket(mrc_client_t *client)
+{
+    if (client == NULL) {
+        return;
+    }
+
+    atomic_store(&client->connected, false);
+
+    if (client->socket_fd >= 0) {
+        // Send QUIT message
+        const char *quit_msg = "QUIT :Disconnecting\r\n";
+        send(client->socket_fd, quit_msg, strlen(quit_msg), 0);
+        close(client->socket_fd);
+        client->socket_fd = -1;
+    }
+
+    mrc_set_status(client, "Disconnected");
+}
+
+static void mrc_handle_message(mrc_client_t *client, const char *line)
+{
+    if (client == NULL || line == NULL || client->host == NULL) {
+        return;
+    }
+
+    // Parse IRC-style PRIVMSG
+    // Format: :nick!user@host PRIVMSG #channel :message
+    if (strncmp(line, "PRIVMSG ", 8) == 0 || strstr(line, " PRIVMSG ") != NULL) {
+        const char *privmsg = strstr(line, " PRIVMSG ");
+        if (privmsg == NULL) {
+            privmsg = line;
+        } else {
+            privmsg += 9; // Skip " PRIVMSG "
+        }
+
+        // Extract channel
+        const char *msg_start = strchr(privmsg, ':');
+        if (msg_start != NULL) {
+            msg_start++; // Skip ':'
+            
+            // Extract nickname from prefix
+            char nick[64] = {0};
+            if (line[0] == ':') {
+                const char *nick_end = strchr(line + 1, '!');
+                if (nick_end != NULL) {
+                    size_t nick_len = (size_t)(nick_end - (line + 1));
+                    if (nick_len < sizeof(nick)) {
+                        memcpy(nick, line + 1, nick_len);
+                        nick[nick_len] = '\0';
+                    }
+                }
+            }
+
+            // Post message to chat room
+            char formatted[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(formatted, sizeof(formatted), "[MRC] %s", msg_start);
+            const char *username = nick[0] != '\0' ? nick : "mrc-relay";
+            
+            if (!host_post_client_message(client->host, username, formatted, 
+                                         NULL, NULL, false)) {
+                // Silently fail - don't flood logs
+            }
+        }
+    }
+    // Handle PING
+    else if (strncmp(line, "PING ", 5) == 0) {
+        char pong[512];
+        snprintf(pong, sizeof(pong), "PONG %s\r\n", line + 5);
+        send(client->socket_fd, pong, strlen(pong), 0);
+    }
+}
+
+static void *mrc_client_thread(void *arg)
+{
+    mrc_client_t *client = (mrc_client_t *)arg;
+    if (client == NULL) {
+        return NULL;
+    }
+
+    atomic_store(&client->running, true);
+    mrc_set_status(client, "Starting");
+
+    char buffer[MRC_BUFFER_SIZE];
+    size_t buffer_pos = 0;
+
+    while (!atomic_load(&client->stop)) {
+        if (!atomic_load(&client->connected)) {
+            if (!mrc_connect_socket(client)) {
+                sleep(MRC_RECONNECT_DELAY_SECONDS);
+                continue;
+            }
+        }
+
+        // Send periodic PING
+        time_t now = time(NULL);
+        if (now - client->last_ping > MRC_PING_INTERVAL_SECONDS) {
+            const char *ping_msg = "PING :keepalive\r\n";
+            if (send(client->socket_fd, ping_msg, strlen(ping_msg), 0) < 0) {
+                mrc_disconnect_socket(client);
+                continue;
+            }
+            client->last_ping = now;
+        }
+
+        // Receive data
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(client->socket_fd, &read_fds);
+
+        struct timeval timeout;
+        timeout.tv_sec = 1;
+        timeout.tv_usec = 0;
+
+        int ret = select(client->socket_fd + 1, &read_fds, NULL, NULL, &timeout);
+        if (ret < 0) {
+            mrc_disconnect_socket(client);
+            continue;
+        }
+
+        if (ret == 0) {
+            continue; // Timeout
+        }
+
+        ssize_t bytes =
+            recv(client->socket_fd, buffer + buffer_pos,
+                 sizeof(buffer) - buffer_pos - 1, 0);
+        if (bytes <= 0) {
+            mrc_disconnect_socket(client);
+            continue;
+        }
+
+        buffer_pos += (size_t)bytes;
+        buffer[buffer_pos] = '\0';
+
+        // Process complete lines
+        char *line_start = buffer;
+        char *line_end;
+        while ((line_end = strstr(line_start, "\r\n")) != NULL) {
+            *line_end = '\0';
+            mrc_handle_message(client, line_start);
+            line_start = line_end + 2;
+        }
+
+        // Move incomplete line to buffer start
+        if (line_start != buffer) {
+            size_t remaining = buffer_pos - (size_t)(line_start - buffer);
+            if (remaining > 0) {
+                memmove(buffer, line_start, remaining);
+            }
+            buffer_pos = remaining;
+        }
+
+        // Prevent buffer overflow
+        if (buffer_pos >= sizeof(buffer) - 1) {
+            buffer_pos = 0;
+        }
+    }
+
+    mrc_disconnect_socket(client);
+    atomic_store(&client->running, false);
+    mrc_set_status(client, "Stopped");
+
+    return NULL;
+}
+
+mrc_client_t *mrc_client_create(host_t *host)
+{
+    if (host == NULL) {
+        return NULL;
+    }
+
+    const char *server = mrc_getenv("CHATTER_MRC_SERVER");
+    const char *port_str = mrc_getenv("CHATTER_MRC_PORT");
+    const char *channel = mrc_getenv("CHATTER_MRC_CHANNEL");
+    const char *nickname = mrc_getenv("CHATTER_MRC_NICKNAME");
+
+    // MRC is optional, return NULL if not configured
+    if (server == NULL || channel == NULL) {
+        return NULL;
+    }
+
+    mrc_client_t *client = (mrc_client_t *)calloc(1, sizeof(mrc_client_t));
+    if (client == NULL) {
+        return NULL;
+    }
+
+    client->host = host;
+    client->socket_fd = -1;
+    atomic_init(&client->stop, false);
+    atomic_init(&client->running, false);
+    atomic_init(&client->disabled, false);
+    atomic_init(&client->connected, false);
+
+    snprintf(client->server_host, sizeof(client->server_host), "%s", server);
+    client->server_port = (port_str != NULL) ? atoi(port_str) : 6667;
+    snprintf(client->channel, sizeof(client->channel), "%s", channel);
+    snprintf(client->nickname, sizeof(client->nickname), "%s",
+             nickname != NULL ? nickname : "ssh-chatter");
+
+    if (pthread_mutex_init(&client->lock, NULL) != 0) {
+        free(client);
+        return NULL;
+    }
+    client->lock_initialized = true;
+
+    mrc_set_status(client, "Initializing");
+
+    if (pthread_create(&client->thread, NULL, mrc_client_thread, client) != 0) {
+        pthread_mutex_destroy(&client->lock);
+        free(client);
+        return NULL;
+    }
+    client->thread_initialized = true;
+
+    return client;
+}
+
+void mrc_client_destroy(mrc_client_t *client)
+{
+    if (client == NULL) {
+        return;
+    }
+
+    atomic_store(&client->stop, true);
+
+    if (client->thread_initialized) {
+        pthread_join(client->thread, NULL);
+    }
+
+    mrc_disconnect_socket(client);
+
+    if (client->lock_initialized) {
+        pthread_mutex_destroy(&client->lock);
+    }
+
+    free(client);
+}
+
+bool mrc_client_is_connected(mrc_client_t *client)
+{
+    if (client == NULL) {
+        return false;
+    }
+    return atomic_load(&client->connected);
+}
+
+const char *mrc_client_get_status(mrc_client_t *client)
+{
+    if (client == NULL) {
+        return "Not initialized";
+    }
+    return client->status_message;
+}
+
+bool mrc_client_reconnect(mrc_client_t *client)
+{
+    if (client == NULL) {
+        return false;
+    }
+
+    mrc_disconnect_socket(client);
+    atomic_store(&client->disabled, false);
+    
+    return mrc_connect_socket(client);
+}
+
+void mrc_client_disconnect(mrc_client_t *client)
+{
+    if (client == NULL) {
+        return;
+    }
+
+    atomic_store(&client->disabled, true);
+    mrc_disconnect_socket(client);
+}

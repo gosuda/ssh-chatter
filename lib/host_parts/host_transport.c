@@ -2287,6 +2287,7 @@ static void session_handle_date(session_ctx_t *ctx, const char *arguments);
 static void session_handle_os(session_ctx_t *ctx, const char *arguments);
 static void session_handle_getos(session_ctx_t *ctx, const char *arguments);
 static void session_handle_getaddr(session_ctx_t *ctx, const char *arguments);
+static void session_handle_mrcserver(session_ctx_t *ctx, const char *arguments);
 static void session_handle_pair(session_ctx_t *ctx);
 static void session_handle_connected(session_ctx_t *ctx);
 static bool session_parse_birthday(const char *input, char *normalized,

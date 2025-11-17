@@ -237,9 +237,20 @@ static void irc_handle_message(irc_client_t *client, const char *line)
         }
     }
     // Handle PING
-    else if (strncmp(line, "PING ", 5) == 0) {
+    // Format: PING :server or :server PING :server
+    else if (strncmp(line, "PING ", 5) == 0 || strstr(line, " PING ") != NULL) {
+        const char *ping_pos = strstr(line, " PING ");
+        const char *ping_param;
+        if (ping_pos == NULL) {
+            // Line starts with "PING ", skip "PING "
+            ping_param = line + 5;
+        } else {
+            // Line contains " PING ", skip " PING "
+            ping_param = ping_pos + 6;
+        }
+        
         char pong[512];
-        snprintf(pong, sizeof(pong), "PONG %s\r\n", line + 5);
+        snprintf(pong, sizeof(pong), "PONG %s\r\n", ping_param);
         send(client->socket_fd, pong, strlen(pong), 0);
     }
 }

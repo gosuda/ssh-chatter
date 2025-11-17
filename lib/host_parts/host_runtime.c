@@ -1537,6 +1537,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
                                          &args)) {
         session_handle_getaddr(ctx, args);
         return;
+    } else if (session_parse_command_any(ctx, "/mrcserver", effective_line,
+                                         &args)) {
+        session_handle_mrcserver(ctx, args);
+        return;
     } else if (session_parse_command_any(ctx, "/birthday", effective_line,
                                          &args)) {
         session_handle_birthday(ctx, args);
@@ -4255,6 +4259,14 @@ void host_init(host_t *host, auth_profile_t *auth)
                                     "CHATTER_MATRIX_* configuration",
                                     EINVAL);
             }
+            
+            host->mrc_client = mrc_client_create(host);
+            if (host->mrc_client == NULL) {
+                humanized_log_error("mrc",
+                                    "MRC relay inactive; check "
+                                    "CHATTER_MRC_* configuration",
+                                    EINVAL);
+            }
         }
     }
     host_security_start_clamav_backend(host);
@@ -4768,6 +4780,10 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     if (host->matrix_client != NULL) {
         matrix_client_destroy(host->matrix_client);
         host->matrix_client = NULL;
+    }
+    if (host->mrc_client != NULL) {
+        mrc_client_destroy(host->mrc_client);
+        host->mrc_client = NULL;
     }
     if (host->web_client != NULL) {
         webssh_client_destroy(host->web_client);

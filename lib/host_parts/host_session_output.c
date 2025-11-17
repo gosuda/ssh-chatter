@@ -5075,6 +5075,69 @@ static void session_handle_getaddr(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, message);
 }
 
+static void session_handle_mrcserver(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == NULL) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(ctx,
+                                 "You are not allowed to run that command.");
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    if (host == NULL) {
+        session_send_system_line(ctx, "Host unavailable.");
+        return;
+    }
+
+    if (host->mrc_client == NULL) {
+        session_send_system_line(
+            ctx,
+            "MRC relay is not configured. Set CHATTER_MRC_SERVER, "
+            "CHATTER_MRC_PORT, and CHATTER_MRC_CHANNEL environment variables.");
+        return;
+    }
+
+    static const char *kUsage =
+        "Usage: /mrcserver status|reconnect|disconnect";
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, "/mrcserver", kUsage, usage,
+                                 sizeof(usage));
+
+    if (arguments == NULL || *arguments == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    char command[64];
+    snprintf(command, sizeof(command), "%s", arguments);
+    trim_whitespace_inplace(command);
+
+    if (strcmp(command, "status") == 0) {
+        const char *status = mrc_client_get_status(host->mrc_client);
+        bool connected = mrc_client_is_connected(host->mrc_client);
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message), "MRC Relay Status: %s (%s)", status,
+                 connected ? "connected" : "disconnected");
+        session_send_system_line(ctx, message);
+    } else if (strcmp(command, "reconnect") == 0) {
+        session_send_system_line(ctx, "Attempting to reconnect to MRC server...");
+        if (mrc_client_reconnect(host->mrc_client)) {
+            session_send_system_line(ctx, "MRC reconnection initiated.");
+        } else {
+            session_send_system_line(ctx, "Failed to reconnect to MRC server.");
+        }
+    } else if (strcmp(command, "disconnect") == 0) {
+        mrc_client_disconnect(host->mrc_client);
+        session_send_system_line(ctx, "Disconnected from MRC server.");
+    } else {
+        session_send_system_line(ctx, usage);
+    }
+}
+
 static void session_handle_poke(session_ctx_t *ctx, const char *arguments)
 {
     if (arguments == NULL || *arguments == '\0') {

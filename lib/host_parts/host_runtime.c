@@ -4263,8 +4263,8 @@ void host_init(host_t *host, auth_profile_t *auth)
             host->irc_client = irc_client_create(host);
             if (host->irc_client == NULL) {
                 humanized_log_error("irc",
-                                    "MRC relay inactive; check "
-                                    "CHATTER_MRC_* configuration",
+                                    "IRC relay inactive; check "
+                                    "CHATTER_IRC_* configuration",
                                     EINVAL);
             }
         }

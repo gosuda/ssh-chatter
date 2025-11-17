@@ -5096,8 +5096,8 @@ static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments)
     if (host->irc_client == NULL) {
         session_send_system_line(
             ctx,
-            "IRC relay is not configured. Set CHATTER_MRC_SERVER, "
-            "CHATTER_IRC_PORT, and CHATTER_MRC_CHANNEL environment variables.");
+            "IRC relay is not configured. Set CHATTER_IRC_SERVER, "
+            "CHATTER_IRC_PORT, and CHATTER_IRC_CHANNEL environment variables.");
         return;
     }
 

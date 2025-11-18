@@ -4825,7 +4825,7 @@ static void session_game_gonu_render(session_ctx_t *ctx)
                 if (state->board[row][col] == GONU_CELL_PLAYER) {
                     cell = 'Q';  // Player marker
                 } else if (state->board[row][col] == GONU_CELL_AI) {
-                    cell = 'Q';  // AI marker (same symbol, different context)
+                    cell = 'X';  // AI marker (same symbol, different context)
                 } else {
                     cell = 'O';  // Empty position
                 }

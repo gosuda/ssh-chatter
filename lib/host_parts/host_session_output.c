@@ -5178,6 +5178,70 @@ static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments)
     }
 }
 
+static void session_handle_fidonet(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(ctx,
+                                 "You are not allowed to run that command.");
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    if (host == nullptr) {
+        session_send_system_line(ctx, "Host unavailable.");
+        return;
+    }
+
+    if (host->fidonet_client == nullptr) {
+        session_send_system_line(
+            ctx,
+            "FidoNet relay is not configured. Set CHATTER_FIDONET_SERVER, "
+            "CHATTER_FIDONET_ADDRESS environment variables.");
+        return;
+    }
+
+    static const char *kUsage = "Usage: /fidonet status|reconnect|disconnect";
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, "/fidonet", kUsage, usage,
+                                 sizeof(usage));
+
+    if (arguments == nullptr || *arguments == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    char command[64];
+    snprintf(command, sizeof(command), "%s", arguments);
+    trim_whitespace_inplace(command);
+
+    if (strcmp(command, "status") == 0) {
+        const char *status = fidonet_client_get_status(host->fidonet_client);
+        bool connected = fidonet_client_is_connected(host->fidonet_client);
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message), "FidoNet Relay Status: %s (%s)",
+                 status, connected ? "connected" : "disconnected");
+        session_send_system_line(ctx, message);
+    } else if (strcmp(command, "reconnect") == 0) {
+        session_send_system_line(
+            ctx, "Attempting to reconnect to FidoNet server...");
+        if (fidonet_client_reconnect(host->fidonet_client)) {
+            session_send_system_line(ctx, "FidoNet reconnection initiated.");
+        } else {
+            session_send_system_line(ctx,
+                                     "Failed to reconnect to FidoNet server.");
+        }
+    } else if (strcmp(command, "disconnect") == 0) {
+        fidonet_client_disconnect(host->fidonet_client);
+        session_send_system_line(ctx, "Disconnected from FidoNet server.");
+    } else {
+        session_send_system_line(ctx, usage);
+    }
+}
+
 static void session_handle_poke(session_ctx_t *ctx, const char *arguments)
 {
     if (arguments == nullptr || *arguments == '\0') {

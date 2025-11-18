@@ -3930,6 +3930,20 @@ static const session_help_entry_t kSessionHelpOperator[] = {
         .label_arg_count = 0U,
         .label_args = {},
     },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "fidonet <status|reconnect|disconnect>",
+        .description =
+            {
+                "Manage FidoNet/Binkp relay connection (operator only).",
+                "FidoNet/Binkp 릴레이 연결을 관리합니다 (운영자 전용).",
+                "FidoNet/Binkp リレー接続を管理します（オペレーター専用）。",
+                "管理 FidoNet/Binkp 中继连接（仅限管理员）。",
+                "Управление подключением FidoNet/Binkp (оператор).",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
 };
 
 static const int kSessionHelpLabelWidth = 26;

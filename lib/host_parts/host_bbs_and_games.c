@@ -5248,7 +5248,7 @@ static void session_game_start_gonu(session_ctx_t *ctx)
     session_send_system_line(ctx, "Choose Gonu variant:");
     session_send_system_line(ctx, "1. Hobak-gonu (Pumpkin) - 3x3 grid");
     session_send_system_line(ctx, "2. Bakwi-gonu (Wheel) - circular pattern");
-    session_send_system_line(ctx, "3. Umul-gonu (Well) - 井 pattern");
+    session_send_system_line(ctx, "3. Umul-gonu (Well) - # pattern");
     session_send_system_line(ctx, "Enter 1, 2, or 3:");
     
     char variant_choice[16];

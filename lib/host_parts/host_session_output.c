@@ -2116,6 +2116,7 @@ static void session_render_prelogin_banner(session_ctx_t *ctx)
     session_render_banner_ascii(ctx);
 
     session_send_plain_line(ctx, "Connection established.");
+    session_send_plain_line(ctx, "[0] <sysop> TELNET connection is unstable. Please use SSH");
     session_send_plain_line(ctx,
                             "Authenticate or choose a nickname to continue.");
     session_send_plain_line(ctx, "/retro on for CP-437 DOS compatibility.");

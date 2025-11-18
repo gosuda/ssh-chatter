@@ -3798,6 +3798,24 @@ static void session_channel_write(session_ctx_t *ctx, const void *data,
     }
 }
 
+static void session_channel_flush(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || !session_transport_active(ctx)) {
+        return;
+    }
+
+    // Telnet uses direct socket writes, no flush needed
+    if (ctx->transport_kind == SESSION_TRANSPORT_TELNET) {
+        return;
+    }
+
+    // For SSH, flush any pending data in libssh's buffers
+    if (ctx->session != nullptr) {
+        // Use a short timeout (50ms) to avoid blocking
+        ssh_blocking_flush(ctx->session, 50);
+    }
+}
+
 static bool session_channel_write_utf16(session_ctx_t *ctx, const char *data,
                                         size_t length)
 {

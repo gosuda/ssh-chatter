@@ -1258,12 +1258,75 @@ static void session_game_start_liargame(session_ctx_t *ctx)
     if (ctx == nullptr) {
         return;
     }
+    
+    // Ask for camouflage language first
+    session_send_system_line(
+        ctx,
+        "CHOOSE YOUR LOCKSCREEN LANGUAGE TO HIDE THE SCREEN ON YOUR OFFICE! "
+        "(c, cpp, java, go, js, ts, rust)");
+    char language_choice[16];
+    size_t length = 0U;
+    while (length + 1U < sizeof(language_choice)) {
+        char ch = '\0';
+        const int read_result = session_transport_read(ctx, &ch, 1, -1);
+        if (read_result <= 0) {
+            return;
+        }
+
+        if (ch == '\r' || ch == '\n') {
+            session_local_echo_char(ctx, '\n');
+            break;
+        }
+
+        if (ch == '\b' || (unsigned char)ch == 0x7fU) {
+            if (length > 0U) {
+                --length;
+                session_send_raw_text(ctx, "\b \b");
+            }
+            continue;
+        }
+
+        if ((unsigned char)ch < 0x20U) {
+            continue;
+        }
+
+        language_choice[length++] = ch;
+        session_local_echo_char(ctx, ch);
+    }
+    language_choice[length] = '\0';
+    trim_whitespace_inplace(language_choice);
+    for (size_t idx = 0U; language_choice[idx] != '\0'; ++idx) {
+        language_choice[idx] =
+            (char)tolower((unsigned char)language_choice[idx]);
+    }
+
+    if (language_choice[0] == '\0') {
+        session_send_system_line(ctx, "No language chosen. Defaulting to C.");
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "c");
+    } else if (strcmp(language_choice, "c") == 0 ||
+               strcmp(language_choice, "cpp") == 0 ||
+               strcmp(language_choice, "java") == 0 ||
+               strcmp(language_choice, "go") == 0 ||
+               strcmp(language_choice, "js") == 0 ||
+               strcmp(language_choice, "ts") == 0 ||
+               strcmp(language_choice, "rust") == 0) {
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "%s",
+                 language_choice);
+    } else {
+        session_send_system_line(ctx, "Invalid language. Defaulting to C.");
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "c");
+    }
 
     ctx->game.type = SESSION_GAME_LIARGAME;
     ctx->game.active = true;
+    ctx->game.is_camouflaged = false;
     ctx->game.liar.round_number = 0U;
     ctx->game.liar.score = 0U;
     ctx->game.liar.awaiting_guess = false;
+    session_send_system_line(ctx, "");
     session_send_system_line(ctx, "Liar Game started. Guess which statement is "
                                   "the lie by typing 1, 2, or 3.");
     session_game_liar_present_round(ctx);
@@ -1325,6 +1388,20 @@ static void session_game_liar_handle_line(session_ctx_t *ctx, const char *line)
     trim_whitespace_inplace(command);
     for (size_t idx = 0U; command[idx] != '\0'; ++idx) {
         command[idx] = (char)tolower((unsigned char)command[idx]);
+    }
+    
+    // Handle camouflage toggle with 't' command
+    if (strcmp(command, "t") == 0) {
+        if (ctx->game.is_camouflaged) {
+            ctx->game.is_camouflaged = false;
+            ctx->game.saved_liar_state = ctx->game.liar;
+            session_game_liar_present_round(ctx);
+        } else {
+            ctx->game.is_camouflaged = true;
+            ctx->game.saved_liar_state = ctx->game.liar;
+            session_game_show_camouflage(ctx);
+        }
+        return;
     }
 
     if (strcmp(command, "help") == 0) {
@@ -2420,6 +2497,20 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
             working[idx] = (char)tolower((unsigned char)working[idx]);
         }
     }
+    
+    // Handle camouflage toggle with 't' command
+    if (strcmp(working, "t") == 0) {
+        if (ctx->game.is_camouflaged) {
+            ctx->game.is_camouflaged = false;
+            ctx->game.saved_othello_state = ctx->game.othello;
+            session_game_othello_render(ctx);
+        } else {
+            ctx->game.is_camouflaged = true;
+            ctx->game.saved_othello_state = ctx->game.othello;
+            session_game_show_camouflage(ctx);
+        }
+        return;
+    }
 
     if (state->awaiting_mode_selection) {
         if (strcmp(working, "single") == 0 || strcmp(working, "s") == 0) {
@@ -2514,8 +2605,8 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
         
         session_game_othello_render(ctx);
         session_send_system_line(ctx,
-                                 "You are Red (\033[31m●\033[0m). Green "
-                                 "(\033[32m●\033[0m) will respond after "
+                                 "You are Red (\033[31mo\033[0m). Green "
+                                 "(\033[32mo\033[0m) will respond after "
                                  "your move.");
         session_game_othello_prepare_next_turn(ctx);
         return;
@@ -2605,6 +2696,67 @@ static void session_game_start_othello(session_ctx_t *ctx)
     if (ctx == nullptr) {
         return;
     }
+    
+    // Ask for camouflage language first
+    session_send_system_line(
+        ctx,
+        "CHOOSE YOUR LOCKSCREEN LANGUAGE TO HIDE THE SCREEN ON YOUR OFFICE! "
+        "(c, cpp, java, go, js, ts, rust)");
+    char language_choice[16];
+    size_t length = 0U;
+    while (length + 1U < sizeof(language_choice)) {
+        char ch = '\0';
+        const int read_result = session_transport_read(ctx, &ch, 1, -1);
+        if (read_result <= 0) {
+            return;
+        }
+
+        if (ch == '\r' || ch == '\n') {
+            session_local_echo_char(ctx, '\n');
+            break;
+        }
+
+        if (ch == '\b' || (unsigned char)ch == 0x7fU) {
+            if (length > 0U) {
+                --length;
+                session_send_raw_text(ctx, "\b \b");
+            }
+            continue;
+        }
+
+        if ((unsigned char)ch < 0x20U) {
+            continue;
+        }
+
+        language_choice[length++] = ch;
+        session_local_echo_char(ctx, ch);
+    }
+    language_choice[length] = '\0';
+    trim_whitespace_inplace(language_choice);
+    for (size_t idx = 0U; language_choice[idx] != '\0'; ++idx) {
+        language_choice[idx] =
+            (char)tolower((unsigned char)language_choice[idx]);
+    }
+
+    if (language_choice[0] == '\0') {
+        session_send_system_line(ctx, "No language chosen. Defaulting to C.");
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "c");
+    } else if (strcmp(language_choice, "c") == 0 ||
+               strcmp(language_choice, "cpp") == 0 ||
+               strcmp(language_choice, "java") == 0 ||
+               strcmp(language_choice, "go") == 0 ||
+               strcmp(language_choice, "js") == 0 ||
+               strcmp(language_choice, "ts") == 0 ||
+               strcmp(language_choice, "rust") == 0) {
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "%s",
+                 language_choice);
+    } else {
+        session_send_system_line(ctx, "Invalid language. Defaulting to C.");
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "c");
+    }
 
     ctx->game.active = true;
     ctx->game.type = SESSION_GAME_OTHELLO;
@@ -2613,6 +2765,7 @@ static void session_game_start_othello(session_ctx_t *ctx)
     session_game_othello_reset_state(&ctx->game.othello);
     ctx->game.othello.awaiting_mode_selection = true;
     ctx->game.othello.player_turn = false;
+    session_send_system_line(ctx, "");
     session_send_system_line(
         ctx,
         "Choose Othello mode: type 'single' to play the AI or 'multi' to wait "
@@ -4274,6 +4427,20 @@ static void session_game_alpha_handle_line(session_ctx_t *ctx, const char *line)
         session_game_alpha_refresh_navigation(ctx);
         return;
     }
+    
+    // Handle camouflage toggle with 't' command
+    if (strcasecmp(command, "t") == 0) {
+        if (ctx->game.is_camouflaged) {
+            ctx->game.is_camouflaged = false;
+            ctx->game.saved_alpha_state = ctx->game.alpha;
+            session_game_alpha_refresh_navigation(ctx);
+        } else {
+            ctx->game.is_camouflaged = true;
+            ctx->game.saved_alpha_state = ctx->game.alpha;
+            session_game_show_camouflage(ctx);
+        }
+        return;
+    }
 
     if (strcasecmp(command, "lock") == 0 ||
         strcasecmp(command, "align lock") == 0) {
@@ -4407,13 +4574,76 @@ static void session_game_start_alpha(session_ctx_t *ctx)
             ctx, "Profile storage unavailable; cannot start the mission.");
         return;
     }
+    
+    // Ask for camouflage language first
+    session_send_system_line(
+        ctx,
+        "CHOOSE YOUR LOCKSCREEN LANGUAGE TO HIDE THE SCREEN ON YOUR OFFICE! "
+        "(c, cpp, java, go, js, ts, rust)");
+    char language_choice[16];
+    size_t length = 0U;
+    while (length + 1U < sizeof(language_choice)) {
+        char ch = '\0';
+        const int read_result = session_transport_read(ctx, &ch, 1, -1);
+        if (read_result <= 0) {
+            return;
+        }
+
+        if (ch == '\r' || ch == '\n') {
+            session_local_echo_char(ctx, '\n');
+            break;
+        }
+
+        if (ch == '\b' || (unsigned char)ch == 0x7fU) {
+            if (length > 0U) {
+                --length;
+                session_send_raw_text(ctx, "\b \b");
+            }
+            continue;
+        }
+
+        if ((unsigned char)ch < 0x20U) {
+            continue;
+        }
+
+        language_choice[length++] = ch;
+        session_local_echo_char(ctx, ch);
+    }
+    language_choice[length] = '\0';
+    trim_whitespace_inplace(language_choice);
+    for (size_t idx = 0U; language_choice[idx] != '\0'; ++idx) {
+        language_choice[idx] =
+            (char)tolower((unsigned char)language_choice[idx]);
+    }
+
+    if (language_choice[0] == '\0') {
+        session_send_system_line(ctx, "No language chosen. Defaulting to C.");
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "c");
+    } else if (strcmp(language_choice, "c") == 0 ||
+               strcmp(language_choice, "cpp") == 0 ||
+               strcmp(language_choice, "java") == 0 ||
+               strcmp(language_choice, "go") == 0 ||
+               strcmp(language_choice, "js") == 0 ||
+               strcmp(language_choice, "ts") == 0 ||
+               strcmp(language_choice, "rust") == 0) {
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "%s",
+                 language_choice);
+    } else {
+        session_send_system_line(ctx, "Invalid language. Defaulting to C.");
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "c");
+    }
 
     session_game_alpha_sync_from_save(ctx);
     alpha_centauri_game_state_t *state = &ctx->game.alpha;
     ctx->game.type = SESSION_GAME_ALPHA;
     ctx->game.active = true;
+    ctx->game.is_camouflaged = false;
     state->active = true;
-
+    
+    session_send_system_line(ctx, "");
     if (state->stage == 0U) {
         session_send_system_line(
             ctx,

@@ -3804,8 +3804,14 @@ static void session_channel_flush(session_ctx_t *ctx)
         return;
     }
 
-    // Telnet uses direct socket writes, no flush needed
+    // For Telnet connections, ensure TCP buffer is flushed immediately
     if (ctx->transport_kind == SESSION_TRANSPORT_TELNET) {
+        if (ctx->telnet_fd >= 0) {
+            // Disable Nagle's algorithm to force immediate send
+            // This ensures messages are delivered without buffering delay
+            int flag = 1;
+            setsockopt(ctx->telnet_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
+        }
         return;
     }
 

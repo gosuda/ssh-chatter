@@ -3821,6 +3821,9 @@ static void host_state_load(host_t *host)
 
     pthread_mutex_unlock(&host->lock);
     fclose(fp);
+    
+    // Clean up messages older than 3 days after loading state
+    host_history_cleanup_expired(host);
 }
 
 static void host_clear_rss_feed(rss_feed_t *feed)

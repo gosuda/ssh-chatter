@@ -2643,6 +2643,8 @@ void session_scrollback_reset_position(session_ctx_t *ctx)
     ctx->history_scroll_position = 0U;
     ctx->history_latest_notified = false;
     ctx->history_oldest_notified = false;
+    // Clear no_update flag when returning to latest messages
+    ctx->no_update = false;
 }
 
 static void session_history_record(session_ctx_t *ctx, const char *line)
@@ -2836,9 +2838,15 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
     bool at_oldest =
         (ctx->history_scroll_position == max_position && total > 0U);
 
+    // Set no_update flag when scrolling away from latest messages
     if (!at_latest) {
+        ctx->no_update = true;
         ctx->history_latest_notified = false;
+    } else {
+        // Clear no_update flag when back at latest
+        ctx->no_update = false;
     }
+    
     if (!at_oldest) {
         ctx->history_oldest_notified = false;
     }
@@ -2957,8 +2965,13 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
 
     bool at_latest = (ctx->history_scroll_position == 0U);
 
+    // Set no_update flag when scrolling away from latest messages
     if (!at_latest) {
+        ctx->no_update = true;
         ctx->history_latest_notified = false;
+    } else {
+        // Clear no_update flag when back at latest
+        ctx->no_update = false;
     }
 
     const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;

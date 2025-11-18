@@ -4814,20 +4814,33 @@ static void session_game_gonu_render(session_ctx_t *ctx)
     snprintf(title, sizeof(title), "=== %s ===", variant_name);
     session_send_system_line(ctx, title);
     
-    // Render board
+    // Use lowercase markers for Bakwi-gonu (wheel) variant
+    bool use_lowercase = (state->variant == GONU_VARIANT_BAKWI);
+    
+    // Render column headers
+    char header[SSH_CHATTER_MESSAGE_LIMIT] = {0};
+    size_t header_offset = 0U;
+    header_offset += (size_t)snprintf(header + header_offset, sizeof(header) - header_offset, "  ");
+    for (int col = 0; col < GONU_BOARD_SIZE; ++col) {
+        header_offset += (size_t)snprintf(header + header_offset, sizeof(header) - header_offset, " %c  ", 'A' + col);
+    }
+    session_send_system_line(ctx, header);
+    
+    // Render board with row numbers
     for (int row = 0; row < GONU_BOARD_SIZE; ++row) {
         char line[SSH_CHATTER_MESSAGE_LIMIT] = {0};
         size_t offset = 0U;
         
+        // Add row number
+        offset += (size_t)snprintf(line + offset, sizeof(line) - offset, "%d ", row);
+        
         for (int col = 0; col < GONU_BOARD_SIZE; ++col) {
             if (session_game_gonu_is_valid_position(state->variant, row, col)) {
-                char cell = ' ';
+                char cell = '_';  // Use underscore for empty valid positions
                 if (state->board[row][col] == GONU_CELL_PLAYER) {
-                    cell = 'Q';  // Player marker
+                    cell = use_lowercase ? 'q' : 'Q';  // Player marker
                 } else if (state->board[row][col] == GONU_CELL_AI) {
-                    cell = 'X';  // AI marker (same symbol, different context)
-                } else {
-                    cell = 'O';  // Empty position
+                    cell = use_lowercase ? 'x' : 'X';  // AI marker
                 }
                 
                 // Highlight selected piece
@@ -4853,7 +4866,7 @@ static void session_game_gonu_render(session_ctx_t *ctx)
     }
     
     if (state->player_turn && !state->game_over) {
-        session_send_system_line(ctx, "Your turn! Enter position as 'row,col' (e.g., '2,2')");
+        session_send_system_line(ctx, "Your turn! Enter position as 'row,col' (e.g., '2,C' or '2,2')");
     }
 }
 
@@ -5014,9 +5027,9 @@ static void session_game_gonu_ai_move(session_ctx_t *ctx)
         state->board[chosen_move.from_row][chosen_move.from_col] = GONU_CELL_EMPTY;
         state->board[chosen_move.to_row][chosen_move.to_col] = GONU_CELL_AI;
         char msg[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(msg, sizeof(msg), "AI moved from %d,%d to %d,%d", 
-                 chosen_move.from_row, chosen_move.from_col,
-                 chosen_move.to_row, chosen_move.to_col);
+        snprintf(msg, sizeof(msg), "AI moved from %d,%c to %d,%c", 
+                 chosen_move.from_row, 'A' + chosen_move.from_col,
+                 chosen_move.to_row, 'A' + chosen_move.to_col);
         session_send_system_line(ctx, msg);
     }
 }
@@ -5078,7 +5091,8 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx, const char *input
         session_send_system_line(ctx, msg);
         session_send_system_line(ctx, "");
         session_send_system_line(ctx, "Gonu started! Place your 3 pieces first.");
-        session_send_system_line(ctx, "O = empty position, Q = piece");
+        session_send_system_line(ctx, "_ = empty position, Q = your piece, X = AI piece");
+        session_send_system_line(ctx, "Use column letters (A-E) or numbers (0-4): e.g., '2,C' or '2,2'");
         session_send_system_line(ctx, "Press 't' to toggle camouflage screen.");
         session_game_gonu_render(ctx);
         return true;
@@ -5088,10 +5102,46 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx, const char *input
         return true;
     }
     
-    // Parse input as "row,col"
+    // Parse input as "row,col" where col can be a letter (A-E) or number (0-4)
     int row = -1, col = -1;
-    if (sscanf(input, "%d,%d", &row, &col) != 2) {
-        session_send_system_line(ctx, "Invalid input. Use format: row,col (e.g., '2,2')");
+    
+    // Try to find the comma
+    const char *comma = strchr(input, ',');
+    if (comma == nullptr) {
+        session_send_system_line(ctx, "Invalid input. Use format: row,col (e.g., '2,C' or '2,2')");
+        return true;
+    }
+    
+    // Parse row (before comma)
+    char row_str[16];
+    size_t row_len = (size_t)(comma - input);
+    if (row_len >= sizeof(row_str)) {
+        session_send_system_line(ctx, "Invalid row value.");
+        return true;
+    }
+    memcpy(row_str, input, row_len);
+    row_str[row_len] = '\0';
+    trim_whitespace_inplace(row_str);
+    row = atoi(row_str);
+    
+    // Parse column (after comma)
+    char col_str[16];
+    snprintf(col_str, sizeof(col_str), "%s", comma + 1);
+    trim_whitespace_inplace(col_str);
+    
+    // Check if column is a letter (A-E) or number
+    if (strlen(col_str) == 1 && ((col_str[0] >= 'A' && col_str[0] <= 'E') || 
+                                  (col_str[0] >= 'a' && col_str[0] <= 'e'))) {
+        // Convert letter to column number
+        char letter = (char)toupper((unsigned char)col_str[0]);
+        col = letter - 'A';
+    } else {
+        // Try to parse as number
+        col = atoi(col_str);
+    }
+    
+    if (row < 0 || row >= GONU_BOARD_SIZE || col < 0 || col >= GONU_BOARD_SIZE) {
+        session_send_system_line(ctx, "Invalid row or column value.");
         return true;
     }
     

@@ -2682,6 +2682,8 @@ static void session_game_tetris_handle_line(session_ctx_t *ctx,
 static void session_game_start_liargame(session_ctx_t *ctx);
 static void session_game_liar_present_round(session_ctx_t *ctx);
 static void session_game_liar_handle_line(session_ctx_t *ctx, const char *line);
+static bool session_game_gonu_handle_input(session_ctx_t *ctx,
+                                           const char *input);
 static void session_game_start_alpha(session_ctx_t *ctx);
 static void session_game_alpha_reset(session_ctx_t *ctx);
 static void session_game_alpha_prepare_navigation(session_ctx_t *ctx);

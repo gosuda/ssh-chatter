@@ -4611,6 +4611,8 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
             session_game_alpha_handle_line(ctx, normalized);
         } else if (ctx->game.type == SESSION_GAME_OTHELLO) {
             session_game_othello_handle_line(ctx, normalized);
+        } else if (ctx->game.type == SESSION_GAME_GONU) {
+            session_game_gonu_handle_input(ctx, normalized);
         }
         return;
     }

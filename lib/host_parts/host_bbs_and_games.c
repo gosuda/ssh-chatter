@@ -4370,6 +4370,473 @@ static void session_game_start_alpha(session_ctx_t *ctx)
     session_game_alpha_present_stage(ctx);
 }
 
+// Gonu (Korean traditional board game) implementation
+static void session_game_gonu_reset(gonu_game_state_t *state, gonu_variant_t variant)
+{
+    if (state == nullptr) {
+        return;
+    }
+    memset(state, 0, sizeof(*state));
+    state->variant = variant;
+    state->placement_phase = true;
+    state->player_turn = true;
+    state->player_pieces = 0U;
+    state->ai_pieces = 0U;
+    state->selected_row = -1;
+    state->selected_col = -1;
+    state->piece_selected = false;
+}
+
+static bool session_game_gonu_is_valid_position(gonu_variant_t variant, int row, int col)
+{
+    // Common center position valid for all variants
+    if (row == 2 && col == 2) {
+        return true;
+    }
+
+    switch (variant) {
+    case GONU_VARIANT_HOBAK: // Pumpkin - 3x3 grid pattern
+        if (row >= 1 && row <= 3 && col >= 1 && col <= 3) {
+            return true;
+        }
+        break;
+    case GONU_VARIANT_BAKWI: // Wheel - circular with center
+        // Center and cardinal directions
+        if ((row == 2 && (col == 0 || col == 4)) ||
+            ((row == 0 || row == 4) && col == 2)) {
+            return true;
+        }
+        // Diagonal positions
+        if ((row == 1 || row == 3) && (col == 1 || col == 3)) {
+            return true;
+        }
+        break;
+    case GONU_VARIANT_UMUL: // Well - 井 pattern
+        // Horizontal line
+        if (row == 2 && (col >= 0 && col <= 4)) {
+            return true;
+        }
+        // Vertical lines at left, center, right
+        if ((col == 0 || col == 2 || col == 4) && (row >= 0 && row <= 4)) {
+            return true;
+        }
+        break;
+    }
+    return false;
+}
+
+static bool session_game_gonu_is_connected(gonu_variant_t variant, int r1, int c1, int r2, int c2)
+{
+    if (!session_game_gonu_is_valid_position(variant, r1, c1) ||
+        !session_game_gonu_is_valid_position(variant, r2, c2)) {
+        return false;
+    }
+
+    int dr = r2 - r1;
+    int cr = c2 - c1;
+    
+    // Adjacent positions (horizontal, vertical, diagonal)
+    if ((dr == 0 && (cr == 1 || cr == -1)) ||  // Horizontal
+        (cr == 0 && (dr == 1 || dr == -1)) ||  // Vertical
+        ((dr == 1 || dr == -1) && (cr == 1 || cr == -1))) {  // Diagonal
+        
+        // For UMUL variant, only allow moves along井 pattern
+        if (variant == GONU_VARIANT_UMUL) {
+            // No diagonal moves in UMUL
+            if (dr != 0 && cr != 0) {
+                return false;
+            }
+            // Both must be on valid lines
+            return true;
+        }
+        return true;
+    }
+    
+    return false;
+}
+
+static bool session_game_gonu_check_win(const gonu_game_state_t *state, gonu_cell_t player)
+{
+    // Check for three in a row (horizontal, vertical, diagonal)
+    const int lines[][6] = {
+        // Rows
+        {1, 1, 1, 2, 1, 3},  // Top row
+        {2, 1, 2, 2, 2, 3},  // Middle row
+        {3, 1, 3, 2, 3, 3},  // Bottom row
+        // Columns
+        {1, 1, 2, 1, 3, 1},  // Left column
+        {1, 2, 2, 2, 3, 2},  // Middle column
+        {1, 3, 2, 3, 3, 3},  // Right column
+        // Diagonals
+        {1, 1, 2, 2, 3, 3},  // Top-left to bottom-right
+        {1, 3, 2, 2, 3, 1},  // Top-right to bottom-left
+    };
+
+    for (size_t i = 0U; i < sizeof(lines) / sizeof(lines[0]); ++i) {
+        int r1 = lines[i][0], c1 = lines[i][1];
+        int r2 = lines[i][2], c2 = lines[i][3];
+        int r3 = lines[i][4], c3 = lines[i][5];
+
+        if (session_game_gonu_is_valid_position(state->variant, r1, c1) &&
+            session_game_gonu_is_valid_position(state->variant, r2, c2) &&
+            session_game_gonu_is_valid_position(state->variant, r3, c3) &&
+            state->board[r1][c1] == player &&
+            state->board[r2][c2] == player &&
+            state->board[r3][c3] == player) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void session_game_gonu_render(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->game.type != SESSION_GAME_GONU) {
+        return;
+    }
+
+    gonu_game_state_t *state = &ctx->game.gonu;
+    
+    session_send_system_line(ctx, "");
+    const char *variant_name = "Gonu";
+    switch (state->variant) {
+    case GONU_VARIANT_HOBAK:
+        variant_name = "Hobak-gonu (Pumpkin)";
+        break;
+    case GONU_VARIANT_BAKWI:
+        variant_name = "Bakwi-gonu (Wheel)";
+        break;
+    case GONU_VARIANT_UMUL:
+        variant_name = "Umul-gonu (Well)";
+        break;
+    }
+    
+    char title[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(title, sizeof(title), "=== %s ===", variant_name);
+    session_send_system_line(ctx, title);
+    
+    // Render board
+    for (int row = 0; row < GONU_BOARD_SIZE; ++row) {
+        char line[SSH_CHATTER_MESSAGE_LIMIT] = {0};
+        size_t offset = 0U;
+        
+        for (int col = 0; col < GONU_BOARD_SIZE; ++col) {
+            if (session_game_gonu_is_valid_position(state->variant, row, col)) {
+                char cell = ' ';
+                if (state->board[row][col] == GONU_CELL_PLAYER) {
+                    cell = 'Q';  // Player marker
+                } else if (state->board[row][col] == GONU_CELL_AI) {
+                    cell = 'Q';  // AI marker (same symbol, different context)
+                } else {
+                    cell = 'O';  // Empty position
+                }
+                
+                // Highlight selected piece
+                if (state->piece_selected && state->selected_row == row && state->selected_col == col) {
+                    offset += (size_t)snprintf(line + offset, sizeof(line) - offset, "[%c] ", cell);
+                } else {
+                    offset += (size_t)snprintf(line + offset, sizeof(line) - offset, " %c  ", cell);
+                }
+            } else {
+                offset += (size_t)snprintf(line + offset, sizeof(line) - offset, "    ");
+            }
+        }
+        session_send_system_line(ctx, line);
+    }
+    
+    session_send_system_line(ctx, "");
+    
+    if (state->placement_phase) {
+        char msg[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(msg, sizeof(msg), "Placement phase - Player: %u/3, AI: %u/3",
+                 state->player_pieces, state->ai_pieces);
+        session_send_system_line(ctx, msg);
+    }
+    
+    if (state->player_turn && !state->game_over) {
+        session_send_system_line(ctx, "Your turn! Enter position as 'row,col' (e.g., '2,2')");
+    }
+}
+
+static void session_game_gonu_ai_move(session_ctx_t *ctx)
+{
+    gonu_game_state_t *state = &ctx->game.gonu;
+    
+    // Simple AI: Try to place or move pieces
+    if (state->placement_phase && state->ai_pieces < 3U) {
+        // Find empty valid position
+        for (int row = 0; row < GONU_BOARD_SIZE; ++row) {
+            for (int col = 0; col < GONU_BOARD_SIZE; ++col) {
+                if (session_game_gonu_is_valid_position(state->variant, row, col) &&
+                    state->board[row][col] == GONU_CELL_EMPTY) {
+                    state->board[row][col] = GONU_CELL_AI;
+                    state->ai_pieces++;
+                    char msg[SSH_CHATTER_MESSAGE_LIMIT];
+                    snprintf(msg, sizeof(msg), "AI placed piece at %d,%d", row, col);
+                    session_send_system_line(ctx, msg);
+                    
+                    if (state->ai_pieces == 3U && state->player_pieces == 3U) {
+                        state->placement_phase = false;
+                        session_send_system_line(ctx, "Placement complete! Now move your pieces.");
+                    }
+                    return;
+                }
+            }
+        }
+    } else {
+        // Movement phase: Find a piece and move it
+        for (int row = 0; row < GONU_BOARD_SIZE; ++row) {
+            for (int col = 0; col < GONU_BOARD_SIZE; ++col) {
+                if (state->board[row][col] == GONU_CELL_AI) {
+                    // Try to move to adjacent position
+                    for (int dr = -1; dr <= 1; ++dr) {
+                        for (int dc = -1; dc <= 1; ++dc) {
+                            int new_row = row + dr;
+                            int new_col = col + dc;
+                            
+                            if (session_game_gonu_is_connected(state->variant, row, col, new_row, new_col) &&
+                                state->board[new_row][new_col] == GONU_CELL_EMPTY) {
+                                state->board[row][col] = GONU_CELL_EMPTY;
+                                state->board[new_row][new_col] = GONU_CELL_AI;
+                                char msg[SSH_CHATTER_MESSAGE_LIMIT];
+                                snprintf(msg, sizeof(msg), "AI moved from %d,%d to %d,%d", 
+                                         row, col, new_row, new_col);
+                                session_send_system_line(ctx, msg);
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+static bool session_game_gonu_handle_input(session_ctx_t *ctx, const char *input)
+{
+    if (ctx == nullptr || input == nullptr || ctx->game.type != SESSION_GAME_GONU) {
+        return false;
+    }
+    
+    gonu_game_state_t *state = &ctx->game.gonu;
+    
+    if (state->game_over || !state->player_turn) {
+        return true;
+    }
+    
+    // Parse input as "row,col"
+    int row = -1, col = -1;
+    if (sscanf(input, "%d,%d", &row, &col) != 2) {
+        session_send_system_line(ctx, "Invalid input. Use format: row,col (e.g., '2,2')");
+        return true;
+    }
+    
+    if (!session_game_gonu_is_valid_position(state->variant, row, col)) {
+        session_send_system_line(ctx, "Invalid position for this board layout.");
+        return true;
+    }
+    
+    if (state->placement_phase) {
+        // Placement phase
+        if (state->board[row][col] != GONU_CELL_EMPTY) {
+            session_send_system_line(ctx, "Position already occupied.");
+            return true;
+        }
+        
+        state->board[row][col] = GONU_CELL_PLAYER;
+        state->player_pieces++;
+        
+        if (state->player_pieces == 3U && state->ai_pieces == 3U) {
+            state->placement_phase = false;
+            session_send_system_line(ctx, "Placement complete! Now move your pieces.");
+        }
+    } else {
+        // Movement phase
+        if (!state->piece_selected) {
+            // Select piece to move
+            if (state->board[row][col] != GONU_CELL_PLAYER) {
+                session_send_system_line(ctx, "Select your own piece first.");
+                return true;
+            }
+            state->selected_row = row;
+            state->selected_col = col;
+            state->piece_selected = true;
+            session_send_system_line(ctx, "Piece selected. Enter destination position.");
+            session_game_gonu_render(ctx);
+            return true;
+        } else {
+            // Move selected piece
+            if (state->board[row][col] != GONU_CELL_EMPTY) {
+                session_send_system_line(ctx, "Destination must be empty.");
+                state->piece_selected = false;
+                return true;
+            }
+            
+            if (!session_game_gonu_is_connected(state->variant, state->selected_row, 
+                                                state->selected_col, row, col)) {
+                session_send_system_line(ctx, "Cannot move there - not connected.");
+                state->piece_selected = false;
+                return true;
+            }
+            
+            // Execute move
+            state->board[state->selected_row][state->selected_col] = GONU_CELL_EMPTY;
+            state->board[row][col] = GONU_CELL_PLAYER;
+            state->piece_selected = false;
+        }
+    }
+    
+    // Check for win
+    if (session_game_gonu_check_win(state, GONU_CELL_PLAYER)) {
+        state->game_over = true;
+        session_game_gonu_render(ctx);
+        session_send_system_line(ctx, "Congratulations! You won!");
+        session_game_suspend(ctx, "");
+        return true;
+    }
+    
+    // AI turn
+    state->player_turn = false;
+    session_game_gonu_ai_move(ctx);
+    
+    if (session_game_gonu_check_win(state, GONU_CELL_AI)) {
+        state->game_over = true;
+        session_game_gonu_render(ctx);
+        session_send_system_line(ctx, "AI wins! Better luck next time.");
+        session_game_suspend(ctx, "");
+        return true;
+    }
+    
+    state->player_turn = true;
+    session_game_gonu_render(ctx);
+    return true;
+}
+
+static void session_game_start_gonu(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    
+    // Ask for camouflage language first
+    session_send_system_line(
+        ctx,
+        "CHOOSE YOUR LOCKSCREEN LANGUAGE TO HIDE THE SCREEN ON YOUR OFFICE! "
+        "(c, cpp, java, go, js, ts, rust)");
+    char language_choice[16];
+    size_t length = 0U;
+    while (length + 1U < sizeof(language_choice)) {
+        char ch = '\0';
+        const int read_result = session_transport_read(ctx, &ch, 1, -1);
+        if (read_result <= 0) {
+            return;
+        }
+
+        if (ch == '\r' || ch == '\n') {
+            session_local_echo_char(ctx, '\n');
+            break;
+        }
+
+        if (ch == '\b' || (unsigned char)ch == 0x7fU) {
+            if (length > 0U) {
+                --length;
+                session_send_raw_text(ctx, "\b \b");
+            }
+            continue;
+        }
+
+        if ((unsigned char)ch < 0x20U) {
+            continue;
+        }
+
+        language_choice[length++] = ch;
+        session_local_echo_char(ctx, ch);
+    }
+    language_choice[length] = '\0';
+    trim_whitespace_inplace(language_choice);
+    for (size_t idx = 0U; language_choice[idx] != '\0'; ++idx) {
+        language_choice[idx] =
+            (char)tolower((unsigned char)language_choice[idx]);
+    }
+
+    if (language_choice[0] == '\0') {
+        session_send_system_line(ctx, "No language chosen. Defaulting to C.");
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "c");
+    } else if (strcmp(language_choice, "c") == 0 ||
+               strcmp(language_choice, "cpp") == 0 ||
+               strcmp(language_choice, "java") == 0 ||
+               strcmp(language_choice, "go") == 0 ||
+               strcmp(language_choice, "js") == 0 ||
+               strcmp(language_choice, "ts") == 0 ||
+               strcmp(language_choice, "rust") == 0) {
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "%s",
+                 language_choice);
+    } else {
+        session_send_system_line(ctx, "Invalid language. Defaulting to C.");
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "c");
+    }
+    
+    // Now ask for game variant
+    session_send_system_line(ctx, "");
+    session_send_system_line(ctx, "Choose Gonu variant:");
+    session_send_system_line(ctx, "1. Hobak-gonu (Pumpkin) - 3x3 grid");
+    session_send_system_line(ctx, "2. Bakwi-gonu (Wheel) - circular pattern");
+    session_send_system_line(ctx, "3. Umul-gonu (Well) - 井 pattern");
+    session_send_system_line(ctx, "Enter 1, 2, or 3:");
+    
+    char variant_choice[16];
+    length = 0U;
+    while (length + 1U < sizeof(variant_choice)) {
+        char ch = '\0';
+        const int read_result = session_transport_read(ctx, &ch, 1, -1);
+        if (read_result <= 0) {
+            return;
+        }
+
+        if (ch == '\r' || ch == '\n') {
+            session_local_echo_char(ctx, '\n');
+            break;
+        }
+
+        if (ch == '\b' || (unsigned char)ch == 0x7fU) {
+            if (length > 0U) {
+                --length;
+                session_send_raw_text(ctx, "\b \b");
+            }
+            continue;
+        }
+
+        if ((unsigned char)ch < 0x20U) {
+            continue;
+        }
+
+        variant_choice[length++] = ch;
+        session_local_echo_char(ctx, ch);
+    }
+    variant_choice[length] = '\0';
+    trim_whitespace_inplace(variant_choice);
+    
+    gonu_variant_t variant = GONU_VARIANT_HOBAK;
+    if (strcmp(variant_choice, "2") == 0) {
+        variant = GONU_VARIANT_BAKWI;
+    } else if (strcmp(variant_choice, "3") == 0) {
+        variant = GONU_VARIANT_UMUL;
+    }
+    
+    session_game_gonu_reset(&ctx->game.gonu, variant);
+    ctx->game.type = SESSION_GAME_GONU;
+    ctx->game.active = true;
+    
+    session_send_system_line(ctx, "");
+    session_send_system_line(ctx, "Gonu started! Place your 3 pieces first.");
+    session_send_system_line(ctx, "O = empty position, Q = piece");
+    session_send_system_line(ctx, "Press 't' to toggle camouflage screen.");
+    session_game_gonu_render(ctx);
+}
+
 static void session_handle_game(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr) {
@@ -4384,7 +4851,7 @@ static void session_handle_game(session_ctx_t *ctx, const char *arguments)
 
     if (arguments == nullptr) {
         session_send_system_line(
-            ctx, "Usage: /game <tetris|liargame|alpha|othello>");
+            ctx, "Usage: /game <tetris|liargame|alpha|othello|gonu>");
         return;
     }
 
@@ -4393,7 +4860,7 @@ static void session_handle_game(session_ctx_t *ctx, const char *arguments)
     trim_whitespace_inplace(working);
     if (working[0] == '\0') {
         session_send_system_line(
-            ctx, "Usage: /game <tetris|liargame|alpha|othello>");
+            ctx, "Usage: /game <tetris|liargame|alpha|othello|gonu>");
         return;
     }
 
@@ -4410,9 +4877,11 @@ static void session_handle_game(session_ctx_t *ctx, const char *arguments)
         session_game_start_alpha(ctx);
     } else if (strcmp(working, "othello") == 0) {
         session_game_start_othello(ctx);
+    } else if (strcmp(working, "gonu") == 0) {
+        session_game_start_gonu(ctx);
     } else {
         session_send_system_line(ctx, "Unknown game. Available options: "
-                                      "tetris, liargame, alpha, othello.");
+                                      "tetris, liargame, alpha, othello, gonu.");
     }
 }
 

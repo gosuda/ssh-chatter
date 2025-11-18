@@ -582,6 +582,9 @@ typedef struct session_ctx {
     bool input_escape_active;
     char input_escape_buffer[8];
     size_t input_escape_length;
+    /* Multi-byte character buffer for CP949, CP932, CP936, etc. */
+    unsigned char multibyte_input_buffer[4];
+    size_t multibyte_input_length;
     bool bracket_paste_active;
     char client_ip[SSH_CHATTER_IP_LEN];
     char client_banner[SSH_CHATTER_CLIENT_BANNER_LEN];

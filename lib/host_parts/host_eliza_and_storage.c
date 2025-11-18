@@ -4864,6 +4864,8 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
                 buffer[written] = '\0';
                 session_channel_write(ctx, "\b \b", 3U);
             }
+            /* Also reset multi-byte buffer on backspace */
+            ctx->multibyte_input_length = 0U;
             continue;
         }
 
@@ -4876,17 +4878,55 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
             continue;
         }
 
-        char encoded[4];
-        size_t encoded_len = 1U;
+        char encoded[8];
+        size_t encoded_len = 0U;
+        
         if (ctx->cp437_input_enabled) {
-            encoded_len =
-                session_codepage_byte_to_utf8(ctx->active_codepage, byte, encoded, sizeof(encoded));
-            if (encoded_len == 0U) {
-                encoded[0] = '?';
-                encoded_len = 1U;
+            /* For multi-byte encodings (CP949, CP932, CP936), buffer bytes */
+            bool is_multibyte_codepage = 
+                (ctx->active_codepage == SESSION_CODEPAGE_CP949 ||
+                 ctx->active_codepage == SESSION_CODEPAGE_CP932 ||
+                 ctx->active_codepage == SESSION_CODEPAGE_CP936);
+            
+            if (is_multibyte_codepage) {
+                /* Add byte to buffer */
+                if (ctx->multibyte_input_length < sizeof(ctx->multibyte_input_buffer)) {
+                    ctx->multibyte_input_buffer[ctx->multibyte_input_length++] = byte;
+                }
+                
+                /* Try to convert the buffered bytes */
+                encoded_len = session_codepage_to_utf8(
+                    ctx->active_codepage,
+                    ctx->multibyte_input_buffer,
+                    ctx->multibyte_input_length,
+                    encoded,
+                    sizeof(encoded));
+                
+                if (encoded_len > 0U) {
+                    /* Successful conversion, reset buffer */
+                    ctx->multibyte_input_length = 0U;
+                } else if (ctx->multibyte_input_length >= 2U) {
+                    /* Buffer full but no conversion - emit '?' and reset */
+                    encoded[0] = '?';
+                    encoded_len = 1U;
+                    ctx->multibyte_input_length = 0U;
+                } else {
+                    /* Need more bytes, continue reading */
+                    continue;
+                }
+            } else {
+                /* Single-byte codepage - use old method */
+                encoded_len = session_codepage_byte_to_utf8(
+                    ctx->active_codepage, byte, encoded, sizeof(encoded));
+                if (encoded_len == 0U) {
+                    encoded[0] = '?';
+                    encoded_len = 1U;
+                }
             }
         } else {
+            /* UTF-8 mode - pass through */
             encoded[0] = (char)byte;
+            encoded_len = 1U;
         }
 
         if (written + encoded_len >= length) {

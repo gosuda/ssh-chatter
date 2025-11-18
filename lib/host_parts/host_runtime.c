@@ -2749,6 +2749,8 @@ static void session_reset_for_retry(session_ctx_t *ctx)
     ctx->input_escape_active = false;
     ctx->input_escape_length = 0U;
     ctx->input_escape_buffer[0] = '\0';
+    ctx->multibyte_input_length = 0U;
+    memset(ctx->multibyte_input_buffer, 0, sizeof(ctx->multibyte_input_buffer));
     ctx->bbs_post_pending = false;
     ctx->pending_bbs_title[0] = '\0';
     ctx->pending_bbs_body[0] = '\0';

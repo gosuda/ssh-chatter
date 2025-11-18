@@ -2389,6 +2389,7 @@ static size_t session_utf8_prev_char_len(const char *buffer, size_t length);
 static int session_utf8_char_width(const char *bytes, size_t length);
 static bool host_history_record_system(host_t *host, const char *message,
                                        chat_history_entry_t *stored_entry);
+static void host_history_cleanup_expired(host_t *host);
 static void session_send_history_entry(session_ctx_t *ctx,
                                        const chat_history_entry_t *entry);
 static void session_deliver_outgoing_message(session_ctx_t *ctx,
@@ -4043,6 +4044,10 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
                 if (from != nullptr && member == from) {
                     continue;
                 }
+                // Skip users who have the no_update flag set (scrolled back in history)
+                if (member->no_update) {
+                    continue;
+                }
                 targets[target_count++] = member;
             }
         }
@@ -4119,6 +4124,10 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
                 if (member == nullptr || member->channel == nullptr) {
                     continue;
                 }
+                // Skip users who have the no_update flag set (scrolled back in history)
+                if (member->no_update) {
+                    continue;
+                }
                 targets[target_count++] = member;
             }
         }
@@ -4185,6 +4194,10 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                     continue;
                 }
                 if (from != nullptr && member == from) {
+                    continue;
+                }
+                // Skip users who have the no_update flag set (scrolled back in history)
+                if (member->no_update) {
                     continue;
                 }
                 targets[target_count++] = member;
@@ -5415,6 +5428,60 @@ static bool host_history_record_system(host_t *host, const char *message,
     }
     host_notify_external_clients(host, &notification_entry);
     return true;
+}
+
+static void host_history_cleanup_expired(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    // Get current UTC time
+    time_t now = time(nullptr);
+    if (now == (time_t)-1) {
+        return;
+    }
+
+    // Calculate expiration threshold: 3 days ago
+    const time_t expiration_threshold = now - (3 * 24 * 60 * 60);
+
+    pthread_mutex_lock(&host->lock);
+    
+    if (host->history == nullptr || host->history_count == 0U) {
+        pthread_mutex_unlock(&host->lock);
+        return;
+    }
+
+    // Count how many messages to keep
+    size_t write_idx = 0U;
+    size_t removed_count = 0U;
+    
+    for (size_t idx = 0U; idx < host->history_count; ++idx) {
+        chat_history_entry_t *entry = &host->history[idx];
+        
+        // Keep messages that are newer than the threshold
+        if (entry->created_at >= expiration_threshold) {
+            if (write_idx != idx) {
+                host->history[write_idx] = host->history[idx];
+            }
+            write_idx++;
+        } else {
+            removed_count++;
+        }
+    }
+    
+    // Update the count
+    if (removed_count > 0U) {
+        host->history_count = write_idx;
+        // Also update history_total to reflect the removal
+        if (host->history_total > removed_count) {
+            host->history_total -= removed_count;
+        } else {
+            host->history_total = 0U;
+        }
+    }
+    
+    pthread_mutex_unlock(&host->lock);
 }
 
 static bool host_history_apply_reaction(host_t *host, uint64_t message_id,

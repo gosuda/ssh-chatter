@@ -643,6 +643,7 @@ typedef struct session_ctx {
     const session_ops_t *ops;
     bool history_oldest_notified;
     bool history_latest_notified;
+    bool no_update; // Flag to prevent automatic message updates when scrolling history
     // Output buffering to prevent flickering
     bool output_buffering_enabled;
     char output_buffer[SSH_CHATTER_OUTPUT_BUFFER_SIZE];

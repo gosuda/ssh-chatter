@@ -49,4 +49,29 @@ session_codepage_t session_codepage_for_language(int language);
  */
 const char *session_codepage_name(session_codepage_t codepage);
 
+/**
+ * Get the iconv encoding name for a code page
+ * 
+ * @param codepage The code page
+ * @return String encoding name for use with iconv, or NULL for UTF-8
+ */
+const char *session_codepage_iconv_name(session_codepage_t codepage);
+
+/**
+ * Convert bytes from a code page to UTF-8 using iconv
+ * This handles multi-byte sequences properly (e.g., CP949, CP932, CP936)
+ * 
+ * @param codepage The source code page
+ * @param input Input bytes in the specified code page
+ * @param input_length Number of input bytes
+ * @param output Buffer to store UTF-8 output
+ * @param output_capacity Size of output buffer
+ * @return Number of bytes written to output, or 0 on error
+ */
+size_t session_codepage_to_utf8(session_codepage_t codepage,
+                                 const unsigned char *input,
+                                 size_t input_length,
+                                 char *output,
+                                 size_t output_capacity);
+
 #endif /* SSH_CHATTER_CODEPAGE_H */

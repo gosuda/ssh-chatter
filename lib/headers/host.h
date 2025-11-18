@@ -304,6 +304,7 @@ typedef enum session_game_type {
     SESSION_GAME_LIARGAME,
     SESSION_GAME_ALPHA,
     SESSION_GAME_OTHELLO,
+    SESSION_GAME_GONU,
 } session_game_type_t;
 
 typedef struct tetris_game_state {
@@ -411,6 +412,34 @@ typedef struct alpha_centauri_game_state {
     alpha_waypoint_t final_waypoint;
 } alpha_centauri_game_state_t;
 
+typedef enum gonu_variant {
+    GONU_VARIANT_HOBAK = 0,  // 호박고누 - Pumpkin Gonu (3x3 grid)
+    GONU_VARIANT_BAKWI,      // 바퀴고누 - Wheel Gonu (circular pattern)
+    GONU_VARIANT_UMUL,       // 우물고누 - Well Gonu (井字 pattern)
+} gonu_variant_t;
+
+typedef enum gonu_cell {
+    GONU_CELL_EMPTY = 0,
+    GONU_CELL_PLAYER,
+    GONU_CELL_AI,
+} gonu_cell_t;
+
+#define GONU_BOARD_SIZE 5
+
+typedef struct gonu_game_state {
+    gonu_variant_t variant;
+    uint8_t board[GONU_BOARD_SIZE][GONU_BOARD_SIZE];
+    bool player_turn;
+    bool game_over;
+    bool placement_phase;    // True during initial piece placement
+    unsigned player_pieces;
+    unsigned ai_pieces;
+    int selected_row;
+    int selected_col;
+    bool piece_selected;
+    bool awaiting_variant_selection;
+} gonu_game_state_t;
+
 typedef struct session_game_state {
     bool active;
     session_game_type_t type;
@@ -420,10 +449,12 @@ typedef struct session_game_state {
     liar_game_state_t saved_liar_state;
     alpha_centauri_game_state_t saved_alpha_state;
     othello_game_state_t saved_othello_state;
+    gonu_game_state_t saved_gonu_state;
     char chosen_camouflage_language[16];
     liar_game_state_t liar;
     alpha_centauri_game_state_t alpha;
     othello_game_state_t othello;
+    gonu_game_state_t gonu;
     uint64_t rng_state;
     bool rng_seeded;
 } session_game_state_t;
@@ -456,6 +487,7 @@ typedef enum session_ui_language {
     SESSION_UI_LANGUAGE_RU,
     SESSION_UI_LANGUAGE_DE,
     SESSION_UI_LANGUAGE_FR,
+    SESSION_UI_LANGUAGE_PL,
     SESSION_UI_LANGUAGE_COUNT
 } session_ui_language_t;
 

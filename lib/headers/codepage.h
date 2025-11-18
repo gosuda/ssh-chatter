@@ -1,0 +1,52 @@
+#ifndef SSH_CHATTER_CODEPAGE_H
+#define SSH_CHATTER_CODEPAGE_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+/**
+ * Supported code pages for retro terminal encoding
+ */
+typedef enum session_codepage {
+    SESSION_CODEPAGE_UTF8 = 0,   /* UTF-8 (default, no conversion) */
+    SESSION_CODEPAGE_CP437,      /* English/Western (IBM PC) */
+    SESSION_CODEPAGE_CP949,      /* Korean (Unified Hangul Code) */
+    SESSION_CODEPAGE_CP932,      /* Japanese (Shift-JIS) */
+    SESSION_CODEPAGE_CP936,      /* Simplified Chinese (GBK) */
+    SESSION_CODEPAGE_CP1251,     /* Russian (Cyrillic) */
+    SESSION_CODEPAGE_CP850,      /* Western European (DOS Latin 1) */
+    SESSION_CODEPAGE_CP852,      /* Central European (DOS Latin 2) */
+    SESSION_CODEPAGE_COUNT
+} session_codepage_t;
+
+/**
+ * Convert a single byte from the specified code page to UTF-8
+ * 
+ * @param codepage The source code page
+ * @param byte The byte to convert
+ * @param output Buffer to store UTF-8 output (must be at least 4 bytes)
+ * @param capacity Size of output buffer
+ * @return Number of bytes written to output, or 0 on error
+ */
+size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
+                                     unsigned char byte,
+                                     char *output,
+                                     size_t capacity);
+
+/**
+ * Get the default code page for a UI language
+ * 
+ * @param language The UI language
+ * @return The appropriate code page for that language
+ */
+session_codepage_t session_codepage_for_language(int language);
+
+/**
+ * Get the name of a code page
+ * 
+ * @param codepage The code page
+ * @return String name of the code page
+ */
+const char *session_codepage_name(session_codepage_t codepage);
+
+#endif /* SSH_CHATTER_CODEPAGE_H */

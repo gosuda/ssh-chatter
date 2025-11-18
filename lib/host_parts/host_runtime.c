@@ -12,6 +12,7 @@ static session_ctx_t *session_create(void)
 #endif
     if (ctx != nullptr) {
         ctx->user.is_authenticated = false;
+        ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
     }
     return ctx;
 }
@@ -293,11 +294,13 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
             mode = "forced off";
         }
 
+        const char *codepage_name = session_codepage_name(ctx->active_codepage);
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(message, sizeof(message),
-                 "Retro encoding mode: %s (input: %s, output: %s).", mode,
-                 ctx->cp437_input_enabled ? "CP437" : "UTF-8",
-                 ctx->prefer_cp437_output ? "CP437" : "UTF-8");
+                 "Retro encoding mode: %s (codepage: %s, input: %s, output: %s).", mode,
+                 codepage_name,
+                 ctx->cp437_input_enabled ? "legacy" : "UTF-8",
+                 ctx->prefer_cp437_output ? "legacy" : "UTF-8");
         session_send_system_line(ctx, message);
         session_send_system_line(
             ctx,
@@ -324,25 +327,32 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
             session_ui_language_t new_lang = session_ui_language_from_code(lang_code);
             if (new_lang != SESSION_UI_LANGUAGE_EN || strcasecmp(lang_code, "en") == 0) {
                 ctx->ui_language = new_lang;
+                /* Set the appropriate code page for the language */
+                ctx->active_codepage = session_codepage_for_language(new_lang);
                 if (ctx->owner != nullptr) {
                     host_store_ui_language(ctx->owner, ctx);
                 }
             }
+        } else {
+            /* No language specified, use code page for current UI language */
+            ctx->active_codepage = session_codepage_for_language(ctx->ui_language);
         }
 
         ctx->cp437_override = SESSION_CP437_OVERRIDE_FORCE_ON;
         session_refresh_output_encoding(ctx);
 
         char message[SSH_CHATTER_MESSAGE_LIMIT];
+        const char *codepage_name = session_codepage_name(ctx->active_codepage);
         if (lang_arg[0] != '\0') {
             snprintf(message, sizeof(message),
-                     "Retro encoding enabled with language %s. CP437 input "
-                     "and output are forced on.",
-                     lang_arg);
+                     "Retro encoding enabled with language %s (%s). "
+                     "Legacy code page input and output are forced on.",
+                     lang_arg, codepage_name);
         } else {
             snprintf(message, sizeof(message),
-                     "Retro encoding enabled. CP437 input and output are "
-                     "forced on.");
+                     "Retro encoding enabled (%s). "
+                     "Legacy code page input and output are forced on.",
+                     codepage_name);
         }
         session_send_system_line(ctx, message);
         return;
@@ -3054,8 +3064,10 @@ static void *host_telnet_thread(void *arg)
         session_ui_language_t geo_language = session_client_geo_language(ctx);
         if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
             ctx->ui_language = geo_language;
+            ctx->active_codepage = session_codepage_for_language(geo_language);
         } else {
             ctx->ui_language = SESSION_UI_LANGUAGE_KO;
+            ctx->active_codepage = session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
         }
 
         pthread_mutex_lock(&host->lock);
@@ -3996,8 +4008,8 @@ static void *session_thread(void *arg)
             char encoded[4];
             size_t encoded_len = 1U;
             if (ctx->cp437_input_enabled) {
-                encoded_len = session_cp437_byte_to_utf8(
-                    (unsigned char)ch, encoded, sizeof(encoded));
+                encoded_len = session_codepage_byte_to_utf8(
+                    ctx->active_codepage, (unsigned char)ch, encoded, sizeof(encoded));
                 if (encoded_len == 0U) {
                     encoded[0] = '?';
                     encoded_len = 1U;
@@ -5436,8 +5448,10 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 session_client_geo_language(ctx);
             if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
                 ctx->ui_language = geo_language;
+                ctx->active_codepage = session_codepage_for_language(geo_language);
             } else {
                 ctx->ui_language = SESSION_UI_LANGUAGE_KO;
+                ctx->active_codepage = session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
             }
             if (client_banner != nullptr && client_banner[0] != '\0') {
                 snprintf(ctx->client_banner, sizeof(ctx->client_banner), "%s",

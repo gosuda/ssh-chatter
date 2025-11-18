@@ -4257,8 +4257,19 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         // Flush the channel to ensure immediate delivery
         session_channel_flush(member);
 
-        // For telnet, always refresh input line to ensure messages are visible
-        // For SSH, only refresh when at bottom of history
+        // Auto-scroll all users to the latest message when new content arrives
+        // This ensures everyone sees new messages immediately, unless they're actively
+        // scrolled back viewing history
+        if (member->history_scroll_position > 0U) {
+            // Reset scroll position to show the latest messages
+            member->history_scroll_position = 0U;
+            member->history_latest_notified = false;
+            member->history_oldest_notified = false;
+        }
+
+        // Refresh input line to display the message and prompt
+        // For telnet, always refresh to ensure messages are visible
+        // For SSH, refresh after auto-scrolling to latest
         if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
             member->history_scroll_position == 0U) {
             session_refresh_input_line(member);

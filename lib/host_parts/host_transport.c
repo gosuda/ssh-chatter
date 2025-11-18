@@ -2018,6 +2018,7 @@ static void session_output_unlock(session_ctx_t *ctx);
 static bool session_channel_wait_writable(session_ctx_t *ctx, int timeout_ms);
 static void session_channel_log_write_failure(session_ctx_t *ctx,
                                               const char *reason);
+static void session_channel_flush(session_ctx_t *ctx);
 static int session_transport_read(session_ctx_t *ctx, void *buffer,
                                   size_t length, int timeout_ms);
 static bool session_transport_is_open(const session_ctx_t *ctx);
@@ -4070,6 +4071,9 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             session_send_system_line(member, message);
         }
 
+        // Flush the channel to ensure immediate delivery
+        session_channel_flush(member);
+
         if (member->history_scroll_position == 0U) {
             session_refresh_input_line(member);
         }
@@ -4113,6 +4117,10 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
         session_send_caption_line(member, message);
+        
+        // Flush the channel to ensure immediate delivery
+        session_channel_flush(member);
+        
         if (member->history_scroll_position == 0U) {
             session_refresh_input_line(member);
         }
@@ -4204,6 +4212,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             // System message
             session_send_plain_line(member, entry->message);
         }
+
+        // Flush the channel to ensure immediate delivery
+        session_channel_flush(member);
 
         if (member->history_scroll_position == 0U) {
             session_refresh_input_line(member);

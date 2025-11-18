@@ -4074,7 +4074,10 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         // Flush the channel to ensure immediate delivery
         session_channel_flush(member);
 
-        if (member->history_scroll_position == 0U) {
+        // For telnet, always refresh input line to ensure messages are visible
+        // For SSH, only refresh when at bottom of history
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
+            member->history_scroll_position == 0U) {
             session_refresh_input_line(member);
         }
     }
@@ -4121,7 +4124,10 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
         // Flush the channel to ensure immediate delivery
         session_channel_flush(member);
         
-        if (member->history_scroll_position == 0U) {
+        // For telnet, always refresh input line to ensure messages are visible
+        // For SSH, only refresh when at bottom of history
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
+            member->history_scroll_position == 0U) {
             session_refresh_input_line(member);
         }
     }
@@ -4216,7 +4222,10 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         // Flush the channel to ensure immediate delivery
         session_channel_flush(member);
 
-        if (member->history_scroll_position == 0U) {
+        // For telnet, always refresh input line to ensure messages are visible
+        // For SSH, only refresh when at bottom of history
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
+            member->history_scroll_position == 0U) {
             session_refresh_input_line(member);
         }
     }

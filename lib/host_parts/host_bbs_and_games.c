@@ -1502,6 +1502,8 @@ static void session_game_othello_reset_state(othello_game_state_t *state)
     state->last_ai_row = -1;
     state->last_ai_col = -1;
     state->awaiting_mode_selection = false;
+    state->awaiting_difficulty_selection = false;
+    state->difficulty_level = 5U;  // Default to hardest
     state->multiplayer = false;
     state->awaiting_opponent = false;
     state->slot_index = -1;
@@ -2325,26 +2327,57 @@ static void session_game_othello_handle_ai_turn(session_ctx_t *ctx)
     }
 
     session_game_seed_rng(ctx);
-
-    int best_flips = -1;
-    size_t best_indexes[SSH_CHATTER_OTHELLO_MAX_MOVES];
-    size_t best_count = 0U;
-    for (unsigned idx = 0U; idx < move_count; ++idx) {
-        if (moves[idx].flipped > best_flips) {
-            best_flips = moves[idx].flipped;
-            best_indexes[0] = idx;
-            best_count = 1U;
-        } else if (moves[idx].flipped == best_flips &&
-                   best_count < SSH_CHATTER_OTHELLO_MAX_MOVES) {
-            best_indexes[best_count++] = idx;
+    
+    othello_move_t chosen;
+    unsigned difficulty = state->difficulty_level;
+    
+    // Difficulty-based AI decision making
+    if (difficulty == 1U) {
+        // Level 1: Completely random moves
+        size_t random_idx = (size_t)session_game_random_range(ctx, (int)move_count);
+        chosen = moves[random_idx];
+    } else {
+        // Find best moves for other difficulty levels
+        int best_flips = -1;
+        size_t best_indexes[SSH_CHATTER_OTHELLO_MAX_MOVES];
+        size_t best_count = 0U;
+        for (unsigned idx = 0U; idx < move_count; ++idx) {
+            if (moves[idx].flipped > best_flips) {
+                best_flips = moves[idx].flipped;
+                best_indexes[0] = idx;
+                best_count = 1U;
+            } else if (moves[idx].flipped == best_flips &&
+                       best_count < SSH_CHATTER_OTHELLO_MAX_MOVES) {
+                best_indexes[best_count++] = idx;
+            }
+        }
+        
+        // Decide whether to make a good move or random move based on difficulty
+        bool make_good_move = true;
+        if (difficulty == 2U) {
+            // Level 2: 60% good moves, 40% random
+            make_good_move = (session_game_random_range(ctx, 100) < 60);
+        } else if (difficulty == 3U) {
+            // Level 3: 80% good moves, 20% random
+            make_good_move = (session_game_random_range(ctx, 100) < 80);
+        } else if (difficulty == 4U) {
+            // Level 4: 95% good moves, 5% random
+            make_good_move = (session_game_random_range(ctx, 100) < 95);
+        }
+        // Level 5: Always good moves (make_good_move stays true)
+        
+        if (make_good_move) {
+            size_t choice_index = 0U;
+            if (best_count > 1U) {
+                choice_index = (size_t)session_game_random_range(ctx, (int)best_count);
+            }
+            chosen = moves[best_indexes[choice_index]];
+        } else {
+            // Make a random move
+            size_t random_idx = (size_t)session_game_random_range(ctx, (int)move_count);
+            chosen = moves[random_idx];
         }
     }
-
-    size_t choice_index = 0U;
-    if (best_count > 1U) {
-        choice_index = (size_t)session_game_random_range(ctx, (int)best_count);
-    }
-    othello_move_t chosen = moves[best_indexes[choice_index]];
 
     session_game_othello_apply_move(state, chosen.row, chosen.col,
                                     OTHELLO_CELL_GREEN);
@@ -2390,14 +2423,16 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
 
     if (state->awaiting_mode_selection) {
         if (strcmp(working, "single") == 0 || strcmp(working, "s") == 0) {
-            session_game_othello_reset_state(state);
-            state->player_number = 1U;
-            session_game_othello_render(ctx);
-            session_send_system_line(ctx,
-                                     "You are Red (\033[31m●\033[0m). Green "
-                                     "(\033[32m●\033[0m) will respond after "
-                                     "your move.");
-            session_game_othello_prepare_next_turn(ctx);
+            state->awaiting_mode_selection = false;
+            state->awaiting_difficulty_selection = true;
+            session_send_system_line(ctx, "");
+            session_send_system_line(ctx, "Choose difficulty level (1-5):");
+            session_send_system_line(ctx, "  1 - Very Easy (random moves)");
+            session_send_system_line(ctx, "  2 - Easy (60% good moves)");
+            session_send_system_line(ctx, "  3 - Medium (80% good moves)");
+            session_send_system_line(ctx, "  4 - Hard (95% good moves)");
+            session_send_system_line(ctx, "  5 - Expert (always best moves)");
+            session_send_system_line(ctx, "Type a number 1-5:");
         } else if (strcmp(working, "multi") == 0 || strcmp(working, "m") == 0) {
             if (ctx->owner == nullptr) {
                 session_send_system_line(
@@ -2457,6 +2492,32 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
             session_send_system_line(
                 ctx, "Type 'single' or 'multi' to choose how to play.");
         }
+        return;
+    }
+    
+    if (state->awaiting_difficulty_selection) {
+        int difficulty = atoi(working);
+        if (difficulty < 1 || difficulty > 5) {
+            session_send_system_line(ctx, "Invalid difficulty. Please enter a number between 1 and 5.");
+            return;
+        }
+        
+        session_game_othello_reset_state(state);
+        state->difficulty_level = (unsigned)difficulty;
+        state->player_number = 1U;
+        state->awaiting_difficulty_selection = false;
+        
+        char msg[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(msg, sizeof(msg), "Difficulty set to %d. Good luck!", difficulty);
+        session_send_system_line(ctx, msg);
+        session_send_system_line(ctx, "");
+        
+        session_game_othello_render(ctx);
+        session_send_system_line(ctx,
+                                 "You are Red (\033[31m●\033[0m). Green "
+                                 "(\033[32m●\033[0m) will respond after "
+                                 "your move.");
+        session_game_othello_prepare_next_turn(ctx);
         return;
     }
 
@@ -4385,6 +4446,14 @@ static void session_game_gonu_reset(gonu_game_state_t *state, gonu_variant_t var
     state->selected_row = -1;
     state->selected_col = -1;
     state->piece_selected = false;
+    state->awaiting_variant_selection = false;
+    state->awaiting_mode_selection = false;
+    state->awaiting_difficulty_selection = false;
+    state->difficulty_level = 5U;  // Default to hardest
+    state->multiplayer = false;
+    state->awaiting_opponent = false;
+    state->slot_index = -1;
+    state->player_number = 0U;
 }
 
 static bool session_game_gonu_is_valid_position(gonu_variant_t variant, int row, int col)
@@ -4562,33 +4631,57 @@ static void session_game_gonu_ai_move(session_ctx_t *ctx)
 {
     gonu_game_state_t *state = &ctx->game.gonu;
     
-    // Simple AI: Try to place or move pieces
+    if (state->multiplayer) {
+        return;  // No AI in multiplayer
+    }
+    
+    session_game_seed_rng(ctx);
+    unsigned difficulty = state->difficulty_level;
+    
+    // Collect all possible moves
+    typedef struct {
+        int from_row;
+        int from_col;
+        int to_row;
+        int to_col;
+        bool is_placement;
+        int score;
+    } gonu_ai_move_t;
+    
+    gonu_ai_move_t possible_moves[128];
+    int move_count = 0;
+    
     if (state->placement_phase && state->ai_pieces < 3U) {
-        // Find empty valid position
+        // Find all empty valid positions for placement
         for (int row = 0; row < GONU_BOARD_SIZE; ++row) {
             for (int col = 0; col < GONU_BOARD_SIZE; ++col) {
                 if (session_game_gonu_is_valid_position(state->variant, row, col) &&
                     state->board[row][col] == GONU_CELL_EMPTY) {
-                    state->board[row][col] = GONU_CELL_AI;
-                    state->ai_pieces++;
-                    char msg[SSH_CHATTER_MESSAGE_LIMIT];
-                    snprintf(msg, sizeof(msg), "AI placed piece at %d,%d", row, col);
-                    session_send_system_line(ctx, msg);
+                    possible_moves[move_count].is_placement = true;
+                    possible_moves[move_count].to_row = row;
+                    possible_moves[move_count].to_col = col;
                     
-                    if (state->ai_pieces == 3U && state->player_pieces == 3U) {
-                        state->placement_phase = false;
-                        session_send_system_line(ctx, "Placement complete! Now move your pieces.");
+                    // Simple scoring: prefer center for higher difficulties
+                    int score = 0;
+                    if (row == 2 && col == 2) {
+                        score = 10;  // Center is valuable
+                    } else {
+                        score = 5;
                     }
-                    return;
+                    possible_moves[move_count].score = score;
+                    move_count++;
+                    
+                    if (move_count >= 128) break;
                 }
             }
+            if (move_count >= 128) break;
         }
     } else {
-        // Movement phase: Find a piece and move it
+        // Movement phase: Find all possible moves
         for (int row = 0; row < GONU_BOARD_SIZE; ++row) {
             for (int col = 0; col < GONU_BOARD_SIZE; ++col) {
                 if (state->board[row][col] == GONU_CELL_AI) {
-                    // Try to move to adjacent position
+                    // Try to move to adjacent positions
                     for (int dr = -1; dr <= 1; ++dr) {
                         for (int dc = -1; dc <= 1; ++dc) {
                             int new_row = row + dr;
@@ -4596,19 +4689,105 @@ static void session_game_gonu_ai_move(session_ctx_t *ctx)
                             
                             if (session_game_gonu_is_connected(state->variant, row, col, new_row, new_col) &&
                                 state->board[new_row][new_col] == GONU_CELL_EMPTY) {
+                                possible_moves[move_count].is_placement = false;
+                                possible_moves[move_count].from_row = row;
+                                possible_moves[move_count].from_col = col;
+                                possible_moves[move_count].to_row = new_row;
+                                possible_moves[move_count].to_col = new_col;
+                                
+                                // Score the move - check if it creates a winning line
+                                int score = 1;
                                 state->board[row][col] = GONU_CELL_EMPTY;
                                 state->board[new_row][new_col] = GONU_CELL_AI;
-                                char msg[SSH_CHATTER_MESSAGE_LIMIT];
-                                snprintf(msg, sizeof(msg), "AI moved from %d,%d to %d,%d", 
-                                         row, col, new_row, new_col);
-                                session_send_system_line(ctx, msg);
-                                return;
+                                if (session_game_gonu_check_win(state, GONU_CELL_AI)) {
+                                    score = 100;  // Winning move!
+                                }
+                                state->board[row][col] = GONU_CELL_AI;
+                                state->board[new_row][new_col] = GONU_CELL_EMPTY;
+                                
+                                possible_moves[move_count].score = score;
+                                move_count++;
+                                
+                                if (move_count >= 128) break;
                             }
                         }
+                        if (move_count >= 128) break;
                     }
                 }
+                if (move_count >= 128) break;
+            }
+            if (move_count >= 128) break;
+        }
+    }
+    
+    if (move_count == 0) {
+        return;  // No moves available
+    }
+    
+    // Choose move based on difficulty
+    gonu_ai_move_t chosen_move;
+    
+    if (difficulty == 1U) {
+        // Level 1: Completely random
+        int idx = session_game_random_range(ctx, move_count);
+        chosen_move = possible_moves[idx];
+    } else {
+        // Find best moves
+        int best_score = -1;
+        int best_indexes[128];
+        int best_count = 0;
+        
+        for (int i = 0; i < move_count; ++i) {
+            if (possible_moves[i].score > best_score) {
+                best_score = possible_moves[i].score;
+                best_indexes[0] = i;
+                best_count = 1;
+            } else if (possible_moves[i].score == best_score && best_count < 128) {
+                best_indexes[best_count++] = i;
             }
         }
+        
+        // Decide whether to make good move or random based on difficulty
+        bool make_good_move = true;
+        if (difficulty == 2U) {
+            make_good_move = (session_game_random_range(ctx, 100) < 50);
+        } else if (difficulty == 3U) {
+            make_good_move = (session_game_random_range(ctx, 100) < 70);
+        } else if (difficulty == 4U) {
+            make_good_move = (session_game_random_range(ctx, 100) < 90);
+        }
+        // Level 5: Always good moves
+        
+        if (make_good_move) {
+            int idx = session_game_random_range(ctx, best_count);
+            chosen_move = possible_moves[best_indexes[idx]];
+        } else {
+            int idx = session_game_random_range(ctx, move_count);
+            chosen_move = possible_moves[idx];
+        }
+    }
+    
+    // Execute the move
+    if (chosen_move.is_placement) {
+        state->board[chosen_move.to_row][chosen_move.to_col] = GONU_CELL_AI;
+        state->ai_pieces++;
+        char msg[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(msg, sizeof(msg), "AI placed piece at %d,%d", 
+                 chosen_move.to_row, chosen_move.to_col);
+        session_send_system_line(ctx, msg);
+        
+        if (state->ai_pieces == 3U && state->player_pieces == 3U) {
+            state->placement_phase = false;
+            session_send_system_line(ctx, "Placement complete! Now move your pieces.");
+        }
+    } else {
+        state->board[chosen_move.from_row][chosen_move.from_col] = GONU_CELL_EMPTY;
+        state->board[chosen_move.to_row][chosen_move.to_col] = GONU_CELL_AI;
+        char msg[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(msg, sizeof(msg), "AI moved from %d,%d to %d,%d", 
+                 chosen_move.from_row, chosen_move.from_col,
+                 chosen_move.to_row, chosen_move.to_col);
+        session_send_system_line(ctx, msg);
     }
 }
 
@@ -4619,6 +4798,61 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx, const char *input
     }
     
     gonu_game_state_t *state = &ctx->game.gonu;
+    
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(working, sizeof(working), "%s", input);
+    trim_whitespace_inplace(working);
+    for (size_t idx = 0U; working[idx] != '\0'; ++idx) {
+        working[idx] = (char)tolower((unsigned char)working[idx]);
+    }
+    
+    // Handle mode selection
+    if (state->awaiting_mode_selection) {
+        if (strcmp(working, "single") == 0 || strcmp(working, "s") == 0) {
+            state->awaiting_mode_selection = false;
+            state->awaiting_difficulty_selection = true;
+            state->multiplayer = false;
+            session_send_system_line(ctx, "");
+            session_send_system_line(ctx, "Choose difficulty level (1-5):");
+            session_send_system_line(ctx, "  1 - Very Easy (random moves)");
+            session_send_system_line(ctx, "  2 - Easy (50% good moves)");
+            session_send_system_line(ctx, "  3 - Medium (70% good moves)");
+            session_send_system_line(ctx, "  4 - Hard (90% good moves)");
+            session_send_system_line(ctx, "  5 - Expert (always best moves, but not perfect to keep it fair)");
+            session_send_system_line(ctx, "Type a number 1-5:");
+        } else if (strcmp(working, "multi") == 0 || strcmp(working, "m") == 0) {
+            session_send_system_line(ctx, "Multiplayer mode for Gonu is coming soon!");
+            session_send_system_line(ctx, "For now, please choose 'single' mode.");
+        } else if (strcmp(working, "exit") == 0 || strcmp(working, "quit") == 0) {
+            session_game_suspend(ctx, "Game cancelled.");
+        } else {
+            session_send_system_line(ctx, "Type 'single' or 'multi' to choose how to play.");
+        }
+        return true;
+    }
+    
+    // Handle difficulty selection
+    if (state->awaiting_difficulty_selection) {
+        int difficulty = atoi(working);
+        if (difficulty < 1 || difficulty > 5) {
+            session_send_system_line(ctx, "Invalid difficulty. Please enter a number between 1 and 5.");
+            return true;
+        }
+        
+        state->difficulty_level = (unsigned)difficulty;
+        state->awaiting_difficulty_selection = false;
+        state->player_turn = true;
+        
+        char msg[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(msg, sizeof(msg), "Difficulty set to %d. Good luck!", difficulty);
+        session_send_system_line(ctx, msg);
+        session_send_system_line(ctx, "");
+        session_send_system_line(ctx, "Gonu started! Place your 3 pieces first.");
+        session_send_system_line(ctx, "O = empty position, Q = piece");
+        session_send_system_line(ctx, "Press 't' to toggle camouflage screen.");
+        session_game_gonu_render(ctx);
+        return true;
+    }
     
     if (state->game_over || !state->player_turn) {
         return true;
@@ -4829,12 +5063,10 @@ static void session_game_start_gonu(session_ctx_t *ctx)
     session_game_gonu_reset(&ctx->game.gonu, variant);
     ctx->game.type = SESSION_GAME_GONU;
     ctx->game.active = true;
+    ctx->game.gonu.awaiting_mode_selection = true;
     
     session_send_system_line(ctx, "");
-    session_send_system_line(ctx, "Gonu started! Place your 3 pieces first.");
-    session_send_system_line(ctx, "O = empty position, Q = piece");
-    session_send_system_line(ctx, "Press 't' to toggle camouflage screen.");
-    session_game_gonu_render(ctx);
+    session_send_system_line(ctx, "Choose Gonu mode: type 'single' to play against AI or 'multi' for multiplayer.");
 }
 
 static void session_handle_game(session_ctx_t *ctx, const char *arguments)

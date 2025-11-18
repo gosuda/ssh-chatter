@@ -2239,6 +2239,12 @@ static void session_refresh_input_line(session_ctx_t *ctx)
 
     bool locked = session_output_lock(ctx);
     session_render_prompt_internal(ctx, false, true);
+    
+    // For telnet, ensure the prompt is immediately visible by flushing the socket
+    if (ctx->transport_kind == SESSION_TRANSPORT_TELNET) {
+        session_channel_flush(ctx);
+    }
+    
     fflush(stdout);
 
     if (locked) {

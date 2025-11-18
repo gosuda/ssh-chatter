@@ -2337,7 +2337,7 @@ static bool session_argument_is_enable(const char *token);
 static void session_language_normalize(const char *input, char *normalized,
                                        size_t length);
 static bool session_language_equals(const char *lhs, const char *rhs);
-static session_ui_language_t session_ui_language_from_code(const char *code);
+
 static const char *session_ui_language_code(session_ui_language_t language);
 static const char *session_ui_language_name(session_ui_language_t language,
                                             session_ui_language_t locale);
@@ -2417,7 +2417,7 @@ static void host_store_birthday(host_t *host, const session_ctx_t *ctx,
 static void host_store_chat_spacing(host_t *host, const session_ctx_t *ctx);
 static void host_store_translation_preferences(host_t *host,
                                                const session_ctx_t *ctx);
-static void host_store_ui_language(host_t *host, const session_ctx_t *ctx);
+
 static bool host_ip_has_grant_locked(host_t *host, const char *ip);
 static bool host_ip_has_grant(host_t *host, const char *ip);
 static bool host_remove_operator_grant_locked(host_t *host, const char *ip);
@@ -5785,7 +5785,7 @@ static void host_store_breaking_alerts(host_t *host, const session_ctx_t *ctx)
     pthread_mutex_unlock(&host->lock);
 }
 
-static void host_store_ui_language(host_t *host, const session_ctx_t *ctx)
+void host_store_ui_language(host_t *host, const session_ctx_t *ctx)
 {
     if (host == nullptr || ctx == nullptr) {
         return;

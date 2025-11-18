@@ -270,7 +270,8 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
 
 void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 {
-    static const char *kUsage = "Usage: /retro <on|off|auto|status>";
+    static const char *kUsage =
+        "Usage: /retro <on [ko|en|jp|zh|ru|de|fr]|off|auto|status>";
 
     if (ctx == nullptr) {
         return;
@@ -299,16 +300,51 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
                  ctx->prefer_cp437_output ? "CP437" : "UTF-8");
         session_send_system_line(ctx, message);
         session_send_system_line(
-            ctx, "Toggle with /retro on, /retro off, or /retro auto.");
+            ctx,
+            "Toggle with /retro on [lang], /retro off, or /retro auto.");
+        session_send_system_line(
+            ctx, "Supported languages: ko, en, jp, zh, ru, de, fr.");
         return;
     }
 
-    if (strcasecmp(working, "on") == 0) {
+    // Handle "on" with optional language parameter
+    if (strncasecmp(working, "on", 2) == 0) {
+        const char *lang_arg = working + 2;
+        while (*lang_arg == ' ' || *lang_arg == '\t') {
+            ++lang_arg;
+        }
+
+        // If language is specified, set UI language
+        if (lang_arg[0] != '\0') {
+            char lang_code[16];
+            snprintf(lang_code, sizeof(lang_code), "%s", lang_arg);
+            trim_whitespace_inplace(lang_code);
+
+            // Try to parse language code
+            session_ui_language_t new_lang = session_ui_language_from_code(lang_code);
+            if (new_lang != SESSION_UI_LANGUAGE_EN || strcasecmp(lang_code, "en") == 0) {
+                ctx->ui_language = new_lang;
+                if (ctx->owner != nullptr) {
+                    host_store_ui_language(ctx->owner, ctx);
+                }
+            }
+        }
+
         ctx->cp437_override = SESSION_CP437_OVERRIDE_FORCE_ON;
         session_refresh_output_encoding(ctx);
-        session_send_system_line(
-            ctx,
-            "Retro encoding enabled. CP437 input and output are forced on.");
+
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        if (lang_arg[0] != '\0') {
+            snprintf(message, sizeof(message),
+                     "Retro encoding enabled with language %s. CP437 input "
+                     "and output are forced on.",
+                     lang_arg);
+        } else {
+            snprintf(message, sizeof(message),
+                     "Retro encoding enabled. CP437 input and output are "
+                     "forced on.");
+        }
+        session_send_system_line(ctx, message);
         return;
     }
 
@@ -3582,6 +3618,40 @@ static void *session_thread(void *arg)
                                     sizeof(args) / sizeof(args[0]), message,
                                     sizeof(message));
             session_send_system_line(ctx, message);
+        }
+
+        // Add retro command hint
+        {
+            char retro_hint[SSH_CHATTER_MESSAGE_LIMIT];
+            const char *retro_msg = nullptr;
+            switch (ctx->ui_language) {
+            case SESSION_UI_LANGUAGE_KO:
+                retro_msg = "레트로 터미널 인코딩: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                break;
+            case SESSION_UI_LANGUAGE_JP:
+                retro_msg = "レトロターミナルエンコーディング: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                break;
+            case SESSION_UI_LANGUAGE_ZH:
+                retro_msg = "复古终端编码: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                break;
+            case SESSION_UI_LANGUAGE_RU:
+                retro_msg = "Ретро кодировка терминала: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                break;
+            case SESSION_UI_LANGUAGE_DE:
+                retro_msg = "Retro-Terminal-Codierung: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                break;
+            case SESSION_UI_LANGUAGE_FR:
+                retro_msg = "Encodage de terminal rétro: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                break;
+            case SESSION_UI_LANGUAGE_EN:
+            default:
+                retro_msg = "Retro terminal encoding: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                break;
+            }
+            const char *args[] = {prefix};
+            session_format_template(retro_msg, args, sizeof(args) / sizeof(args[0]),
+                                    retro_hint, sizeof(retro_hint));
+            session_send_system_line(ctx, retro_hint);
         }
 
         char join_message[SSH_CHATTER_MESSAGE_LIMIT];

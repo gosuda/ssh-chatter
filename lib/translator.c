@@ -435,7 +435,7 @@ translator_configure_cancel_callback(CURL *curl,
         curl_easy_setopt(curl, CURLOPT_XFERINFODATA, (void *)cancel_flag);
     } else {
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
-        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, nullptr);
+	curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, (curl_xferinfo_callback)nullptr);
         curl_easy_setopt(curl, CURLOPT_XFERINFODATA, nullptr);
     }
 }

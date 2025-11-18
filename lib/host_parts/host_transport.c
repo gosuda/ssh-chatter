@@ -4057,6 +4057,15 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
+        
+        // For telnet, clear the current input line first before displaying the message
+        // This prevents the old prompt from remaining visible above the new message
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
+            // Move to column 1 and clear the line
+            static const char clear_line[] = "\033[1G\033[K";
+            session_channel_write(member, clear_line, sizeof(clear_line) - 1U);
+        }
+        
         if (from != nullptr) {
             // Format message directly for real-time delivery
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
@@ -4119,6 +4128,13 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
 
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
+        
+        // For telnet, clear the current input line first before displaying the message
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
+            static const char clear_line[] = "\033[1G\033[K";
+            session_channel_write(member, clear_line, sizeof(clear_line) - 1U);
+        }
+        
         session_send_caption_line(member, message);
         
         // Flush the channel to ensure immediate delivery
@@ -4177,6 +4193,12 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
+
+        // For telnet, clear the current input line first before displaying the message
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
+            static const char clear_line[] = "\033[1G\033[K";
+            session_channel_write(member, clear_line, sizeof(clear_line) - 1U);
+        }
 
         if (entry->is_user_message) {
             // Format user message directly

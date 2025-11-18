@@ -1230,8 +1230,16 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         return;
     }
 
+    else if (session_parse_command_any(ctx, "/telnet-server", effective_line,
+                                       &args)) {
+        session_handle_telnetserver(ctx, args);
+        return;
+    }
+
+    /* Keep old command for backwards compatibility */
     else if (session_parse_command_any(ctx, "/ssh-chat-server", effective_line,
                                        &args)) {
+        session_handle_telnetserver(ctx, args);
         return;
     }
 

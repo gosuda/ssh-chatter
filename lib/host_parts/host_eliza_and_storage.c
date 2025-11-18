@@ -3804,14 +3804,12 @@ static void session_channel_flush(session_ctx_t *ctx)
         return;
     }
 
-    // For Telnet connections, ensure TCP buffer is flushed immediately
+    // For Telnet connections, ensure output buffer is flushed immediately
     if (ctx->transport_kind == SESSION_TRANSPORT_TELNET) {
-        if (ctx->telnet_fd >= 0) {
-            // Disable Nagle's algorithm to force immediate send
-            // This ensures messages are delivered without buffering delay
-            int flag = 1;
-            setsockopt(ctx->telnet_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
-        }
+        // Flush any pending data in the output buffer to ensure immediate delivery
+        // TCP_NODELAY is already set on the socket when the connection is accepted,
+        // so flushing the output buffer will cause immediate transmission
+        session_output_buffer_flush(ctx);
         return;
     }
 

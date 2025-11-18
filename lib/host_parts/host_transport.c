@@ -4249,6 +4249,12 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
             member->history_scroll_position == 0U) {
             session_refresh_input_line(member);
+            
+            // For telnet, flush again after refreshing the input line to ensure
+            // the prompt and any typed text are immediately visible along with the message
+            if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
+                session_channel_flush(member);
+            }
         }
     }
 

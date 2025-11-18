@@ -2878,15 +2878,6 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "Ein Othello (Reversi)-Spiel starten. Platziere Scheiben mit Zeile/Spalte (z.B. d4).",
                 "Commencer un jeu d'Othello (Reversi). Placer des disques avec ligne/col (ex : d4).",
             },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "게임 오셀로",
-                [SESSION_UI_LANGUAGE_JP] = "ゲーム オセロ",
-                [SESSION_UI_LANGUAGE_ZH] = "游戏 黑白棋",
-                [SESSION_UI_LANGUAGE_RU] = "игра отелло",
-                [SESSION_UI_LANGUAGE_DE] = "spiel othello",
-                [SESSION_UI_LANGUAGE_FR] = "jeu othello",
-            },
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
@@ -3772,16 +3763,6 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "Retro CP437-Terminalcodierung mit optionaler Sprache umschalten.",
                 "Basculer l'encodage de terminal rétro CP437 avec une langue optionnelle.",
                 "Przełącz kodowanie terminala retro CP437 z opcjonalnym językiem.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "레트로 <켜기 [ko|en|jp|zh|ru|de|fr|pl]|끄기|자동|상태>",
-                [SESSION_UI_LANGUAGE_JP] = "レトロ <オン [ko|en|jp|zh|ru|de|fr|pl]|オフ|自動|ステータス>",
-                [SESSION_UI_LANGUAGE_ZH] = "复古 <开 [ko|en|jp|zh|ru|de|fr|pl]|关|自动|状态>",
-                [SESSION_UI_LANGUAGE_RU] = "ретро <вкл [ko|en|jp|zh|ru|de|fr|pl]|выкл|авто|статус>",
-                [SESSION_UI_LANGUAGE_DE] = "retro <an [ko|en|jp|zh|ru|de|fr|pl]|aus|auto|status>",
-                [SESSION_UI_LANGUAGE_FR] = "retro <act [ko|en|jp|zh|ru|de|fr|pl]|dés|auto|état>",
-                [SESSION_UI_LANGUAGE_PL] = "retro <wł [ko|en|jp|zh|ru|de|fr|pl]|wył|auto|status>",
             },
         .label_arg_count = 0U,
         .label_args = {},

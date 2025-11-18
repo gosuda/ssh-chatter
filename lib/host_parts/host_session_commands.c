@@ -2704,7 +2704,8 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
             char token[64];
             const char *remaining =
                 session_consume_token(delegated_buffer, token, sizeof(token));
-            if (strcasecmp(token, "ssh-chat-server") == 0) {
+            if (strcasecmp(token, "ssh-chat-server") == 0 ||
+                strcasecmp(token, "telnet-server") == 0) {
                 char forwarded[SSH_CHATTER_MESSAGE_LIMIT];
                 if (remaining != nullptr) {
                     snprintf(forwarded, sizeof(forwarded), "%s", remaining);
@@ -2714,7 +2715,7 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
                 }
 
                 session_send_system_line(
-                    ctx, "Tip: use /ssh-chat-server directly "
+                    ctx, "Tip: use /telnet-server directly "
                          "for Telnet/Fidonet integration controls.");
 
                 return;
@@ -2765,10 +2766,10 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
             help_buffer, sizeof(help_buffer));
         session_send_raw_text(ctx, help_buffer);
 
-        const char *ssh_command = session_command_alias_preferred_by_canonical(
-            ctx, "/ssh-chat-server");
-        if (ssh_command == nullptr || ssh_command[0] == '\0') {
-            ssh_command = "/ssh-chat-server";
+        const char *telnet_command = session_command_alias_preferred_by_canonical(
+            ctx, "/telnet-server");
+        if (telnet_command == nullptr || telnet_command[0] == '\0') {
+            telnet_command = "/telnet-server";
         }
 
         session_send_system_line(
@@ -2776,32 +2777,16 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
 
         char line[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(line, sizeof(line),
-                 "  %s set <telnet://host[:port]> [port] - Configure the "
-                 "Telnet/Fidonet upstream server.",
-                 ssh_command);
+                 "  %s status - Show status of Telnet/FidoNet integrations.",
+                 telnet_command);
         session_send_system_line(ctx, line);
 
         snprintf(line, sizeof(line),
-                 "  %s port <port> - Update the saved port.", ssh_command);
+                 "  /fidonet status|reconnect|disconnect - Manage FidoNet relay.");
         session_send_system_line(ctx, line);
 
         snprintf(line, sizeof(line),
-                 "  %s credentials <user> <pass> - Adjust bridge credentials.",
-                 ssh_command);
-        session_send_system_line(ctx, line);
-
-        snprintf(line, sizeof(line),
-                 "  %s enable|disable <in|out|both> - Toggle sync directions.",
-                 ssh_command);
-        session_send_system_line(ctx, line);
-
-        snprintf(line, sizeof(line), "  %s status - Review connection details.",
-                 ssh_command);
-        session_send_system_line(ctx, line);
-
-        snprintf(line, sizeof(line),
-                 "  %s trigger|stop - Control live synchronization.",
-                 ssh_command);
+                 "  /ircserver status|reconnect|disconnect - Manage IRC relay.");
         session_send_system_line(ctx, line);
     } else {
         session_send_system_line(

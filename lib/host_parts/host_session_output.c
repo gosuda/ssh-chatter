@@ -5164,17 +5164,38 @@ static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments)
         snprintf(message, sizeof(message), "IRC Relay Status: %s (%s)", status,
                  connected ? "connected" : "disconnected");
         session_send_system_line(ctx, message);
+        /* Broadcast to chat room */
+        char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(broadcast, sizeof(broadcast),
+                 "* [%s] checked IRC status: %s (%s)",
+                 ctx->user.name, status, connected ? "connected" : "disconnected");
+        host_history_record_system(host, broadcast, nullptr);
+        chat_room_broadcast(&host->room, broadcast, nullptr);
     } else if (strcmp(command, "reconnect") == 0) {
         session_send_system_line(ctx,
                                  "Attempting to reconnect to IRC server...");
         if (irc_client_reconnect(host->irc_client)) {
             session_send_system_line(ctx, "IRC reconnection initiated.");
+            /* Broadcast to chat room */
+            char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(broadcast, sizeof(broadcast),
+                     "* [%s] initiated IRC reconnection",
+                     ctx->user.name);
+            host_history_record_system(host, broadcast, nullptr);
+            chat_room_broadcast(&host->room, broadcast, nullptr);
         } else {
             session_send_system_line(ctx, "Failed to reconnect to IRC server.");
         }
     } else if (strcmp(command, "disconnect") == 0) {
         irc_client_disconnect(host->irc_client);
         session_send_system_line(ctx, "Disconnected from IRC server.");
+        /* Broadcast to chat room */
+        char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(broadcast, sizeof(broadcast),
+                 "* [%s] disconnected IRC relay",
+                 ctx->user.name);
+        host_history_record_system(host, broadcast, nullptr);
+        chat_room_broadcast(&host->room, broadcast, nullptr);
     } else {
         session_send_system_line(ctx, usage);
     }
@@ -5227,11 +5248,25 @@ static void session_handle_fidonet(session_ctx_t *ctx, const char *arguments)
         snprintf(message, sizeof(message), "FidoNet Relay Status: %s (%s)",
                  status, connected ? "connected" : "disconnected");
         session_send_system_line(ctx, message);
+        /* Broadcast to chat room */
+        char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(broadcast, sizeof(broadcast),
+                 "* [%s] checked FidoNet status: %s (%s)",
+                 ctx->user.name, status, connected ? "connected" : "disconnected");
+        host_history_record_system(host, broadcast, nullptr);
+        chat_room_broadcast(&host->room, broadcast, nullptr);
     } else if (strcmp(command, "reconnect") == 0) {
         session_send_system_line(
             ctx, "Attempting to reconnect to FidoNet server...");
         if (fidonet_client_reconnect(host->fidonet_client)) {
             session_send_system_line(ctx, "FidoNet reconnection initiated.");
+            /* Broadcast to chat room */
+            char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(broadcast, sizeof(broadcast),
+                     "* [%s] initiated FidoNet reconnection",
+                     ctx->user.name);
+            host_history_record_system(host, broadcast, nullptr);
+            chat_room_broadcast(&host->room, broadcast, nullptr);
         } else {
             session_send_system_line(ctx,
                                      "Failed to reconnect to FidoNet server.");
@@ -5239,6 +5274,90 @@ static void session_handle_fidonet(session_ctx_t *ctx, const char *arguments)
     } else if (strcmp(command, "disconnect") == 0) {
         fidonet_client_disconnect(host->fidonet_client);
         session_send_system_line(ctx, "Disconnected from FidoNet server.");
+        /* Broadcast to chat room */
+        char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(broadcast, sizeof(broadcast),
+                 "* [%s] disconnected FidoNet relay",
+                 ctx->user.name);
+        host_history_record_system(host, broadcast, nullptr);
+        chat_room_broadcast(&host->room, broadcast, nullptr);
+    } else {
+        session_send_system_line(ctx, usage);
+    }
+}
+
+static void session_handle_telnetserver(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(ctx,
+                                 "You are not allowed to run that command.");
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    if (host == nullptr) {
+        session_send_system_line(ctx, "Host unavailable.");
+        return;
+    }
+
+    static const char *kUsage = "Usage: /telnet-server status";
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, "/telnet-server", kUsage, usage,
+                                 sizeof(usage));
+
+    if (arguments == nullptr || *arguments == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    char command[64];
+    snprintf(command, sizeof(command), "%s", arguments);
+    trim_whitespace_inplace(command);
+
+    if (strcmp(command, "status") == 0) {
+        char message[SSH_CHATTER_MESSAGE_LIMIT * 2];
+        message[0] = '\0';
+        
+        /* Check FidoNet status */
+        if (host->fidonet_client != nullptr) {
+            const char *status = fidonet_client_get_status(host->fidonet_client);
+            bool connected = fidonet_client_is_connected(host->fidonet_client);
+            char line[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(line, sizeof(line), "FidoNet/Binkp: %s (%s)\n",
+                     status, connected ? "connected" : "disconnected");
+            strncat(message, line, sizeof(message) - strlen(message) - 1);
+        } else {
+            strncat(message, "FidoNet/Binkp: Not configured\n",
+                    sizeof(message) - strlen(message) - 1);
+        }
+
+        /* Check IRC status */
+        if (host->irc_client != nullptr) {
+            const char *status = irc_client_get_status(host->irc_client);
+            bool connected = irc_client_is_connected(host->irc_client);
+            char line[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(line, sizeof(line), "IRC Relay: %s (%s)\n",
+                     status, connected ? "connected" : "disconnected");
+            strncat(message, line, sizeof(message) - strlen(message) - 1);
+        } else {
+            strncat(message, "IRC Relay: Not configured\n",
+                    sizeof(message) - strlen(message) - 1);
+        }
+
+        session_send_system_line(ctx, "Telnet/Network Integration Status:");
+        session_send_system_line(ctx, message);
+        
+        /* Broadcast to chat room */
+        char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(broadcast, sizeof(broadcast),
+                 "* [%s] checked telnet-server integration status",
+                 ctx->user.name);
+        host_history_record_system(host, broadcast, nullptr);
+        chat_room_broadcast(&host->room, broadcast, nullptr);
     } else {
         session_send_system_line(ctx, usage);
     }

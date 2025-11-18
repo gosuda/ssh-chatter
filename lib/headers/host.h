@@ -24,6 +24,7 @@
 
 #include "theme.h"
 #include "security_layer.h"
+#include "codepage.h"
 
 #define HOST_GRANTS_CLEAR_SIZE 4512
 
@@ -644,6 +645,7 @@ typedef struct session_ctx {
     bool prefer_cp437_output;
     session_cp437_override_t cp437_override;
     bool cp437_input_enabled;
+    session_codepage_t active_codepage;
     bool translation_enabled;
     bool output_translation_enabled;
     char output_translation_language[SSH_CHATTER_LANG_NAME_LEN];

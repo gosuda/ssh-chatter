@@ -271,7 +271,7 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
 void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage =
-        "Usage: /retro <on [ko|en|jp|zh|ru|de|fr]|off|auto|status>";
+        "Usage: /retro <on [ko|en|jp|zh|ru|de|fr|pl]|off|auto|status>";
 
     if (ctx == nullptr) {
         return;
@@ -303,7 +303,7 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
             ctx,
             "Toggle with /retro on [lang], /retro off, or /retro auto.");
         session_send_system_line(
-            ctx, "Supported languages: ko, en, jp, zh, ru, de, fr.");
+            ctx, "Supported languages: ko, en, jp, zh, ru, de, fr, pl.");
         return;
     }
 
@@ -3626,26 +3626,29 @@ static void *session_thread(void *arg)
             const char *retro_msg = nullptr;
             switch (ctx->ui_language) {
             case SESSION_UI_LANGUAGE_KO:
-                retro_msg = "레트로 터미널 인코딩: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                retro_msg = "레트로 터미널 인코딩: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_JP:
-                retro_msg = "レトロターミナルエンコーディング: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                retro_msg = "レトロターミナルエンコーディング: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_ZH:
-                retro_msg = "复古终端编码: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                retro_msg = "复古终端编码: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_RU:
-                retro_msg = "Ретро кодировка терминала: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                retro_msg = "Ретро кодировка терминала: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_DE:
-                retro_msg = "Retro-Terminal-Codierung: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                retro_msg = "Retro-Terminal-Codierung: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_FR:
-                retro_msg = "Encodage de terminal rétro: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                retro_msg = "Encodage de terminal rétro: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
+                break;
+            case SESSION_UI_LANGUAGE_PL:
+                retro_msg = "Kodowanie terminala retro: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_EN:
             default:
-                retro_msg = "Retro terminal encoding: %sretro on [ko|en|jp|zh|ru|de|fr]";
+                retro_msg = "Retro terminal encoding: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             }
             const char *args[] = {prefix};

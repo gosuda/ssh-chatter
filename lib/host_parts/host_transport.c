@@ -1183,7 +1183,7 @@ typedef struct palette_descriptor {
 
 #define L10N_ALL(str)                                                          \
     {                                                                          \
-        (str), (str), (str), (str), (str)                                      \
+        (str), (str), (str), (str), (str), (str)                               \
     }
 
 static const l10n_string_t PALETTE_NAME_MONOKAI = L10N_ALL("monokai");

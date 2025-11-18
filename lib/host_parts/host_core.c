@@ -1469,27 +1469,29 @@ typedef struct session_ui_locale {
 } session_ui_locale_t;
 
 static const char *const kSessionUiLanguageCodes[SESSION_UI_LANGUAGE_COUNT] = {
-    "en", "ko", "jp", "zh", "ru", "de", "fr",
+    "en", "ko", "jp", "zh", "ru", "de", "fr", "pl",
 };
 
 static const char *const kSessionUiLanguageNames
     [SESSION_UI_LANGUAGE_COUNT][SESSION_UI_LANGUAGE_COUNT] = {
         [SESSION_UI_LANGUAGE_EN] = {"English", "Korean", "Japanese", "Chinese",
-                                    "Russian", "German", "French"},
+                                    "Russian", "German", "French", "Polish"},
         [SESSION_UI_LANGUAGE_KO] = {"영어", "한국어", "일본어", "중국어",
-                                    "러시아어", "독일어", "프랑스어"},
+                                    "러시아어", "독일어", "프랑스어", "폴란드어"},
         [SESSION_UI_LANGUAGE_JP] = {"英語", "韓国語", "日本語", "中国語",
-                                    "ロシア語", "ドイツ語", "フランス語"},
+                                    "ロシア語", "ドイツ語", "フランス語", "ポーランド語"},
         [SESSION_UI_LANGUAGE_ZH] = {"英语", "韩语", "日语", "中文", "俄语",
-                                    "德语", "法语"},
+                                    "德语", "法语", "波兰语"},
         [SESSION_UI_LANGUAGE_RU] = {"английский", "корейский", "японский",
                                     "китайский", "русский", "немецкий",
-                                    "французский"},
+                                    "французский", "польский"},
         [SESSION_UI_LANGUAGE_DE] = {"Englisch", "Koreanisch", "Japanisch",
                                     "Chinesisch", "Russisch", "Deutsch",
-                                    "Französisch"},
+                                    "Französisch", "Polnisch"},
         [SESSION_UI_LANGUAGE_FR] = {"Anglais", "Coréen", "Japonais", "Chinois",
-                                    "Russe", "Allemand", "Français"},
+                                    "Russe", "Allemand", "Français", "Polonais"},
+        [SESSION_UI_LANGUAGE_PL] = {"Angielski", "Koreański", "Japoński", "Chiński",
+                                    "Rosyjski", "Niemiecki", "Francuski", "Polski"},
 };
 
 static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
@@ -1835,6 +1837,60 @@ static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
             .mode_usage = "Utilisation: %smode <chat|command|toggle>",
             .unknown_command = "Commande inconnue. Tapez %shelp pour l'aide.",
         },
+        {
+            .language = SESSION_UI_LANGUAGE_PL,
+            .code = "pl",
+            .help_title = "Podstawowe polecenia:",
+            .help_hint_extra =
+                "%sadvanced dla dodatkowych poleceń i poleceń operatora.",
+            .help_scroll_hint =
+                "Strzałki Góra/Dół do przewijania czatu lub historii poleceń.",
+            .help_regular_hint = "Zwykłe wiadomości są udostępniane wszystkim.",
+            .help_extra_title = "Rozszerzone polecenia:",
+            .help_extra_hint = "Wróć do %shelp dla podstaw.",
+            .help_operator_title = "Polecenia operatora:",
+            .welcome_help_hint = "Użyj %shelp aby zobaczyć instrukcję.",
+            .welcome_motd_hint = "Użyj %smotd aby przeczytać informacje.",
+            .welcome_history_hint =
+                "Poprzednie wiadomości są ukryte. Strzałki Góra/Dół do "
+                "przewijania starszego czatu.",
+            .chat_spacing_usage = "Użycie: %schat-spacing <0-5>",
+            .chat_spacing_immediate = "Napisy tłumaczeń pojawiają się "
+                                      "natychmiast bez rezerwowania pustych linii.",
+            .chat_spacing_single =
+                "Napisy tłumaczeń rezerwują 1 pustą linię przed "
+                "pojawieniem się w wątkach czatu.",
+            .chat_spacing_multiple =
+                "Napisy tłumaczeń rezerwują %s pustych linii przed "
+                "pojawieniem się w wątkach czatu.",
+            .set_ui_lang_usage =
+                "Użycie: %sset-ui-lang <ko|en|jp|zh|ru|de|fr|pl>",
+            .set_ui_lang_success = "Język interfejsu ustawiony na %s. "
+                                   "Użyj %shelp aby zobaczyć polecenia.",
+            .set_ui_lang_invalid = "Nieobsługiwany język. Użyj jednego z: ko, "
+                                   "en, jp, zh, ru, de, fr, pl.",
+            .mode_status_format = "Aktualny tryb wprowadzania: %s.",
+            .mode_label_chat = "czat",
+            .mode_label_command = "polecenie",
+            .mode_explain_chat =
+                "Tryb czatu: wysyłaj wiadomości normalnie. Dodaj prefiks %s do "
+                "poleceń.",
+            .mode_explain_command =
+                "Tryb poleceń: wpisuj polecenia bez prefiksu, strzałki "
+                "Góra/Dół dla historii, Tab dla uzupełniania.",
+            .mode_already_chat =
+                "Już w trybie czatu. Polecenia wymagają prefiksu %s.",
+            .mode_already_command =
+                "Tryb poleceń już aktywny. Wpisuj polecenia bez prefiksu, "
+                "strzałki Góra/Dół dla historii, Tab dla uzupełniania.",
+            .mode_enabled_chat = "Tryb czatu włączony. Polecenia ponownie "
+                                 "wymagają prefiksu %s.",
+            .mode_enabled_command =
+                "Tryb poleceń włączony. Wpisuj polecenia bez prefiksu, "
+                "strzałki Góra/Dół i Tab dostępne.",
+            .mode_usage = "Użycie: %smode <chat|command|toggle>",
+            .unknown_command = "Nieznane polecenie. Wpisz %shelp aby uzyskać pomoc.",
+        },
 };
 
 static const char
@@ -1846,6 +1902,7 @@ static const char
         [SESSION_UI_LANGUAGE_RU] = ">/__АРТ_КОНЕЦ>",
         [SESSION_UI_LANGUAGE_DE] = ">/__KUNST_ENDE>",
         [SESSION_UI_LANGUAGE_FR] = ">/__ART_FIN>",
+        [SESSION_UI_LANGUAGE_PL] = ">/__SZTUKA_KONIEC>",
 };
 
 static const char *const kSessionBbsTerminators[SESSION_UI_LANGUAGE_COUNT] = {
@@ -1856,6 +1913,7 @@ static const char *const kSessionBbsTerminators[SESSION_UI_LANGUAGE_COUNT] = {
     [SESSION_UI_LANGUAGE_RU] = ">/__ДОСКА_КОНЕЦ>",
     [SESSION_UI_LANGUAGE_DE] = ">/__BBS_ENDE>",
     [SESSION_UI_LANGUAGE_FR] = ">/__BBS_FIN>",
+    [SESSION_UI_LANGUAGE_PL] = ">/__BBS_KONIEC>",
 };
 
 static const session_command_alias_t kSessionCommandAliases[] = {
@@ -3703,7 +3761,7 @@ static const session_help_entry_t kSessionHelpExtended[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "retro <on [ko|en|jp|zh|ru|de|fr]|off|auto|status>",
+        .label = "retro <on [ko|en|jp|zh|ru|de|fr|pl]|off|auto|status>",
         .description =
             {
                 "Toggle retro CP437 terminal encoding with optional language.",
@@ -3713,15 +3771,17 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "Переключить ретро CP437 кодировку терминала с необязательным языком.",
                 "Retro CP437-Terminalcodierung mit optionaler Sprache umschalten.",
                 "Basculer l'encodage de terminal rétro CP437 avec une langue optionnelle.",
+                "Przełącz kodowanie terminala retro CP437 z opcjonalnym językiem.",
             },
         .label_translations =
             {
-                [SESSION_UI_LANGUAGE_KO] = "레트로 <켜기 [ko|en|jp|zh|ru|de|fr]|끄기|자동|상태>",
-                [SESSION_UI_LANGUAGE_JP] = "レトロ <オン [ko|en|jp|zh|ru|de|fr]|オフ|自動|ステータス>",
-                [SESSION_UI_LANGUAGE_ZH] = "复古 <开 [ko|en|jp|zh|ru|de|fr]|关|自动|状态>",
-                [SESSION_UI_LANGUAGE_RU] = "ретро <вкл [ko|en|jp|zh|ru|de|fr]|выкл|авто|статус>",
-                [SESSION_UI_LANGUAGE_DE] = "retro <an [ko|en|jp|zh|ru|de|fr]|aus|auto|status>",
-                [SESSION_UI_LANGUAGE_FR] = "retro <act [ko|en|jp|zh|ru|de|fr]|dés|auto|état>",
+                [SESSION_UI_LANGUAGE_KO] = "레트로 <켜기 [ko|en|jp|zh|ru|de|fr|pl]|끄기|자동|상태>",
+                [SESSION_UI_LANGUAGE_JP] = "レトロ <オン [ko|en|jp|zh|ru|de|fr|pl]|オフ|自動|ステータス>",
+                [SESSION_UI_LANGUAGE_ZH] = "复古 <开 [ko|en|jp|zh|ru|de|fr|pl]|关|自动|状态>",
+                [SESSION_UI_LANGUAGE_RU] = "ретро <вкл [ko|en|jp|zh|ru|de|fr|pl]|выкл|авто|статус>",
+                [SESSION_UI_LANGUAGE_DE] = "retro <an [ko|en|jp|zh|ru|de|fr|pl]|aus|auto|status>",
+                [SESSION_UI_LANGUAGE_FR] = "retro <act [ko|en|jp|zh|ru|de|fr|pl]|dés|auto|état>",
+                [SESSION_UI_LANGUAGE_PL] = "retro <wł [ko|en|jp|zh|ru|de|fr|pl]|wył|auto|status>",
             },
         .label_arg_count = 0U,
         .label_args = {},

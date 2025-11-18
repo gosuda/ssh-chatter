@@ -456,6 +456,7 @@ typedef enum session_ui_language {
     SESSION_UI_LANGUAGE_RU,
     SESSION_UI_LANGUAGE_DE,
     SESSION_UI_LANGUAGE_FR,
+    SESSION_UI_LANGUAGE_PL,
     SESSION_UI_LANGUAGE_COUNT
 } session_ui_language_t;
 

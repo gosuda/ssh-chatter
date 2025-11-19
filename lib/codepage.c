@@ -1,6 +1,8 @@
 #include "headers/codepage.h"
 #include "headers/host.h"
 #include <string.h>
+#include <iconv.h>
+#include <errno.h>
 
 /* Forward declaration of UTF-8 encoding function from host_runtime.c */
 static size_t session_encode_utf8_codepoint(uint32_t codepoint, char *output,
@@ -303,4 +305,87 @@ const char *session_codepage_name(session_codepage_t codepage)
     default:
         return "Unknown";
     }
+}
+
+const char *session_codepage_iconv_name(session_codepage_t codepage)
+{
+    switch (codepage) {
+    case SESSION_CODEPAGE_UTF8:
+        return NULL; /* No conversion needed */
+    case SESSION_CODEPAGE_CP437:
+        return "CP437//TRANSLIT";
+    case SESSION_CODEPAGE_CP949:
+        return "CP949//TRANSLIT";
+    case SESSION_CODEPAGE_CP932:
+        return "CP932//TRANSLIT";
+    case SESSION_CODEPAGE_CP936:
+        return "CP936//TRANSLIT";
+    case SESSION_CODEPAGE_CP1251:
+        return "CP1251//TRANSLIT";
+    case SESSION_CODEPAGE_CP850:
+        return "CP850//TRANSLIT";
+    case SESSION_CODEPAGE_CP852:
+        return "CP852//TRANSLIT";
+    default:
+        return NULL;
+    }
+}
+
+size_t session_codepage_to_utf8(session_codepage_t codepage,
+                                 const unsigned char *input,
+                                 size_t input_length,
+                                 char *output,
+                                 size_t output_capacity)
+{
+    if (input == NULL || input_length == 0U || output == NULL || output_capacity == 0U) {
+        return 0U;
+    }
+
+    /* For UTF-8, just copy as-is */
+    if (codepage == SESSION_CODEPAGE_UTF8) {
+        size_t to_copy = input_length < output_capacity ? input_length : output_capacity;
+        memcpy(output, input, to_copy);
+        return to_copy;
+    }
+
+    const char *iconv_name = session_codepage_iconv_name(codepage);
+    if (iconv_name == NULL) {
+        /* Fall back to byte-by-byte conversion for unknown codepages */
+        if (input_length > 0U && output_capacity > 0U) {
+            size_t result = session_codepage_byte_to_utf8(codepage, input[0], output, output_capacity);
+            return result;
+        }
+        return 0U;
+    }
+
+    iconv_t descriptor = iconv_open("UTF-8", iconv_name);
+    if (descriptor == (iconv_t)(-1)) {
+        /* Fall back to single-byte conversion */
+        if (input_length > 0U && output_capacity > 0U) {
+            size_t result = session_codepage_byte_to_utf8(codepage, input[0], output, output_capacity);
+            return result;
+        }
+        return 0U;
+    }
+
+    const char *input_cursor = (const char *)input;
+    size_t input_remaining = input_length;
+    char *output_cursor = output;
+    size_t output_remaining = output_capacity;
+
+    size_t result = iconv(descriptor, (char **)&input_cursor, &input_remaining,
+                         &output_cursor, &output_remaining);
+    
+    iconv_close(descriptor);
+
+    if (result == (size_t)-1) {
+        /* On error, try single-byte conversion for the first byte */
+        if (input_length > 0U && output_capacity > 0U) {
+            size_t bytes = session_codepage_byte_to_utf8(codepage, input[0], output, output_capacity);
+            return bytes;
+        }
+        return 0U;
+    }
+
+    return output_capacity - output_remaining;
 }

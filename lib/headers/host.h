@@ -649,6 +649,7 @@ typedef struct session_ctx {
     session_cp437_override_t cp437_override;
     bool cp437_input_enabled;
     session_codepage_t active_codepage;
+    session_codepage_context_t codepage_ctx;
     bool translation_enabled;
     bool output_translation_enabled;
     char output_translation_language[SSH_CHATTER_LANG_NAME_LEN];

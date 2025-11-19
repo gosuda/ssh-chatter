@@ -133,133 +133,101 @@ static const uint16_t kCp1251ToUnicode[128] = {
     0x044E, 0x044F,
 };
 
-/* Partial CP949 (Korean) - High byte mapping for common Hangul syllables
- * Note: Full CP949 requires double-byte handling. This is a simplified version
- * that handles single-byte characters and provides placeholders for double-byte.
- * For proper Korean support, multi-byte sequence handling would be needed.
- */
-static const uint16_t kCp949ToUnicode[128] = {
-    /* 0x80-0x9F: Box drawing and special characters from CP437 */
-    0x00C7, 0x00FC, 0x00E9, 0x00E2, 0x00E4, 0x00E0, 0x00E5, 0x00E7, 0x00EA,
-    0x00EB, 0x00E8, 0x00EF, 0x00EE, 0x00EC, 0x00C4, 0x00C5, 0x00C9, 0x00E6,
-    0x00C6, 0x00F4, 0x00F6, 0x00F2, 0x00FB, 0x00F9, 0x00FF, 0x00D6, 0x00DC,
-    0x00A2, 0x00A3, 0x00A5, 0x20A7, 0x0192,
-    /* 0xA0-0xFF: Korean compatibility zone and Hangul */
-    0x3131, 0x3132, 0x3133, 0x3134, 0x3135, 0x3136, 0x3137, 0x3138, 0x3139,
-    0x313A, 0x313B, 0x313C, 0x313D, 0x313E, 0x313F, 0x3140, 0x3141, 0x3142,
-    0x3143, 0x3144, 0x3145, 0x3146, 0x3147, 0x3148, 0x3149, 0x314A, 0x314B,
-    0x314C, 0x314D, 0x314E, 0x314F, 0x3150, 0x3151, 0x3152, 0x3153, 0x3154,
-    0x3155, 0x3156, 0x3157, 0x3158, 0x3159, 0x315A, 0x315B, 0x315C, 0x315D,
-    0x315E, 0x315F, 0x3160, 0x3161, 0x3162, 0x3163, 0x3164, 0x3165, 0x3166,
-    0x3167, 0x3168, 0x3169, 0x316A, 0x316B, 0x316C, 0x316D, 0x316E, 0x316F,
-    0x3170, 0x3171, 0x3172, 0x3173, 0x3174, 0x3175, 0x3176, 0x3177, 0x3178,
-    0x3179, 0x317A, 0x317B, 0x317C, 0x317D, 0x317E, 0x317F, 0x3180, 0x3181,
-    0x3182, 0x3183, 0x3184, 0x3185, 0x3186, 0x3187, 0x3188, 0x3189, 0x318A,
-    0x318B, 0x318C, 0x318D, 0x318E, 0x00A0,
-};
 
-/* Partial CP932 (Japanese Shift-JIS) - Single-byte half-width katakana
- * Note: Full Shift-JIS requires double-byte handling for kanji and full-width kana
- */
-static const uint16_t kCp932ToUnicode[128] = {
-    /* 0x80-0x9F: Undefined/control in Shift-JIS, use CP437 box drawing */
-    0x00C7, 0x00FC, 0x00E9, 0x00E2, 0x00E4, 0x00E0, 0x00E5, 0x00E7, 0x00EA,
-    0x00EB, 0x00E8, 0x00EF, 0x00EE, 0x00EC, 0x00C4, 0x00C5, 0x00C9, 0x00E6,
-    0x00C6, 0x00F4, 0x00F6, 0x00F2, 0x00FB, 0x00F9, 0x00FF, 0x00D6, 0x00DC,
-    0x00A2, 0x00A3, 0x00A5, 0x20A7, 0x0192,
-    /* 0xA0-0xDF: Half-width katakana */
-    0x3002, 0x300C, 0x300D, 0x3001, 0x30FB, 0x30F2, 0x30A1, 0x30A3, 0x30A5,
-    0x30A7, 0x30A9, 0x30E3, 0x30E5, 0x30E7, 0x30C3, 0x30FC, 0x30A2, 0x30A4,
-    0x30A6, 0x30A8, 0x30AA, 0x30AB, 0x30AD, 0x30AF, 0x30B1, 0x30B3, 0x30B5,
-    0x30B7, 0x30B9, 0x30BB, 0x30BD, 0x30BF, 0x30C1, 0x30C4, 0x30C6, 0x30C8,
-    0x30CA, 0x30CB, 0x30CC, 0x30CD, 0x30CE, 0x30CF, 0x30D2, 0x30D5, 0x30D8,
-    0x30DB, 0x30DE, 0x30DF, 0x30E0, 0x30E1, 0x30E2, 0x30E4, 0x30E6, 0x30E8,
-    0x30E9, 0x30EA, 0x30EB, 0x30EC, 0x30ED, 0x30EF, 0x30F3, 0x309B, 0x309C,
-    0x00A0,
-};
+/* Placeholders for future full CP949 and CP932 implementations */
 
-/* Partial CP936 (Simplified Chinese GBK) - Single-byte characters
- * Note: Full GBK requires double-byte handling for Chinese characters
- */
-static const uint16_t kCp936ToUnicode[128] = {
-    /* 0x80-0xFF: Use CP437 box drawing for now, full GBK needs double-byte */
-    0x20AC, 0x00FC, 0x00E9, 0x00E2, 0x00E4, 0x00E0, 0x00E5, 0x00E7, 0x00EA,
-    0x00EB, 0x00E8, 0x00EF, 0x00EE, 0x00EC, 0x00C4, 0x00C5, 0x00C9, 0x00E6,
-    0x00C6, 0x00F4, 0x00F6, 0x00F2, 0x00FB, 0x00F9, 0x00FF, 0x00D6, 0x00DC,
-    0x00A2, 0x00A3, 0x00A5, 0x20A7, 0x0192, 0x00E1, 0x00ED, 0x00F3, 0x00FA,
-    0x00F1, 0x00D1, 0x00AA, 0x00BA, 0x00BF, 0x2310, 0x00AC, 0x00BD, 0x00BC,
-    0x00A1, 0x00AB, 0x00BB, 0x2591, 0x2592, 0x2593, 0x2502, 0x2524, 0x2561,
-    0x2562, 0x2556, 0x2555, 0x2563, 0x2551, 0x2557, 0x255D, 0x255C, 0x255B,
-    0x2510, 0x2514, 0x2534, 0x252C, 0x251C, 0x2500, 0x253C, 0x255E, 0x255F,
-    0x255A, 0x2554, 0x2569, 0x2566, 0x2560, 0x2550, 0x256C, 0x2567, 0x2568,
-    0x2564, 0x2565, 0x2559, 0x2558, 0x2552, 0x2553, 0x256B, 0x256A, 0x2518,
-    0x250C, 0x2588, 0x2584, 0x258C, 0x2590, 0x2580, 0x03B1, 0x00DF, 0x0393,
-    0x03C0, 0x03A3, 0x03C3, 0x00B5, 0x03C4, 0x03A6, 0x0398, 0x03A9, 0x03B4,
-    0x221E, 0x03C6, 0x03B5, 0x2229, 0x2261, 0x00B1, 0x2265, 0x2264, 0x2320,
-    0x2321, 0x00F7, 0x2248, 0x00B0, 0x2219, 0x00B7, 0x221A, 0x207F, 0x00B2,
-    0x25A0, 0x00A0,
-};
+
+
+/* Placeholder for future full CP936 implementation */
+
+
 
 size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
+                                     session_codepage_context_t *context, // Added context parameter
                                      unsigned char byte,
                                      char *output,
                                      size_t capacity)
 {
-    if (output == NULL || capacity == 0U) {
+    if (output == NULL || capacity == 0U || context == NULL) { // Added context null check
         return 0U;
     }
 
     /* ASCII passthrough for all code pages */
     if (byte < 0x80U) {
+        context->state = 0; /* Reset state on ASCII byte */
+        context->lead_byte = 0;
         output[0] = (char)byte;
         return 1U;
     }
 
-    const uint16_t *table = NULL;
-    
+    uint32_t codepoint = 0;
+    size_t produced = 0;
+
     switch (codepage) {
-    case SESSION_CODEPAGE_CP437:
-        table = kCp437ToUnicode;
-        break;
     case SESSION_CODEPAGE_CP949:
-        table = kCp949ToUnicode;
+    case SESSION_CODEPAGE_CP932: /* Japanese Shift-JIS */
+    case SESSION_CODEPAGE_CP936: /* Simplified Chinese GBK */
+        /* Multi-byte codepages like CP949, CP932, CP936 should ideally be handled by full string conversion via iconv.
+         * This byte-by-byte function is not suitable for accurate multi-byte decoding.
+         * For now, return a placeholder as accurate conversion is not possible here.
+         */
+        codepoint = '?';
+        context->state = 0; /* Reset state */
+        context->lead_byte = 0;
         break;
-    case SESSION_CODEPAGE_CP932:
-        table = kCp932ToUnicode;
-        break;
-    case SESSION_CODEPAGE_CP936:
-        table = kCp936ToUnicode;
-        break;
-    case SESSION_CODEPAGE_CP1251:
-        table = kCp1251ToUnicode;
-        break;
+    case SESSION_CODEPAGE_CP437:
     case SESSION_CODEPAGE_CP850:
-        table = kCp850ToUnicode;
-        break;
     case SESSION_CODEPAGE_CP852:
-        table = kCp852ToUnicode;
+    case SESSION_CODEPAGE_CP1251: {
+        const uint16_t *table = NULL;
+        switch (codepage) {
+            case SESSION_CODEPAGE_CP437: table = kCp437ToUnicode; break;
+            case SESSION_CODEPAGE_CP850: table = kCp850ToUnicode; break;
+            case SESSION_CODEPAGE_CP852: table = kCp852ToUnicode; break;
+            case SESSION_CODEPAGE_CP1251: table = kCp1251ToUnicode; break;
+            default: break; /* Should not happen */
+        }
+        if (table != NULL) { // For single-byte tables, byte-0x80 is the index
+            codepoint = table[byte - 0x80U];
+        } else {
+            codepoint = '?'; /* Fallback for unknown codepage table */
+        }
+        context->state = 0; /* Single-byte codepages don't need state */
+        context->lead_byte = 0;
         break;
+    }
     case SESSION_CODEPAGE_UTF8:
-    default:
-        /* UTF-8 mode - just pass through */
+        /* UTF-8 mode - just pass through as it's already UTF-8.
+         * The caller of this function is expected to handle UTF-8 multi-byte sequences.
+         */
         output[0] = (char)byte;
+        context->state = 0; /* Reset state for UTF-8 */
+        context->lead_byte = 0;
         return 1U;
+    default:
+        /* Unknown or unsupported codepage beyond those explicitly handled */
+        codepoint = '?';
+        context->state = 0; /* Reset state for unknown codepage */
+        context->lead_byte = 0;
+        break;
     }
 
-    if (table == NULL) {
-        output[0] = '?';
-        return 1U;
-    }
-
-    const uint32_t codepoint = table[byte - 0x80U];
-    size_t produced = session_encode_utf8_codepoint(codepoint, output, capacity);
-    if (produced == 0U) {
+    // This block handles the conversion to UTF-8 for codepoints determined above
+    if (codepoint != 0 && codepoint != '?') { // If a valid non-error codepoint was found
+        produced = session_encode_utf8_codepoint(codepoint, output, capacity);
+        if (produced == 0U) {
+            output[0] = '?'; // If UTF-8 encoding fails, use '?'
+            return 1U;
+        }
+    } else {
+        // Fallback for when no valid codepoint was produced (e.g., invalid CP949 sequence)
         output[0] = '?';
         return 1U;
     }
 
     return produced;
 }
+
 
 session_codepage_t session_codepage_for_language(int language)
 {
@@ -332,11 +300,16 @@ const char *session_codepage_iconv_name(session_codepage_t codepage)
 }
 
 size_t session_codepage_to_utf8(session_codepage_t codepage,
+
                                  const unsigned char *input,
+
                                  size_t input_length,
+
                                  char *output,
-                                 size_t output_capacity)
-{
+
+                                 size_t output_capacity) {
+
+    session_codepage_context_t context = {0, 0};
     if (input == NULL || input_length == 0U || output == NULL || output_capacity == 0U) {
         return 0U;
     }
@@ -349,10 +322,17 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
     }
 
     const char *iconv_name = session_codepage_iconv_name(codepage);
+    bool is_multibyte_codepage = (codepage == SESSION_CODEPAGE_CP949 ||
+                                  codepage == SESSION_CODEPAGE_CP932 ||
+                                  codepage == SESSION_CODEPAGE_CP936);
+
     if (iconv_name == NULL) {
-        /* Fall back to byte-by-byte conversion for unknown codepages */
+        if (is_multibyte_codepage) {
+            return 0U; /* No iconv name for multi-byte, conversion impossible */
+        }
+        /* Fall back to byte-by-byte conversion for single-byte codepages or unknown */
         if (input_length > 0U && output_capacity > 0U) {
-            size_t result = session_codepage_byte_to_utf8(codepage, input[0], output, output_capacity);
+            size_t result = session_codepage_byte_to_utf8(codepage, &context, input[0], output, output_capacity);
             return result;
         }
         return 0U;
@@ -360,9 +340,12 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
 
     iconv_t descriptor = iconv_open("UTF-8", iconv_name);
     if (descriptor == (iconv_t)(-1)) {
-        /* Fall back to single-byte conversion */
+        if (is_multibyte_codepage) {
+            return 0U; /* iconv_open failed for multi-byte, conversion impossible */
+        }
+        /* On error, try single-byte conversion for the first byte for single-byte codepages */
         if (input_length > 0U && output_capacity > 0U) {
-            size_t result = session_codepage_byte_to_utf8(codepage, input[0], output, output_capacity);
+            size_t result = session_codepage_byte_to_utf8(codepage, &context, input[0], output, output_capacity);
             return result;
         }
         return 0U;
@@ -379,11 +362,79 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
     iconv_close(descriptor);
 
     if (result == (size_t)-1) {
-        /* On error, try single-byte conversion for the first byte */
+        if (is_multibyte_codepage) {
+            return 0U; /* iconv failed for multi-byte, conversion impossible */
+        }
+        /* On error, try single-byte conversion for the first byte for single-byte codepages */
         if (input_length > 0U && output_capacity > 0U) {
-            size_t bytes = session_codepage_byte_to_utf8(codepage, input[0], output, output_capacity);
+            size_t bytes = session_codepage_byte_to_utf8(codepage, &context, input[0], output, output_capacity);
             return bytes;
         }
+        return 0U;
+    }
+
+    return output_capacity - output_remaining;
+}
+
+size_t session_utf8_to_codepage(session_codepage_t codepage,
+                                const char *input,
+                                size_t input_length,
+                                char *output,
+                                size_t output_capacity)
+{
+    if (input == NULL || input_length == 0U || output == NULL || output_capacity == 0U) {
+        return 0U;
+    }
+
+    /* If the target codepage is UTF-8, just copy as-is */
+    if (codepage == SESSION_CODEPAGE_UTF8) {
+        size_t to_copy = input_length < output_capacity ? input_length : output_capacity;
+        memcpy(output, input, to_copy);
+        return to_copy;
+    }
+
+    const char *iconv_name;
+    switch (codepage) {
+    case SESSION_CODEPAGE_CP949:
+        // Use CP949 encoding for UTF-8 to CP949 conversion.
+        iconv_name = "CP949";
+        break;
+    case SESSION_CODEPAGE_CP932:
+        // Use CP932//TRANSLIT for UTF-8 to CP932 conversion.
+        iconv_name = "CP932//TRANSLIT";
+        break;
+    case SESSION_CODEPAGE_CP936:
+        // Use CP936//TRANSLIT for UTF-8 to CP936 conversion.
+        iconv_name = "CP936//TRANSLIT";
+        break;
+    default:
+        // For other codepages, use the provided iconv_name or NULL if not applicable.
+        break;
+    }
+
+    if (iconv_name == NULL) {
+        /* No iconv name for this codepage, conversion impossible */
+        return 0U;
+    }
+
+    iconv_t descriptor = iconv_open(iconv_name, "UTF-8");
+    if (descriptor == (iconv_t)(-1)) {
+        /* iconv_open failed, conversion impossible */
+        return 0U;
+    }
+
+    const char *input_cursor = input;
+    size_t input_remaining = input_length;
+    char *output_cursor = output;
+    size_t output_remaining = output_capacity;
+
+    size_t result = iconv(descriptor, (char **)&input_cursor, &input_remaining,
+                         &output_cursor, &output_remaining);
+    
+    iconv_close(descriptor);
+
+    if (result == (size_t)-1) {
+        /* iconv failed, return 0 to indicate failure */
         return 0U;
     }
 

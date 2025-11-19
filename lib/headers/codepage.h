@@ -28,7 +28,26 @@ typedef enum session_codepage {
  * @param capacity Size of output buffer
  * @return Number of bytes written to output, or 0 on error
  */
+/**
+ * Context for multi-byte code page conversions
+ */
+typedef struct session_codepage_context {
+    unsigned char lead_byte; /* Stores the first byte of a multi-byte sequence */
+    int state;               /* 0 = single-byte or no active multi-byte sequence, 1 = waiting for trail byte */
+} session_codepage_context_t;
+
+/**
+ * Convert a single byte from the specified code page to UTF-8, using a context for multi-byte handling
+ *
+ * @param codepage The source code page
+ * @param context Pointer to the codepage context (must be initialized to {0,0} for new conversions)
+ * @param byte The byte to convert
+ * @param output Buffer to store UTF-8 output (must be at least 4 bytes)
+ * @param capacity Size of output buffer
+ * @return Number of bytes written to output, or 0 on error
+ */
 size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
+                                     session_codepage_context_t *context,
                                      unsigned char byte,
                                      char *output,
                                      size_t capacity);
@@ -73,5 +92,22 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
                                  size_t input_length,
                                  char *output,
                                  size_t output_capacity);
+
+/**
+ * Convert bytes from UTF-8 to a specified code page using iconv
+ * This handles multi-byte sequences properly (e.g., CP949, CP932, CP936)
+ * 
+ * @param codepage The target code page
+ * @param input Input bytes in UTF-8
+ * @param input_length Number of input bytes
+ * @param output Buffer to store output in the specified code page
+ * @param output_capacity Size of output buffer
+ * @return Number of bytes written to output, or 0 on error
+ */
+size_t session_utf8_to_codepage(session_codepage_t codepage,
+                                const char *input,
+                                size_t input_length,
+                                char *output,
+                                size_t output_capacity);
 
 #endif /* SSH_CHATTER_CODEPAGE_H */

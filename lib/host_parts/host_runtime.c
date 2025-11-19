@@ -4056,7 +4056,7 @@ static void *session_thread(void *arg)
                 } else {
                     /* Single-byte codepage */
                     encoded_len = session_codepage_byte_to_utf8(
-                        ctx->active_codepage, (unsigned char)ch, encoded, sizeof(encoded));
+                        ctx->active_codepage, &ctx->codepage_ctx, (unsigned char)ch, encoded, sizeof(encoded));
                     if (encoded_len == 0U) {
                         encoded[0] = '?';
                         encoded_len = 1U;

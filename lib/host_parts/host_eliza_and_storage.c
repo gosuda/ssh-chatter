@@ -4917,7 +4917,7 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
             } else {
                 /* Single-byte codepage - use old method */
                 encoded_len = session_codepage_byte_to_utf8(
-                    ctx->active_codepage, byte, encoded, sizeof(encoded));
+                    ctx->active_codepage, &ctx->codepage_ctx, byte, encoded, sizeof(encoded));
                 if (encoded_len == 0U) {
                     encoded[0] = '?';
                     encoded_len = 1U;

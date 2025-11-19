@@ -4322,45 +4322,14 @@ chat_room_broadcast_reaction_update(host_t *host,
         if (!host_compact_id_encode(entry->message_id, label, sizeof(label))) {
             snprintf(label, sizeof(label), "%" PRIu64, entry->message_id);
         }
-        snprintf(line, sizeof(line), "    ↳ [#%s] reactions: %s", label,
+        snprintf(line, sizeof(line), "    ->[#%s] reactions: %s", label,
                  summary);
     } else {
-        snprintf(line, sizeof(line), "    ↳ reactions: %s", summary);
+        snprintf(line, sizeof(line), "    ->reactions: %s", summary);
     }
 
     chat_room_broadcast_caption(&host->room, line);
 }
-
-// This function is no longer used - replies are now broadcast using
-// chat_room_broadcast_entry to ensure proper integration with chat buffer
-// static void host_broadcast_reply(host_t *host, const chat_reply_entry_t *entry)
-// {
-//     if (host == nullptr || entry == nullptr) {
-//         return;
-//     }
-//
-//     const char *target_prefix = (entry->parent_reply_id == 0U) ? "#" : "r#";
-//     uint64_t target_id = (entry->parent_reply_id == 0U)
-//                              ? entry->parent_message_id
-//                              : entry->parent_reply_id;
-//
-//     char reply_label[32];
-//     if (!host_compact_id_encode(entry->reply_id, reply_label,
-//                                 sizeof(reply_label))) {
-//         snprintf(reply_label, sizeof(reply_label), "%" PRIu64, entry->reply_id);
-//     }
-//
-//     char target_label[32];
-//     if (!host_compact_id_encode(target_id, target_label, sizeof(target_label))) {
-//         snprintf(target_label, sizeof(target_label), "%" PRIu64, target_id);
-//     }
-//
-//     char line[SSH_CHATTER_MESSAGE_LIMIT];
-//     snprintf(line, sizeof(line), "↳ [r#%s → %s%s] %s: %s", reply_label,
-//              target_prefix, target_label, entry->username, entry->message);
-//
-//     chat_room_broadcast(&host->room, line, nullptr);
-// }
 
 static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
 {

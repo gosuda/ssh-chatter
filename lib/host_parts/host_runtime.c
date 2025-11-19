@@ -3560,6 +3560,30 @@ static void *session_thread(void *arg)
         }
 
         session_send_system_line(ctx, "Wait for a moment...");
+        session_send_system_line(ctx, "Note: I recommend UTF-8 for elegant multilingual support.");
+        session_send_system_line(ctx, "~~~ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ~~~");
+        session_send_system_line(ctx, "FUNNY ART HERE:");
+        session_send_system_line(ctx, "               ");
+        session_send_system_line(ctx, "               //           - c-mon boy, let's play with me.");
+        session_send_system_line(ctx, "         ----////-- ");
+        session_send_system_line(ctx, "              //    ");
+        session_send_system_line(ctx, "      ////////      ");
+        session_send_system_line(ctx, "   //////////////   ");
+        session_send_system_line(ctx, "////////////////////");
+        session_send_system_line(ctx, " +__       +__      ");
+        session_send_system_line(ctx, " |+ |      |+ |     ");
+        session_send_system_line(ctx, " |__|      |__|     ");
+        session_send_system_line(ctx, "                    ");
+        session_send_system_line(ctx, "       |            ");
+        session_send_system_line(ctx, "       ---          ");
+        session_send_system_line(ctx, "  \\            /    ");
+        session_send_system_line(ctx, "  |         .  |    ");
+        session_send_system_line(ctx, "  |    -^-     |    ");
+        session_send_system_line(ctx, "       ---          ");
+        session_send_system_line(ctx, "    __  |  __       ");
+        session_send_system_line(ctx, "      |_|_|         ");
+
+
         session_send_system_line(
             ctx, "For TELNET users: type /motd and follow the guide.");
         session_render_banner(ctx);

@@ -165,7 +165,7 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
     }
 
     char reply_message[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(reply_message, sizeof(reply_message), "↳ [r#%s → %s%s] %s: %s",
+    snprintf(reply_message, sizeof(reply_message), "->[r#%s %s%s] %s: %s",
              reply_label, target_prefix, target_label, stored.username,
              stored.message);
 

@@ -145,18 +145,19 @@ static const uint16_t kCp1251ToUnicode[128] = {
 static uint32_t cp949_to_unicode(uint16_t cp949_val);
 
 size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
-                                     session_codepage_context_t *context, // Added context parameter
+                                     session_codepage_context_t *context,
                                      unsigned char byte,
                                      char *output,
                                      size_t capacity)
 {
-    if (output == NULL || capacity == 0U || context == NULL) { // Added context null check
+    if (output == NULL || capacity == 0U || context == NULL) {
         return 0U;
     }
 
     /* ASCII passthrough for all code pages */
     if (byte < 0x80U) {
-        context->state = 0; /* Reset state on ASCII byte */
+        /* Reset state on ASCII byte - prevents incomplete multi-byte corruption */
+        context->state = 0;
         context->lead_byte = 0;
         output[0] = (char)byte;
         return 1U;
@@ -164,6 +165,7 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
 
     uint32_t codepoint = 0;
     size_t produced = 0;
+    bool valid_sequence = false;
 
     switch (codepage) {
     case SESSION_CODEPAGE_CP949:
@@ -173,26 +175,57 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
                 context->state = 1;
                 return 0U; /* Wait for trail byte */
             }
-            /* Invalid lead byte, fall through to error handling (codepoint remains 0) */
+            /* Invalid lead byte - output replacement character and reset */
+            context->state = 0;
+            context->lead_byte = 0;
+            codepoint = 0xFFFD; /* Unicode replacement character */
+            valid_sequence = true;
         } else { /* context->state == 1, Expecting trail byte */
+            unsigned char saved_lead = context->lead_byte;
             context->state = 0; /* Reset state */
             context->lead_byte = 0;
+            
             if ((byte >= 0x41U && byte <= 0xFEU) && (byte != 0x7FU)) { /* Valid trail byte range */
-                uint16_t cp949_val = (uint16_t)(context->lead_byte << 8) | byte;
+                uint16_t cp949_val = (uint16_t)(saved_lead << 8) | byte;
                 codepoint = cp949_to_unicode(cp949_val);
+                if (codepoint != (uint32_t)'?') {
+                    valid_sequence = true;
+                } else {
+                    /* Conversion failed - use replacement character */
+                    codepoint = 0xFFFD;
+                    valid_sequence = true;
+                }
+            } else {
+                /* Invalid trail byte - output replacement character */
+                codepoint = 0xFFFD;
+                valid_sequence = true;
             }
-            /* If codepoint is still 0, it means invalid trail byte or conversion failed */
         }
         break;
+        
     case SESSION_CODEPAGE_CP932: /* Japanese Shift-JIS */
     case SESSION_CODEPAGE_CP936: /* Simplified Chinese GBK */
-        /* These also require multi-byte handling. For now, treat as unknown/unsupported
-         * and output '?' until proper implementations are added.
-         */
-        codepoint = '?';
-        context->state = 0; /* Reset state for unsupported multi-byte sequences */
-        context->lead_byte = 0;
+        /* These require multi-byte handling.
+         * For now, output replacement character for better robustness */
+        if (context->state == 0) {
+            /* Could be start of multi-byte sequence or single-byte */
+            if (byte >= 0x81U && byte <= 0xFEU) {
+                context->lead_byte = byte;
+                context->state = 1;
+                return 0U; /* Wait for potential trail byte */
+            }
+            /* Single-byte in extended range */
+            codepoint = 0xFFFD;
+            valid_sequence = true;
+        } else {
+            /* Trail byte expected but not fully implemented */
+            context->state = 0;
+            context->lead_byte = 0;
+            codepoint = 0xFFFD;
+            valid_sequence = true;
+        }
         break;
+        
     case SESSION_CODEPAGE_CP437:
     case SESSION_CODEPAGE_CP850:
     case SESSION_CODEPAGE_CP852:
@@ -205,45 +238,60 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
             case SESSION_CODEPAGE_CP1251: table = kCp1251ToUnicode; break;
             default: break; /* Should not happen */
         }
-        if (table != NULL) { // For single-byte tables, byte-0x80 is the index
-            codepoint = table[byte - 0x80U];
-        } else {
-            codepoint = '?'; /* Fallback for unknown codepage table */
-        }
-        context->state = 0; /* Single-byte codepages don't need state */
+        
+        /* Ensure state is clean for single-byte codepages */
+        context->state = 0;
         context->lead_byte = 0;
+        
+        if (table != NULL) {
+            /* For single-byte tables, byte-0x80 is the index */
+            codepoint = table[byte - 0x80U];
+            valid_sequence = true;
+        } else {
+            /* Fallback for unknown codepage table */
+            codepoint = 0xFFFD;
+            valid_sequence = true;
+        }
         break;
     }
+    
     case SESSION_CODEPAGE_UTF8:
-        /* UTF-8 mode - just pass through as it's already UTF-8.
-         * The caller of this function is expected to handle UTF-8 multi-byte sequences.
-         */
+        /* UTF-8 mode - pass through as-is
+         * NOTE: The caller is responsible for UTF-8 multi-byte handling */
         output[0] = (char)byte;
-        context->state = 0; /* Reset state for UTF-8 */
+        context->state = 0;
         context->lead_byte = 0;
         return 1U;
+        
     default:
-        /* Unknown or unsupported codepage beyond those explicitly handled */
-        codepoint = '?';
-        context->state = 0; /* Reset state for unknown codepage */
+        /* Unknown or unsupported codepage */
+        codepoint = 0xFFFD; /* Unicode replacement character */
+        context->state = 0;
         context->lead_byte = 0;
+        valid_sequence = true;
         break;
     }
 
-    // This block handles the conversion to UTF-8 for codepoints determined above
-    if (codepoint != 0 && codepoint != '?') { // If a valid non-error codepoint was found
+    /* Convert codepoint to UTF-8 */
+    if (valid_sequence && codepoint != 0) {
         produced = session_encode_utf8_codepoint(codepoint, output, capacity);
         if (produced == 0U) {
-            output[0] = '?'; // If UTF-8 encoding fails, use '?'
-            return 1U;
+            /* UTF-8 encoding failed - output ASCII replacement */
+            if (capacity >= 1U) {
+                output[0] = '?';
+                return 1U;
+            }
+            return 0U;
         }
-    } else {
-        // Fallback for when no valid codepoint was produced (e.g., invalid CP949 sequence)
+        return produced;
+    }
+
+    /* Should not reach here, but provide fallback */
+    if (capacity >= 1U) {
         output[0] = '?';
         return 1U;
     }
-
-    return produced;
+    return 0U;
 }
 
 // Implements a simplified conversion for CP949 to Unicode.

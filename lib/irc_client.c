@@ -191,112 +191,150 @@ static void irc_disconnect_socket(irc_client_t *client)
     irc_set_status(client, "Disconnected");
 }
 
+// RFC 1459 / RFC 2812 compliant IRC message parser
 static void irc_handle_message(irc_client_t *client, const char *line)
 {
     if (client == nullptr || line == nullptr || client->host == nullptr) {
         return;
     }
 
-    // Parse IRC-style PRIVMSG
-    // Format: :nick!user@host PRIVMSG #channel :message
-    if (strncmp(line, "PRIVMSG ", 8) == 0 ||
-        strstr(line, " PRIVMSG ") != nullptr) {
-        const char *privmsg = strstr(line, " PRIVMSG ");
-        if (privmsg == nullptr) {
-            privmsg = line;
-        } else {
-            privmsg += 9; // Skip " PRIVMSG "
+    // IRC message format: [':' prefix SPACE] command [params] CRLF
+    const char *cursor = line;
+    char prefix[256] = {0};
+    char command[64] = {0};
+    
+    // Parse optional prefix (starts with ':')
+    if (*cursor == ':') {
+        cursor++; // Skip ':'
+        const char *space = strchr(cursor, ' ');
+        if (space == nullptr) {
+            return; // Invalid message
         }
-
-        // Extract channel
-        const char *msg_start = strchr(privmsg, ':');
-        if (msg_start != nullptr) {
-            msg_start++; // Skip ':'
-
-            // Check for CTCP message (starts and ends with \x01)
-            // CTCP format: \x01COMMAND [parameters]\x01
-            if (msg_start[0] == '\x01') {
-                // This is a CTCP message - filter it out
-                // Common CTCP messages: VERSION, PING, TIME, FINGER, etc.
-
-                // Extract CTCP command for potential response
-                const char *ctcp_end = strchr(msg_start + 1, '\x01');
-                if (ctcp_end != nullptr) {
-                    size_t ctcp_len = (size_t)(ctcp_end - (msg_start + 1));
-
-                    // Check if it's a CTCP VERSION query (no parameters after VERSION)
-                    if (ctcp_len == 7 &&
-                        strncmp(msg_start + 1, "VERSION", 7) == 0) {
-                        // Extract the sender's nickname to reply
-                        if (line[0] == ':') {
-                            const char *nick_end = strchr(line + 1, '!');
-                            if (nick_end != nullptr) {
-                                char sender_nick[64] = {0};
-                                size_t nick_len =
-                                    (size_t)(nick_end - (line + 1));
-                                if (nick_len < sizeof(sender_nick)) {
-                                    memcpy(sender_nick, line + 1, nick_len);
-                                    sender_nick[nick_len] = '\0';
-
-                                    // Send CTCP VERSION reply
-                                    char reply[512];
-                                    snprintf(
-                                        reply, sizeof(reply),
-                                        "NOTICE %s :\x01VERSION SSH-Chatter "
-                                        "IRC Bridge v1.0\x01\r\n",
-                                        sender_nick);
-                                    send(client->socket_fd, reply,
-                                         strlen(reply), 0);
-                                }
-                            }
+        size_t prefix_len = (size_t)(space - cursor);
+        if (prefix_len >= sizeof(prefix)) {
+            prefix_len = sizeof(prefix) - 1;
+        }
+        memcpy(prefix, cursor, prefix_len);
+        prefix[prefix_len] = '\0';
+        cursor = space + 1; // Move past space
+    }
+    
+    // Parse command
+    const char *space = strchr(cursor, ' ');
+    size_t cmd_len;
+    if (space != nullptr) {
+        cmd_len = (size_t)(space - cursor);
+    } else {
+        cmd_len = strlen(cursor);
+    }
+    if (cmd_len >= sizeof(command)) {
+        cmd_len = sizeof(command) - 1;
+    }
+    memcpy(command, cursor, cmd_len);
+    command[cmd_len] = '\0';
+    
+    // Move cursor past command and space
+    if (space != nullptr) {
+        cursor = space + 1;
+    } else {
+        cursor += cmd_len;
+    }
+    
+    // Handle PING command (RFC 1459 section 4.6.2)
+    if (strcmp(command, "PING") == 0) {
+        // PING format: PING <server1> [<server2>]
+        // Response: PONG <server2> <server1>
+        char pong[512];
+        snprintf(pong, sizeof(pong), "PONG %s\r\n", cursor);
+        send(client->socket_fd, pong, strlen(pong), 0);
+        return;
+    }
+    
+    // Handle PRIVMSG command (RFC 1459 section 4.4.1)
+    if (strcmp(command, "PRIVMSG") == 0) {
+        // PRIVMSG format: PRIVMSG <target> :<message>
+        // Find the target (channel or nick)
+        const char *target_end = strchr(cursor, ' ');
+        if (target_end == nullptr) {
+            return; // No message text
+        }
+        
+        // Move to message text (skip target and space)
+        const char *msg_text = target_end + 1;
+        
+        // Check if message starts with ':' (trailing parameter)
+        if (*msg_text == ':') {
+            msg_text++; // Skip ':'
+        }
+        
+        // Check for CTCP message (starts and ends with \x01)
+        if (*msg_text == '\x01') {
+            const char *ctcp_end = strchr(msg_text + 1, '\x01');
+            if (ctcp_end != nullptr) {
+                size_t ctcp_len = (size_t)(ctcp_end - (msg_text + 1));
+                
+                // Handle CTCP VERSION query
+                if (ctcp_len == 7 && strncmp(msg_text + 1, "VERSION", 7) == 0) {
+                    // Extract sender nickname from prefix (nick!user@host)
+                    if (prefix[0] != '\0') {
+                        const char *nick_end = strchr(prefix, '!');
+                        char sender_nick[64] = {0};
+                        size_t nick_len;
+                        
+                        if (nick_end != nullptr) {
+                            nick_len = (size_t)(nick_end - prefix);
+                        } else {
+                            nick_len = strlen(prefix);
+                        }
+                        
+                        if (nick_len < sizeof(sender_nick)) {
+                            memcpy(sender_nick, prefix, nick_len);
+                            sender_nick[nick_len] = '\0';
+                            
+                            // Send CTCP VERSION reply via NOTICE
+                            char reply[512];
+                            snprintf(reply, sizeof(reply),
+                                   "NOTICE %s :\x01VERSION SSH-Chatter IRC Bridge v1.0\x01\r\n",
+                                   sender_nick);
+                            send(client->socket_fd, reply, strlen(reply), 0);
                         }
                     }
                 }
-                // Don't post CTCP messages to the chat room
-                return;
             }
-
-            // Extract nickname from prefix
-            char nick[64] = {0};
-            if (line[0] == ':') {
-                const char *nick_end = strchr(line + 1, '!');
-                if (nick_end != nullptr) {
-                    size_t nick_len = (size_t)(nick_end - (line + 1));
-                    if (nick_len < sizeof(nick)) {
-                        memcpy(nick, line + 1, nick_len);
-                        nick[nick_len] = '\0';
-                    }
-                }
+            // Don't post CTCP messages to chat room
+            return;
+        }
+        
+        // Extract nickname from prefix (format: nick!user@host or nick@host or nick)
+        char nick[64] = {0};
+        if (prefix[0] != '\0') {
+            const char *nick_end = strchr(prefix, '!');
+            if (nick_end == nullptr) {
+                nick_end = strchr(prefix, '@');
             }
-
-            // Post message to chat room
-            char formatted[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(formatted, sizeof(formatted), "[IRC] %s", msg_start);
-            const char *username = nick[0] != '\0' ? nick : "irc-relay";
-
-            if (!host_post_client_message(client->host, username, formatted,
-                                          nullptr, nullptr, false)) {
-                // Silently fail - don't flood logs
+            
+            size_t nick_len;
+            if (nick_end != nullptr) {
+                nick_len = (size_t)(nick_end - prefix);
+            } else {
+                nick_len = strlen(prefix);
+            }
+            
+            if (nick_len < sizeof(nick)) {
+                memcpy(nick, prefix, nick_len);
+                nick[nick_len] = '\0';
             }
         }
-    }
-    // Handle PING
-    // Format: PING :server or :server PING :server
-    else if (strncmp(line, "PING ", 5) == 0 ||
-             strstr(line, " PING ") != nullptr) {
-        const char *ping_pos = strstr(line, " PING ");
-        const char *ping_param;
-        if (ping_pos == nullptr) {
-            // Line starts with "PING ", skip "PING "
-            ping_param = line + 5;
-        } else {
-            // Line contains " PING ", skip " PING "
-            ping_param = ping_pos + 6;
+        
+        // Post message to chat room
+        char formatted[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(formatted, sizeof(formatted), "[IRC] %s", msg_text);
+        const char *username = nick[0] != '\0' ? nick : "irc-relay";
+        
+        if (!host_post_client_message(client->host, username, formatted,
+                                      nullptr, nullptr, false)) {
+            // Silently fail - don't flood logs
         }
-
-        char pong[512];
-        snprintf(pong, sizeof(pong), "PONG %s\r\n", ping_param);
-        send(client->socket_fd, pong, strlen(pong), 0);
     }
 }
 

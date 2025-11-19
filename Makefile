@@ -14,7 +14,7 @@ NPROC := $(shell nproc)
 CFLAGS = -std=c2x -Ofast \
               -Werror \
               -Wno-error=deprecated-declarations -DSSH_CHATTER_USE_GC=$(ENABLE_GC) \
-              -I lib/headers -I/usr/include -I/usr/include/libssh \
+              -I lib/headers -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
               -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
               -Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
               -fno-omit-frame-pointer -fstack-protector-strong -fno-common \

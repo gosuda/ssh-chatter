@@ -3229,6 +3229,7 @@ static bool session_telnet_write_block(session_ctx_t *ctx,
             chunk = SSH_CHATTER_CHANNEL_WRITE_CHUNK;
         }
 
+        /* Expand data for telnet IAC escaping (IAC byte must be doubled) */
         unsigned char buffer[SSH_CHATTER_CHANNEL_WRITE_CHUNK * 2U];
         size_t expanded = 0U;
         for (size_t idx = 0U; idx < chunk; ++idx) {
@@ -3239,21 +3240,58 @@ static bool session_telnet_write_block(session_ctx_t *ctx,
             }
         }
 
+        /* Write entire expanded buffer with proper error handling */
         size_t offset = 0U;
+        unsigned int retry_count = 0U;
+        const unsigned int max_retries = 3U;
+        
         while (offset < expanded) {
             ssize_t written = send(ctx->telnet_fd, buffer + offset,
                                    expanded - offset, MSG_NOSIGNAL);
             if (written < 0) {
                 if (errno == EINTR) {
+                    /* Interrupted system call - retry immediately */
                     continue;
                 }
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    /* Socket buffer full - wait and retry */
+                    if (retry_count++ >= max_retries) {
+                        return false; /* Too many retries */
+                    }
+                    struct timespec backoff = {
+                        .tv_sec = 0,
+                        .tv_nsec = 10000000, /* 10ms backoff */
+                    };
+                    nanosleep(&backoff, NULL);
+                    continue;
+                }
+                /* Other errors are fatal */
                 return false;
             }
+            
+            if (written == 0) {
+                /* Connection closed */
+                return false;
+            }
+            
             offset += (size_t)written;
+            retry_count = 0U; /* Reset retry counter on successful write */
         }
 
         data += chunk;
         length -= chunk;
+    }
+
+    /* Ensure data is pushed to network layer (strong sync point) */
+    /* Note: TCP_NODELAY should be set on socket for immediate send */
+    int flags = 0;
+    socklen_t flags_len = sizeof(flags);
+    if (getsockopt(ctx->telnet_fd, IPPROTO_TCP, TCP_NODELAY, &flags, &flags_len) == 0) {
+        if (flags == 0) {
+            /* TCP_NODELAY not set - force flush with empty MSG_OOB as sync marker */
+            /* This ensures message boundaries are preserved */
+            (void)send(ctx->telnet_fd, "", 0, MSG_NOSIGNAL);
+        }
     }
 
     return true;

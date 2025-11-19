@@ -28,7 +28,26 @@ typedef enum session_codepage {
  * @param capacity Size of output buffer
  * @return Number of bytes written to output, or 0 on error
  */
+/**
+ * Context for multi-byte code page conversions
+ */
+typedef struct session_codepage_context {
+    unsigned char lead_byte; /* Stores the first byte of a multi-byte sequence */
+    int state;               /* 0 = single-byte or no active multi-byte sequence, 1 = waiting for trail byte */
+} session_codepage_context_t;
+
+/**
+ * Convert a single byte from the specified code page to UTF-8, using a context for multi-byte handling
+ *
+ * @param codepage The source code page
+ * @param context Pointer to the codepage context (must be initialized to {0,0} for new conversions)
+ * @param byte The byte to convert
+ * @param output Buffer to store UTF-8 output (must be at least 4 bytes)
+ * @param capacity Size of output buffer
+ * @return Number of bytes written to output, or 0 on error
+ */
 size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
+                                     session_codepage_context_t *context,
                                      unsigned char byte,
                                      char *output,
                                      size_t capacity);

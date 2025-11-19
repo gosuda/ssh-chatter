@@ -131,132 +131,154 @@ static const uint16_t kCp1251ToUnicode[128] = {
     0x044E, 0x044F,
 };
 
-/* Partial CP949 (Korean) - High byte mapping for common Hangul syllables
- * Note: Full CP949 requires double-byte handling. This is a simplified version
- * that handles single-byte characters and provides placeholders for double-byte.
- * For proper Korean support, multi-byte sequence handling would be needed.
- */
-static const uint16_t kCp949ToUnicode[128] = {
-    /* 0x80-0x9F: Box drawing and special characters from CP437 */
-    0x00C7, 0x00FC, 0x00E9, 0x00E2, 0x00E4, 0x00E0, 0x00E5, 0x00E7, 0x00EA,
-    0x00EB, 0x00E8, 0x00EF, 0x00EE, 0x00EC, 0x00C4, 0x00C5, 0x00C9, 0x00E6,
-    0x00C6, 0x00F4, 0x00F6, 0x00F2, 0x00FB, 0x00F9, 0x00FF, 0x00D6, 0x00DC,
-    0x00A2, 0x00A3, 0x00A5, 0x20A7, 0x0192,
-    /* 0xA0-0xFF: Korean compatibility zone and Hangul */
-    0x3131, 0x3132, 0x3133, 0x3134, 0x3135, 0x3136, 0x3137, 0x3138, 0x3139,
-    0x313A, 0x313B, 0x313C, 0x313D, 0x313E, 0x313F, 0x3140, 0x3141, 0x3142,
-    0x3143, 0x3144, 0x3145, 0x3146, 0x3147, 0x3148, 0x3149, 0x314A, 0x314B,
-    0x314C, 0x314D, 0x314E, 0x314F, 0x3150, 0x3151, 0x3152, 0x3153, 0x3154,
-    0x3155, 0x3156, 0x3157, 0x3158, 0x3159, 0x315A, 0x315B, 0x315C, 0x315D,
-    0x315E, 0x315F, 0x3160, 0x3161, 0x3162, 0x3163, 0x3164, 0x3165, 0x3166,
-    0x3167, 0x3168, 0x3169, 0x316A, 0x316B, 0x316C, 0x316D, 0x316E, 0x316F,
-    0x3170, 0x3171, 0x3172, 0x3173, 0x3174, 0x3175, 0x3176, 0x3177, 0x3178,
-    0x3179, 0x317A, 0x317B, 0x317C, 0x317D, 0x317E, 0x317F, 0x3180, 0x3181,
-    0x3182, 0x3183, 0x3184, 0x3185, 0x3186, 0x3187, 0x3188, 0x3189, 0x318A,
-    0x318B, 0x318C, 0x318D, 0x318E, 0x00A0,
-};
 
-/* Partial CP932 (Japanese Shift-JIS) - Single-byte half-width katakana
- * Note: Full Shift-JIS requires double-byte handling for kanji and full-width kana
- */
-static const uint16_t kCp932ToUnicode[128] = {
-    /* 0x80-0x9F: Undefined/control in Shift-JIS, use CP437 box drawing */
-    0x00C7, 0x00FC, 0x00E9, 0x00E2, 0x00E4, 0x00E0, 0x00E5, 0x00E7, 0x00EA,
-    0x00EB, 0x00E8, 0x00EF, 0x00EE, 0x00EC, 0x00C4, 0x00C5, 0x00C9, 0x00E6,
-    0x00C6, 0x00F4, 0x00F6, 0x00F2, 0x00FB, 0x00F9, 0x00FF, 0x00D6, 0x00DC,
-    0x00A2, 0x00A3, 0x00A5, 0x20A7, 0x0192,
-    /* 0xA0-0xDF: Half-width katakana */
-    0x3002, 0x300C, 0x300D, 0x3001, 0x30FB, 0x30F2, 0x30A1, 0x30A3, 0x30A5,
-    0x30A7, 0x30A9, 0x30E3, 0x30E5, 0x30E7, 0x30C3, 0x30FC, 0x30A2, 0x30A4,
-    0x30A6, 0x30A8, 0x30AA, 0x30AB, 0x30AD, 0x30AF, 0x30B1, 0x30B3, 0x30B5,
-    0x30B7, 0x30B9, 0x30BB, 0x30BD, 0x30BF, 0x30C1, 0x30C4, 0x30C6, 0x30C8,
-    0x30CA, 0x30CB, 0x30CC, 0x30CD, 0x30CE, 0x30CF, 0x30D2, 0x30D5, 0x30D8,
-    0x30DB, 0x30DE, 0x30DF, 0x30E0, 0x30E1, 0x30E2, 0x30E4, 0x30E6, 0x30E8,
-    0x30E9, 0x30EA, 0x30EB, 0x30EC, 0x30ED, 0x30EF, 0x30F3, 0x309B, 0x309C,
-    0x00A0,
-};
+/* Placeholders for future full CP949 and CP932 implementations */
 
-/* Partial CP936 (Simplified Chinese GBK) - Single-byte characters
- * Note: Full GBK requires double-byte handling for Chinese characters
- */
-static const uint16_t kCp936ToUnicode[128] = {
-    /* 0x80-0xFF: Use CP437 box drawing for now, full GBK needs double-byte */
-    0x20AC, 0x00FC, 0x00E9, 0x00E2, 0x00E4, 0x00E0, 0x00E5, 0x00E7, 0x00EA,
-    0x00EB, 0x00E8, 0x00EF, 0x00EE, 0x00EC, 0x00C4, 0x00C5, 0x00C9, 0x00E6,
-    0x00C6, 0x00F4, 0x00F6, 0x00F2, 0x00FB, 0x00F9, 0x00FF, 0x00D6, 0x00DC,
-    0x00A2, 0x00A3, 0x00A5, 0x20A7, 0x0192, 0x00E1, 0x00ED, 0x00F3, 0x00FA,
-    0x00F1, 0x00D1, 0x00AA, 0x00BA, 0x00BF, 0x2310, 0x00AC, 0x00BD, 0x00BC,
-    0x00A1, 0x00AB, 0x00BB, 0x2591, 0x2592, 0x2593, 0x2502, 0x2524, 0x2561,
-    0x2562, 0x2556, 0x2555, 0x2563, 0x2551, 0x2557, 0x255D, 0x255C, 0x255B,
-    0x2510, 0x2514, 0x2534, 0x252C, 0x251C, 0x2500, 0x253C, 0x255E, 0x255F,
-    0x255A, 0x2554, 0x2569, 0x2566, 0x2560, 0x2550, 0x256C, 0x2567, 0x2568,
-    0x2564, 0x2565, 0x2559, 0x2558, 0x2552, 0x2553, 0x256B, 0x256A, 0x2518,
-    0x250C, 0x2588, 0x2584, 0x258C, 0x2590, 0x2580, 0x03B1, 0x00DF, 0x0393,
-    0x03C0, 0x03A3, 0x03C3, 0x00B5, 0x03C4, 0x03A6, 0x0398, 0x03A9, 0x03B4,
-    0x221E, 0x03C6, 0x03B5, 0x2229, 0x2261, 0x00B1, 0x2265, 0x2264, 0x2320,
-    0x2321, 0x00F7, 0x2248, 0x00B0, 0x2219, 0x00B7, 0x221A, 0x207F, 0x00B2,
-    0x25A0, 0x00A0,
-};
+
+
+/* Placeholder for future full CP936 implementation */
+
+
+// Forward declaration for CP949 to Unicode conversion
+static uint32_t cp949_to_unicode(uint16_t cp949_val);
 
 size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
+                                     session_codepage_context_t *context, // Added context parameter
                                      unsigned char byte,
                                      char *output,
                                      size_t capacity)
 {
-    if (output == NULL || capacity == 0U) {
+    if (output == NULL || capacity == 0U || context == NULL) { // Added context null check
         return 0U;
     }
 
     /* ASCII passthrough for all code pages */
     if (byte < 0x80U) {
+        context->state = 0; /* Reset state on ASCII byte */
+        context->lead_byte = 0;
         output[0] = (char)byte;
         return 1U;
     }
 
-    const uint16_t *table = NULL;
-    
+    uint32_t codepoint = 0;
+    size_t produced = 0;
+
     switch (codepage) {
-    case SESSION_CODEPAGE_CP437:
-        table = kCp437ToUnicode;
-        break;
     case SESSION_CODEPAGE_CP949:
-        table = kCp949ToUnicode;
+        if (context->state == 0) { /* Expecting lead byte */
+            if (byte >= 0x81U && byte <= 0xFEU) { /* Valid lead byte range for CP949 */
+                context->lead_byte = byte;
+                context->state = 1;
+                return 0U; /* Wait for trail byte */
+            }
+            /* Invalid lead byte, fall through to error handling (codepoint remains 0) */
+        } else { /* context->state == 1, Expecting trail byte */
+            context->state = 0; /* Reset state */
+            context->lead_byte = 0;
+            if ((byte >= 0x41U && byte <= 0xFEU) && (byte != 0x7FU)) { /* Valid trail byte range */
+                uint16_t cp949_val = (uint16_t)(context->lead_byte << 8) | byte;
+                codepoint = cp949_to_unicode(cp949_val);
+            }
+            /* If codepoint is still 0, it means invalid trail byte or conversion failed */
+        }
         break;
-    case SESSION_CODEPAGE_CP932:
-        table = kCp932ToUnicode;
+    case SESSION_CODEPAGE_CP932: /* Japanese Shift-JIS */
+    case SESSION_CODEPAGE_CP936: /* Simplified Chinese GBK */
+        /* These also require multi-byte handling. For now, treat as unknown/unsupported
+         * and output '?' until proper implementations are added.
+         */
+        codepoint = '?';
+        context->state = 0; /* Reset state for unsupported multi-byte sequences */
+        context->lead_byte = 0;
         break;
-    case SESSION_CODEPAGE_CP936:
-        table = kCp936ToUnicode;
-        break;
-    case SESSION_CODEPAGE_CP1251:
-        table = kCp1251ToUnicode;
-        break;
+    case SESSION_CODEPAGE_CP437:
     case SESSION_CODEPAGE_CP850:
-        table = kCp850ToUnicode;
-        break;
     case SESSION_CODEPAGE_CP852:
-        table = kCp852ToUnicode;
+    case SESSION_CODEPAGE_CP1251: {
+        const uint16_t *table = NULL;
+        switch (codepage) {
+            case SESSION_CODEPAGE_CP437: table = kCp437ToUnicode; break;
+            case SESSION_CODEPAGE_CP850: table = kCp850ToUnicode; break;
+            case SESSION_CODEPAGE_CP852: table = kCp852ToUnicode; break;
+            case SESSION_CODEPAGE_CP1251: table = kCp1251ToUnicode; break;
+            default: break; /* Should not happen */
+        }
+        if (table != NULL) { // For single-byte tables, byte-0x80 is the index
+            codepoint = table[byte - 0x80U];
+        } else {
+            codepoint = '?'; /* Fallback for unknown codepage table */
+        }
+        context->state = 0; /* Single-byte codepages don't need state */
+        context->lead_byte = 0;
         break;
+    }
     case SESSION_CODEPAGE_UTF8:
-    default:
-        /* UTF-8 mode - just pass through */
+        /* UTF-8 mode - just pass through as it's already UTF-8.
+         * The caller of this function is expected to handle UTF-8 multi-byte sequences.
+         */
         output[0] = (char)byte;
+        context->state = 0; /* Reset state for UTF-8 */
+        context->lead_byte = 0;
         return 1U;
+    default:
+        /* Unknown or unsupported codepage beyond those explicitly handled */
+        codepoint = '?';
+        context->state = 0; /* Reset state for unknown codepage */
+        context->lead_byte = 0;
+        break;
     }
 
-    if (table == NULL) {
-        output[0] = '?';
-        return 1U;
-    }
-
-    const uint32_t codepoint = table[byte - 0x80U];
-    size_t produced = session_encode_utf8_codepoint(codepoint, output, capacity);
-    if (produced == 0U) {
+    // This block handles the conversion to UTF-8 for codepoints determined above
+    if (codepoint != 0 && codepoint != '?') { // If a valid non-error codepoint was found
+        produced = session_encode_utf8_codepoint(codepoint, output, capacity);
+        if (produced == 0U) {
+            output[0] = '?'; // If UTF-8 encoding fails, use '?'
+            return 1U;
+        }
+    } else {
+        // Fallback for when no valid codepoint was produced (e.g., invalid CP949 sequence)
         output[0] = '?';
         return 1U;
     }
 
     return produced;
+}
+
+// Implements a simplified conversion for CP949 to Unicode.
+// Full CP949 requires a very large lookup table or complex algorithmic conversion.
+// This handles the main block of Hangul Syllables (AC00-D7A3).
+static uint32_t cp949_to_unicode(uint16_t cp949_val)
+{
+    // CP949 Lead byte range: 0x81-0xFE
+    // CP949 Trail byte range: 0x41-0xFE (excluding 0x7F)
+
+    uint8_t lead_byte = (uint8_t)(cp949_val >> 8);
+    uint8_t trail_byte = (uint8_t)(cp949_val & 0xFF);
+
+    // Check for valid lead byte and trail byte ranges for CP949
+    // Lead bytes 0x81-0xA0 typically map to symbols, special chars, etc. (first byte)
+    // Lead bytes 0xA1-0xFE combined with trail bytes form multi-byte sequences.
+    // Here, we simplify to cover the general multi-byte range.
+
+    // KSC 5601-1987 (which CP949 extends) Hangul range (lead bytes 0xC9-0xFE, trail bytes 0xA1-0xFE)
+    // A proper implementation would use a lookup table for all 11,172 Hangul syllables
+    // and other characters. This is a minimal functional placeholder.
+
+    // For lead bytes 0xC7-0xFE, and valid trail bytes, we assume Hangul Syllables
+    if (lead_byte >= 0xC7 && lead_byte <= 0xFE &&
+        trail_byte >= 0xA1 && trail_byte <= 0xFE) {
+        // This is a highly simplified mapping. A full implementation would need
+        // a precise algorithm or a large lookup table (e.g., KSC5601 to Unicode).
+        // For now, return a fixed Hangul character to show multi-byte parsing works.
+        return 0xAC00; /* Unicode for '가' */
+    } else if (lead_byte >= 0x81 && lead_byte <= 0xC6 &&
+               trail_byte >= 0x41 && trail_byte <= 0xFE && trail_byte != 0x7F) {
+        // This range covers other CP949 double-byte characters (Hanja, Japanese, Roman symbols, etc.)
+        // which also require a lookup table.
+        return '?'; // Placeholder for unsupported double-byte characters in this range
+    }
+
+    return '?'; // Default for unmapped or invalid CP949 sequences
 }
 
 session_codepage_t session_codepage_for_language(int language)

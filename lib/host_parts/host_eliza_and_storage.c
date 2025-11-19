@@ -3542,7 +3542,8 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
     return buffer;
 }
 
-static bool session_channel_write_cp437(session_ctx_t *ctx, const char *data,
+static bool __attribute__((unused))
+session_channel_write_cp437(session_ctx_t *ctx, const char *data,
                                         size_t length)
 {
     if (ctx == nullptr || data == nullptr || length == 0U) {
@@ -3564,6 +3565,120 @@ static bool session_channel_write_cp437(session_ctx_t *ctx, const char *data,
     size_t normalized_length = 0U;
     char *normalized =
         session_cp437_normalize_utf8(data, length, &normalized_length);
+
+    const char *input_cursor = normalized != nullptr ? normalized : data;
+    size_t input_remaining = normalized != nullptr ? normalized_length : length;
+    char *output_cursor = buffer;
+    size_t output_remaining = capacity;
+
+    bool fallback_to_plaintext = false;
+
+    while (input_remaining > 0U) {
+        size_t result =
+            iconv(descriptor, (char **)&input_cursor, &input_remaining,
+                  &output_cursor, &output_remaining);
+        if (result == (size_t)-1) {
+            if (errno == E2BIG) {
+                size_t produced = capacity - output_remaining;
+                size_t new_capacity = capacity * 2U;
+                if (new_capacity <= capacity) {
+                    new_capacity = capacity + length + 32U;
+                }
+                char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                if (resized == nullptr) {
+                    fallback_to_plaintext = true;
+                    goto cleanup;
+                }
+                buffer = resized;
+                output_cursor = buffer + produced;
+                output_remaining = new_capacity - produced;
+                capacity = new_capacity;
+                continue;
+            }
+            if (errno == EILSEQ || errno == EINVAL) {
+                ++input_cursor;
+                --input_remaining;
+                if (output_remaining == 0U) {
+                    size_t produced = capacity - output_remaining;
+                    size_t new_capacity = capacity * 2U;
+                    if (new_capacity <= capacity) {
+                        new_capacity = capacity + length + 32U;
+                    }
+                    char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                    if (resized == nullptr) {
+                        fallback_to_plaintext = true;
+                        goto cleanup;
+                    }
+                    buffer = resized;
+                    output_cursor = buffer + produced;
+                    output_remaining = new_capacity - produced;
+                    capacity = new_capacity;
+                }
+                *output_cursor++ = '?';
+                output_remaining -= 1U;
+                continue;
+            }
+            fallback_to_plaintext = true;
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    iconv_close(descriptor);
+    bool success = false;
+    if (fallback_to_plaintext) {
+        const char *fallback_data = normalized != nullptr ? normalized : data;
+        size_t fallback_length =
+            normalized != nullptr ? normalized_length : length;
+        success =
+            session_channel_write_all(ctx, fallback_data, fallback_length);
+    } else {
+        size_t produced = capacity - output_remaining;
+        success = session_channel_write_all(ctx, buffer, produced);
+    }
+    GC_FREE(buffer);
+    if (normalized != nullptr) {
+        GC_FREE(normalized);
+    }
+    return success;
+}
+
+static bool session_channel_write_codepage(session_ctx_t *ctx, const char *data,
+                                           size_t length,
+                                           session_codepage_t codepage)
+{
+    if (ctx == nullptr || data == nullptr || length == 0U) {
+        return true;
+    }
+
+    /* For UTF-8 or unknown codepages, just pass through */
+    if (codepage == SESSION_CODEPAGE_UTF8) {
+        return session_channel_write_all(ctx, data, length);
+    }
+
+    const char *iconv_name = session_codepage_iconv_name(codepage);
+    if (iconv_name == nullptr) {
+        return session_channel_write_all(ctx, data, length);
+    }
+
+    iconv_t descriptor = iconv_open(iconv_name, "UTF-8");
+    if (descriptor == (iconv_t)(-1)) {
+        return session_channel_write_all(ctx, data, length);
+    }
+
+    size_t capacity = (length > 0U ? length : 1U) * 4U + 16U;
+    char *buffer = (char *)GC_MALLOC(capacity);
+    if (buffer == nullptr) {
+        iconv_close(descriptor);
+        return session_channel_write_all(ctx, data, length);
+    }
+
+    /* For CP437, apply normalization. For others, use data as-is */
+    size_t normalized_length = 0U;
+    char *normalized = nullptr;
+    if (codepage == SESSION_CODEPAGE_CP437) {
+        normalized = session_cp437_normalize_utf8(data, length, &normalized_length);
+    }
 
     const char *input_cursor = normalized != nullptr ? normalized : data;
     size_t input_remaining = normalized != nullptr ? normalized_length : length;
@@ -3774,7 +3889,9 @@ static void session_channel_write(session_ctx_t *ctx, const void *data,
     }
 
     if (ctx->prefer_cp437_output) {
-        success = session_channel_write_cp437(ctx, (const char *)data, length);
+        /* Use the generic codepage conversion with the active codepage */
+        success = session_channel_write_codepage(ctx, (const char *)data, length,
+                                                 ctx->active_codepage);
     } else if (ctx->prefer_utf16_output) {
         success = session_channel_write_utf16(ctx, (const char *)data, length);
     } else {
@@ -4747,6 +4864,8 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
                 buffer[written] = '\0';
                 session_channel_write(ctx, "\b \b", 3U);
             }
+            /* Also reset multi-byte buffer on backspace */
+            ctx->multibyte_input_length = 0U;
             continue;
         }
 
@@ -4759,8 +4878,9 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
             continue;
         }
 
-        char encoded[4];
-        size_t encoded_len = 1U;
+        char encoded[8];
+        size_t encoded_len = 0U;
+        
         if (ctx->cp437_input_enabled) {
             encoded_len =
                 session_codepage_byte_to_utf8(ctx->active_codepage, &ctx->codepage_ctx, byte, encoded, sizeof(encoded));
@@ -4769,7 +4889,9 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
                 encoded_len = 1U;
             }
         } else {
+            /* UTF-8 mode - pass through */
             encoded[0] = (char)byte;
+            encoded_len = 1U;
         }
 
         if (written + encoded_len >= length) {

@@ -2749,6 +2749,8 @@ static void session_reset_for_retry(session_ctx_t *ctx)
     ctx->input_escape_active = false;
     ctx->input_escape_length = 0U;
     ctx->input_escape_buffer[0] = '\0';
+    ctx->multibyte_input_length = 0U;
+    memset(ctx->multibyte_input_buffer, 0, sizeof(ctx->multibyte_input_buffer));
     ctx->bbs_post_pending = false;
     ctx->pending_bbs_title[0] = '\0';
     ctx->pending_bbs_body[0] = '\0';
@@ -3993,6 +3995,8 @@ static void *session_thread(void *arg)
                 ctx->input_history_position = -1;
                 session_scrollback_reset_position(ctx);
                 session_local_backspace(ctx);
+                /* Reset multi-byte buffer on backspace */
+                ctx->multibyte_input_length = 0U;
                 continue;
             }
 
@@ -4013,8 +4017,8 @@ static void *session_thread(void *arg)
                 continue;
             }
 
-            char encoded[4];
-            size_t encoded_len = 1U;
+            char encoded[8];
+            size_t encoded_len = 0U;
             if (ctx->cp437_input_enabled) {
                 encoded_len = session_codepage_byte_to_utf8(
                     ctx->active_codepage, &ctx->codepage_ctx, (unsigned char)ch, encoded, sizeof(encoded));
@@ -4024,6 +4028,7 @@ static void *session_thread(void *arg)
                 }
             } else {
                 encoded[0] = ch;
+                encoded_len = 1U;
             }
 
             if (ctx->input_length + encoded_len >= sizeof(ctx->input_buffer)) {

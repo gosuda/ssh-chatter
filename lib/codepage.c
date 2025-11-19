@@ -1,6 +1,8 @@
 #include "headers/codepage.h"
 #include "headers/host.h"
 #include <string.h>
+#include <iconv.h>
+#include <errno.h>
 
 /* Forward declaration of UTF-8 encoding function from host_runtime.c */
 static size_t session_encode_utf8_codepoint(uint32_t codepoint, char *output,
@@ -325,4 +327,170 @@ const char *session_codepage_name(session_codepage_t codepage)
     default:
         return "Unknown";
     }
+}
+
+const char *session_codepage_iconv_name(session_codepage_t codepage)
+{
+    switch (codepage) {
+    case SESSION_CODEPAGE_UTF8:
+        return NULL; /* No conversion needed */
+    case SESSION_CODEPAGE_CP437:
+        return "CP437//TRANSLIT";
+    case SESSION_CODEPAGE_CP949:
+        return "CP949//TRANSLIT";
+    case SESSION_CODEPAGE_CP932:
+        return "CP932//TRANSLIT";
+    case SESSION_CODEPAGE_CP936:
+        return "CP936//TRANSLIT";
+    case SESSION_CODEPAGE_CP1251:
+        return "CP1251//TRANSLIT";
+    case SESSION_CODEPAGE_CP850:
+        return "CP850//TRANSLIT";
+    case SESSION_CODEPAGE_CP852:
+        return "CP852//TRANSLIT";
+    default:
+        return NULL;
+    }
+}
+
+size_t session_codepage_to_utf8(session_codepage_t codepage,
+
+                                 const unsigned char *input,
+
+                                 size_t input_length,
+
+                                 char *output,
+
+                                 size_t output_capacity) {
+
+    session_codepage_context_t context = {0, 0};
+    if (input == NULL || input_length == 0U || output == NULL || output_capacity == 0U) {
+        return 0U;
+    }
+
+    /* For UTF-8, just copy as-is */
+    if (codepage == SESSION_CODEPAGE_UTF8) {
+        size_t to_copy = input_length < output_capacity ? input_length : output_capacity;
+        memcpy(output, input, to_copy);
+        return to_copy;
+    }
+
+    const char *iconv_name = session_codepage_iconv_name(codepage);
+    bool is_multibyte_codepage = (codepage == SESSION_CODEPAGE_CP949 ||
+                                  codepage == SESSION_CODEPAGE_CP932 ||
+                                  codepage == SESSION_CODEPAGE_CP936);
+
+    if (iconv_name == NULL) {
+        if (is_multibyte_codepage) {
+            return 0U; /* No iconv name for multi-byte, conversion impossible */
+        }
+        /* Fall back to byte-by-byte conversion for single-byte codepages or unknown */
+        if (input_length > 0U && output_capacity > 0U) {
+            size_t result = session_codepage_byte_to_utf8(codepage, &context, input[0], output, output_capacity);
+            return result;
+        }
+        return 0U;
+    }
+
+    iconv_t descriptor = iconv_open("UTF-8", iconv_name);
+    if (descriptor == (iconv_t)(-1)) {
+        if (is_multibyte_codepage) {
+            return 0U; /* iconv_open failed for multi-byte, conversion impossible */
+        }
+        /* On error, try single-byte conversion for the first byte for single-byte codepages */
+        if (input_length > 0U && output_capacity > 0U) {
+            size_t result = session_codepage_byte_to_utf8(codepage, &context, input[0], output, output_capacity);
+            return result;
+        }
+        return 0U;
+    }
+
+    const char *input_cursor = (const char *)input;
+    size_t input_remaining = input_length;
+    char *output_cursor = output;
+    size_t output_remaining = output_capacity;
+
+    size_t result = iconv(descriptor, (char **)&input_cursor, &input_remaining,
+                         &output_cursor, &output_remaining);
+    
+    iconv_close(descriptor);
+
+    if (result == (size_t)-1) {
+        if (is_multibyte_codepage) {
+            return 0U; /* iconv failed for multi-byte, conversion impossible */
+        }
+        /* On error, try single-byte conversion for the first byte for single-byte codepages */
+        if (input_length > 0U && output_capacity > 0U) {
+            size_t bytes = session_codepage_byte_to_utf8(codepage, &context, input[0], output, output_capacity);
+            return bytes;
+        }
+        return 0U;
+    }
+
+    return output_capacity - output_remaining;
+}
+
+size_t session_utf8_to_codepage(session_codepage_t codepage,
+                                const char *input,
+                                size_t input_length,
+                                char *output,
+                                size_t output_capacity)
+{
+    if (input == NULL || input_length == 0U || output == NULL || output_capacity == 0U) {
+        return 0U;
+    }
+
+    /* If the target codepage is UTF-8, just copy as-is */
+    if (codepage == SESSION_CODEPAGE_UTF8) {
+        size_t to_copy = input_length < output_capacity ? input_length : output_capacity;
+        memcpy(output, input, to_copy);
+        return to_copy;
+    }
+
+    const char *iconv_name;
+    switch (codepage) {
+    case SESSION_CODEPAGE_CP949:
+        // Use CP949 encoding for UTF-8 to CP949 conversion.
+        iconv_name = "CP949";
+        break;
+    case SESSION_CODEPAGE_CP932:
+        // Use CP932//TRANSLIT for UTF-8 to CP932 conversion.
+        iconv_name = "CP932//TRANSLIT";
+        break;
+    case SESSION_CODEPAGE_CP936:
+        // Use CP936//TRANSLIT for UTF-8 to CP936 conversion.
+        iconv_name = "CP936//TRANSLIT";
+        break;
+    default:
+        // For other codepages, use the provided iconv_name or NULL if not applicable.
+        break;
+    }
+
+    if (iconv_name == NULL) {
+        /* No iconv name for this codepage, conversion impossible */
+        return 0U;
+    }
+
+    iconv_t descriptor = iconv_open(iconv_name, "UTF-8");
+    if (descriptor == (iconv_t)(-1)) {
+        /* iconv_open failed, conversion impossible */
+        return 0U;
+    }
+
+    const char *input_cursor = input;
+    size_t input_remaining = input_length;
+    char *output_cursor = output;
+    size_t output_remaining = output_capacity;
+
+    size_t result = iconv(descriptor, (char **)&input_cursor, &input_remaining,
+                         &output_cursor, &output_remaining);
+    
+    iconv_close(descriptor);
+
+    if (result == (size_t)-1) {
+        /* iconv failed, return 0 to indicate failure */
+        return 0U;
+    }
+
+    return output_capacity - output_remaining;
 }

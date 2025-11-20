@@ -2434,6 +2434,9 @@ static const char *chat_attachment_type_label(chat_attachment_type_t type);
 static void host_state_resolve_path(host_t *host);
 static void host_state_load(host_t *host);
 static void host_state_save_locked(host_t *host);
+static void host_ui_language_state_resolve_path(host_t *host);
+static void host_ui_language_state_load(host_t *host);
+static void host_ui_language_state_save_locked(host_t *host);
 static void host_eliza_state_resolve_path(host_t *host);
 static void host_eliza_state_load(host_t *host);
 static void host_eliza_state_save_locked(host_t *host);
@@ -5859,6 +5862,7 @@ void host_store_ui_language(host_t *host, const session_ctx_t *ctx)
         }
     }
     host_state_save_locked(host);
+    host_ui_language_state_save_locked(host);
     pthread_mutex_unlock(&host->lock);
 }
 

@@ -2650,6 +2650,36 @@ void session_scrollback_reset_position(session_ctx_t *ctx)
     ctx->no_update = false;
 }
 
+static size_t session_visible_history_lines(const session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return SSH_CHATTER_SCROLLBACK_CHUNK;
+    }
+
+    unsigned int height = ctx->terminal_height;
+    if (height == 0U) {
+        return SSH_CHATTER_SCROLLBACK_CHUNK;
+    }
+
+    // Reserve lines for the scrollback header and prompt to keep output stable
+    const unsigned int reserved_lines = 2U;
+    if (height > reserved_lines) {
+        height -= reserved_lines;
+    } else {
+        height = 1U;
+    }
+
+    size_t visible = height;
+    if (visible == 0U) {
+        visible = 1U;
+    }
+    if (visible > SSH_CHATTER_SCROLLBACK_CHUNK) {
+        visible = SSH_CHATTER_SCROLLBACK_CHUNK;
+    }
+
+    return visible;
+}
+
 static void session_history_record(session_ctx_t *ctx, const char *line)
 {
     if (ctx == nullptr || line == nullptr) {
@@ -2779,8 +2809,10 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
         ctx->translation_suppress_output = true;
     }
 
-    const size_t step =
-        SSH_CHATTER_SCROLLBACK_CHUNK > 0 ? SSH_CHATTER_SCROLLBACK_CHUNK : 1U;
+    size_t step = session_visible_history_lines(ctx);
+    if (step == 0U) {
+        step = 1U;
+    }
     if (ctx->history_scroll_position >= total) {
         ctx->history_scroll_position = total > 0U ? total - 1U : 0U;
     }
@@ -2986,8 +3018,7 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     }
 
     // Calculate sliding window - always show 100 messages (MESSAGE CHUNK)
-    size_t visible_lines =
-        SSH_CHATTER_SCROLLBACK_CHUNK; // Always show 100 messages
+    size_t visible_lines = session_visible_history_lines(ctx);
     size_t newest_visible = total - 1U - new_position;
     size_t chunk = visible_lines;
     if (chunk > newest_visible + 1U) {

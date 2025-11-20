@@ -5,6 +5,7 @@
 #include "headers/humanized/humanized.h"
 
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -38,9 +39,12 @@ struct irc_client {
     char nickname[64];
     char username[64];
     char realname[128];
+    char password[128];
     char status_message[256];
     int socket_fd;
     time_t last_ping;
+    bool registered;
+    bool join_sent;
 };
 
 static const char *irc_getenv(const char *name)
@@ -61,6 +65,19 @@ static void irc_set_status(irc_client_t *client, const char *status)
     snprintf(client->status_message, sizeof(client->status_message), "%s",
              status);
     pthread_mutex_unlock(&client->lock);
+}
+
+static void irc_join_if_ready(irc_client_t *client)
+{
+    if (client == nullptr || client->join_sent || !client->registered) {
+        return;
+    }
+
+    char buffer[256];
+    snprintf(buffer, sizeof(buffer), "JOIN %s\r\n", client->channel);
+    if (send(client->socket_fd, buffer, strlen(buffer), 0) >= 0) {
+        client->join_sent = true;
+    }
 }
 
 __attribute__((unused)) static void
@@ -142,6 +159,15 @@ static bool irc_connect_socket(irc_client_t *client)
 
     // Send IRC-style handshake
     char buffer[512];
+    if (client->password[0] != '\0') {
+        snprintf(buffer, sizeof(buffer), "PASS %s\r\n", client->password);
+        if (send(client->socket_fd, buffer, strlen(buffer), 0) < 0) {
+            close(client->socket_fd);
+            client->socket_fd = -1;
+            return false;
+        }
+    }
+
     snprintf(buffer, sizeof(buffer), "NICK %s\r\n", client->nickname);
     if (send(client->socket_fd, buffer, strlen(buffer), 0) < 0) {
         close(client->socket_fd);
@@ -157,16 +183,10 @@ static bool irc_connect_socket(irc_client_t *client)
         return false;
     }
 
-    // Join channel
-    snprintf(buffer, sizeof(buffer), "JOIN %s\r\n", client->channel);
-    if (send(client->socket_fd, buffer, strlen(buffer), 0) < 0) {
-        close(client->socket_fd);
-        client->socket_fd = -1;
-        return false;
-    }
-
     atomic_store(&client->connected, true);
     client->last_ping = time(nullptr);
+    client->registered = false;
+    client->join_sent = false;
     irc_set_status(client, "Connected");
 
     return true;
@@ -179,6 +199,8 @@ static void irc_disconnect_socket(irc_client_t *client)
     }
 
     atomic_store(&client->connected, false);
+    client->registered = false;
+    client->join_sent = false;
 
     if (client->socket_fd >= 0) {
         // Send QUIT message
@@ -248,6 +270,33 @@ static void irc_handle_message(irc_client_t *client, const char *line)
         snprintf(pong, sizeof(pong), "PONG %s\r\n", cursor);
         send(client->socket_fd, pong, strlen(pong), 0);
         return;
+    }
+
+    // Handle registration numerics and nickname conflicts
+    if (strlen(command) == 3 && isdigit((unsigned char)command[0]) &&
+        isdigit((unsigned char)command[1]) &&
+        isdigit((unsigned char)command[2])) {
+        int numeric = atoi(command);
+        if (numeric == 433) { // ERR_NICKNAMEINUSE
+            size_t nick_len = strlen(client->nickname);
+            if (nick_len + 1 < sizeof(client->nickname)) {
+                client->nickname[nick_len] = '_';
+                client->nickname[nick_len + 1] = '\0';
+
+                char rename_cmd[256];
+                snprintf(rename_cmd, sizeof(rename_cmd), "NICK %s\r\n",
+                         client->nickname);
+                send(client->socket_fd, rename_cmd, strlen(rename_cmd), 0);
+                irc_set_status(client, "Nickname in use, retrying...");
+            }
+            return;
+        }
+
+        if (numeric == 1 || numeric == 376 || numeric == 422) { // welcome / end of MOTD
+            client->registered = true;
+            irc_join_if_ready(client);
+            return;
+        }
     }
     
     // Handle PRIVMSG command (RFC 1459 section 4.4.1)
@@ -443,6 +492,7 @@ irc_client_t *irc_client_create(host_t *host)
     const char *nickname = irc_getenv("CHATTER_IRC_NICKNAME");
     const char *username = irc_getenv("CHATTER_IRC_USERNAME");
     const char *realname = irc_getenv("CHATTER_IRC_REALNAME");
+    const char *password = irc_getenv("CHATTER_IRC_PASSWORD");
 
     // IRC is optional, return nullptr if not configured
     if (server == nullptr || channel == nullptr) {
@@ -460,6 +510,8 @@ irc_client_t *irc_client_create(host_t *host)
     atomic_init(&client->running, false);
     atomic_init(&client->disabled, false);
     atomic_init(&client->connected, false);
+    client->registered = false;
+    client->join_sent = false;
 
     snprintf(client->server_host, sizeof(client->server_host), "%s", server);
     client->server_port = (port_str != nullptr) ? atoi(port_str) : 6667;
@@ -472,6 +524,9 @@ irc_client_t *irc_client_create(host_t *host)
                  : (nickname != nullptr ? nickname : "ssh-chatter"));
     snprintf(client->realname, sizeof(client->realname), "%s",
              realname != nullptr ? realname : "SSH-Chatter Bot");
+    if (password != nullptr) {
+        snprintf(client->password, sizeof(client->password), "%s", password);
+    }
 
     if (pthread_mutex_init(&client->lock, nullptr) != 0) {
         GC_FREE(client);

@@ -4049,7 +4049,8 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
                     continue;
                 }
                 // Skip users who have the no_update flag set (scrolled back in history)
-                if (member->no_update) {
+                if (member->no_update &&
+                    member->transport_kind != SESSION_TRANSPORT_TELNET) {
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4129,7 +4130,8 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
                     continue;
                 }
                 // Skip users who have the no_update flag set (scrolled back in history)
-                if (member->no_update) {
+                if (member->no_update &&
+                    member->transport_kind != SESSION_TRANSPORT_TELNET) {
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4201,7 +4203,8 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                     continue;
                 }
                 // Skip users who have the no_update flag set (scrolled back in history)
-                if (member->no_update) {
+                if (member->no_update &&
+                    member->transport_kind != SESSION_TRANSPORT_TELNET) {
                     continue;
                 }
                 targets[target_count++] = member;

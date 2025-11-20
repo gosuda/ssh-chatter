@@ -12,7 +12,6 @@
 #include "../headers/host.h"
 #include "../headers/client.h"
 #include "../headers/webssh_client.h"
-#include "../headers/matrix_client.h"
 #include "../headers/irc_client.h"
 #include "../headers/fidonet_client.h"
 #include "../headers/translator.h"

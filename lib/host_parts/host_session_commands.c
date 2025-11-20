@@ -3473,7 +3473,7 @@ static void session_bbs_compact_preview(const char *input, char *output,
 
 static void session_bbs_announce_post(host_t *host, const bbs_post_t *post)
 {
-    if (host == nullptr || post == nullptr || host->matrix_client == nullptr) {
+    if (host == nullptr || post == nullptr) {
         return;
     }
 
@@ -3507,8 +3507,7 @@ static void session_bbs_announce_post(host_t *host, const bbs_post_t *post)
 static void session_bbs_announce_comment(host_t *host, const bbs_post_t *post,
                                          const bbs_comment_t *comment)
 {
-    if (host == nullptr || post == nullptr || comment == nullptr ||
-        host->matrix_client == nullptr) {
+    if (host == nullptr || post == nullptr || comment == nullptr) {
         return;
     }
 

@@ -4686,105 +4686,292 @@ static void session_game_gonu_reset(gonu_game_state_t *state, gonu_variant_t var
     state->player_number = 0U;
 }
 
-static bool session_game_gonu_is_valid_position(gonu_variant_t variant, int row, int col)
+typedef struct gonu_board_pattern {
+    bool valid[GONU_BOARD_SIZE][GONU_BOARD_SIZE];
+    uint8_t neighbors[GONU_BOARD_SIZE][GONU_BOARD_SIZE];
+} gonu_board_pattern_t;
+
+static gonu_board_pattern_t gonu_patterns[GONU_VARIANT_JANGGI_STAR + 1U];
+static bool gonu_patterns_initialized = false;
+
+enum {
+    GONU_DIR_N  = 1U << 0,
+    GONU_DIR_NE = 1U << 1,
+    GONU_DIR_E  = 1U << 2,
+    GONU_DIR_SE = 1U << 3,
+    GONU_DIR_S  = 1U << 4,
+    GONU_DIR_SW = 1U << 5,
+    GONU_DIR_W  = 1U << 6,
+    GONU_DIR_NW = 1U << 7,
+};
+
+static bool session_game_gonu_in_bounds(int row, int col)
 {
-    // Common center position valid for all variants
-    if (row == 2 && col == 2) {
-        return true;
+    return row >= 0 && row < GONU_BOARD_SIZE && col >= 0 && col < GONU_BOARD_SIZE;
+}
+
+static uint8_t session_game_gonu_dir_to_bit(int dr, int dc)
+{
+    if (dr == -1 && dc == 0) {
+        return GONU_DIR_N;
+    }
+    if (dr == -1 && dc == 1) {
+        return GONU_DIR_NE;
+    }
+    if (dr == 0 && dc == 1) {
+        return GONU_DIR_E;
+    }
+    if (dr == 1 && dc == 1) {
+        return GONU_DIR_SE;
+    }
+    if (dr == 1 && dc == 0) {
+        return GONU_DIR_S;
+    }
+    if (dr == 1 && dc == -1) {
+        return GONU_DIR_SW;
+    }
+    if (dr == 0 && dc == -1) {
+        return GONU_DIR_W;
+    }
+    if (dr == -1 && dc == -1) {
+        return GONU_DIR_NW;
+    }
+    return 0U;
+}
+
+static void session_game_gonu_connect_cells(gonu_board_pattern_t *pattern, int r1, int c1, int r2, int c2)
+{
+    if (pattern == nullptr) {
+        return;
     }
 
-    switch (variant) {
-    case GONU_VARIANT_HOBAK: // Pumpkin - 3x3 grid pattern
-        if (row >= 1 && row <= 3 && col >= 1 && col <= 3) {
-            return true;
-        }
-        break;
-    case GONU_VARIANT_BAKWI: // Wheel - circular with center
-        // Center and cardinal directions
-        if ((row == 2 && (col == 0 || col == 4)) ||
-            ((row == 0 || row == 4) && col == 2)) {
-            return true;
-        }
-        // Diagonal positions
-        if ((row == 1 || row == 3) && (col == 1 || col == 3)) {
-            return true;
-        }
-        break;
-    case GONU_VARIANT_UMUL: // Well - 井 pattern
-        // Horizontal line
-        if (row == 2 && (col >= 0 && col <= 4)) {
-            return true;
-        }
-        // Vertical lines at left, center, right
-        if ((col == 0 || col == 2 || col == 4) && (row >= 0 && row <= 4)) {
-            return true;
-        }
-        break;
+    const int dr = r2 - r1;
+    const int dc = c2 - c1;
+    if (dr < -1 || dr > 1 || dc < -1 || dc > 1 || (dr == 0 && dc == 0)) {
+        return;
     }
-    return false;
+
+    const uint8_t forward = session_game_gonu_dir_to_bit(dr, dc);
+    const uint8_t backward = session_game_gonu_dir_to_bit(-dr, -dc);
+    if (forward == 0U || backward == 0U) {
+        return;
+    }
+
+    pattern->neighbors[r1][c1] |= forward;
+    pattern->neighbors[r2][c2] |= backward;
+}
+
+static void session_game_gonu_add_line(gonu_board_pattern_t *pattern, int r1, int c1, int r2, int c2)
+{
+    if (pattern == nullptr) {
+        return;
+    }
+    if (!session_game_gonu_in_bounds(r1, c1) || !session_game_gonu_in_bounds(r2, c2)) {
+        return;
+    }
+
+    const int dr = (r2 > r1) ? 1 : (r2 < r1 ? -1 : 0);
+    const int dc = (c2 > c1) ? 1 : (c2 < c1 ? -1 : 0);
+    if (dr == 0 && dc == 0) {
+        return;
+    }
+    if (!(dr == 0 || dc == 0 || abs(dr) == abs(dc))) {
+        return;
+    }
+
+    int row = r1;
+    int col = c1;
+    bool first = true;
+    int prev_row = r1;
+    int prev_col = c1;
+
+    while (true) {
+        pattern->valid[row][col] = true;
+        if (!first) {
+            session_game_gonu_connect_cells(pattern, prev_row, prev_col, row, col);
+        }
+
+        if (row == r2 && col == c2) {
+            break;
+        }
+
+        prev_row = row;
+        prev_col = col;
+        row += dr;
+        col += dc;
+
+        if (!session_game_gonu_in_bounds(row, col)) {
+            break;
+        }
+        first = false;
+    }
+}
+
+static void session_game_gonu_add_diamond(gonu_board_pattern_t *pattern, int center, int radius)
+{
+    session_game_gonu_add_line(pattern, center, center - radius, center - radius, center);
+    session_game_gonu_add_line(pattern, center - radius, center, center, center + radius);
+    session_game_gonu_add_line(pattern, center, center + radius, center + radius, center);
+    session_game_gonu_add_line(pattern, center + radius, center, center, center - radius);
+}
+
+static void session_game_gonu_build_patterns(void)
+{
+    if (gonu_patterns_initialized) {
+        return;
+    }
+
+    const int center = GONU_BOARD_SIZE / 2;
+    for (size_t idx = 0U; idx < sizeof(gonu_patterns) / sizeof(gonu_patterns[0]); ++idx) {
+        memset(&gonu_patterns[idx], 0, sizeof(gonu_patterns[idx]));
+    }
+
+    // Hobak-gonu: layered diamonds with cross beams for a busy pumpkin lattice
+    gonu_board_pattern_t *hobak = &gonu_patterns[GONU_VARIANT_HOBAK];
+    session_game_gonu_add_diamond(hobak, center, 3);
+    session_game_gonu_add_diamond(hobak, center, 2);
+    session_game_gonu_add_diamond(hobak, center, 1);
+    session_game_gonu_add_line(hobak, center, 0, center, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(hobak, 0, center, GONU_BOARD_SIZE - 1, center);
+    session_game_gonu_add_line(hobak, 0, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(hobak, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, 0);
+
+    // Bakwi-gonu: triple concentric squares with spokes and diagonals
+    gonu_board_pattern_t *bakwi = &gonu_patterns[GONU_VARIANT_BAKWI];
+    session_game_gonu_add_line(bakwi, 0, 0, 0, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(bakwi, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(bakwi, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, 0);
+    session_game_gonu_add_line(bakwi, GONU_BOARD_SIZE - 1, 0, 0, 0);
+    session_game_gonu_add_line(bakwi, 1, 1, 1, GONU_BOARD_SIZE - 2);
+    session_game_gonu_add_line(bakwi, 1, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2);
+    session_game_gonu_add_line(bakwi, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, 1);
+    session_game_gonu_add_line(bakwi, GONU_BOARD_SIZE - 2, 1, 1, 1);
+    session_game_gonu_add_line(bakwi, 2, 2, 2, GONU_BOARD_SIZE - 3);
+    session_game_gonu_add_line(bakwi, 2, GONU_BOARD_SIZE - 3, GONU_BOARD_SIZE - 3, GONU_BOARD_SIZE - 3);
+    session_game_gonu_add_line(bakwi, GONU_BOARD_SIZE - 3, GONU_BOARD_SIZE - 3, GONU_BOARD_SIZE - 3, 2);
+    session_game_gonu_add_line(bakwi, GONU_BOARD_SIZE - 3, 2, 2, 2);
+    session_game_gonu_add_line(bakwi, center, 0, center, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(bakwi, 0, center, GONU_BOARD_SIZE - 1, center);
+    session_game_gonu_add_line(bakwi, 0, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(bakwi, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, 0);
+
+    // Umul-gonu:井 grid thickened with inner walls and cross-cut diagonals
+    gonu_board_pattern_t *umul = &gonu_patterns[GONU_VARIANT_UMUL];
+    session_game_gonu_add_line(umul, 0, 0, 0, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(umul, GONU_BOARD_SIZE - 1, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(umul, 0, 0, GONU_BOARD_SIZE - 1, 0);
+    session_game_gonu_add_line(umul, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(umul, center, 0, center, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(umul, 0, center, GONU_BOARD_SIZE - 1, center);
+    session_game_gonu_add_line(umul, 1, 1, 1, GONU_BOARD_SIZE - 2);
+    session_game_gonu_add_line(umul, GONU_BOARD_SIZE - 2, 1, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2);
+    session_game_gonu_add_line(umul, 1, 1, GONU_BOARD_SIZE - 2, 1);
+    session_game_gonu_add_line(umul, 1, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2);
+    session_game_gonu_add_line(umul, 0, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(umul, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, 0);
+
+    // Janggi star palace: layered palace boxes with long star diagonals
+    gonu_board_pattern_t *janggi = &gonu_patterns[GONU_VARIANT_JANGGI_STAR];
+    session_game_gonu_add_line(janggi, 0, 0, 0, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(janggi, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(janggi, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, 0);
+    session_game_gonu_add_line(janggi, GONU_BOARD_SIZE - 1, 0, 0, 0);
+    session_game_gonu_add_line(janggi, 1, 1, 1, GONU_BOARD_SIZE - 2);
+    session_game_gonu_add_line(janggi, 1, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2);
+    session_game_gonu_add_line(janggi, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, 1);
+    session_game_gonu_add_line(janggi, GONU_BOARD_SIZE - 2, 1, 1, 1);
+    session_game_gonu_add_line(janggi, center, 0, center, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(janggi, 0, center, GONU_BOARD_SIZE - 1, center);
+    session_game_gonu_add_line(janggi, 1, center, GONU_BOARD_SIZE - 2, center);
+    session_game_gonu_add_line(janggi, center, 1, center, GONU_BOARD_SIZE - 2);
+    session_game_gonu_add_line(janggi, 0, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1);
+    session_game_gonu_add_line(janggi, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, 0);
+    session_game_gonu_add_line(janggi, 1, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, 1);
+    session_game_gonu_add_line(janggi, 1, 1, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2);
+    session_game_gonu_add_diamond(janggi, center, 2);
+    session_game_gonu_add_diamond(janggi, center, 3);
+
+    gonu_patterns_initialized = true;
+}
+
+static bool session_game_gonu_is_valid_position(gonu_variant_t variant, int row, int col)
+{
+    session_game_gonu_build_patterns();
+    if (variant < 0 || variant > GONU_VARIANT_JANGGI_STAR) {
+        return false;
+    }
+    if (!session_game_gonu_in_bounds(row, col)) {
+        return false;
+    }
+
+    return gonu_patterns[variant].valid[row][col];
 }
 
 static bool session_game_gonu_is_connected(gonu_variant_t variant, int r1, int c1, int r2, int c2)
 {
+    session_game_gonu_build_patterns();
     if (!session_game_gonu_is_valid_position(variant, r1, c1) ||
         !session_game_gonu_is_valid_position(variant, r2, c2)) {
         return false;
     }
 
-    int dr = r2 - r1;
-    int cr = c2 - c1;
-    
-    // Adjacent positions (horizontal, vertical, diagonal)
-    if ((dr == 0 && (cr == 1 || cr == -1)) ||  // Horizontal
-        (cr == 0 && (dr == 1 || dr == -1)) ||  // Vertical
-        ((dr == 1 || dr == -1) && (cr == 1 || cr == -1))) {  // Diagonal
-        
-        // For UMUL variant, only allow moves along井 pattern
-        if (variant == GONU_VARIANT_UMUL) {
-            // No diagonal moves in UMUL
-            if (dr != 0 && cr != 0) {
-                return false;
-            }
-            // Both must be on valid lines
-            return true;
-        }
-        return true;
+    const int dr = r2 - r1;
+    const int dc = c2 - c1;
+    if (dr < -1 || dr > 1 || dc < -1 || dc > 1 || (dr == 0 && dc == 0)) {
+        return false;
     }
-    
-    return false;
+
+    const uint8_t mask = session_game_gonu_dir_to_bit(dr, dc);
+    return (gonu_patterns[variant].neighbors[r1][c1] & mask) != 0U;
 }
 
 static bool session_game_gonu_check_win(const gonu_game_state_t *state, gonu_cell_t player)
 {
-    // Check for three in a row (horizontal, vertical, diagonal)
-    const int lines[][6] = {
-        // Rows
-        {1, 1, 1, 2, 1, 3},  // Top row
-        {2, 1, 2, 2, 2, 3},  // Middle row
-        {3, 1, 3, 2, 3, 3},  // Bottom row
-        // Columns
-        {1, 1, 2, 1, 3, 1},  // Left column
-        {1, 2, 2, 2, 3, 2},  // Middle column
-        {1, 3, 2, 3, 3, 3},  // Right column
-        // Diagonals
-        {1, 1, 2, 2, 3, 3},  // Top-left to bottom-right
-        {1, 3, 2, 2, 3, 1},  // Top-right to bottom-left
+    // Look for any three-in-a-line sequence across allowed connections.
+    const int dirs[][2] = {
+        {-1, -1}, {-1, 0}, {-1, 1},
+        {0, -1},           {0, 1},
+        {1, -1},  {1, 0},  {1, 1},
     };
 
-    for (size_t i = 0U; i < sizeof(lines) / sizeof(lines[0]); ++i) {
-        int r1 = lines[i][0], c1 = lines[i][1];
-        int r2 = lines[i][2], c2 = lines[i][3];
-        int r3 = lines[i][4], c3 = lines[i][5];
+    for (int row = 0; row < GONU_BOARD_SIZE; ++row) {
+        for (int col = 0; col < GONU_BOARD_SIZE; ++col) {
+            if (state->board[row][col] != player ||
+                !session_game_gonu_is_valid_position(state->variant, row, col)) {
+                continue;
+            }
 
-        if (session_game_gonu_is_valid_position(state->variant, r1, c1) &&
-            session_game_gonu_is_valid_position(state->variant, r2, c2) &&
-            session_game_gonu_is_valid_position(state->variant, r3, c3) &&
-            state->board[r1][c1] == player &&
-            state->board[r2][c2] == player &&
-            state->board[r3][c3] == player) {
-            return true;
+            for (size_t d = 0U; d < sizeof(dirs) / sizeof(dirs[0]); ++d) {
+                int dr = dirs[d][0];
+                int dc = dirs[d][1];
+                if (dr == 0 && dc == 0) {
+                    continue;
+                }
+
+                // Ensure we only count each line once by requiring the previous cell
+                // in the opposite direction is not part of the same contiguous line.
+                int prev_row = row - dr;
+                int prev_col = col - dc;
+                if (session_game_gonu_is_connected(state->variant, prev_row, prev_col, row, col) &&
+                    state->board[prev_row][prev_col] == player) {
+                    continue;
+                }
+
+                int r2 = row + dr;
+                int c2 = col + dc;
+                int r3 = row + 2 * dr;
+                int c3 = col + 2 * dc;
+
+                if (session_game_gonu_is_connected(state->variant, row, col, r2, c2) &&
+                    session_game_gonu_is_connected(state->variant, r2, c2, r3, c3) &&
+                    state->board[r2][c2] == player &&
+                    state->board[r3][c3] == player) {
+                    return true;
+                }
+            }
         }
     }
+
     return false;
 }
 
@@ -4807,6 +4994,9 @@ static void session_game_gonu_render(session_ctx_t *ctx)
         break;
     case GONU_VARIANT_UMUL:
         variant_name = "Umul-gonu (Well)";
+        break;
+    case GONU_VARIANT_JANGGI_STAR:
+        variant_name = "Janggi-gonu (Star Palace)";
         break;
     }
     
@@ -5092,7 +5282,12 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx, const char *input
         session_send_system_line(ctx, "");
         session_send_system_line(ctx, "Gonu started! Place your 3 pieces first.");
         session_send_system_line(ctx, "_ = empty position, Q = your piece, X = AI piece");
-        session_send_system_line(ctx, "Use column letters (A-E) or numbers (0-4): e.g., '2,C' or '2,2'");
+        char coord_hint[SSH_CHATTER_MESSAGE_LIMIT];
+        const char max_letter = (char)('A' + (GONU_BOARD_SIZE - 1));
+        snprintf(coord_hint, sizeof(coord_hint),
+                 "Use column letters (A-%c) or numbers (0-%d): e.g., '2,%c' or '2,2'",
+                 max_letter, GONU_BOARD_SIZE - 1, max_letter);
+        session_send_system_line(ctx, coord_hint);
         session_send_system_line(ctx, "Press 't' to toggle camouflage screen.");
         session_game_gonu_render(ctx);
         return true;
@@ -5102,7 +5297,7 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx, const char *input
         return true;
     }
     
-    // Parse input as "row,col" where col can be a letter (A-E) or number (0-4)
+    // Parse input as "row,col" where col can be a letter (A-G) or number (0-6)
     int row = -1, col = -1;
     
     // Try to find the comma
@@ -5129,9 +5324,10 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx, const char *input
     snprintf(col_str, sizeof(col_str), "%s", comma + 1);
     trim_whitespace_inplace(col_str);
     
-    // Check if column is a letter (A-E) or number
-    if (strlen(col_str) == 1 && ((col_str[0] >= 'A' && col_str[0] <= 'E') || 
-                                  (col_str[0] >= 'a' && col_str[0] <= 'e'))) {
+    // Check if column is a letter (A-G, depending on board size) or number
+    const char max_col_letter = (char)('A' + (GONU_BOARD_SIZE - 1));
+    if (strlen(col_str) == 1 && ((col_str[0] >= 'A' && col_str[0] <= max_col_letter) ||
+                                  (col_str[0] >= 'a' && col_str[0] <= (char)tolower((unsigned char)max_col_letter)))) {
         // Convert letter to column number
         char letter = (char)toupper((unsigned char)col_str[0]);
         col = letter - 'A';
@@ -5296,10 +5492,11 @@ static void session_game_start_gonu(session_ctx_t *ctx)
     // Now ask for game variant
     session_send_system_line(ctx, "");
     session_send_system_line(ctx, "Choose Gonu variant:");
-    session_send_system_line(ctx, "1. Hobak-gonu (Pumpkin) - 3x3 grid");
-    session_send_system_line(ctx, "2. Bakwi-gonu (Wheel) - circular pattern");
-    session_send_system_line(ctx, "3. Umul-gonu (Well) - # pattern");
-    session_send_system_line(ctx, "Enter 1, 2, or 3:");
+    session_send_system_line(ctx, "1. Hobak-gonu (Pumpkin) - layered diamonds from the classic map");
+    session_send_system_line(ctx, "2. Bakwi-gonu (Wheel) - triple-ring wheel with spokes");
+    session_send_system_line(ctx, "3. Umul-gonu (Well) - thickened井 grid with diagonals");
+    session_send_system_line(ctx, "4. Janggi-gonu (Star Palace) - extended palace star lattice");
+    session_send_system_line(ctx, "Enter 1, 2, 3, or 4 (default 4):");
     
     char variant_choice[16];
     length = 0U;
@@ -5333,8 +5530,10 @@ static void session_game_start_gonu(session_ctx_t *ctx)
     variant_choice[length] = '\0';
     trim_whitespace_inplace(variant_choice);
     
-    gonu_variant_t variant = GONU_VARIANT_HOBAK;
-    if (strcmp(variant_choice, "2") == 0) {
+    gonu_variant_t variant = GONU_VARIANT_JANGGI_STAR;
+    if (strcmp(variant_choice, "1") == 0) {
+        variant = GONU_VARIANT_HOBAK;
+    } else if (strcmp(variant_choice, "2") == 0) {
         variant = GONU_VARIANT_BAKWI;
     } else if (strcmp(variant_choice, "3") == 0) {
         variant = GONU_VARIANT_UMUL;

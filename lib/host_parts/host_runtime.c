@@ -3080,6 +3080,9 @@ static void *host_telnet_thread(void *arg)
             ctx->active_codepage = session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
         }
 
+        /* Favor CP437-style output for legacy telnet clients */
+        ctx->prefer_cp437_output = true;
+
         pthread_mutex_lock(&host->lock);
         ++host->connection_count;
         snprintf(ctx->user.name, sizeof(ctx->user.name), "Guest%zu",
@@ -4385,15 +4388,6 @@ void host_init(host_t *host, auth_profile_t *auth)
         }
 
         if (host->security_layer_initialized) {
-            host->matrix_client = matrix_client_create(host, host->clients,
-                                                       &host->security_layer);
-            if (host->matrix_client == nullptr) {
-                humanized_log_error("matrix",
-                                    "matrix backend inactive; check "
-                                    "CHATTER_MATRIX_* configuration",
-                                    EINVAL);
-            }
-
             host->irc_client = irc_client_create(host);
             if (host->irc_client == nullptr) {
                 humanized_log_error("irc",
@@ -4920,7 +4914,6 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     }
 
     if (host->matrix_client != nullptr) {
-        matrix_client_destroy(host->matrix_client);
         host->matrix_client = nullptr;
     }
     if (host->irc_client != nullptr) {

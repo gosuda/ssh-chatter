@@ -133,13 +133,9 @@ static const uint16_t kCp1251ToUnicode[128] = {
     0x044E, 0x044F,
 };
 
-
 /* Placeholders for future full CP949 and CP932 implementations */
 
-
-
 /* Placeholder for future full CP936 implementation */
-
 
 static size_t session_codepage_iconv_chunk(session_codepage_t codepage,
                                            const unsigned char *bytes,
@@ -151,9 +147,8 @@ static size_t session_codepage_iconv_chunk(session_codepage_t codepage,
     }
 
     char utf8_buffer[16];
-    size_t written =
-        session_codepage_to_utf8(codepage, bytes, length, utf8_buffer,
-                                 sizeof(utf8_buffer));
+    size_t written = session_codepage_to_utf8(codepage, bytes, length,
+                                              utf8_buffer, sizeof(utf8_buffer));
     if (written == 0U) {
         return 0U;
     }
@@ -167,8 +162,7 @@ static size_t session_codepage_iconv_chunk(session_codepage_t codepage,
 
 size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
                                      session_codepage_context_t *context,
-                                     unsigned char byte,
-                                     char *output,
+                                     unsigned char byte, char *output,
                                      size_t capacity)
 {
     if (output == NULL || capacity == 0U || context == NULL) {
@@ -234,8 +228,8 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
     }
 
     case SESSION_CODEPAGE_CP932: { /* Japanese Shift-JIS */
-        const bool is_lead =
-            (byte >= 0x81U && byte <= 0x9FU) || (byte >= 0xE0U && byte <= 0xFCU);
+        const bool is_lead = (byte >= 0x81U && byte <= 0x9FU) ||
+                             (byte >= 0xE0U && byte <= 0xFCU);
         const bool is_trail = (byte >= 0x40U && byte <= 0xFCU && byte != 0x7FU);
 
         if (context->state == 0) {
@@ -317,24 +311,33 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
         }
         return produced;
     }
-        
+
     case SESSION_CODEPAGE_CP437:
     case SESSION_CODEPAGE_CP850:
     case SESSION_CODEPAGE_CP852:
     case SESSION_CODEPAGE_CP1251: {
         const uint16_t *table = NULL;
         switch (codepage) {
-            case SESSION_CODEPAGE_CP437: table = kCp437ToUnicode; break;
-            case SESSION_CODEPAGE_CP850: table = kCp850ToUnicode; break;
-            case SESSION_CODEPAGE_CP852: table = kCp852ToUnicode; break;
-            case SESSION_CODEPAGE_CP1251: table = kCp1251ToUnicode; break;
-            default: break; /* Should not happen */
+        case SESSION_CODEPAGE_CP437:
+            table = kCp437ToUnicode;
+            break;
+        case SESSION_CODEPAGE_CP850:
+            table = kCp850ToUnicode;
+            break;
+        case SESSION_CODEPAGE_CP852:
+            table = kCp852ToUnicode;
+            break;
+        case SESSION_CODEPAGE_CP1251:
+            table = kCp1251ToUnicode;
+            break;
+        default:
+            break; /* Should not happen */
         }
-        
+
         /* Ensure state is clean for single-byte codepages */
         context->state = 0;
         context->lead_byte = 0;
-        
+
         if (table != NULL) {
             /* For single-byte tables, byte-0x80 is the index */
             codepoint = table[byte - 0x80U];
@@ -346,7 +349,7 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
         }
         break;
     }
-    
+
     case SESSION_CODEPAGE_UTF8:
         /* UTF-8 mode - pass through as-is
          * NOTE: The caller is responsible for UTF-8 multi-byte handling */
@@ -354,7 +357,7 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
         context->state = 0;
         context->lead_byte = 0;
         return 1U;
-        
+
     default:
         /* Unknown or unsupported codepage */
         codepoint = 0xFFFD; /* Unicode replacement character */
@@ -458,22 +461,24 @@ const char *session_codepage_iconv_name(session_codepage_t codepage)
 
 size_t session_codepage_to_utf8(session_codepage_t codepage,
 
-                                 const unsigned char *input,
+                                const unsigned char *input,
 
-                                 size_t input_length,
+                                size_t input_length,
 
-                                 char *output,
+                                char *output,
 
-                                 size_t output_capacity) {
-
+                                size_t output_capacity)
+{
     session_codepage_context_t context = {0, 0};
-    if (input == NULL || input_length == 0U || output == NULL || output_capacity == 0U) {
+    if (input == NULL || input_length == 0U || output == NULL ||
+        output_capacity == 0U) {
         return 0U;
     }
 
     /* For UTF-8, just copy as-is */
     if (codepage == SESSION_CODEPAGE_UTF8) {
-        size_t to_copy = input_length < output_capacity ? input_length : output_capacity;
+        size_t to_copy =
+            input_length < output_capacity ? input_length : output_capacity;
         memcpy(output, input, to_copy);
         return to_copy;
     }
@@ -489,7 +494,8 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
         }
         /* Fall back to byte-by-byte conversion for single-byte codepages or unknown */
         if (input_length > 0U && output_capacity > 0U) {
-            size_t result = session_codepage_byte_to_utf8(codepage, &context, input[0], output, output_capacity);
+            size_t result = session_codepage_byte_to_utf8(
+                codepage, &context, input[0], output, output_capacity);
             return result;
         }
         return 0U;
@@ -502,7 +508,8 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
         }
         /* On error, try single-byte conversion for the first byte for single-byte codepages */
         if (input_length > 0U && output_capacity > 0U) {
-            size_t result = session_codepage_byte_to_utf8(codepage, &context, input[0], output, output_capacity);
+            size_t result = session_codepage_byte_to_utf8(
+                codepage, &context, input[0], output, output_capacity);
             return result;
         }
         return 0U;
@@ -514,8 +521,8 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
     size_t output_remaining = output_capacity;
 
     size_t result = iconv(descriptor, (char **)&input_cursor, &input_remaining,
-                         &output_cursor, &output_remaining);
-    
+                          &output_cursor, &output_remaining);
+
     iconv_close(descriptor);
 
     if (result == (size_t)-1) {
@@ -524,7 +531,8 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
         }
         /* On error, try single-byte conversion for the first byte for single-byte codepages */
         if (input_length > 0U && output_capacity > 0U) {
-            size_t bytes = session_codepage_byte_to_utf8(codepage, &context, input[0], output, output_capacity);
+            size_t bytes = session_codepage_byte_to_utf8(
+                codepage, &context, input[0], output, output_capacity);
             return bytes;
         }
         return 0U;
@@ -533,19 +541,19 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
     return output_capacity - output_remaining;
 }
 
-size_t session_utf8_to_codepage(session_codepage_t codepage,
-                                const char *input,
-                                size_t input_length,
-                                char *output,
+size_t session_utf8_to_codepage(session_codepage_t codepage, const char *input,
+                                size_t input_length, char *output,
                                 size_t output_capacity)
 {
-    if (input == NULL || input_length == 0U || output == NULL || output_capacity == 0U) {
+    if (input == NULL || input_length == 0U || output == NULL ||
+        output_capacity == 0U) {
         return 0U;
     }
 
     /* If the target codepage is UTF-8, just copy as-is */
     if (codepage == SESSION_CODEPAGE_UTF8) {
-        size_t to_copy = input_length < output_capacity ? input_length : output_capacity;
+        size_t to_copy =
+            input_length < output_capacity ? input_length : output_capacity;
         memcpy(output, input, to_copy);
         return to_copy;
     }
@@ -569,8 +577,8 @@ size_t session_utf8_to_codepage(session_codepage_t codepage,
     size_t output_remaining = output_capacity;
 
     size_t result = iconv(descriptor, (char **)&input_cursor, &input_remaining,
-                         &output_cursor, &output_remaining);
-    
+                          &output_cursor, &output_remaining);
+
     iconv_close(descriptor);
 
     if (result == (size_t)-1) {

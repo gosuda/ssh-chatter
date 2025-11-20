@@ -8,14 +8,14 @@
  * Supported code pages for retro terminal encoding
  */
 typedef enum session_codepage {
-    SESSION_CODEPAGE_UTF8 = 0,   /* UTF-8 (default, no conversion) */
-    SESSION_CODEPAGE_CP437,      /* English/Western (IBM PC) */
-    SESSION_CODEPAGE_CP949,      /* Korean (Unified Hangul Code) */
-    SESSION_CODEPAGE_CP932,      /* Japanese (Shift-JIS) */
-    SESSION_CODEPAGE_CP936,      /* Simplified Chinese (GBK) */
-    SESSION_CODEPAGE_CP1251,     /* Russian (Cyrillic) */
-    SESSION_CODEPAGE_CP850,      /* Western European (DOS Latin 1) */
-    SESSION_CODEPAGE_CP852,      /* Central European (DOS Latin 2) */
+    SESSION_CODEPAGE_UTF8 = 0, /* UTF-8 (default, no conversion) */
+    SESSION_CODEPAGE_CP437,    /* English/Western (IBM PC) */
+    SESSION_CODEPAGE_CP949,    /* Korean (Unified Hangul Code) */
+    SESSION_CODEPAGE_CP932,    /* Japanese (Shift-JIS) */
+    SESSION_CODEPAGE_CP936,    /* Simplified Chinese (GBK) */
+    SESSION_CODEPAGE_CP1251,   /* Russian (Cyrillic) */
+    SESSION_CODEPAGE_CP850,    /* Western European (DOS Latin 1) */
+    SESSION_CODEPAGE_CP852,    /* Central European (DOS Latin 2) */
     SESSION_CODEPAGE_COUNT
 } session_codepage_t;
 
@@ -32,8 +32,9 @@ typedef enum session_codepage {
  * Context for multi-byte code page conversions
  */
 typedef struct session_codepage_context {
-    unsigned char lead_byte; /* Stores the first byte of a multi-byte sequence */
-    int state;               /* 0 = single-byte or no active multi-byte sequence, 1 = waiting for trail byte */
+    unsigned char
+        lead_byte; /* Stores the first byte of a multi-byte sequence */
+    int state; /* 0 = single-byte or no active multi-byte sequence, 1 = waiting for trail byte */
 } session_codepage_context_t;
 
 /**
@@ -48,8 +49,7 @@ typedef struct session_codepage_context {
  */
 size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
                                      session_codepage_context_t *context,
-                                     unsigned char byte,
-                                     char *output,
+                                     unsigned char byte, char *output,
                                      size_t capacity);
 
 /**
@@ -88,10 +88,8 @@ const char *session_codepage_iconv_name(session_codepage_t codepage);
  * @return Number of bytes written to output, or 0 on error
  */
 size_t session_codepage_to_utf8(session_codepage_t codepage,
-                                 const unsigned char *input,
-                                 size_t input_length,
-                                 char *output,
-                                 size_t output_capacity);
+                                const unsigned char *input, size_t input_length,
+                                char *output, size_t output_capacity);
 
 /**
  * Convert bytes from UTF-8 to a specified code page using iconv
@@ -104,10 +102,8 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
  * @param output_capacity Size of output buffer
  * @return Number of bytes written to output, or 0 on error
  */
-size_t session_utf8_to_codepage(session_codepage_t codepage,
-                                const char *input,
-                                size_t input_length,
-                                char *output,
+size_t session_utf8_to_codepage(session_codepage_t codepage, const char *input,
+                                size_t input_length, char *output,
                                 size_t output_capacity);
 
 #endif /* SSH_CHATTER_CODEPAGE_H */

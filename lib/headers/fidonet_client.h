@@ -64,8 +64,7 @@ void fidonet_client_disconnect(fidonet_client_t *client);
  * @param message Message content
  * @return true if successful, false otherwise
  */
-bool fidonet_client_send_message(fidonet_client_t *client,
-                                 const char *username,
+bool fidonet_client_send_message(fidonet_client_t *client, const char *username,
                                  const char *message);
 
 #endif /* SSH_CHATTER_FIDONET_CLIENT_H */

@@ -224,7 +224,7 @@ static void irc_handle_message(irc_client_t *client, const char *line)
     const char *cursor = line;
     char prefix[256] = {0};
     char command[64] = {0};
-    
+
     // Parse optional prefix (starts with ':')
     if (*cursor == ':') {
         cursor++; // Skip ':'
@@ -240,7 +240,7 @@ static void irc_handle_message(irc_client_t *client, const char *line)
         prefix[prefix_len] = '\0';
         cursor = space + 1; // Move past space
     }
-    
+
     // Parse command
     const char *space = strchr(cursor, ' ');
     size_t cmd_len;
@@ -254,14 +254,14 @@ static void irc_handle_message(irc_client_t *client, const char *line)
     }
     memcpy(command, cursor, cmd_len);
     command[cmd_len] = '\0';
-    
+
     // Move cursor past command and space
     if (space != nullptr) {
         cursor = space + 1;
     } else {
         cursor += cmd_len;
     }
-    
+
     // Handle PING command (RFC 1459 section 4.6.2)
     if (strcmp(command, "PING") == 0) {
         // PING format: PING <server1> [<server2>]
@@ -292,13 +292,14 @@ static void irc_handle_message(irc_client_t *client, const char *line)
             return;
         }
 
-        if (numeric == 1 || numeric == 376 || numeric == 422) { // welcome / end of MOTD
+        if (numeric == 1 || numeric == 376 ||
+            numeric == 422) { // welcome / end of MOTD
             client->registered = true;
             irc_join_if_ready(client);
             return;
         }
     }
-    
+
     // Handle PRIVMSG command (RFC 1459 section 4.4.1)
     if (strcmp(command, "PRIVMSG") == 0) {
         // PRIVMSG format: PRIVMSG <target> :<message>
@@ -307,21 +308,21 @@ static void irc_handle_message(irc_client_t *client, const char *line)
         if (target_end == nullptr) {
             return; // No message text
         }
-        
+
         // Move to message text (skip target and space)
         const char *msg_text = target_end + 1;
-        
+
         // Check if message starts with ':' (trailing parameter)
         if (*msg_text == ':') {
             msg_text++; // Skip ':'
         }
-        
+
         // Check for CTCP message (starts and ends with \x01)
         if (*msg_text == '\x01') {
             const char *ctcp_end = strchr(msg_text + 1, '\x01');
             if (ctcp_end != nullptr) {
                 size_t ctcp_len = (size_t)(ctcp_end - (msg_text + 1));
-                
+
                 // Handle CTCP VERSION query
                 if (ctcp_len == 7 && strncmp(msg_text + 1, "VERSION", 7) == 0) {
                     // Extract sender nickname from prefix (nick!user@host)
@@ -329,22 +330,23 @@ static void irc_handle_message(irc_client_t *client, const char *line)
                         const char *nick_end = strchr(prefix, '!');
                         char sender_nick[64] = {0};
                         size_t nick_len;
-                        
+
                         if (nick_end != nullptr) {
                             nick_len = (size_t)(nick_end - prefix);
                         } else {
                             nick_len = strlen(prefix);
                         }
-                        
+
                         if (nick_len < sizeof(sender_nick)) {
                             memcpy(sender_nick, prefix, nick_len);
                             sender_nick[nick_len] = '\0';
-                            
+
                             // Send CTCP VERSION reply via NOTICE
                             char reply[512];
                             snprintf(reply, sizeof(reply),
-                                   "NOTICE %s :\x01VERSION SSH-Chatter IRC Bridge v1.0\x01\r\n",
-                                   sender_nick);
+                                     "NOTICE %s :\x01VERSION SSH-Chatter IRC "
+                                     "Bridge v1.0\x01\r\n",
+                                     sender_nick);
                             send(client->socket_fd, reply, strlen(reply), 0);
                         }
                     }
@@ -353,7 +355,7 @@ static void irc_handle_message(irc_client_t *client, const char *line)
             // Don't post CTCP messages to chat room
             return;
         }
-        
+
         // Extract nickname from prefix (format: nick!user@host or nick@host or nick)
         char nick[64] = {0};
         if (prefix[0] != '\0') {
@@ -361,25 +363,25 @@ static void irc_handle_message(irc_client_t *client, const char *line)
             if (nick_end == nullptr) {
                 nick_end = strchr(prefix, '@');
             }
-            
+
             size_t nick_len;
             if (nick_end != nullptr) {
                 nick_len = (size_t)(nick_end - prefix);
             } else {
                 nick_len = strlen(prefix);
             }
-            
+
             if (nick_len < sizeof(nick)) {
                 memcpy(nick, prefix, nick_len);
                 nick[nick_len] = '\0';
             }
         }
-        
+
         // Post message to chat room
         char formatted[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(formatted, sizeof(formatted), "[IRC] %s", msg_text);
         const char *username = nick[0] != '\0' ? nick : "irc-relay";
-        
+
         if (!host_post_client_message(client->host, username, formatted,
                                       nullptr, nullptr, false)) {
             // Silently fail - don't flood logs

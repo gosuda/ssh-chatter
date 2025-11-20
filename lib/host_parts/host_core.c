@@ -1477,9 +1477,11 @@ static const char *const kSessionUiLanguageNames
         [SESSION_UI_LANGUAGE_EN] = {"English", "Korean", "Japanese", "Chinese",
                                     "Russian", "German", "French", "Polish"},
         [SESSION_UI_LANGUAGE_KO] = {"영어", "한국어", "일본어", "중국어",
-                                    "러시아어", "독일어", "프랑스어", "폴란드어"},
+                                    "러시아어", "독일어", "프랑스어",
+                                    "폴란드어"},
         [SESSION_UI_LANGUAGE_JP] = {"英語", "韓国語", "日本語", "中国語",
-                                    "ロシア語", "ドイツ語", "フランス語", "ポーランド語"},
+                                    "ロシア語", "ドイツ語", "フランス語",
+                                    "ポーランド語"},
         [SESSION_UI_LANGUAGE_ZH] = {"英语", "韩语", "日语", "中文", "俄语",
                                     "德语", "法语", "波兰语"},
         [SESSION_UI_LANGUAGE_RU] = {"английский", "корейский", "японский",
@@ -1489,9 +1491,11 @@ static const char *const kSessionUiLanguageNames
                                     "Chinesisch", "Russisch", "Deutsch",
                                     "Französisch", "Polnisch"},
         [SESSION_UI_LANGUAGE_FR] = {"Anglais", "Coréen", "Japonais", "Chinois",
-                                    "Russe", "Allemand", "Français", "Polonais"},
-        [SESSION_UI_LANGUAGE_PL] = {"Angielski", "Koreański", "Japoński", "Chiński",
-                                    "Rosyjski", "Niemiecki", "Francuski", "Polski"},
+                                    "Russe", "Allemand", "Français",
+                                    "Polonais"},
+        [SESSION_UI_LANGUAGE_PL] = {"Angielski", "Koreański", "Japoński",
+                                    "Chiński", "Rosyjski", "Niemiecki",
+                                    "Francuski", "Polski"},
 };
 
 static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
@@ -1747,28 +1751,31 @@ static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
                 "Vorherige Nachrichten sind verborgen. Auf-/Ab-Pfeile für "
                 "älteren Chat.",
             .chat_spacing_usage = "Nutzung: %schat-spacing <0-5>",
-            .chat_spacing_immediate = "Übersetzungsunterschriften erscheinen "
-                                      "sofort ohne Reservierung von Leerzeilen.",
+            .chat_spacing_immediate =
+                "Übersetzungsunterschriften erscheinen "
+                "sofort ohne Reservierung von Leerzeilen.",
             .chat_spacing_single =
                 "Übersetzungsunterschriften reservieren 1 Leerzeile vor "
                 "Erscheinen in Chat-Threads.",
             .chat_spacing_multiple =
                 "Übersetzungsunterschriften reservieren %s Leerzeilen vor "
                 "Erscheinen in Chat-Threads.",
-            .set_ui_lang_usage = "Nutzung: %sset-ui-lang <ko|en|jp|zh|ru|de|fr>",
+            .set_ui_lang_usage =
+                "Nutzung: %sset-ui-lang <ko|en|jp|zh|ru|de|fr>",
             .set_ui_lang_success =
                 "UI-Sprache auf %s gesetzt. %shelp zeigt Befehle.",
-            .set_ui_lang_invalid = "Nicht unterstützte Sprache. Wählen Sie: ko, "
-                                   "en, jp, zh, ru, de, fr.",
+            .set_ui_lang_invalid =
+                "Nicht unterstützte Sprache. Wählen Sie: ko, "
+                "en, jp, zh, ru, de, fr.",
             .mode_status_format = "Aktueller Eingabemodus: %s.",
             .mode_label_chat = "Chat",
             .mode_label_command = "Befehl",
             .mode_explain_chat =
                 "Chat-Modus: Nachrichten normal senden. Befehle mit %s "
                 "prefixen.",
-            .mode_explain_command =
-                "Befehlsmodus: Befehle ohne Präfix eingeben, Auf-/Ab-Pfeile für "
-                "Verlauf, Tab für Vervollständigung.",
+            .mode_explain_command = "Befehlsmodus: Befehle ohne Präfix "
+                                    "eingeben, Auf-/Ab-Pfeile für "
+                                    "Verlauf, Tab für Vervollständigung.",
             .mode_already_chat =
                 "Bereits im Chat-Modus. Befehle benötigen das %s Präfix.",
             .mode_already_command =
@@ -1780,7 +1787,8 @@ static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
                 "Befehlsmodus aktiviert. Befehle ohne Präfix, Auf-/Ab-Pfeile "
                 "und Tab verfügbar.",
             .mode_usage = "Nutzung: %smode <chat|command|toggle>",
-            .unknown_command = "Unbekannter Befehl. Tippen Sie %shelp für Hilfe.",
+            .unknown_command =
+                "Unbekannter Befehl. Tippen Sie %shelp für Hilfe.",
         },
         {
             .language = SESSION_UI_LANGUAGE_FR,
@@ -1790,7 +1798,8 @@ static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
                 "%sadvanced pour les commandes supplémentaires et d'opérateur.",
             .help_scroll_hint =
                 "Flèches Haut/Bas pour faire défiler le chat ou l'historique.",
-            .help_regular_hint = "Les messages normaux sont partagés avec tous.",
+            .help_regular_hint =
+                "Les messages normaux sont partagés avec tous.",
             .help_extra_title = "Commandes étendues:",
             .help_extra_hint = "Retour à %shelp pour l'essentiel.",
             .help_operator_title = "Commandes d'opérateur:",
@@ -1829,8 +1838,9 @@ static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
             .mode_already_command =
                 "Mode commande déjà actif. Entrez les commandes sans préfixe, "
                 "flèches Haut/Bas pour l'historique, Tab pour compléter.",
-            .mode_enabled_chat = "Mode chat activé. Les commandes nécessitent à "
-                                 "nouveau le préfixe %s.",
+            .mode_enabled_chat =
+                "Mode chat activé. Les commandes nécessitent à "
+                "nouveau le préfixe %s.",
             .mode_enabled_command =
                 "Mode commande activé. Entrez les commandes sans préfixe, "
                 "flèches Haut/Bas et Tab disponibles.",
@@ -1855,8 +1865,9 @@ static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
                 "Poprzednie wiadomości są ukryte. Strzałki Góra/Dół do "
                 "przewijania starszego czatu.",
             .chat_spacing_usage = "Użycie: %schat-spacing <0-5>",
-            .chat_spacing_immediate = "Napisy tłumaczeń pojawiają się "
-                                      "natychmiast bez rezerwowania pustych linii.",
+            .chat_spacing_immediate =
+                "Napisy tłumaczeń pojawiają się "
+                "natychmiast bez rezerwowania pustych linii.",
             .chat_spacing_single =
                 "Napisy tłumaczeń rezerwują 1 pustą linię przed "
                 "pojawieniem się w wątkach czatu.",
@@ -1889,7 +1900,8 @@ static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
                 "Tryb poleceń włączony. Wpisuj polecenia bez prefiksu, "
                 "strzałki Góra/Dół i Tab dostępne.",
             .mode_usage = "Użycie: %smode <chat|command|toggle>",
-            .unknown_command = "Nieznane polecenie. Wpisz %shelp aby uzyskać pomoc.",
+            .unknown_command =
+                "Nieznane polecenie. Wpisz %shelp aby uzyskać pomoc.",
         },
 };
 
@@ -2870,13 +2882,19 @@ static const session_help_entry_t kSessionHelpEssential[] = {
         .label = "game othello",
         .description =
             {
-                "Start a game of Othello (Reversi). Place discs with row/col (e.g., d4).",
-                "오셀로(리버시) 게임을 시작합니다. 행/열로 디스크를 배치합니다 (예: d4).",
-                "オセロ（リバーシ）ゲームを開始します。行/列でディスクを配置します（例：d4）。",
+                "Start a game of Othello (Reversi). Place discs with row/col "
+                "(e.g., d4).",
+                "오셀로(리버시) 게임을 시작합니다. 행/열로 디스크를 배치합니다 "
+                "(예: d4).",
+                "オセロ（リバーシ）ゲームを開始します。行/"
+                "列でディスクを配置します（例：d4）。",
                 "开始黑白棋（翻转棋）游戏。用行/列放置棋子（例如：d4）。",
-                "Начать игру в Отелло (Реверси). Размещайте диски строкой/столбцом (например, d4).",
-                "Ein Othello (Reversi)-Spiel starten. Platziere Scheiben mit Zeile/Spalte (z.B. d4).",
-                "Commencer un jeu d'Othello (Reversi). Placer des disques avec ligne/col (ex : d4).",
+                "Начать игру в Отелло (Реверси). Размещайте диски "
+                "строкой/столбцом (например, d4).",
+                "Ein Othello (Reversi)-Spiel starten. Platziere Scheiben mit "
+                "Zeile/Spalte (z.B. d4).",
+                "Commencer un jeu d'Othello (Reversi). Placer des disques avec "
+                "ligne/col (ex : d4).",
             },
     },
     {
@@ -2908,10 +2926,14 @@ static const session_help_entry_t kSessionHelpEssential[] = {
             {
                 [SESSION_UI_LANGUAGE_KO] = "UI언어설정 <ko|en|jp|zh|ru|de|fr>",
                 [SESSION_UI_LANGUAGE_JP] = "UI言語設定 <ko|en|jp|zh|ru|de|fr>",
-                [SESSION_UI_LANGUAGE_ZH] = "设置界面语言 <ko|en|jp|zh|ru|de|fr>",
-                [SESSION_UI_LANGUAGE_RU] = "установить-язык-интерфейса <ko|en|jp|zh|ru|de|fr>",
-                [SESSION_UI_LANGUAGE_DE] = "ui-sprache-setzen <ko|en|jp|zh|ru|de|fr>",
-                [SESSION_UI_LANGUAGE_FR] = "définir-langue-interface <ko|en|jp|zh|ru|de|fr>",
+                [SESSION_UI_LANGUAGE_ZH] =
+                    "设置界面语言 <ko|en|jp|zh|ru|de|fr>",
+                [SESSION_UI_LANGUAGE_RU] =
+                    "установить-язык-интерфейса <ko|en|jp|zh|ru|de|fr>",
+                [SESSION_UI_LANGUAGE_DE] =
+                    "ui-sprache-setzen <ko|en|jp|zh|ru|de|fr>",
+                [SESSION_UI_LANGUAGE_FR] =
+                    "définir-langue-interface <ko|en|jp|zh|ru|de|fr>",
             },
     },
 };
@@ -3757,12 +3779,17 @@ static const session_help_entry_t kSessionHelpExtended[] = {
             {
                 "Toggle retro CP437 terminal encoding with optional language.",
                 "선택적 언어와 함께 레트로 CP437 터미널 인코딩을 전환합니다.",
-                "オプションの言語でレトロ CP437 ターミナルエンコーディングを切り替えます。",
+                "オプションの言語でレトロ CP437 "
+                "ターミナルエンコーディングを切り替えます。",
                 "使用可选语言切换复古 CP437 终端编码。",
-                "Переключить ретро CP437 кодировку терминала с необязательным языком.",
-                "Retro CP437-Terminalcodierung mit optionaler Sprache umschalten.",
-                "Basculer l'encodage de terminal rétro CP437 avec une langue optionnelle.",
-                "Przełącz kodowanie terminala retro CP437 z opcjonalnym językiem.",
+                "Переключить ретро CP437 кодировку терминала с необязательным "
+                "языком.",
+                "Retro CP437-Terminalcodierung mit optionaler Sprache "
+                "umschalten.",
+                "Basculer l'encodage de terminal rétro CP437 avec une langue "
+                "optionnelle.",
+                "Przełącz kodowanie terminala retro CP437 z opcjonalnym "
+                "językiem.",
             },
         .label_arg_count = 0U,
         .label_args = {},

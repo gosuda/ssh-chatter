@@ -58,8 +58,8 @@ struct fidonet_client {
     _Atomic bool connected;
     char server_host[256];
     int server_port;
-    char node_address[64];     /* Our FidoNet address (e.g., "2:5030/1997") */
-    char remote_address[64];   /* Remote FidoNet address */
+    char node_address[64];      /* Our FidoNet address (e.g., "2:5030/1997") */
+    char remote_address[64];    /* Remote FidoNet address */
     char session_password[128]; /* Binkp session password */
     char status_message[256];
     int socket_fd;
@@ -161,8 +161,7 @@ static bool fidonet_send_command(fidonet_client_t *client, uint8_t cmd,
 
 /* Send chat message via Binkp custom CHAT command */
 static bool fidonet_send_chat_message(fidonet_client_t *client,
-                                      const char *username,
-                                      const char *message)
+                                      const char *username, const char *message)
 {
     if (client == nullptr || username == nullptr || message == nullptr) {
         return false;
@@ -174,8 +173,7 @@ static bool fidonet_send_chat_message(fidonet_client_t *client,
 
     /* Format: "username: message" */
     char buffer[BINKP_BUFFER_SIZE];
-    int written =
-        snprintf(buffer, sizeof(buffer), "%s: %s", username, message);
+    int written = snprintf(buffer, sizeof(buffer), "%s: %s", username, message);
     if (written < 0 || (size_t)written >= sizeof(buffer)) {
         return false;
     }
@@ -518,8 +516,7 @@ static void *fidonet_client_thread(void *arg)
     return nullptr;
 }
 
-fidonet_client_t *fidonet_client_create(host_t *host,
-                                        client_manager_t *manager)
+fidonet_client_t *fidonet_client_create(host_t *host, client_manager_t *manager)
 {
     if (host == nullptr || manager == nullptr) {
         return nullptr;
@@ -660,8 +657,8 @@ void fidonet_client_disconnect(fidonet_client_t *client)
     fidonet_disconnect_socket(client);
 }
 
-bool fidonet_client_send_message(fidonet_client_t *client,
-                                 const char *username, const char *message)
+bool fidonet_client_send_message(fidonet_client_t *client, const char *username,
+                                 const char *message)
 {
     if (client == nullptr) {
         return false;

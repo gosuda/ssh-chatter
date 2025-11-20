@@ -363,7 +363,7 @@ typedef struct othello_game_state {
     int last_ai_col;
     bool awaiting_mode_selection;
     bool awaiting_difficulty_selection;
-    unsigned difficulty_level;  // 1-5, where 5 is hardest
+    unsigned difficulty_level; // 1-5, where 5 is hardest
     bool multiplayer;
     bool awaiting_opponent;
     int slot_index;
@@ -437,8 +437,8 @@ typedef struct gonu_game_state {
     uint8_t board[GONU_BOARD_SIZE][GONU_BOARD_SIZE];
     bool player_turn;
     bool game_over;
-    bool placement_phase;    // True during initial piece placement
-    bool movement_started;   // True after the first slide in movement phase
+    bool placement_phase;  // True during initial piece placement
+    bool movement_started; // True after the first slide in movement phase
     unsigned player_pieces;
     unsigned ai_pieces;
     int selected_row;
@@ -447,7 +447,7 @@ typedef struct gonu_game_state {
     bool awaiting_variant_selection;
     bool awaiting_mode_selection;
     bool awaiting_difficulty_selection;
-    unsigned difficulty_level;  // 1-5, where 5 is hardest
+    unsigned difficulty_level; // 1-5, where 5 is hardest
     bool multiplayer;
     bool awaiting_opponent;
     int slot_index;
@@ -707,7 +707,8 @@ typedef struct session_ctx {
     const session_ops_t *ops;
     bool history_oldest_notified;
     bool history_latest_notified;
-    bool no_update; // Flag to prevent automatic message updates when scrolling history
+    bool
+        no_update; // Flag to prevent automatic message updates when scrolling history
     // Output buffering to prevent flickering
     bool output_buffering_enabled;
     char output_buffer[SSH_CHATTER_OUTPUT_BUFFER_SIZE];

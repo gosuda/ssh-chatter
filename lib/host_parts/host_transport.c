@@ -2292,7 +2292,8 @@ static void session_handle_getos(session_ctx_t *ctx, const char *arguments);
 static void session_handle_getaddr(session_ctx_t *ctx, const char *arguments);
 static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments);
 static void session_handle_fidonet(session_ctx_t *ctx, const char *arguments);
-static void session_handle_telnetserver(session_ctx_t *ctx, const char *arguments);
+static void session_handle_telnetserver(session_ctx_t *ctx,
+                                        const char *arguments);
 static void session_handle_pair(session_ctx_t *ctx);
 static void session_handle_connected(session_ctx_t *ctx);
 static bool session_parse_birthday(const char *input, char *normalized,
@@ -2398,9 +2399,8 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
 static void
 chat_room_broadcast_reaction_update(host_t *host,
                                     const chat_history_entry_t *entry);
-static user_preference_t *host_find_preference_locked(host_t *host,
-                                                      const char *username,
-                                                      const char *ip);
+static user_preference_t *
+host_find_preference_locked(host_t *host, const char *username, const char *ip);
 static user_preference_t *host_ensure_preference_locked(host_t *host,
                                                         const char *username,
                                                         const char *ip);
@@ -4111,14 +4111,14 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
-        
+
         // Flush and disable buffering to ensure immediate message delivery
         // This is critical for telnet sessions where buffered writes can hide
         // new messages until another action flushes the buffer
         session_output_buffer_flush(member);
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;
-        
+
         // For telnet, clear the current input line first before displaying the message
         // This prevents the old prompt from remaining visible above the new message
         if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
@@ -4126,7 +4126,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             static const char clear_line[] = "\033[1G\033[K";
             session_channel_write(member, clear_line, sizeof(clear_line) - 1U);
         }
-        
+
         if (from != nullptr) {
             // Format message directly for real-time delivery
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
@@ -4200,25 +4200,25 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
 
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
-        
+
         // Flush and disable buffering to ensure immediate message delivery
         // This is critical for telnet sessions where buffered writes can hide
         // new messages until another action flushes the buffer
         session_output_buffer_flush(member);
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;
-        
+
         // For telnet, clear the current input line first before displaying the message
         if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
             static const char clear_line[] = "\033[1G\033[K";
             session_channel_write(member, clear_line, sizeof(clear_line) - 1U);
         }
-        
+
         session_send_caption_line(member, message);
-        
+
         // Flush the channel to ensure immediate delivery
         session_channel_flush(member);
-        
+
         // For telnet, always refresh input line to ensure messages are visible
         // For SSH, only refresh when at bottom of history
         if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
@@ -4283,7 +4283,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
-        
+
         // Flush and disable buffering to ensure immediate message delivery
         // This is critical for telnet sessions where buffered writes can hide
         // new messages until another action flushes the buffer
@@ -4355,7 +4355,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
             member->history_scroll_position == 0U) {
             session_refresh_input_line(member);
-            
+
             // For telnet, flush again after refreshing the input line to ensure
             // the prompt and any typed text are immediately visible along with the message
             if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
@@ -5484,7 +5484,7 @@ static void host_history_cleanup_expired(host_t *host)
     const time_t expiration_threshold = now - (3 * 24 * 60 * 60);
 
     pthread_mutex_lock(&host->lock);
-    
+
     if (host->history == nullptr || host->history_count == 0U) {
         pthread_mutex_unlock(&host->lock);
         return;
@@ -5493,10 +5493,10 @@ static void host_history_cleanup_expired(host_t *host)
     // Count how many messages to keep
     size_t write_idx = 0U;
     size_t removed_count = 0U;
-    
+
     for (size_t idx = 0U; idx < host->history_count; ++idx) {
         chat_history_entry_t *entry = &host->history[idx];
-        
+
         // Keep messages that are newer than the threshold
         if (entry->created_at >= expiration_threshold) {
             if (write_idx != idx) {
@@ -5507,7 +5507,7 @@ static void host_history_cleanup_expired(host_t *host)
             removed_count++;
         }
     }
-    
+
     // Update the count
     if (removed_count > 0U) {
         host->history_count = write_idx;
@@ -5518,7 +5518,7 @@ static void host_history_cleanup_expired(host_t *host)
             host->history_total = 0U;
         }
     }
-    
+
     pthread_mutex_unlock(&host->lock);
 }
 
@@ -5625,9 +5625,8 @@ static void session_force_dark_mode_foreground(session_ctx_t *ctx)
     snprintf(ctx->system_fg_name, sizeof(ctx->system_fg_name), "%s", "white");
 }
 
-static user_preference_t *host_find_preference_locked(host_t *host,
-                                                      const char *username,
-                                                      const char *ip)
+static user_preference_t *
+host_find_preference_locked(host_t *host, const char *username, const char *ip)
 {
     if (host == nullptr || username == nullptr || username[0] == '\0') {
         return nullptr;
@@ -5854,8 +5853,8 @@ void host_store_ui_language(host_t *host, const session_ctx_t *ctx)
     }
 
     pthread_mutex_lock(&host->lock);
-    user_preference_t *pref = host_ensure_preference_locked(host, ctx->user.name,
-                                                           ctx->client_ip);
+    user_preference_t *pref =
+        host_ensure_preference_locked(host, ctx->user.name, ctx->client_ip);
     if (pref != nullptr) {
         const char *code = session_ui_language_code(ctx->ui_language);
         snprintf(pref->ui_language, sizeof(pref->ui_language), "%s", code);

@@ -1641,8 +1641,8 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
         has_base_snapshot = true;
     }
     if (ctx->client_ip[0] != '\0') {
-        user_preference_t *ip_pref = host_find_preference_locked(
-            host, ctx->user.name, ctx->client_ip);
+        user_preference_t *ip_pref =
+            host_find_preference_locked(host, ctx->user.name, ctx->client_ip);
         if (ip_pref != nullptr && (pref == nullptr || ip_pref != pref)) {
             ip_snapshot = *ip_pref;
             has_ip_snapshot = true;
@@ -1712,11 +1712,11 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
             if (fg_code != nullptr && bg_code != nullptr) {
                 const char *highlight_code = ctx->system_highlight_code;
                 if (base_snapshot.system_highlight_name[0] != '\0') {
-                    const char *candidate = lookup_color_code(
-                        HIGHLIGHT_COLOR_MAP,
-                        sizeof(HIGHLIGHT_COLOR_MAP) /
-                            sizeof(HIGHLIGHT_COLOR_MAP[0]),
-                        base_snapshot.system_highlight_name);
+                    const char *candidate =
+                        lookup_color_code(HIGHLIGHT_COLOR_MAP,
+                                          sizeof(HIGHLIGHT_COLOR_MAP) /
+                                              sizeof(HIGHLIGHT_COLOR_MAP[0]),
+                                          base_snapshot.system_highlight_name);
                     if (candidate != nullptr) {
                         highlight_code = candidate;
                     }
@@ -1756,7 +1756,8 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
             ctx->birthday[0] = '\0';
         }
 
-        ctx->translation_caption_spacing = base_snapshot.translation_caption_spacing;
+        ctx->translation_caption_spacing =
+            base_snapshot.translation_caption_spacing;
         if (ctx->translation_caption_spacing > 8U) {
             ctx->translation_caption_spacing = 8U;
         }
@@ -1765,11 +1766,13 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
             ctx->translation_enabled = base_snapshot.translation_master_enabled;
         }
 
-        ctx->output_translation_enabled = base_snapshot.output_translation_enabled;
+        ctx->output_translation_enabled =
+            base_snapshot.output_translation_enabled;
         snprintf(ctx->output_translation_language,
                  sizeof(ctx->output_translation_language), "%s",
                  base_snapshot.output_translation_language);
-        ctx->input_translation_enabled = base_snapshot.input_translation_enabled;
+        ctx->input_translation_enabled =
+            base_snapshot.input_translation_enabled;
         snprintf(ctx->input_translation_language,
                  sizeof(ctx->input_translation_language), "%s",
                  base_snapshot.input_translation_language);
@@ -3265,7 +3268,7 @@ static bool session_telnet_write_block(session_ctx_t *ctx,
         size_t offset = 0U;
         unsigned int retry_count = 0U;
         const unsigned int max_retries = 3U;
-        
+
         while (offset < expanded) {
             ssize_t written = send(ctx->telnet_fd, buffer + offset,
                                    expanded - offset, MSG_NOSIGNAL);
@@ -3289,12 +3292,12 @@ static bool session_telnet_write_block(session_ctx_t *ctx,
                 /* Other errors are fatal */
                 return false;
             }
-            
+
             if (written == 0) {
                 /* Connection closed */
                 return false;
             }
-            
+
             offset += (size_t)written;
             retry_count = 0U; /* Reset retry counter on successful write */
         }
@@ -3307,7 +3310,8 @@ static bool session_telnet_write_block(session_ctx_t *ctx,
     /* Note: TCP_NODELAY should be set on socket for immediate send */
     int flags = 0;
     socklen_t flags_len = sizeof(flags);
-    if (getsockopt(ctx->telnet_fd, IPPROTO_TCP, TCP_NODELAY, &flags, &flags_len) == 0) {
+    if (getsockopt(ctx->telnet_fd, IPPROTO_TCP, TCP_NODELAY, &flags,
+                   &flags_len) == 0) {
         if (flags == 0) {
             /* TCP_NODELAY not set - force flush with empty MSG_OOB as sync marker */
             /* This ensures message boundaries are preserved */
@@ -3602,8 +3606,7 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
 }
 
 static bool __attribute__((unused))
-session_channel_write_cp437(session_ctx_t *ctx, const char *data,
-                                        size_t length)
+session_channel_write_cp437(session_ctx_t *ctx, const char *data, size_t length)
 {
     if (ctx == nullptr || data == nullptr || length == 0U) {
         return true;
@@ -3736,7 +3739,8 @@ static bool session_channel_write_codepage(session_ctx_t *ctx, const char *data,
     size_t normalized_length = 0U;
     char *normalized = nullptr;
     if (codepage == SESSION_CODEPAGE_CP437) {
-        normalized = session_cp437_normalize_utf8(data, length, &normalized_length);
+        normalized =
+            session_cp437_normalize_utf8(data, length, &normalized_length);
     }
 
     const char *input_cursor = normalized != nullptr ? normalized : data;
@@ -3949,8 +3953,8 @@ static void session_channel_write(session_ctx_t *ctx, const void *data,
 
     if (ctx->prefer_cp437_output) {
         /* Use the generic codepage conversion with the active codepage */
-        success = session_channel_write_codepage(ctx, (const char *)data, length,
-                                                 ctx->active_codepage);
+        success = session_channel_write_codepage(ctx, (const char *)data,
+                                                 length, ctx->active_codepage);
     } else if (ctx->prefer_utf16_output) {
         success = session_channel_write_utf16(ctx, (const char *)data, length);
     } else {
@@ -4939,10 +4943,11 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
 
         char encoded[8];
         size_t encoded_len = 0U;
-        
+
         if (ctx->cp437_input_enabled) {
-            encoded_len =
-                session_codepage_byte_to_utf8(ctx->active_codepage, &ctx->codepage_ctx, byte, encoded, sizeof(encoded));
+            encoded_len = session_codepage_byte_to_utf8(
+                ctx->active_codepage, &ctx->codepage_ctx, byte, encoded,
+                sizeof(encoded));
             if (encoded_len == 0U) {
                 encoded[0] = '?';
                 encoded_len = 1U;

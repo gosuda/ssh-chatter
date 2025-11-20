@@ -2764,8 +2764,8 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
             help_buffer, sizeof(help_buffer));
         session_send_raw_text(ctx, help_buffer);
 
-        const char *telnet_command = session_command_alias_preferred_by_canonical(
-            ctx, "/telnet-server");
+        const char *telnet_command =
+            session_command_alias_preferred_by_canonical(ctx, "/telnet-server");
         if (telnet_command == nullptr || telnet_command[0] == '\0') {
             telnet_command = "/telnet-server";
         }
@@ -2779,12 +2779,14 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
                  telnet_command);
         session_send_system_line(ctx, line);
 
-        snprintf(line, sizeof(line),
-                 "  /fidonet status|reconnect|disconnect - Manage FidoNet relay.");
+        snprintf(
+            line, sizeof(line),
+            "  /fidonet status|reconnect|disconnect - Manage FidoNet relay.");
         session_send_system_line(ctx, line);
 
-        snprintf(line, sizeof(line),
-                 "  /ircserver status|reconnect|disconnect - Manage IRC relay.");
+        snprintf(
+            line, sizeof(line),
+            "  /ircserver status|reconnect|disconnect - Manage IRC relay.");
         session_send_system_line(ctx, line);
     } else {
         session_send_system_line(

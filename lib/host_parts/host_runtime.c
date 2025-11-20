@@ -17,12 +17,12 @@ static session_ctx_t *session_create(void)
     return ctx;
 }
 
-static bool host_provider_language_preference(host_t *host,
-                                              const char *provider_label,
-                                              session_ui_language_t *out_language)
+static bool
+host_provider_language_preference(host_t *host, const char *provider_label,
+                                  session_ui_language_t *out_language)
 {
-    if (host == nullptr || provider_label == nullptr || provider_label[0] == '\0' ||
-        out_language == nullptr) {
+    if (host == nullptr || provider_label == nullptr ||
+        provider_label[0] == '\0' || out_language == nullptr) {
         return false;
     }
 
@@ -42,7 +42,7 @@ static bool host_provider_language_preference(host_t *host,
                      pref->provider_label);
         } else if (pref->ip[0] != '\0') {
             (void)session_detect_provider_ip(pref->ip, resolved_label,
-                                            sizeof(resolved_label));
+                                             sizeof(resolved_label));
         }
 
         if (resolved_label[0] == '\0' ||
@@ -361,15 +361,14 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 
         const char *codepage_name = session_codepage_name(ctx->active_codepage);
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message),
-                 "Retro encoding mode: %s (codepage: %s, input: %s, output: %s).", mode,
-                 codepage_name,
-                 ctx->cp437_input_enabled ? "legacy" : "UTF-8",
-                 ctx->prefer_cp437_output ? "legacy" : "UTF-8");
+        snprintf(
+            message, sizeof(message),
+            "Retro encoding mode: %s (codepage: %s, input: %s, output: %s).",
+            mode, codepage_name, ctx->cp437_input_enabled ? "legacy" : "UTF-8",
+            ctx->prefer_cp437_output ? "legacy" : "UTF-8");
         session_send_system_line(ctx, message);
         session_send_system_line(
-            ctx,
-            "Toggle with /retro on [lang], /retro off, or /retro auto.");
+            ctx, "Toggle with /retro on [lang], /retro off, or /retro auto.");
         session_send_system_line(
             ctx, "Supported languages: ko, en, jp, zh, ru, de, fr, pl.");
         return;
@@ -389,8 +388,10 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
             trim_whitespace_inplace(lang_code);
 
             // Try to parse language code
-            session_ui_language_t new_lang = session_ui_language_from_code(lang_code);
-            if (new_lang != SESSION_UI_LANGUAGE_EN || strcasecmp(lang_code, "en") == 0) {
+            session_ui_language_t new_lang =
+                session_ui_language_from_code(lang_code);
+            if (new_lang != SESSION_UI_LANGUAGE_EN ||
+                strcasecmp(lang_code, "en") == 0) {
                 ctx->ui_language = new_lang;
                 /* Set the appropriate code page for the language */
                 ctx->active_codepage = session_codepage_for_language(new_lang);
@@ -400,7 +401,8 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
             }
         } else {
             /* No language specified, use code page for current UI language */
-            ctx->active_codepage = session_codepage_for_language(ctx->ui_language);
+            ctx->active_codepage =
+                session_codepage_for_language(ctx->ui_language);
         }
 
         ctx->cp437_override = SESSION_CP437_OVERRIDE_FORCE_ON;
@@ -3144,17 +3146,19 @@ static void *host_telnet_thread(void *arg)
             host_provider_language_preference(host, provider_label,
                                               &provider_language)) {
             ctx->ui_language = provider_language;
-            ctx->active_codepage = session_codepage_for_language(provider_language);
+            ctx->active_codepage =
+                session_codepage_for_language(provider_language);
         } else {
-            session_ui_language_t geo_language = session_client_geo_language(ctx);
+            session_ui_language_t geo_language =
+                session_client_geo_language(ctx);
             if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
                 ctx->ui_language = geo_language;
                 ctx->active_codepage =
                     session_codepage_for_language(geo_language);
             } else {
                 ctx->ui_language = SESSION_UI_LANGUAGE_KO;
-                ctx->active_codepage = session_codepage_for_language(
-                    SESSION_UI_LANGUAGE_KO);
+                ctx->active_codepage =
+                    session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
             }
         }
 
@@ -3641,11 +3645,15 @@ static void *session_thread(void *arg)
         }
 
         session_send_system_line(ctx, "Wait for a moment...");
-        session_send_system_line(ctx, "Note: I recommend UTF-8 for elegant multilingual support.");
-        session_send_system_line(ctx, "~~~ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ~~~");
+        session_send_system_line(
+            ctx, "Note: I recommend UTF-8 for elegant multilingual support.");
+        session_send_system_line(
+            ctx, "~~~ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ~~~");
         session_send_system_line(ctx, "FUNNY ART HERE:");
         session_send_system_line(ctx, "               ");
-        session_send_system_line(ctx, "               //           - c-mon boy, let's play with me.");
+        session_send_system_line(
+            ctx,
+            "               //           - c-mon boy, let's play with me.");
         session_send_system_line(ctx, "         ----////-- ");
         session_send_system_line(ctx, "              //    ");
         session_send_system_line(ctx, "      ////////      ");
@@ -3663,7 +3671,6 @@ static void *session_thread(void *arg)
         session_send_system_line(ctx, "       ---          ");
         session_send_system_line(ctx, "    __  |  __       ");
         session_send_system_line(ctx, "      |_|_|         ");
-
 
         session_send_system_line(
             ctx, "For TELNET users: type /motd and follow the guide.");
@@ -3753,34 +3760,43 @@ static void *session_thread(void *arg)
             const char *retro_msg = nullptr;
             switch (ctx->ui_language) {
             case SESSION_UI_LANGUAGE_KO:
-                retro_msg = "레트로 터미널 인코딩: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
+                retro_msg = "레트로 터미널 인코딩: %sretro on "
+                            "[ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_JP:
-                retro_msg = "レトロターミナルエンコーディング: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
+                retro_msg = "レトロターミナルエンコーディング: %sretro on "
+                            "[ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_ZH:
-                retro_msg = "复古终端编码: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
+                retro_msg =
+                    "复古终端编码: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_RU:
-                retro_msg = "Ретро кодировка терминала: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
+                retro_msg = "Ретро кодировка терминала: %sretro on "
+                            "[ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_DE:
-                retro_msg = "Retro-Terminal-Codierung: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
+                retro_msg = "Retro-Terminal-Codierung: %sretro on "
+                            "[ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_FR:
-                retro_msg = "Encodage de terminal rétro: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
+                retro_msg = "Encodage de terminal rétro: %sretro on "
+                            "[ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_PL:
-                retro_msg = "Kodowanie terminala retro: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
+                retro_msg = "Kodowanie terminala retro: %sretro on "
+                            "[ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             case SESSION_UI_LANGUAGE_EN:
             default:
-                retro_msg = "Retro terminal encoding: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
+                retro_msg = "Retro terminal encoding: %sretro on "
+                            "[ko|en|jp|zh|ru|de|fr|pl]";
                 break;
             }
             const char *args[] = {prefix};
-            session_format_template(retro_msg, args, sizeof(args) / sizeof(args[0]),
-                                    retro_hint, sizeof(retro_hint));
+            session_format_template(retro_msg, args,
+                                    sizeof(args) / sizeof(args[0]), retro_hint,
+                                    sizeof(retro_hint));
             session_send_system_line(ctx, retro_hint);
         }
 
@@ -4126,7 +4142,8 @@ static void *session_thread(void *arg)
             size_t encoded_len = 0U;
             if (ctx->cp437_input_enabled) {
                 encoded_len = session_codepage_byte_to_utf8(
-                    ctx->active_codepage, &ctx->codepage_ctx, (unsigned char)ch, encoded, sizeof(encoded));
+                    ctx->active_codepage, &ctx->codepage_ctx, (unsigned char)ch,
+                    encoded, sizeof(encoded));
                 if (encoded_len == 0U) {
                     encoded[0] = '?';
                     encoded_len = 1U;
@@ -5574,8 +5591,8 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                         session_codepage_for_language(geo_language);
                 } else {
                     ctx->ui_language = SESSION_UI_LANGUAGE_KO;
-                    ctx->active_codepage = session_codepage_for_language(
-                        SESSION_UI_LANGUAGE_KO);
+                    ctx->active_codepage =
+                        session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
                 }
             }
             if (client_banner != nullptr && client_banner[0] != '\0') {

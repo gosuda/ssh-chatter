@@ -1820,10 +1820,11 @@ static void host_ui_language_state_resolve_path(host_t *host)
         ui_lang_path = "ui_lang_state.dat";
     }
 
-    int written = snprintf(host->ui_lang_state_file_path,
-                           sizeof(host->ui_lang_state_file_path), "%s",
-                           ui_lang_path);
-    if (written < 0 || (size_t)written >= sizeof(host->ui_lang_state_file_path)) {
+    int written =
+        snprintf(host->ui_lang_state_file_path,
+                 sizeof(host->ui_lang_state_file_path), "%s", ui_lang_path);
+    if (written < 0 ||
+        (size_t)written >= sizeof(host->ui_lang_state_file_path)) {
         humanized_log_error("host", "ui-lang state file path is too long",
                             ENAMETOOLONG);
         host->ui_lang_state_file_path[0] = '\0';
@@ -2583,8 +2584,8 @@ static void host_state_save_locked(host_t *host)
                  pref->input_translation_language);
         snprintf(serialized.ui_language, sizeof(serialized.ui_language), "%s",
                  pref->ui_language);
-        snprintf(serialized.provider_label, sizeof(serialized.provider_label), "%s",
-                 pref->provider_label);
+        snprintf(serialized.provider_label, sizeof(serialized.provider_label),
+                 "%s", pref->provider_label);
 
         if (fwrite(&serialized, sizeof(serialized), 1U, fp) != 1U) {
             success = false;
@@ -3876,7 +3877,7 @@ static void host_state_load(host_t *host)
 
     pthread_mutex_unlock(&host->lock);
     fclose(fp);
-    
+
     // Clean up messages older than 3 days after loading state
     host_history_cleanup_expired(host);
 }

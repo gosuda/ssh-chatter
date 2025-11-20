@@ -1401,7 +1401,10 @@ static void session_format_separator_line(session_ctx_t *ctx, const char *label,
         ctx->system_highlight_code != nullptr ? ctx->system_highlight_code : "";
     const char *bold = ctx->system_is_bold ? ANSI_BOLD : "";
 
-    const size_t total_width = 80U;
+    size_t total_width = ctx->terminal_width > 0U ? ctx->terminal_width : 80U;
+    if (total_width > SSH_CHATTER_MESSAGE_LIMIT) {
+        total_width = SSH_CHATTER_MESSAGE_LIMIT;
+    }
     char label_block[96];
     snprintf(label_block, sizeof(label_block), " %s ", label);
     size_t label_len = strnlen(label_block, sizeof(label_block) - 1U);

@@ -4282,9 +4282,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         // scrolled back viewing history
         if (member->history_scroll_position > 0U) {
             // Reset scroll position to show the latest messages
-            member->history_scroll_position = 0U;
-            member->history_latest_notified = false;
-            member->history_oldest_notified = false;
+            session_scrollback_reset_position(member);
         }
 
         // Refresh input line to display the message and prompt

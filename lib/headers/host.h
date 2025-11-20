@@ -429,7 +429,7 @@ typedef enum gonu_cell {
     GONU_CELL_AI,
 } gonu_cell_t;
 
-#define GONU_BOARD_SIZE 7
+#define GONU_BOARD_SIZE 5
 
 typedef struct gonu_game_state {
     gonu_variant_t variant;

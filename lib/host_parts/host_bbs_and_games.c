@@ -4827,17 +4827,19 @@ static void session_game_gonu_build_patterns(void)
         memset(&gonu_patterns[idx], 0, sizeof(gonu_patterns[idx]));
     }
 
-    // Hobak-gonu: layered diamonds with cross beams for a busy pumpkin lattice
+    // Hobak-gonu: layered diamonds with cross beams for a tight pumpkin lattice
     gonu_board_pattern_t *hobak = &gonu_patterns[GONU_VARIANT_HOBAK];
-    session_game_gonu_add_diamond(hobak, center, 3);
     session_game_gonu_add_diamond(hobak, center, 2);
     session_game_gonu_add_diamond(hobak, center, 1);
     session_game_gonu_add_line(hobak, center, 0, center, GONU_BOARD_SIZE - 1);
     session_game_gonu_add_line(hobak, 0, center, GONU_BOARD_SIZE - 1, center);
+    session_game_gonu_add_line(hobak, 1, 1, GONU_BOARD_SIZE - 2, 1);
+    session_game_gonu_add_line(hobak, 1, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2,
+                               GONU_BOARD_SIZE - 2);
     session_game_gonu_add_line(hobak, 0, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1);
     session_game_gonu_add_line(hobak, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, 0);
 
-    // Bakwi-gonu: triple concentric squares with spokes and diagonals
+    // Bakwi-gonu: concentric squares with spokes and diagonals on a compact wheel
     gonu_board_pattern_t *bakwi = &gonu_patterns[GONU_VARIANT_BAKWI];
     session_game_gonu_add_line(bakwi, 0, 0, 0, GONU_BOARD_SIZE - 1);
     session_game_gonu_add_line(bakwi, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1);
@@ -4847,10 +4849,6 @@ static void session_game_gonu_build_patterns(void)
     session_game_gonu_add_line(bakwi, 1, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2);
     session_game_gonu_add_line(bakwi, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, 1);
     session_game_gonu_add_line(bakwi, GONU_BOARD_SIZE - 2, 1, 1, 1);
-    session_game_gonu_add_line(bakwi, 2, 2, 2, GONU_BOARD_SIZE - 3);
-    session_game_gonu_add_line(bakwi, 2, GONU_BOARD_SIZE - 3, GONU_BOARD_SIZE - 3, GONU_BOARD_SIZE - 3);
-    session_game_gonu_add_line(bakwi, GONU_BOARD_SIZE - 3, GONU_BOARD_SIZE - 3, GONU_BOARD_SIZE - 3, 2);
-    session_game_gonu_add_line(bakwi, GONU_BOARD_SIZE - 3, 2, 2, 2);
     session_game_gonu_add_line(bakwi, center, 0, center, GONU_BOARD_SIZE - 1);
     session_game_gonu_add_line(bakwi, 0, center, GONU_BOARD_SIZE - 1, center);
     session_game_gonu_add_line(bakwi, 0, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1);
@@ -4889,8 +4887,8 @@ static void session_game_gonu_build_patterns(void)
     session_game_gonu_add_line(janggi, 0, GONU_BOARD_SIZE - 1, GONU_BOARD_SIZE - 1, 0);
     session_game_gonu_add_line(janggi, 1, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2, 1);
     session_game_gonu_add_line(janggi, 1, 1, GONU_BOARD_SIZE - 2, GONU_BOARD_SIZE - 2);
+    session_game_gonu_add_diamond(janggi, center, 1);
     session_game_gonu_add_diamond(janggi, center, 2);
-    session_game_gonu_add_diamond(janggi, center, 3);
 
     gonu_patterns_initialized = true;
 }
@@ -4979,6 +4977,89 @@ static bool session_game_gonu_check_win(const gonu_game_state_t *state, gonu_cel
         }
     }
 
+    return false;
+}
+
+static int session_game_gonu_count_adjacent(const gonu_game_state_t *state, int row,
+                                            int col, gonu_cell_t player)
+{
+    if (state == nullptr) {
+        return 0;
+    }
+
+    int count = 0;
+    for (int dr = -1; dr <= 1; ++dr) {
+        for (int dc = -1; dc <= 1; ++dc) {
+            if (dr == 0 && dc == 0) {
+                continue;
+            }
+
+            int nr = row + dr;
+            int nc = col + dc;
+            if (session_game_gonu_is_connected(state->variant, row, col, nr, nc) &&
+                state->board[nr][nc] == player) {
+                ++count;
+            }
+        }
+    }
+
+    return count;
+}
+
+static int session_game_gonu_positional_score(const gonu_game_state_t *state, int row,
+                                              int col, gonu_cell_t focus)
+{
+    const int center = GONU_BOARD_SIZE / 2;
+    const int manhattan = abs(center - row) + abs(center - col);
+    int score = (GONU_BOARD_SIZE * 2) - (manhattan * 2);
+
+    score += session_game_gonu_count_adjacent(state, row, col, focus) * 4;
+    score += session_game_gonu_count_adjacent(state, row, col,
+                                              focus == GONU_CELL_AI ? GONU_CELL_PLAYER
+                                                                    : GONU_CELL_AI) * 3;
+    return score;
+}
+
+static bool session_game_gonu_has_winning_move(gonu_game_state_t *state, gonu_cell_t player)
+{
+    if (state == nullptr || state->placement_phase) {
+        return false;
+    }
+
+    bool restore_started = state->movement_started;
+    state->movement_started = true;
+
+    for (int row = 0; row < GONU_BOARD_SIZE; ++row) {
+        for (int col = 0; col < GONU_BOARD_SIZE; ++col) {
+            if (state->board[row][col] != player) {
+                continue;
+            }
+
+            for (int dr = -1; dr <= 1; ++dr) {
+                for (int dc = -1; dc <= 1; ++dc) {
+                    int nr = row + dr;
+                    int nc = col + dc;
+                    if (!session_game_gonu_is_connected(state->variant, row, col, nr, nc) ||
+                        state->board[nr][nc] != GONU_CELL_EMPTY) {
+                        continue;
+                    }
+
+                    state->board[row][col] = GONU_CELL_EMPTY;
+                    state->board[nr][nc] = player;
+                    bool win = session_game_gonu_check_win(state, player);
+                    state->board[row][col] = player;
+                    state->board[nr][nc] = GONU_CELL_EMPTY;
+
+                    if (win) {
+                        state->movement_started = restore_started;
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    state->movement_started = restore_started;
     return false;
 }
 
@@ -5074,10 +5155,11 @@ static void session_game_gonu_ai_move(session_ctx_t *ctx)
     if (state->multiplayer) {
         return;  // No AI in multiplayer
     }
-    
+
     session_game_seed_rng(ctx);
     unsigned difficulty = state->difficulty_level;
-    
+    const bool player_has_immediate_win = session_game_gonu_has_winning_move(state, GONU_CELL_PLAYER);
+
     // Collect all possible moves
     typedef struct {
         int from_row;
@@ -5100,14 +5182,8 @@ static void session_game_gonu_ai_move(session_ctx_t *ctx)
                     possible_moves[move_count].is_placement = true;
                     possible_moves[move_count].to_row = row;
                     possible_moves[move_count].to_col = col;
-                    
-                    // Simple scoring: prefer center for higher difficulties
-                    int score = 0;
-                    if (row == 2 && col == 2) {
-                        score = 10;  // Center is valuable
-                    } else {
-                        score = 5;
-                    }
+
+                    int score = session_game_gonu_positional_score(state, row, col, GONU_CELL_AI);
                     possible_moves[move_count].score = score;
                     move_count++;
                     
@@ -5134,17 +5210,34 @@ static void session_game_gonu_ai_move(session_ctx_t *ctx)
                                 possible_moves[move_count].from_col = col;
                                 possible_moves[move_count].to_row = new_row;
                                 possible_moves[move_count].to_col = new_col;
-                                
-                                // Score the move - check if it creates a winning line
-                                int score = 1;
+
+                                bool restore_started = state->movement_started;
                                 state->board[row][col] = GONU_CELL_EMPTY;
                                 state->board[new_row][new_col] = GONU_CELL_AI;
-                                if (session_game_gonu_check_win(state, GONU_CELL_AI)) {
-                                    score = 100;  // Winning move!
+                                state->movement_started = true;
+
+                                const bool ai_wins = session_game_gonu_check_win(state, GONU_CELL_AI);
+                                const bool player_can_win_after = session_game_gonu_has_winning_move(
+                                    state, GONU_CELL_PLAYER);
+
+                                int score = session_game_gonu_positional_score(state, new_row,
+                                                                                new_col,
+                                                                                GONU_CELL_AI);
+                                score += session_game_gonu_count_adjacent(state, row, col,
+                                                                           GONU_CELL_AI);
+                                if (ai_wins) {
+                                    score += 500;
+                                } else if (player_has_immediate_win && !player_can_win_after) {
+                                    score += 150;
                                 }
+                                if (player_can_win_after) {
+                                    score -= 120;
+                                }
+
                                 state->board[row][col] = GONU_CELL_AI;
                                 state->board[new_row][new_col] = GONU_CELL_EMPTY;
-                                
+                                state->movement_started = restore_started;
+
                                 possible_moves[move_count].score = score;
                                 move_count++;
                                 

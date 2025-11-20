@@ -142,9 +142,7 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
     }
 
     // Ensure the sender leaves scrollback so the reply appears immediately.
-    ctx->history_scroll_position = 0U;
-    ctx->history_latest_notified = false;
-    ctx->history_oldest_notified = false;
+    session_scrollback_reset_position(ctx);
 
     // Add reply to chat history
     const char *target_prefix = (stored.parent_reply_id == 0U) ? "#" : "r#";

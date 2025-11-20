@@ -4670,6 +4670,7 @@ static void session_game_gonu_reset(gonu_game_state_t *state, gonu_variant_t var
     memset(state, 0, sizeof(*state));
     state->variant = variant;
     state->placement_phase = true;
+    state->movement_started = false;
     state->player_turn = true;
     state->player_pieces = 0U;
     state->ai_pieces = 0U;
@@ -4927,6 +4928,12 @@ static bool session_game_gonu_is_connected(gonu_variant_t variant, int r1, int c
 
 static bool session_game_gonu_check_win(const gonu_game_state_t *state, gonu_cell_t player)
 {
+    // Traditional rule: mills only count after placement is finished and
+    // movement begins, so do not award an immediate win during the opening.
+    if (state->placement_phase || !state->movement_started) {
+        return false;
+    }
+
     // Look for any three-in-a-line sequence across allowed connections.
     const int dirs[][2] = {
         {-1, -1}, {-1, 0}, {-1, 1},
@@ -5216,8 +5223,9 @@ static void session_game_gonu_ai_move(session_ctx_t *ctx)
     } else {
         state->board[chosen_move.from_row][chosen_move.from_col] = GONU_CELL_EMPTY;
         state->board[chosen_move.to_row][chosen_move.to_col] = GONU_CELL_AI;
+        state->movement_started = true;
         char msg[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(msg, sizeof(msg), "AI moved from %d,%c to %d,%c", 
+        snprintf(msg, sizeof(msg), "AI moved from %d,%c to %d,%c",
                  chosen_move.from_row, 'A' + chosen_move.from_col,
                  chosen_move.to_row, 'A' + chosen_move.to_col);
         session_send_system_line(ctx, msg);
@@ -5281,6 +5289,7 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx, const char *input
         session_send_system_line(ctx, msg);
         session_send_system_line(ctx, "");
         session_send_system_line(ctx, "Gonu started! Place your 3 pieces first.");
+        session_send_system_line(ctx, "Note: Three-in-a-row only wins after all pieces are placed and movement begins.");
         session_send_system_line(ctx, "_ = empty position, Q = your piece, X = AI piece");
         char coord_hint[SSH_CHATTER_MESSAGE_LIMIT];
         const char max_letter = (char)('A' + (GONU_BOARD_SIZE - 1));
@@ -5392,6 +5401,7 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx, const char *input
             // Execute move
             state->board[state->selected_row][state->selected_col] = GONU_CELL_EMPTY;
             state->board[row][col] = GONU_CELL_PLAYER;
+            state->movement_started = true;
             state->piece_selected = false;
         }
     }

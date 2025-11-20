@@ -1628,14 +1628,25 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
     }
 
     host_t *host = ctx->owner;
-    user_preference_t snapshot = (user_preference_t){0};
-    bool has_snapshot = false;
+    user_preference_t base_snapshot = (user_preference_t){0};
+    user_preference_t ip_snapshot = (user_preference_t){0};
+    bool has_base_snapshot = false;
+    bool has_ip_snapshot = false;
 
     pthread_mutex_lock(&host->lock);
-    user_preference_t *pref = host_find_preference_locked(host, ctx->user.name);
+    user_preference_t *pref =
+        host_find_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
-        snapshot = *pref;
-        has_snapshot = true;
+        base_snapshot = *pref;
+        has_base_snapshot = true;
+    }
+    if (ctx->client_ip[0] != '\0') {
+        user_preference_t *ip_pref = host_find_preference_locked(
+            host, ctx->user.name, ctx->client_ip);
+        if (ip_pref != nullptr && (pref == nullptr || ip_pref != pref)) {
+            ip_snapshot = *ip_pref;
+            has_ip_snapshot = true;
+        }
     }
     pthread_mutex_unlock(&host->lock);
 
@@ -1655,10 +1666,10 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
     ctx->last_detected_input_language[0] = '\0';
     ctx->breaking_alerts_enabled = false;
 
-    if (has_snapshot) {
-        if (snapshot.ui_language[0] != '\0') {
+    if (has_base_snapshot) {
+        if (base_snapshot.ui_language[0] != '\0') {
             session_ui_language_t saved_language =
-                session_ui_language_from_code(snapshot.ui_language);
+                session_ui_language_from_code(base_snapshot.ui_language);
             if (saved_language != SESSION_UI_LANGUAGE_COUNT) {
                 ctx->ui_language = saved_language;
             }
@@ -1668,44 +1679,44 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
             ctx->ui_language = previous_language;
         }
 
-        if (snapshot.has_user_theme) {
+        if (base_snapshot.has_user_theme) {
             const char *color_code = lookup_color_code(
                 USER_COLOR_MAP,
                 sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
-                snapshot.user_color_name);
+                base_snapshot.user_color_name);
             const char *highlight_code = lookup_color_code(
                 HIGHLIGHT_COLOR_MAP,
                 sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
-                snapshot.user_highlight_name);
+                base_snapshot.user_highlight_name);
             if (color_code != nullptr && highlight_code != nullptr) {
                 ctx->user_color_code = color_code;
                 ctx->user_highlight_code = highlight_code;
-                ctx->user_is_bold = snapshot.user_is_bold;
+                ctx->user_is_bold = base_snapshot.user_is_bold;
                 snprintf(ctx->user_color_name, sizeof(ctx->user_color_name),
-                         "%s", snapshot.user_color_name);
+                         "%s", base_snapshot.user_color_name);
                 snprintf(ctx->user_highlight_name,
                          sizeof(ctx->user_highlight_name), "%s",
-                         snapshot.user_highlight_name);
+                         base_snapshot.user_highlight_name);
             }
         }
 
-        if (snapshot.has_system_theme) {
+        if (base_snapshot.has_system_theme) {
             const char *fg_code = lookup_color_code(
                 USER_COLOR_MAP,
                 sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
-                snapshot.system_fg_name);
+                base_snapshot.system_fg_name);
             const char *bg_code = lookup_color_code(
                 HIGHLIGHT_COLOR_MAP,
                 sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
-                snapshot.system_bg_name);
+                base_snapshot.system_bg_name);
             if (fg_code != nullptr && bg_code != nullptr) {
                 const char *highlight_code = ctx->system_highlight_code;
-                if (snapshot.system_highlight_name[0] != '\0') {
-                    const char *candidate =
-                        lookup_color_code(HIGHLIGHT_COLOR_MAP,
-                                          sizeof(HIGHLIGHT_COLOR_MAP) /
-                                              sizeof(HIGHLIGHT_COLOR_MAP[0]),
-                                          snapshot.system_highlight_name);
+                if (base_snapshot.system_highlight_name[0] != '\0') {
+                    const char *candidate = lookup_color_code(
+                        HIGHLIGHT_COLOR_MAP,
+                        sizeof(HIGHLIGHT_COLOR_MAP) /
+                            sizeof(HIGHLIGHT_COLOR_MAP[0]),
+                        base_snapshot.system_highlight_name);
                     if (candidate != nullptr) {
                         highlight_code = candidate;
                     }
@@ -1714,61 +1725,71 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
                 ctx->system_fg_code = fg_code;
                 ctx->system_bg_code = bg_code;
                 ctx->system_highlight_code = highlight_code;
-                ctx->system_is_bold = snapshot.system_is_bold;
+                ctx->system_is_bold = base_snapshot.system_is_bold;
                 snprintf(ctx->system_fg_name, sizeof(ctx->system_fg_name), "%s",
-                         snapshot.system_fg_name);
+                         base_snapshot.system_fg_name);
                 snprintf(ctx->system_bg_name, sizeof(ctx->system_bg_name), "%s",
-                         snapshot.system_bg_name);
-                if (snapshot.system_highlight_name[0] != '\0') {
+                         base_snapshot.system_bg_name);
+                if (base_snapshot.system_highlight_name[0] != '\0') {
                     snprintf(ctx->system_highlight_name,
                              sizeof(ctx->system_highlight_name), "%s",
-                             snapshot.system_highlight_name);
+                             base_snapshot.system_highlight_name);
                 }
             }
         }
 
-        if (snapshot.os_name[0] != '\0') {
+        if (base_snapshot.os_name[0] != '\0') {
             snprintf(ctx->os_name, sizeof(ctx->os_name), "%s",
-                     snapshot.os_name);
+                     base_snapshot.os_name);
         }
-        ctx->daily_year = snapshot.daily_year;
-        ctx->daily_yday = snapshot.daily_yday;
-        if (snapshot.daily_function[0] != '\0') {
+        ctx->daily_year = base_snapshot.daily_year;
+        ctx->daily_yday = base_snapshot.daily_yday;
+        if (base_snapshot.daily_function[0] != '\0') {
             snprintf(ctx->daily_function, sizeof(ctx->daily_function), "%s",
-                     snapshot.daily_function);
+                     base_snapshot.daily_function);
         }
-        ctx->has_birthday = snapshot.has_birthday;
+        ctx->has_birthday = base_snapshot.has_birthday;
         if (ctx->has_birthday) {
             snprintf(ctx->birthday, sizeof(ctx->birthday), "%s",
-                     snapshot.birthday);
+                     base_snapshot.birthday);
         } else {
             ctx->birthday[0] = '\0';
         }
 
-        ctx->translation_caption_spacing = snapshot.translation_caption_spacing;
+        ctx->translation_caption_spacing = base_snapshot.translation_caption_spacing;
         if (ctx->translation_caption_spacing > 8U) {
             ctx->translation_caption_spacing = 8U;
         }
 
-        if (snapshot.translation_master_explicit) {
-            ctx->translation_enabled = snapshot.translation_master_enabled;
+        if (base_snapshot.translation_master_explicit) {
+            ctx->translation_enabled = base_snapshot.translation_master_enabled;
         }
 
-        ctx->output_translation_enabled = snapshot.output_translation_enabled;
+        ctx->output_translation_enabled = base_snapshot.output_translation_enabled;
         snprintf(ctx->output_translation_language,
                  sizeof(ctx->output_translation_language), "%s",
-                 snapshot.output_translation_language);
-        ctx->input_translation_enabled = snapshot.input_translation_enabled;
+                 base_snapshot.output_translation_language);
+        ctx->input_translation_enabled = base_snapshot.input_translation_enabled;
         snprintf(ctx->input_translation_language,
                  sizeof(ctx->input_translation_language), "%s",
-                 snapshot.input_translation_language);
-        ctx->breaking_alerts_enabled = pref->breaking_alerts_enabled;
+                 base_snapshot.input_translation_language);
+        ctx->breaking_alerts_enabled = base_snapshot.breaking_alerts_enabled;
         snprintf(ctx->game.chosen_camouflage_language,
                  sizeof(ctx->game.chosen_camouflage_language), "%s",
-                 pref->camouflage_language);
+                 base_snapshot.camouflage_language);
     }
 
-    if (!has_snapshot || snapshot.ui_language[0] == '\0') {
+    if (has_ip_snapshot && ip_snapshot.ui_language[0] != '\0') {
+        session_ui_language_t saved_language =
+            session_ui_language_from_code(ip_snapshot.ui_language);
+        if (saved_language != SESSION_UI_LANGUAGE_COUNT) {
+            ctx->ui_language = saved_language;
+        }
+    }
+
+    if (!has_base_snapshot && !has_ip_snapshot) {
+        ctx->ui_language = previous_language;
+    } else if (ctx->ui_language == SESSION_UI_LANGUAGE_COUNT) {
         ctx->ui_language = previous_language;
     }
 

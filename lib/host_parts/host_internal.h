@@ -42,6 +42,7 @@
 lan_operator_credential_t *
 host_find_lan_operator_credential(host_t *host, const char *username);
 bool session_is_lan_client(const char *ip);
+bool session_detect_provider_ip(const char *ip, char *label, size_t length);
 
 #include <poll.h>
 #include <pthread.h>

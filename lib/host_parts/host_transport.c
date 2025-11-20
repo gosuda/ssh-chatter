@@ -2172,8 +2172,6 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line);
 static void session_handle_exit(session_ctx_t *ctx);
 static void session_force_disconnect(session_ctx_t *ctx, const char *reason);
 static void session_handle_nick(session_ctx_t *ctx, const char *arguments);
-static bool session_detect_provider_ip(const char *ip, char *label,
-                                       size_t length);
 static bool host_lookup_member_ip(host_t *host, const char *username, char *ip,
                                   size_t length);
 static bool host_lookup_last_ip(host_t *host, const char *username, char *ip,
@@ -2401,9 +2399,11 @@ static void
 chat_room_broadcast_reaction_update(host_t *host,
                                     const chat_history_entry_t *entry);
 static user_preference_t *host_find_preference_locked(host_t *host,
-                                                      const char *username);
+                                                      const char *username,
+                                                      const char *ip);
 static user_preference_t *host_ensure_preference_locked(host_t *host,
-                                                        const char *username);
+                                                        const char *username,
+                                                        const char *ip);
 static void host_store_user_theme(host_t *host, const session_ctx_t *ctx);
 static size_t host_prepare_join_delay(host_t *host,
                                       struct timespec *wait_duration);
@@ -3026,7 +3026,7 @@ static const char TETROMINO_DISPLAY_CHARS[7] = {'I', 'J', 'L', 'O',
                                                 'S', 'T', 'Z'};
 
 static const uint32_t HOST_STATE_MAGIC = 0x53484354U; /* 'SHCT' */
-static const uint32_t HOST_STATE_VERSION = 11U;
+static const uint32_t HOST_STATE_VERSION = 12U;
 static const uint32_t ELIZA_STATE_MAGIC = 0x454c5354U; /* 'ELST' */
 static const uint32_t ELIZA_STATE_VERSION = 1U;
 
@@ -3251,7 +3251,7 @@ typedef struct host_state_preference_entry_v8 {
     char ui_language[SSH_CHATTER_LANG_NAME_LEN];
 } host_state_preference_entry_v8_t;
 
-typedef struct host_state_preference_entry {
+typedef struct host_state_preference_entry_v9 {
     uint8_t has_user_theme;
     uint8_t has_system_theme;
     uint8_t user_is_bold;
@@ -3280,6 +3280,40 @@ typedef struct host_state_preference_entry {
     char input_translation_language[SSH_CHATTER_LANG_NAME_LEN];
     char ui_language[SSH_CHATTER_LANG_NAME_LEN];
     uint8_t breaking_alerts_enabled;
+    uint8_t reserved2[7];
+} host_state_preference_entry_v9_t;
+
+typedef struct host_state_preference_entry {
+    uint8_t has_user_theme;
+    uint8_t has_system_theme;
+    uint8_t user_is_bold;
+    uint8_t system_is_bold;
+    char username[SSH_CHATTER_USERNAME_LEN];
+    char ip[SSH_CHATTER_IP_LEN];
+    char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
+    char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
+    char system_fg_name[SSH_CHATTER_COLOR_NAME_LEN];
+    char system_bg_name[SSH_CHATTER_COLOR_NAME_LEN];
+    char system_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
+    char os_name[SSH_CHATTER_OS_NAME_LEN];
+    int32_t daily_year;
+    int32_t daily_yday;
+    char daily_function[64];
+    uint64_t last_poll_id;
+    int32_t last_poll_choice;
+    uint8_t has_birthday;
+    uint8_t translation_caption_spacing;
+    uint8_t translation_enabled;
+    uint8_t output_translation_enabled;
+    uint8_t input_translation_enabled;
+    uint8_t translation_master_explicit;
+    uint8_t reserved[2];
+    char birthday[16];
+    char output_translation_language[SSH_CHATTER_LANG_NAME_LEN];
+    char input_translation_language[SSH_CHATTER_LANG_NAME_LEN];
+    char ui_language[SSH_CHATTER_LANG_NAME_LEN];
+    uint8_t breaking_alerts_enabled;
+    char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
     uint8_t reserved2[7];
 } host_state_preference_entry_t;
 
@@ -5580,11 +5614,14 @@ static void session_force_dark_mode_foreground(session_ctx_t *ctx)
 }
 
 static user_preference_t *host_find_preference_locked(host_t *host,
-                                                      const char *username)
+                                                      const char *username,
+                                                      const char *ip)
 {
     if (host == nullptr || username == nullptr || username[0] == '\0') {
         return nullptr;
     }
+
+    user_preference_t *fallback = nullptr;
 
     for (size_t idx = 0; idx < SSH_CHATTER_MAX_PREFERENCES; ++idx) {
         user_preference_t *pref = &host->preferences[idx];
@@ -5592,23 +5629,42 @@ static user_preference_t *host_find_preference_locked(host_t *host,
             continue;
         }
 
-        if (strncmp(pref->username, username, SSH_CHATTER_USERNAME_LEN) == 0) {
+        if (strncmp(pref->username, username, SSH_CHATTER_USERNAME_LEN) != 0) {
+            continue;
+        }
+
+        const bool pref_has_ip = pref->ip[0] != '\0';
+        const bool target_has_ip = ip != nullptr && ip[0] != '\0';
+
+        if (pref_has_ip && target_has_ip &&
+            strncmp(pref->ip, ip, SSH_CHATTER_IP_LEN) == 0) {
             return pref;
+        }
+
+        if (!target_has_ip && !pref_has_ip) {
+            return pref;
+        }
+
+        if (fallback == nullptr) {
+            fallback = pref;
         }
     }
 
-    return nullptr;
+    return fallback;
 }
 
 static user_preference_t *host_ensure_preference_locked(host_t *host,
-                                                        const char *username)
+                                                        const char *username,
+                                                        const char *ip)
 {
     if (host == nullptr || username == nullptr || username[0] == '\0') {
         return nullptr;
     }
 
-    user_preference_t *existing = host_find_preference_locked(host, username);
-    if (existing != nullptr) {
+    user_preference_t *existing =
+        host_find_preference_locked(host, username, ip);
+    const bool target_has_ip = ip != nullptr && ip[0] != '\0';
+    if (existing != nullptr && (!target_has_ip || existing->ip[0] != '\0')) {
         return existing;
     }
 
@@ -5624,13 +5680,16 @@ static user_preference_t *host_ensure_preference_locked(host_t *host,
         snprintf(pref->camouflage_language, sizeof(pref->camouflage_language),
                  "c");
         snprintf(pref->username, sizeof(pref->username), "%s", username);
+        if (target_has_ip) {
+            snprintf(pref->ip, sizeof(pref->ip), "%s", ip);
+        }
         if (host->preference_count < SSH_CHATTER_MAX_PREFERENCES) {
             ++host->preference_count;
         }
         return pref;
     }
 
-    return nullptr;
+    return existing;
 }
 
 static void host_store_user_theme(host_t *host, const session_ctx_t *ctx)
@@ -5641,7 +5700,7 @@ static void host_store_user_theme(host_t *host, const session_ctx_t *ctx)
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name);
+        host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
         pref->has_user_theme = true;
         snprintf(pref->user_color_name, sizeof(pref->user_color_name), "%s",
@@ -5662,7 +5721,7 @@ static void host_store_system_theme(host_t *host, const session_ctx_t *ctx)
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name);
+        host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
         pref->has_system_theme = true;
         snprintf(pref->system_fg_name, sizeof(pref->system_fg_name), "%s",
@@ -5686,7 +5745,7 @@ static void host_store_user_os(host_t *host, const session_ctx_t *ctx)
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name);
+        host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
         snprintf(pref->os_name, sizeof(pref->os_name), "%s", ctx->os_name);
     }
@@ -5703,7 +5762,7 @@ static void host_store_birthday(host_t *host, const session_ctx_t *ctx,
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name);
+        host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
         pref->has_birthday = true;
         snprintf(pref->birthday, sizeof(pref->birthday), "%s", birthday);
@@ -5721,7 +5780,7 @@ static void host_store_chat_spacing(host_t *host, const session_ctx_t *ctx)
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name);
+        host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
         if (ctx->translation_caption_spacing > UINT8_MAX) {
             pref->translation_caption_spacing = UINT8_MAX;
@@ -5743,7 +5802,7 @@ static void host_store_translation_preferences(host_t *host,
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name);
+        host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
         pref->translation_master_enabled = ctx->translation_enabled;
         pref->translation_master_explicit = true;
@@ -5768,7 +5827,7 @@ static void host_store_breaking_alerts(host_t *host, const session_ctx_t *ctx)
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name);
+        host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
         pref->breaking_alerts_enabled = ctx->breaking_alerts_enabled;
     }
@@ -5783,11 +5842,21 @@ void host_store_ui_language(host_t *host, const session_ctx_t *ctx)
     }
 
     pthread_mutex_lock(&host->lock);
-    user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name);
+    user_preference_t *pref = host_ensure_preference_locked(host, ctx->user.name,
+                                                           ctx->client_ip);
     if (pref != nullptr) {
         const char *code = session_ui_language_code(ctx->ui_language);
         snprintf(pref->ui_language, sizeof(pref->ui_language), "%s", code);
+        if (ctx->client_ip[0] != '\0') {
+            snprintf(pref->ip, sizeof(pref->ip), "%s", ctx->client_ip);
+        }
+        char label[SSH_CHATTER_PROVIDER_LABEL_LEN];
+        if (session_detect_provider_ip(ctx->client_ip, label, sizeof(label))) {
+            snprintf(pref->provider_label, sizeof(pref->provider_label), "%s",
+                     label);
+        } else {
+            pref->provider_label[0] = '\0';
+        }
     }
     host_state_save_locked(host);
     pthread_mutex_unlock(&host->lock);
@@ -5972,7 +6041,7 @@ static bool host_lookup_user_os(host_t *host, const char *username,
     bool found = false;
 
     pthread_mutex_lock(&host->lock);
-    user_preference_t *pref = host_find_preference_locked(host, username);
+    user_preference_t *pref = host_find_preference_locked(host, username, "");
     if (pref != nullptr && pref->os_name[0] != '\0') {
         snprintf(buffer, length, "%s", pref->os_name);
         found = true;

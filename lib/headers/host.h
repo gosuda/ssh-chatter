@@ -76,6 +76,7 @@
 #define SSH_CHATTER_JOIN_BAR_MAX 17
 #define SSH_CHATTER_LANG_NAME_LEN 64
 #define SSH_CHATTER_STATUS_LEN 128
+#define SSH_CHATTER_PROVIDER_LABEL_LEN 64
 #define SSH_CHATTER_CLIENT_BANNER_LEN 128
 #define SSH_CHATTER_TERMINAL_TYPE_LEN 64
 #define SSH_CHATTER_BBS_MAX_LINES 1000
@@ -718,6 +719,7 @@ typedef struct user_preference {
     bool has_user_theme;
     bool has_system_theme;
     char username[SSH_CHATTER_USERNAME_LEN];
+    char ip[SSH_CHATTER_IP_LEN];
     char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
     bool user_is_bold;
@@ -742,6 +744,7 @@ typedef struct user_preference {
     char input_translation_language[SSH_CHATTER_LANG_NAME_LEN];
     char ui_language[SSH_CHATTER_LANG_NAME_LEN];
     bool breaking_alerts_enabled;
+    char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
     char camouflage_language[16];
     bool show_continuous_messages;
     struct {

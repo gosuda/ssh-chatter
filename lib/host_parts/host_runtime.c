@@ -17,6 +17,71 @@ static session_ctx_t *session_create(void)
     return ctx;
 }
 
+static bool host_provider_language_preference(host_t *host,
+                                              const char *provider_label,
+                                              session_ui_language_t *out_language)
+{
+    if (host == nullptr || provider_label == nullptr || provider_label[0] == '\0' ||
+        out_language == nullptr) {
+        return false;
+    }
+
+    size_t counts[SESSION_UI_LANGUAGE_COUNT] = {0};
+    size_t total = 0U;
+
+    pthread_mutex_lock(&host->lock);
+    for (size_t idx = 0U; idx < SSH_CHATTER_MAX_PREFERENCES; ++idx) {
+        const user_preference_t *pref = &host->preferences[idx];
+        if (!pref->in_use || pref->ui_language[0] == '\0') {
+            continue;
+        }
+
+        char resolved_label[SSH_CHATTER_PROVIDER_LABEL_LEN] = {0};
+        if (pref->provider_label[0] != '\0') {
+            snprintf(resolved_label, sizeof(resolved_label), "%s",
+                     pref->provider_label);
+        } else if (pref->ip[0] != '\0') {
+            (void)session_detect_provider_ip(pref->ip, resolved_label,
+                                            sizeof(resolved_label));
+        }
+
+        if (resolved_label[0] == '\0' ||
+            strcasecmp(resolved_label, provider_label) != 0) {
+            continue;
+        }
+
+        session_ui_language_t lang =
+            session_ui_language_from_code(pref->ui_language);
+        if (lang == SESSION_UI_LANGUAGE_COUNT) {
+            continue;
+        }
+
+        ++counts[(size_t)lang];
+        ++total;
+    }
+    pthread_mutex_unlock(&host->lock);
+
+    if (total < 4U) {
+        return false;
+    }
+
+    size_t best_count = 0U;
+    session_ui_language_t best_language = SESSION_UI_LANGUAGE_COUNT;
+    for (size_t idx = 0U; idx < SESSION_UI_LANGUAGE_COUNT; ++idx) {
+        if (counts[idx] > best_count) {
+            best_count = counts[idx];
+            best_language = (session_ui_language_t)idx;
+        }
+    }
+
+    if (best_language == SESSION_UI_LANGUAGE_COUNT) {
+        return false;
+    }
+
+    *out_language = best_language;
+    return true;
+}
+
 static void session_destroy(session_ctx_t *ctx);
 
 static size_t session_encode_utf8_codepoint(uint32_t codepoint, char *output,
@@ -3071,13 +3136,26 @@ static void *host_telnet_thread(void *arg)
                  (int)sizeof(ctx->client_ip) - 1, peer_address);
         ctx->input_mode = SESSION_INPUT_MODE_CHAT;
 
-        session_ui_language_t geo_language = session_client_geo_language(ctx);
-        if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
-            ctx->ui_language = geo_language;
-            ctx->active_codepage = session_codepage_for_language(geo_language);
+        session_ui_language_t provider_language = SESSION_UI_LANGUAGE_COUNT;
+        char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
+        bool provider_detected = session_detect_provider_ip(
+            ctx->client_ip, provider_label, sizeof(provider_label));
+        if (provider_detected &&
+            host_provider_language_preference(host, provider_label,
+                                              &provider_language)) {
+            ctx->ui_language = provider_language;
+            ctx->active_codepage = session_codepage_for_language(provider_language);
         } else {
-            ctx->ui_language = SESSION_UI_LANGUAGE_KO;
-            ctx->active_codepage = session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
+            session_ui_language_t geo_language = session_client_geo_language(ctx);
+            if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
+                ctx->ui_language = geo_language;
+                ctx->active_codepage =
+                    session_codepage_for_language(geo_language);
+            } else {
+                ctx->ui_language = SESSION_UI_LANGUAGE_KO;
+                ctx->active_codepage = session_codepage_for_language(
+                    SESSION_UI_LANGUAGE_KO);
+            }
         }
 
         /* Favor CP437-style output for legacy telnet clients */
@@ -5474,14 +5552,28 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                      (int)sizeof(ctx->client_ip) - 1, peer_address);
             ctx->input_mode = SESSION_INPUT_MODE_CHAT;
 
-            session_ui_language_t geo_language =
-                session_client_geo_language(ctx);
-            if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
-                ctx->ui_language = geo_language;
-                ctx->active_codepage = session_codepage_for_language(geo_language);
+            session_ui_language_t provider_language = SESSION_UI_LANGUAGE_COUNT;
+            char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
+            bool provider_detected = session_detect_provider_ip(
+                ctx->client_ip, provider_label, sizeof(provider_label));
+            if (provider_detected &&
+                host_provider_language_preference(host, provider_label,
+                                                  &provider_language)) {
+                ctx->ui_language = provider_language;
+                ctx->active_codepage =
+                    session_codepage_for_language(provider_language);
             } else {
-                ctx->ui_language = SESSION_UI_LANGUAGE_KO;
-                ctx->active_codepage = session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
+                session_ui_language_t geo_language =
+                    session_client_geo_language(ctx);
+                if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
+                    ctx->ui_language = geo_language;
+                    ctx->active_codepage =
+                        session_codepage_for_language(geo_language);
+                } else {
+                    ctx->ui_language = SESSION_UI_LANGUAGE_KO;
+                    ctx->active_codepage = session_codepage_for_language(
+                        SESSION_UI_LANGUAGE_KO);
+                }
             }
             if (client_banner != nullptr && client_banner[0] != '\0') {
                 snprintf(ctx->client_banner, sizeof(ctx->client_banner), "%s",

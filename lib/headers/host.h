@@ -858,6 +858,7 @@ typedef struct host {
     char vote_state_file_path[PATH_MAX];
     char ban_state_file_path[PATH_MAX];
     char reply_state_file_path[PATH_MAX];
+    char ui_lang_state_file_path[PATH_MAX];
     char pw_auth_file_path[PATH_MAX];
     char alpha_landers_file_path[PATH_MAX];
     char user_data_root[PATH_MAX];

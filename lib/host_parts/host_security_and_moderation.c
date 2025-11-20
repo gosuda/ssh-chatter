@@ -1,6 +1,22 @@
 // Host security pipeline, moderation workers, and persistence utilities.
 #include "host_internal.h"
 
+static const uint32_t UI_LANG_STATE_MAGIC = 0x55494c47U; /* 'UILG' */
+static const uint32_t UI_LANG_STATE_VERSION = 1U;
+
+typedef struct ui_lang_state_header {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t entry_count;
+    uint32_t reserved;
+} ui_lang_state_header_t;
+
+typedef struct ui_lang_state_entry {
+    char username[SSH_CHATTER_USERNAME_LEN];
+    char ip[SSH_CHATTER_IP_LEN];
+    char ui_language[SSH_CHATTER_LANG_NAME_LEN];
+} ui_lang_state_entry_t;
+
 static void host_security_reset_diagnostic(char *diagnostic,
                                            size_t diagnostic_length)
 {
@@ -1790,6 +1806,27 @@ static void host_reply_state_resolve_path(host_t *host)
         humanized_log_error("host", "reply state file path is too long",
                             ENAMETOOLONG);
         host->reply_state_file_path[0] = '\0';
+    }
+}
+
+static void host_ui_language_state_resolve_path(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    const char *ui_lang_path = getenv("CHATTER_UI_LANG_FILE");
+    if (ui_lang_path == nullptr || ui_lang_path[0] == '\0') {
+        ui_lang_path = "ui_lang_state.dat";
+    }
+
+    int written = snprintf(host->ui_lang_state_file_path,
+                           sizeof(host->ui_lang_state_file_path), "%s",
+                           ui_lang_path);
+    if (written < 0 || (size_t)written >= sizeof(host->ui_lang_state_file_path)) {
+        humanized_log_error("host", "ui-lang state file path is too long",
+                            ENAMETOOLONG);
+        host->ui_lang_state_file_path[0] = '\0';
     }
 }
 
@@ -3842,6 +3879,163 @@ static void host_state_load(host_t *host)
     
     // Clean up messages older than 3 days after loading state
     host_history_cleanup_expired(host);
+}
+
+static void host_ui_language_state_save_locked(host_t *host)
+{
+    if (host == nullptr || host->ui_lang_state_file_path[0] == '\0') {
+        return;
+    }
+
+    char temp_path[PATH_MAX];
+    int written = snprintf(temp_path, sizeof(temp_path), "%s.tmp",
+                           host->ui_lang_state_file_path);
+    if (written < 0 || (size_t)written >= sizeof(temp_path)) {
+        humanized_log_error("host", "ui-lang state file path is too long",
+                            ENAMETOOLONG);
+        return;
+    }
+
+    if (!host_ensure_private_data_path(host, host->ui_lang_state_file_path,
+                                       true)) {
+        return;
+    }
+
+    FILE *fp = fopen(temp_path, "wb");
+    if (fp == nullptr) {
+        humanized_log_error("host", "failed to open ui-lang state file", errno);
+        return;
+    }
+
+    size_t entry_count = 0U;
+    for (size_t idx = 0U; idx < SSH_CHATTER_MAX_PREFERENCES; ++idx) {
+        const user_preference_t *pref = &host->preferences[idx];
+        if (pref->in_use && pref->ui_language[0] != '\0') {
+            ++entry_count;
+        }
+    }
+
+    ui_lang_state_header_t header = {0};
+    header.magic = UI_LANG_STATE_MAGIC;
+    header.version = UI_LANG_STATE_VERSION;
+    header.entry_count = (uint32_t)entry_count;
+
+    bool success = fwrite(&header, sizeof(header), 1U, fp) == 1U;
+
+    for (size_t idx = 0U; success && idx < SSH_CHATTER_MAX_PREFERENCES; ++idx) {
+        const user_preference_t *pref = &host->preferences[idx];
+        if (!pref->in_use || pref->ui_language[0] == '\0') {
+            continue;
+        }
+
+        ui_lang_state_entry_t entry = {0};
+        snprintf(entry.username, sizeof(entry.username), "%s", pref->username);
+        snprintf(entry.ip, sizeof(entry.ip), "%s", pref->ip);
+        snprintf(entry.ui_language, sizeof(entry.ui_language), "%s",
+                 pref->ui_language);
+
+        if (fwrite(&entry, sizeof(entry), 1U, fp) != 1U) {
+            success = false;
+            break;
+        }
+    }
+
+    if (success && fflush(fp) != 0) {
+        success = false;
+    }
+
+    if (success) {
+        int fd = fileno(fp);
+        if (fd >= 0 && fsync(fd) != 0) {
+            success = false;
+        }
+    }
+
+    fclose(fp);
+
+    if (!success) {
+        unlink(temp_path);
+        return;
+    }
+
+    if (rename(temp_path, host->ui_lang_state_file_path) != 0) {
+        humanized_log_error("host", "failed to commit ui-lang state", errno);
+        unlink(temp_path);
+        return;
+    }
+
+    if (chmod(host->ui_lang_state_file_path, S_IRUSR | S_IWUSR) != 0) {
+        humanized_log_error("host", "failed to secure ui-lang state file",
+                            errno);
+    }
+}
+
+static void host_ui_language_state_load(host_t *host)
+{
+    if (host == nullptr || host->ui_lang_state_file_path[0] == '\0') {
+        return;
+    }
+
+    if (!host_ensure_private_data_path(host, host->ui_lang_state_file_path,
+                                       false)) {
+        return;
+    }
+
+    FILE *fp = fopen(host->ui_lang_state_file_path, "rb");
+    if (fp == nullptr) {
+        return;
+    }
+
+    ui_lang_state_header_t header = {0};
+    if (fread(&header, sizeof(header), 1U, fp) != 1U) {
+        fclose(fp);
+        return;
+    }
+
+    if (header.magic != UI_LANG_STATE_MAGIC || header.version == 0U ||
+        header.version > UI_LANG_STATE_VERSION) {
+        fclose(fp);
+        return;
+    }
+
+    uint32_t entry_count = header.entry_count;
+    if (entry_count > SSH_CHATTER_MAX_PREFERENCES) {
+        entry_count = SSH_CHATTER_MAX_PREFERENCES;
+    }
+
+    pthread_mutex_lock(&host->lock);
+    for (uint32_t idx = 0U; idx < entry_count; ++idx) {
+        ui_lang_state_entry_t entry = {0};
+        if (fread(&entry, sizeof(entry), 1U, fp) != 1U) {
+            break;
+        }
+
+        entry.username[sizeof(entry.username) - 1U] = '\0';
+        entry.ip[sizeof(entry.ip) - 1U] = '\0';
+        entry.ui_language[sizeof(entry.ui_language) - 1U] = '\0';
+
+        if (entry.username[0] == '\0' || entry.ui_language[0] == '\0') {
+            continue;
+        }
+
+        user_preference_t *pref =
+            host_ensure_preference_locked(host, entry.username, entry.ip);
+        if (pref == nullptr) {
+            continue;
+        }
+
+        if (entry.ip[0] != '\0' && pref->ip[0] == '\0') {
+            snprintf(pref->ip, sizeof(pref->ip), "%s", entry.ip);
+        }
+
+        if (pref->ui_language[0] == '\0') {
+            snprintf(pref->ui_language, sizeof(pref->ui_language), "%s",
+                     entry.ui_language);
+        }
+    }
+    pthread_mutex_unlock(&host->lock);
+
+    fclose(fp);
 }
 
 static void host_clear_rss_feed(rss_feed_t *feed)

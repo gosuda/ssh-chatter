@@ -4324,6 +4324,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_ban_resolve_path(host);
     host->reply_state_file_path[0] = '\0';
     host_reply_state_resolve_path(host);
+    host->ui_lang_state_file_path[0] = '\0';
+    host_ui_language_state_resolve_path(host);
     host->pw_auth_file_path[0] = '\0';
     host_pw_auth_resolve_path(host);
     host->alpha_landers_file_path[0] = '\0';
@@ -4443,6 +4445,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     (void)host_try_load_motd_from_path(host, "/etc/ssh-chatter/motd");
 
     host_state_load(host);
+    host_ui_language_state_load(host);
     host_vote_state_load(host);
     host_bbs_state_load(host);
     host_ban_state_load(host);

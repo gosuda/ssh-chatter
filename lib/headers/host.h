@@ -437,6 +437,7 @@ typedef struct gonu_game_state {
     bool player_turn;
     bool game_over;
     bool placement_phase;    // True during initial piece placement
+    bool movement_started;   // True after the first slide in movement phase
     unsigned player_pieces;
     unsigned ai_pieces;
     int selected_row;

@@ -2818,14 +2818,17 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
     if (step == 0U) {
         step = 1U;
     }
-    if (ctx->history_scroll_position >= total) {
-        ctx->history_scroll_position = total > 0U ? total - 1U : 0U;
+
+    size_t max_position = 0U;
+    if (total > step) {
+        max_position = total - step;
+    }
+    if (ctx->history_scroll_position > max_position) {
+        ctx->history_scroll_position = max_position;
     }
     size_t position = ctx->history_scroll_position;
     size_t new_position = position;
     bool reached_oldest = false;
-
-    const size_t max_position = total > 0U ? total - 1U : 0U;
 
     if (direction > 0) {
         size_t current_newest_visible = 0U;
@@ -2857,6 +2860,9 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
                 reached_oldest = true;
             } else {
                 new_position += advance;
+                if (new_position == max_position) {
+                    reached_oldest = true;
+                }
             }
         } else {
             reached_oldest = true;
@@ -2875,8 +2881,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
     ctx->history_scroll_position = new_position;
 
     bool at_latest = (ctx->history_scroll_position == 0U);
-    bool at_oldest =
-        (ctx->history_scroll_position == max_position && total > 0U);
+    bool at_oldest = (ctx->history_scroll_position == max_position);
 
     // Set no_update flag when scrolling away from latest messages
     if (!at_latest) {
@@ -2987,13 +2992,20 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         session_output_buffer_start(ctx);
     }
 
-    if (ctx->history_scroll_position >= total) {
-        ctx->history_scroll_position = total > 0U ? total - 1U : 0U;
+    size_t visible_lines = session_visible_history_lines(ctx);
+    if (visible_lines == 0U) {
+        visible_lines = 1U;
+    }
+
+    size_t max_position = 0U;
+    if (total > visible_lines) {
+        max_position = total - visible_lines;
+    }
+    if (ctx->history_scroll_position > max_position) {
+        ctx->history_scroll_position = max_position;
     }
     size_t position = ctx->history_scroll_position;
     size_t new_position = position;
-
-    const size_t max_position = total > 0U ? total - 1U : 0U;
 
     // Scroll by exactly 1 line
     if (direction > 0) {
@@ -3030,8 +3042,7 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         goto cleanup;
     }
 
-    // Calculate sliding window - always show 100 messages (MESSAGE CHUNK)
-    size_t visible_lines = session_visible_history_lines(ctx);
+    // Calculate sliding window - always show the configured message chunk
     size_t newest_visible = total - 1U - new_position;
     size_t chunk = visible_lines;
     if (chunk > newest_visible + 1U) {

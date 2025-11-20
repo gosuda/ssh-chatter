@@ -27,6 +27,7 @@
 
 static volatile sig_atomic_t g_shutdown_flag = 0;
 static char *g_welcome_banner_content = nullptr;
+static bool g_sync_initialized = false;
 
 static void signal_handler(int signum)
 {
@@ -97,6 +98,8 @@ static void sleep_before_restart(unsigned int attempts)
 
 int main(int argc, char **argv)
 {
+    int exit_code = EXIT_SUCCESS;
+
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = signal_handler;
@@ -107,10 +110,6 @@ int main(int argc, char **argv)
     signal(SIGPIPE, SIG_IGN);
 
     setlocale(LC_ALL, "");
-
-    GC_INIT();
-
-    ssh_chatter_sync_init(); // Initialize SSH Chatter Sync module
 
     const char *bind_address = nullptr;
 
@@ -135,6 +134,9 @@ int main(int argc, char **argv)
     telnet_port_storage[0] = '\0';
 
     int opt = 0;
+
+    bool show_usage = false;
+    bool show_version = false;
 
     while ((opt = getopt(argc, argv, "a:p:m:k:T:hV")) != -1) {
         switch (opt) {
@@ -255,24 +257,34 @@ int main(int argc, char **argv)
             break;
 
         case 'h':
-
-            print_usage(argv[0]);
-
-            return EXIT_SUCCESS;
+            show_usage = true;
+            break;
 
         case 'V':
-
-            printf("ssh-chatter (C)\n");
-
-            return EXIT_SUCCESS;
+            show_version = true;
+            break;
 
         default:
-
-            print_usage(argv[0]);
-
-            return EXIT_FAILURE;
+            show_usage = true;
+            exit_code = EXIT_FAILURE;
+            break;
         }
     }
+
+    GC_INIT();
+
+    if (show_usage) {
+        print_usage(argv[0]);
+        goto cleanup;
+    }
+
+    if (show_version) {
+        printf("ssh-chatter (C)\n");
+        goto cleanup;
+    }
+
+    ssh_chatter_sync_init(); // Initialize SSH Chatter Sync module
+    g_sync_initialized = true;
 
     if (!telnet_enabled) {
         telnet_port = nullptr;
@@ -403,7 +415,7 @@ int main(int argc, char **argv)
 
         if (g_shutdown_flag) {
             printf("[daemon] shutdown signal received, exiting gracefully\n");
-            return EXIT_SUCCESS;
+            goto cleanup;
         }
 
         if (serve_result == 0) {
@@ -452,15 +464,17 @@ int main(int argc, char **argv)
         }
     }
 
-    // Cleanup before exit
+cleanup:
     if (g_welcome_banner_content != nullptr) {
         GC_FREE(g_welcome_banner_content);
         g_welcome_banner_content = nullptr;
     }
-    ssh_chatter_sync_stop();
-    ssh_chatter_sync_free_history();
+    if (g_sync_initialized) {
+        ssh_chatter_sync_stop();
+        ssh_chatter_sync_free_history();
+    }
     translator_global_cleanup();
     sshc_memory_runtime_shutdown();
 
-    return EXIT_SUCCESS;
+    return exit_code;
 }

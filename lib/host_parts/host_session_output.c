@@ -2809,6 +2809,11 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
         ctx->translation_suppress_output = true;
     }
 
+    const bool buffering_started = !ctx->output_buffering_enabled;
+    if (buffering_started) {
+        session_output_buffer_start(ctx);
+    }
+
     size_t step = session_visible_history_lines(ctx);
     if (step == 0U) {
         step = 1U;
@@ -2951,6 +2956,9 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
     session_render_prompt(ctx, false);
 
 cleanup:
+    if (buffering_started) {
+        session_output_buffer_stop(ctx);
+    }
     if (suppress_translation) {
         ctx->translation_suppress_output = previous_translation_suppress;
     }
@@ -2972,6 +2980,11 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     bool previous_translation_suppress = ctx->translation_suppress_output;
     if (suppress_translation) {
         ctx->translation_suppress_output = true;
+    }
+
+    const bool buffering_started = !ctx->output_buffering_enabled;
+    if (buffering_started) {
+        session_output_buffer_start(ctx);
     }
 
     if (ctx->history_scroll_position >= total) {
@@ -3061,6 +3074,9 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     session_render_prompt(ctx, false);
 
 cleanup:
+    if (buffering_started) {
+        session_output_buffer_stop(ctx);
+    }
     if (suppress_translation) {
         ctx->translation_suppress_output = previous_translation_suppress;
     }

@@ -417,9 +417,10 @@ typedef struct alpha_centauri_game_state {
 } alpha_centauri_game_state_t;
 
 typedef enum gonu_variant {
-    GONU_VARIANT_HOBAK = 0,  // 호박고누 - Pumpkin Gonu (3x3 grid)
-    GONU_VARIANT_BAKWI,      // 바퀴고누 - Wheel Gonu (circular pattern)
-    GONU_VARIANT_UMUL,       // 우물고누 - Well Gonu (井字 pattern)
+    GONU_VARIANT_HOBAK = 0,   // 호박고누 - Pumpkin Gonu (3x3 grid)
+    GONU_VARIANT_BAKWI,       // 바퀴고누 - Wheel Gonu (circular pattern)
+    GONU_VARIANT_UMUL,        // 우물고누 - Well Gonu (井字 pattern)
+    GONU_VARIANT_JANGGI_STAR, // 장기고누 변형 - palace star lattice
 } gonu_variant_t;
 
 typedef enum gonu_cell {
@@ -428,7 +429,7 @@ typedef enum gonu_cell {
     GONU_CELL_AI,
 } gonu_cell_t;
 
-#define GONU_BOARD_SIZE 5
+#define GONU_BOARD_SIZE 7
 
 typedef struct gonu_game_state {
     gonu_variant_t variant;

@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -368,8 +369,18 @@ static bool fidonet_connect_socket(fidonet_client_t *client)
         return false;
     }
 
+    int flag = 1;
+    (void)setsockopt(client->socket_fd, IPPROTO_TCP, TCP_NODELAY, &flag,
+                     sizeof(flag));
+    (void)setsockopt(client->socket_fd, SOL_SOCKET, SO_KEEPALIVE, &flag,
+                     sizeof(flag));
+
     /* Send initial handshake */
     client->session_established = false;
+
+    fidonet_send_command(client, BINKP_CMD_NUL, "SYS ssh-chatter bridge");
+    fidonet_send_command(client, BINKP_CMD_NUL, "LOC retro terminal gateway");
+    fidonet_send_command(client, BINKP_CMD_NUL, "VER ssh-chatter binkp");
 
     /* Send our address */
     fidonet_send_command(client, BINKP_CMD_ADR, client->node_address);

@@ -141,8 +141,29 @@ static const uint16_t kCp1251ToUnicode[128] = {
 /* Placeholder for future full CP936 implementation */
 
 
-// Forward declaration for CP949 to Unicode conversion
-static uint32_t cp949_to_unicode(uint16_t cp949_val);
+static size_t session_codepage_iconv_chunk(session_codepage_t codepage,
+                                           const unsigned char *bytes,
+                                           size_t length, char *output,
+                                           size_t capacity)
+{
+    if (bytes == NULL || length == 0U || output == NULL || capacity == 0U) {
+        return 0U;
+    }
+
+    char utf8_buffer[16];
+    size_t written =
+        session_codepage_to_utf8(codepage, bytes, length, utf8_buffer,
+                                 sizeof(utf8_buffer));
+    if (written == 0U) {
+        return 0U;
+    }
+
+    if (written > capacity) {
+        written = capacity;
+    }
+    memcpy(output, utf8_buffer, written);
+    return written;
+}
 
 size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
                                      session_codepage_context_t *context,
@@ -168,63 +189,134 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
     bool valid_sequence = false;
 
     switch (codepage) {
-    case SESSION_CODEPAGE_CP949:
-        if (context->state == 0) { /* Expecting lead byte */
-            if (byte >= 0x81U && byte <= 0xFEU) { /* Valid lead byte range for CP949 */
-                context->lead_byte = byte;
-                context->state = 1;
-                return 0U; /* Wait for trail byte */
-            }
-            /* Invalid lead byte - output replacement character and reset */
-            context->state = 0;
-            context->lead_byte = 0;
-            codepoint = 0xFFFD; /* Unicode replacement character */
-            valid_sequence = true;
-        } else { /* context->state == 1, Expecting trail byte */
-            unsigned char saved_lead = context->lead_byte;
-            context->state = 0; /* Reset state */
-            context->lead_byte = 0;
-            
-            if ((byte >= 0x41U && byte <= 0xFEU) && (byte != 0x7FU)) { /* Valid trail byte range */
-                uint16_t cp949_val = (uint16_t)(saved_lead << 8) | byte;
-                codepoint = cp949_to_unicode(cp949_val);
-                if (codepoint != (uint32_t)'?') {
-                    valid_sequence = true;
-                } else {
-                    /* Conversion failed - use replacement character */
-                    codepoint = 0xFFFD;
-                    valid_sequence = true;
-                }
-            } else {
-                /* Invalid trail byte - output replacement character */
-                codepoint = 0xFFFD;
-                valid_sequence = true;
-            }
-        }
-        break;
-        
-    case SESSION_CODEPAGE_CP932: /* Japanese Shift-JIS */
-    case SESSION_CODEPAGE_CP936: /* Simplified Chinese GBK */
-        /* These require multi-byte handling.
-         * For now, output replacement character for better robustness */
+    case SESSION_CODEPAGE_CP949: {
+        const bool is_lead = (byte >= 0x81U && byte <= 0xFEU);
+        const bool is_trail = (byte >= 0x41U && byte <= 0xFEU && byte != 0x7FU);
+
         if (context->state == 0) {
-            /* Could be start of multi-byte sequence or single-byte */
-            if (byte >= 0x81U && byte <= 0xFEU) {
+            if (is_lead) {
                 context->lead_byte = byte;
                 context->state = 1;
-                return 0U; /* Wait for potential trail byte */
+                return 0U;
             }
-            /* Single-byte in extended range */
-            codepoint = 0xFFFD;
-            valid_sequence = true;
-        } else {
-            /* Trail byte expected but not fully implemented */
+
+            unsigned char single[1] = {byte};
+            produced = session_codepage_iconv_chunk(codepage, single, 1U,
+                                                    output, capacity);
+            if (produced == 0U && capacity > 0U) {
+                output[0] = '?';
+                produced = 1U;
+            }
             context->state = 0;
             context->lead_byte = 0;
-            codepoint = 0xFFFD;
-            valid_sequence = true;
+            return produced;
         }
-        break;
+
+        unsigned char sequence[2] = {context->lead_byte, byte};
+        context->state = 0;
+        context->lead_byte = 0;
+
+        if (is_lead || !is_trail) {
+            if (capacity > 0U) {
+                output[0] = '?';
+                return 1U;
+            }
+            return 0U;
+        }
+
+        produced = session_codepage_iconv_chunk(codepage, sequence, 2U, output,
+                                                capacity);
+        if (produced == 0U && capacity > 0U) {
+            output[0] = '?';
+            produced = 1U;
+        }
+        return produced;
+    }
+
+    case SESSION_CODEPAGE_CP932: { /* Japanese Shift-JIS */
+        const bool is_lead =
+            (byte >= 0x81U && byte <= 0x9FU) || (byte >= 0xE0U && byte <= 0xFCU);
+        const bool is_trail = (byte >= 0x40U && byte <= 0xFCU && byte != 0x7FU);
+
+        if (context->state == 0) {
+            if (is_lead) {
+                context->lead_byte = byte;
+                context->state = 1;
+                return 0U;
+            }
+
+            unsigned char single[1] = {byte};
+            produced = session_codepage_iconv_chunk(codepage, single, 1U,
+                                                    output, capacity);
+            if (produced == 0U && capacity > 0U) {
+                output[0] = '?';
+                produced = 1U;
+            }
+            return produced;
+        }
+
+        unsigned char sequence[2] = {context->lead_byte, byte};
+        context->state = 0;
+        context->lead_byte = 0;
+
+        if (!is_trail) {
+            if (capacity > 0U) {
+                output[0] = '?';
+                produced = 1U;
+            }
+            return produced;
+        }
+
+        produced = session_codepage_iconv_chunk(codepage, sequence, 2U, output,
+                                                capacity);
+        if (produced == 0U && capacity > 0U) {
+            output[0] = '?';
+            produced = 1U;
+        }
+        return produced;
+    }
+
+    case SESSION_CODEPAGE_CP936: { /* Simplified Chinese GBK */
+        const bool is_lead = (byte >= 0x81U && byte <= 0xFEU);
+        const bool is_trail = (byte >= 0x40U && byte <= 0xFEU && byte != 0x7FU);
+
+        if (context->state == 0) {
+            if (is_lead) {
+                context->lead_byte = byte;
+                context->state = 1;
+                return 0U;
+            }
+
+            unsigned char single[1] = {byte};
+            produced = session_codepage_iconv_chunk(codepage, single, 1U,
+                                                    output, capacity);
+            if (produced == 0U && capacity > 0U) {
+                output[0] = '?';
+                produced = 1U;
+            }
+            return produced;
+        }
+
+        unsigned char sequence[2] = {context->lead_byte, byte};
+        context->state = 0;
+        context->lead_byte = 0;
+
+        if (!is_trail) {
+            if (capacity > 0U) {
+                output[0] = '?';
+                produced = 1U;
+            }
+            return produced;
+        }
+
+        produced = session_codepage_iconv_chunk(codepage, sequence, 2U, output,
+                                                capacity);
+        if (produced == 0U && capacity > 0U) {
+            output[0] = '?';
+            produced = 1U;
+        }
+        return produced;
+    }
         
     case SESSION_CODEPAGE_CP437:
     case SESSION_CODEPAGE_CP850:
@@ -292,43 +384,6 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
         return 1U;
     }
     return 0U;
-}
-
-// Implements a simplified conversion for CP949 to Unicode.
-// Full CP949 requires a very large lookup table or complex algorithmic conversion.
-// This handles the main block of Hangul Syllables (AC00-D7A3).
-static uint32_t cp949_to_unicode(uint16_t cp949_val)
-{
-    // CP949 Lead byte range: 0x81-0xFE
-    // CP949 Trail byte range: 0x41-0xFE (excluding 0x7F)
-
-    uint8_t lead_byte = (uint8_t)(cp949_val >> 8);
-    uint8_t trail_byte = (uint8_t)(cp949_val & 0xFF);
-
-    // Check for valid lead byte and trail byte ranges for CP949
-    // Lead bytes 0x81-0xA0 typically map to symbols, special chars, etc. (first byte)
-    // Lead bytes 0xA1-0xFE combined with trail bytes form multi-byte sequences.
-    // Here, we simplify to cover the general multi-byte range.
-
-    // KSC 5601-1987 (which CP949 extends) Hangul range (lead bytes 0xC9-0xFE, trail bytes 0xA1-0xFE)
-    // A proper implementation would use a lookup table for all 11,172 Hangul syllables
-    // and other characters. This is a minimal functional placeholder.
-
-    // For lead bytes 0xC7-0xFE, and valid trail bytes, we assume Hangul Syllables
-    if (lead_byte >= 0xC7 && lead_byte <= 0xFE &&
-        trail_byte >= 0xA1 && trail_byte <= 0xFE) {
-        // This is a highly simplified mapping. A full implementation would need
-        // a precise algorithm or a large lookup table (e.g., KSC5601 to Unicode).
-        // For now, return a fixed Hangul character to show multi-byte parsing works.
-        return 0xAC00; /* Unicode for '가' */
-    } else if (lead_byte >= 0x81 && lead_byte <= 0xC6 &&
-               trail_byte >= 0x41 && trail_byte <= 0xFE && trail_byte != 0x7F) {
-        // This range covers other CP949 double-byte characters (Hanja, Japanese, Roman symbols, etc.)
-        // which also require a lookup table.
-        return '?'; // Placeholder for unsupported double-byte characters in this range
-    }
-
-    return '?'; // Default for unmapped or invalid CP949 sequences
 }
 
 session_codepage_t session_codepage_for_language(int language)
@@ -495,24 +550,7 @@ size_t session_utf8_to_codepage(session_codepage_t codepage,
         return to_copy;
     }
 
-    const char *iconv_name;
-    switch (codepage) {
-    case SESSION_CODEPAGE_CP949:
-        // Use CP949 encoding for UTF-8 to CP949 conversion.
-        iconv_name = "CP949";
-        break;
-    case SESSION_CODEPAGE_CP932:
-        // Use CP932//TRANSLIT for UTF-8 to CP932 conversion.
-        iconv_name = "CP932//TRANSLIT";
-        break;
-    case SESSION_CODEPAGE_CP936:
-        // Use CP936//TRANSLIT for UTF-8 to CP936 conversion.
-        iconv_name = "CP936//TRANSLIT";
-        break;
-    default:
-        // For other codepages, use the provided iconv_name or NULL if not applicable.
-        break;
-    }
+    const char *iconv_name = session_codepage_iconv_name(codepage);
 
     if (iconv_name == NULL) {
         /* No iconv name for this codepage, conversion impossible */

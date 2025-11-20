@@ -4050,6 +4050,12 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
                 }
                 // Skip users who have the no_update flag set (scrolled back in history)
                 if (member->no_update &&
+                    member->history_scroll_position == 0U) {
+                    // If the user has already returned to the newest message,
+                    // clear the freeze flag so chat output resumes.
+                    member->no_update = false;
+                }
+                if (member->no_update &&
                     member->transport_kind != SESSION_TRANSPORT_TELNET) {
                     continue;
                 }
@@ -4131,6 +4137,12 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
                 }
                 // Skip users who have the no_update flag set (scrolled back in history)
                 if (member->no_update &&
+                    member->history_scroll_position == 0U) {
+                    // If the user has already returned to the newest message,
+                    // clear the freeze flag so chat output resumes.
+                    member->no_update = false;
+                }
+                if (member->no_update &&
                     member->transport_kind != SESSION_TRANSPORT_TELNET) {
                     continue;
                 }
@@ -4203,6 +4215,12 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                     continue;
                 }
                 // Skip users who have the no_update flag set (scrolled back in history)
+                if (member->no_update &&
+                    member->history_scroll_position == 0U) {
+                    // If the user has already returned to the newest message,
+                    // clear the freeze flag so chat output resumes.
+                    member->no_update = false;
+                }
                 if (member->no_update &&
                     member->transport_kind != SESSION_TRANSPORT_TELNET) {
                     continue;

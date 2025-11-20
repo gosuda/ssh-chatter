@@ -4112,9 +4112,12 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
         
-        // Flush any buffered output to ensure immediate message delivery
-        // This is critical for telnet sessions where output buffering might delay messages
+        // Flush and disable buffering to ensure immediate message delivery
+        // This is critical for telnet sessions where buffered writes can hide
+        // new messages until another action flushes the buffer
         session_output_buffer_flush(member);
+        member->output_buffering_enabled = false;
+        member->output_buffer_length = 0U;
         
         // For telnet, clear the current input line first before displaying the message
         // This prevents the old prompt from remaining visible above the new message
@@ -4198,9 +4201,12 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
         
-        // Flush any buffered output to ensure immediate message delivery
-        // This is critical for telnet sessions where output buffering might delay messages
+        // Flush and disable buffering to ensure immediate message delivery
+        // This is critical for telnet sessions where buffered writes can hide
+        // new messages until another action flushes the buffer
         session_output_buffer_flush(member);
+        member->output_buffering_enabled = false;
+        member->output_buffer_length = 0U;
         
         // For telnet, clear the current input line first before displaying the message
         if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
@@ -4278,9 +4284,12 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
         
-        // Flush any buffered output to ensure immediate message delivery
-        // This is critical for telnet sessions where output buffering might delay messages
+        // Flush and disable buffering to ensure immediate message delivery
+        // This is critical for telnet sessions where buffered writes can hide
+        // new messages until another action flushes the buffer
         session_output_buffer_flush(member);
+        member->output_buffering_enabled = false;
+        member->output_buffer_length = 0U;
 
         // For telnet, clear the current input line first before displaying the message
         if (member->transport_kind == SESSION_TRANSPORT_TELNET) {

@@ -2500,6 +2500,7 @@ static void host_state_save_locked(host_t *host)
         serialized.system_is_bold = pref->system_is_bold ? 1U : 0U;
         snprintf(serialized.username, sizeof(serialized.username), "%s",
                  pref->username);
+        snprintf(serialized.ip, sizeof(serialized.ip), "%s", pref->ip);
         snprintf(serialized.user_color_name, sizeof(serialized.user_color_name),
                  "%s", pref->user_color_name);
         snprintf(serialized.user_highlight_name,
@@ -2545,6 +2546,8 @@ static void host_state_save_locked(host_t *host)
                  pref->input_translation_language);
         snprintf(serialized.ui_language, sizeof(serialized.ui_language), "%s",
                  pref->ui_language);
+        snprintf(serialized.provider_label, sizeof(serialized.provider_label), "%s",
+                 pref->provider_label);
 
         if (fwrite(&serialized, sizeof(serialized), 1U, fp) != 1U) {
             success = false;
@@ -3349,10 +3352,22 @@ static bool host_state_read_preference_entry(FILE *fp, uint32_t version,
 
     memset(out, 0, sizeof(*out));
 
-    if (version >= 10U) {
+    if (version >= 12U) {
         if (fread(out, sizeof(*out), 1U, fp) != 1U) {
             return false;
         }
+        return true;
+    }
+
+    if (version >= 10U) {
+        host_state_preference_entry_v9_t legacy9 = {0};
+        if (fread(&legacy9, sizeof(legacy9), 1U, fp) != 1U) {
+            return false;
+        }
+        memcpy(out, &legacy9, sizeof(legacy9));
+        out->ip[0] = '\0';
+        out->provider_label[0] = '\0';
+        memset(out->reserved2, 0, sizeof(out->reserved2));
         return true;
     }
 
@@ -3639,6 +3654,7 @@ static void host_state_apply_preference_entry(
     pref->system_is_bold = serialized->system_is_bold != 0U;
     snprintf(pref->username, sizeof(pref->username), "%s",
              serialized->username);
+    snprintf(pref->ip, sizeof(pref->ip), "%s", serialized->ip);
     snprintf(pref->user_color_name, sizeof(pref->user_color_name), "%s",
              serialized->user_color_name);
     snprintf(pref->user_highlight_name, sizeof(pref->user_highlight_name), "%s",
@@ -3674,6 +3690,8 @@ static void host_state_apply_preference_entry(
              sizeof(pref->input_translation_language), "%s",
              serialized->input_translation_language);
     pref->breaking_alerts_enabled = serialized->breaking_alerts_enabled != 0U;
+    snprintf(pref->provider_label, sizeof(pref->provider_label), "%s",
+             serialized->provider_label);
     ++host->preference_count;
 }
 

@@ -779,8 +779,7 @@ static void session_handle_suspicious_first_message(session_ctx_t *ctx,
                                   "have been permanently banned.");
 }
 
-static bool session_detect_provider_ip(const char *ip, char *label,
-                                       size_t length)
+bool session_detect_provider_ip(const char *ip, char *label, size_t length)
 {
     if (label != nullptr && length > 0U) {
         label[0] = '\0';

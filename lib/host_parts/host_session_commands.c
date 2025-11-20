@@ -835,7 +835,7 @@ static void session_handle_today(session_ctx_t *ctx)
     host_t *host = ctx->owner;
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name);
+        host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref == nullptr) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx,
@@ -2151,7 +2151,7 @@ static void session_handle_vote(session_ctx_t *ctx, size_t option_index)
     }
 
     user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name);
+        host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref == nullptr) {
         pthread_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "Unable to record your vote right now.");
@@ -2669,7 +2669,7 @@ session_handle_gameopt(session_ctx_t *ctx, const char *arguments)
         if (ctx->owner != nullptr) {
             pthread_mutex_lock(&ctx->owner->lock);
             user_preference_t *pref =
-                host_ensure_preference_locked(ctx->owner, ctx->user.name);
+                host_ensure_preference_locked(ctx->owner, ctx->user.name, "");
             if (pref != nullptr) {
                 snprintf(pref->camouflage_language,
                          sizeof(pref->camouflage_language), "c");

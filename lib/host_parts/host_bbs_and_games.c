@@ -5978,51 +5978,93 @@ static bool session_parse_color_arguments(char *working, char **tokens,
     return !extra_tokens;
 }
 
+#include <stdbool.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+/* * Ensure SSH_CHATTER_USERNAME_LEN is defined.
+ * Usually this is in a header file.
+ */
+#ifndef SSH_CHATTER_USERNAME_LEN
+#define SSH_CHATTER_USERNAME_LEN 256
+#endif
+
 static bool session_valid_ansi_256_sequence(const char *sequence)
 {
-    if (sequence == nullptr) {
+    if (sequence == NULL) {
         return false;
     }
 
-    size_t length = strlen(sequence);
-    if (length < 6U || length >= SSH_CHATTER_COLOR_CODE_LEN) {
+    size_t length = strnlen(sequence, SSH_CHATTER_USERNAME_LEN);
+    if (length == SSH_CHATTER_USERNAME_LEN && sequence[SSH_CHATTER_USERNAME_LEN] != '\0') {
         return false;
     }
 
-    if (sequence[0] != '\x1b' || sequence[1] != '[' || sequence[length - 1U] != 'm') {
-        return false;
-    }
-
-    for (size_t idx = 2U; idx + 1U < length; ++idx) {
-        unsigned char ch = (unsigned char)sequence[idx];
-        if (!isdigit(ch) && ch != ';') {
-            return false;
+    size_t idx = 0;
+    while (idx < length) {
+        if (sequence[idx] != '\x1b') {
+            idx++;
+            continue;
         }
-    }
 
-    const char *fg_token = strstr(sequence, "38;5;");
-    const char *bg_token = strstr(sequence, "48;5;");
-    const char *target =
-        (fg_token != nullptr) ? fg_token + 5 : (bg_token != nullptr ? bg_token + 5 : nullptr);
-    if (target == nullptr) {
-        return false;
-    }
+        if (idx + 1 >= length || sequence[idx + 1] != '[') {
+            return false; 
+        }
 
-    char *endptr = nullptr;
-    long color_value = strtol(target, &endptr, 10);
-    if (endptr == nullptr || color_value < 0L || color_value > 255L) {
-        return false;
-    }
+        size_t end = idx + 2;
+        bool found_terminator = false;
 
-    if (endptr != sequence + length - 1U) {
-        for (const char *cursor = endptr; cursor < sequence + length - 1U;
-             ++cursor) {
-            if (*cursor != ';' && !isdigit((unsigned char)*cursor)) {
+        while (end < length) {
+            char ch = sequence[end];
+
+            if (ch == 'm') {
+                found_terminator = true;
+                break;
+            }
+
+            if (!isdigit((unsigned char)ch) && ch != ';') {
                 return false;
             }
+            end++;
         }
-    }
 
+        if (!found_terminator) {
+            return false; 
+        }
+
+        size_t param_len = end - (idx + 2);
+
+        if (param_len > 64) {
+            return false;
+        }
+
+        if (param_len > 0) {
+            char buffer[65];
+            memcpy(buffer, sequence + idx + 2, param_len);
+            buffer[param_len] = '\0';
+
+            char *fg_ptr = strstr(buffer, "38;5;");
+            char *bg_ptr = strstr(buffer, "48;5;");
+            char *target = (fg_ptr) ? fg_ptr : bg_ptr;
+
+            if (target) {
+                target += 5;
+
+                char *endptr = NULL;
+                long val = strtol(target, &endptr, 10);
+                if (val < 0 || val > 255) {
+                    return false;
+                }
+
+                if (target == endptr) {
+                    return false;
+                }
+            }
+        }
+        idx = end + 1;
+    }
     return true;
 }
 
@@ -6033,7 +6075,8 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
     }
 
     static const char *kColorUsage =
-        "Usage: /color (text;highlight[;bold]) or /color advanced <ansi-256>";
+//        "Usage: /color (text;highlight[;bold]) or /color advanced <ansi-256>"; //not ready
+          "Usage: /color (text;highlight[;bold])";
 
     if (arguments == nullptr) {
         session_send_system_line(ctx, kColorUsage);
@@ -6086,7 +6129,7 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
         if (!session_valid_ansi_256_sequence(raw_code)) {
             session_send_system_line(
                 ctx,
-                "Invalid ANSI/256 expression. Use sequences like ESC[38;5;196m.");
+                "Invalid ANSI/256 expression. Use sequences like \\033[38;5;196m.");
             return;
         }
 

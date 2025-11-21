@@ -3582,6 +3582,8 @@ static void session_send_history_entry(session_ctx_t *ctx,
         char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
         formatted[0] = '\0';
 
+        const char *highlight =
+            (entry->user_highlight_code != nullptr) ? entry->user_highlight_code : "";
         const char *color =
             (entry->user_color_code != nullptr) ? entry->user_color_code : "";
         const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
@@ -3594,8 +3596,9 @@ static void session_send_history_entry(session_ctx_t *ctx,
                                    sizeof(id_label))) {
             id_display = id_label;
         }
-        snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s", color,
-                 bold, id_display, entry->username, ANSI_RESET);
+        snprintf(name_block, sizeof(name_block), "%s%s%s [%s] <%s>%s",
+                 highlight, bold, color, id_display, entry->username,
+                 ANSI_RESET);
         strncat(formatted, name_block,
                 sizeof(formatted) - strlen(formatted) - 1U);
 

@@ -3402,14 +3402,25 @@ static bool host_state_read_preference_entry(FILE *fp, uint32_t version,
     }
 
     if (version >= 12U) {
-        host_state_preference_entry_v10_t legacy10 = {0};
-        if (fread(&legacy10, sizeof(legacy10), 1U, fp) != 1U) {
+        const size_t legacy_prefix_size =
+            offsetof(host_state_preference_entry_t, user_color_code);
+        const size_t legacy_suffix_offset =
+            offsetof(host_state_preference_entry_t, user_color_name);
+        const size_t legacy_suffix_size =
+            sizeof(*out) - legacy_suffix_offset;
+
+        if (fread(out, legacy_prefix_size, 1U, fp) != 1U) {
             return false;
         }
 
-        memcpy(out, &legacy10, sizeof(legacy10));
         out->user_color_code[0] = '\0';
         out->user_highlight_code[0] = '\0';
+
+        if (fread(((uint8_t *)out) + legacy_suffix_offset, legacy_suffix_size, 1U,
+                  fp) != 1U) {
+            return false;
+        }
+
         return true;
     }
 

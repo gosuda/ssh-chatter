@@ -314,14 +314,12 @@ static void host_security_handle_suspicious_activity(
     session_ctx_t *session)
 {
     size_t attempts = 0U;
-    bool banned = false;
-    bool auto_ban = host_auto_ban_enabled(host);
 
     if (host != nullptr) {
         const char *register_ip =
             (identity->register_ip != nullptr) ? identity->register_ip : "";
-        banned = host_register_suspicious_activity(host, identity->name,
-                                                   register_ip, &attempts);
+        host_register_suspicious_activity(host, identity->name, register_ip,
+                                          &attempts);
     }
 
     if (attempts > 0U) {
@@ -330,31 +328,17 @@ static void host_security_handle_suspicious_activity(
                (unsigned int)SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD);
     }
 
-    if (!banned) {
-        if (attempts > 0U && session != nullptr) {
-            char warning[256];
-            snprintf(
-                warning, sizeof(warning),
-                "Further suspicious activity will result in a ban (%zu/%u).",
-                attempts, (unsigned int)SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD);
-            session_send_system_line(session, warning);
-        }
-        if (attempts >= SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD && !auto_ban) {
-            printf("[security] auto-ban disabled; %s (%s) reached suspicious "
-                   "payload threshold\n",
-                   identity->name, identity->address);
-        }
-        return;
+    if (attempts > 0U && session != nullptr) {
+        char warning[256];
+        snprintf(warning, sizeof(warning),
+                 "Suspicious activity detected (%zu/%u).",
+                 attempts, (unsigned int)SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD);
+        session_send_system_line(session, warning);
     }
 
-    printf("[security] auto-banned %s (%s) for repeated suspicious payloads\n",
-           identity->name, identity->address);
-    if (session != nullptr) {
-        char notice[256];
-        snprintf(
-            notice, sizeof(notice),
-            "Repeated suspicious activity detected. You have been banned.");
-        session_force_disconnect(session, notice);
+    if (attempts >= SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD) {
+        printf("[security] suspicious payload threshold reached for %s (%s)\n",
+               identity->name, identity->address);
     }
 }
 
@@ -2453,6 +2437,8 @@ static void host_state_save_locked(host_t *host)
     header.grant_count = (uint32_t)host->operator_grant_count;
     header.next_message_id = host->next_message_id;
     header.captcha_enabled = atomic_load(&host->captcha_enabled) ? 1U : 0U;
+    header.geo_language_enabled =
+        atomic_load(&host->geo_language_enabled) ? 1U : 0U;
     memset(header.reserved, 0, sizeof(header.reserved));
 
     bool success = fwrite(&header, sizeof(header), 1U, fp) == 1U;
@@ -3160,16 +3146,19 @@ static bool host_state_read_base_header(FILE *fp,
 static bool host_state_read_metadata(FILE *fp, uint32_t version,
                                      uint64_t *next_message_id,
                                      uint32_t *grant_count,
-                                     uint8_t *captcha_enabled_raw)
+                                     uint8_t *captcha_enabled_raw,
+                                     uint8_t *geo_language_enabled_raw)
 {
     if (fp == nullptr || next_message_id == nullptr || grant_count == nullptr ||
-        captcha_enabled_raw == nullptr) {
+        captcha_enabled_raw == nullptr ||
+        geo_language_enabled_raw == nullptr) {
         return false;
     }
 
     *next_message_id = 1U;
     *grant_count = 0U;
     *captcha_enabled_raw = 0U;
+    *geo_language_enabled_raw = 0U;
 
     if (version >= 2U) {
         uint32_t sound_count_raw = 0U;
@@ -3192,6 +3181,10 @@ static bool host_state_read_metadata(FILE *fp, uint32_t version,
                 1U ||
             fread(reserved_bytes, sizeof(reserved_bytes), 1U, fp) != 1U) {
             return false;
+        }
+
+        if (version >= 13U) {
+            *geo_language_enabled_raw = reserved_bytes[0];
         }
     }
 
@@ -3843,9 +3836,11 @@ static void host_state_load(host_t *host)
     uint64_t next_message_id = 1U;
     uint32_t grant_count = 0U;
     uint8_t captcha_enabled_raw = 0U;
+    uint8_t geo_language_enabled_raw = 0U;
 
     if (!host_state_read_metadata(fp, version, &next_message_id, &grant_count,
-                                  &captcha_enabled_raw)) {
+                                  &captcha_enabled_raw,
+                                  &geo_language_enabled_raw)) {
         fclose(fp);
         return;
     }
@@ -3858,6 +3853,11 @@ static void host_state_load(host_t *host)
 
     if (version >= 8U) {
         atomic_store(&host->captcha_enabled, captcha_enabled_raw != 0U);
+    }
+
+    if (version >= 13U) {
+        atomic_store(&host->geo_language_enabled,
+                     geo_language_enabled_raw != 0U);
     }
 
     bool success =

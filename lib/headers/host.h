@@ -36,6 +36,7 @@
 #define SSH_CHATTER_USERNAME_LEN 24
 #define SSH_CHATTER_IP_LEN 64
 #define SSH_CHATTER_COLOR_NAME_LEN 32
+#define SSH_CHATTER_COLOR_CODE_LEN 48
 #define ALPHA_GRAVITY_NAME_LEN 32
 #define ALPHA_MAX_GRAVITY_SOURCES 16
 #define ALPHA_MAX_WAYPOINTS 4U
@@ -223,6 +224,7 @@ typedef struct chat_history_entry {
     bool preserve_whitespace;
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     char username[SSH_CHATTER_USERNAME_LEN];
+    char user_ip[SSH_CHATTER_IP_LEN];
     const char *user_color_code;
     const char *user_highlight_code;
     bool user_is_bold;
@@ -598,6 +600,8 @@ typedef struct session_ctx {
     const char *user_color_code;
     const char *user_highlight_code;
     bool user_is_bold;
+    char user_color_code_buffer[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code_buffer[SSH_CHATTER_COLOR_CODE_LEN];
     char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
     const char *system_fg_code;
@@ -875,7 +879,7 @@ typedef struct host {
     _Atomic bool security_ai_enabled;
     _Atomic bool security_clamav_enabled;
     _Atomic bool security_clamav_failure_logged;
-    _Atomic bool auto_ban_enabled;
+    _Atomic bool geo_language_enabled;
     char security_clamav_command[PATH_MAX];
     pthread_t security_clamav_thread;
     bool security_clamav_thread_initialized;
@@ -977,7 +981,6 @@ void session_send_raw_text(session_ctx_t *ctx, const char *text);
 void host_init(host_t *host, auth_profile_t *auth);
 void host_set_motd(host_t *host, const char *motd);
 void host_set_welcome_banner(host_t *host, const char *banner);
-bool host_auto_ban_enabled(const host_t *host);
 int host_serve(host_t *host, const char *bind_addr, const char *port,
                const char *key_directory, const char *telnet_bind_addr,
                const char *telnet_port);

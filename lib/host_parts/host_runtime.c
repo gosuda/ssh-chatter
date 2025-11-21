@@ -900,15 +900,6 @@ static size_t host_prepare_join_delay(host_t *host,
     return progress;
 }
 
-bool host_auto_ban_enabled(const host_t *host)
-{
-    if (host == nullptr) {
-        return false;
-    }
-
-    return atomic_load(&host->auto_ban_enabled);
-}
-
 static host_join_attempt_result_t
 host_register_join_attempt(host_t *host, const char *username, const char *ip)
 {
@@ -919,10 +910,7 @@ host_register_join_attempt(host_t *host, const char *username, const char *ip)
     struct timespec now = {0, 0};
     clock_gettime(CLOCK_MONOTONIC, &now);
 
-    bool ban_ip = false;
-    bool ban_same_name = false;
     bool exempt_ip = false;
-    bool allow_auto_ban = host_auto_ban_enabled(host);
     bool kick_ip = false;
 
     pthread_mutex_lock(&host->lock);
@@ -988,40 +976,11 @@ host_register_join_attempt(host_t *host, const char *username, const char *ip)
         exempt_ip = true;
     }
 
-    if (!exempt_ip && within_window &&
-        entry->rapid_attempts >= SSH_CHATTER_JOIN_IP_THRESHOLD) {
-        ban_ip = true;
-    }
-    if (within_window &&
-        entry->same_name_attempts >= SSH_CHATTER_JOIN_NAME_THRESHOLD) {
-        ban_same_name = true;
-    }
     if (!exempt_ip &&
         entry->join_window_attempts >= SSH_CHATTER_JOIN_KICK_THRESHOLD) {
         kick_ip = true;
     }
     pthread_mutex_unlock(&host->lock);
-
-    if (allow_auto_ban && !exempt_ip && (ban_ip || ban_same_name)) {
-        const char *ban_user =
-            (ban_same_name && username != nullptr && username[0] != '\0')
-                ? username
-                : "";
-        (void)host_add_ban_entry(host, ban_user, ip);
-
-        if (ban_ip && ban_same_name) {
-            printf(
-                "[auto-ban] %s (%s) banned for rapid reconnects and repeated "
-                "username attempts\n",
-                ip, ban_user[0] != '\0' ? ban_user : "unknown");
-        } else if (ban_ip) {
-            printf("[auto-ban] %s banned for rapid reconnects\n", ip);
-        } else {
-            printf("[auto-ban] %s (%s) banned for repeated username attempts\n",
-                   ip, ban_user[0] != '\0' ? ban_user : "unknown");
-        }
-        return HOST_JOIN_ATTEMPT_BAN;
-    }
 
     if (!exempt_ip && kick_ip) {
         printf("[auto-kick] %s exceeded join limit\n", ip);
@@ -1043,7 +1002,7 @@ static bool host_register_suspicious_activity(host_t *host,
         return false;
     }
 
-    bool allow_auto_ban = host_auto_ban_enabled(host);
+    (void)username;
 
     struct timespec now = {0, 0};
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -1074,14 +1033,6 @@ static bool host_register_suspicious_activity(host_t *host,
 
     if (attempts_out != nullptr) {
         *attempts_out = attempts;
-    }
-
-    if (attempts >= SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD &&
-        allow_auto_ban) {
-        const char *ban_user =
-            (username != nullptr && username[0] != '\0') ? username : "";
-        (void)host_add_ban_entry(host, ban_user, ip);
-        return true;
     }
 
     return false;
@@ -1616,6 +1567,9 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     } else if (session_parse_command_any(ctx, "/captcha", effective_line,
                                          &args)) {
         session_handle_captcha(ctx, args);
+        return;
+    } else if (session_parse_command(effective_line, "/geo", &args)) {
+        session_handle_geo_language(ctx, args);
         return;
     } else if (session_parse_command_any(ctx, "/eliza", effective_line,
                                          &args)) {
@@ -3151,17 +3105,21 @@ static void *host_telnet_thread(void *arg)
                  (int)sizeof(ctx->client_ip) - 1, peer_address);
         ctx->input_mode = SESSION_INPUT_MODE_CHAT;
 
+        bool geo_language_enabled =
+            atomic_load(&ctx->owner->geo_language_enabled);
         session_ui_language_t provider_language = SESSION_UI_LANGUAGE_COUNT;
         char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
-        bool provider_detected = session_detect_provider_ip(
-            ctx->client_ip, provider_label, sizeof(provider_label));
+        bool provider_detected =
+            geo_language_enabled &&
+            session_detect_provider_ip(ctx->client_ip, provider_label,
+                                       sizeof(provider_label));
         if (provider_detected &&
             host_provider_language_preference(host, provider_label,
                                               &provider_language)) {
             ctx->ui_language = provider_language;
             ctx->active_codepage =
                 session_codepage_for_language(provider_language);
-        } else {
+        } else if (geo_language_enabled) {
             session_ui_language_t geo_language =
                 session_client_geo_language(ctx);
             if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
@@ -3169,10 +3127,14 @@ static void *host_telnet_thread(void *arg)
                 ctx->active_codepage =
                     session_codepage_for_language(geo_language);
             } else {
-                ctx->ui_language = SESSION_UI_LANGUAGE_KO;
+                ctx->ui_language = SESSION_UI_LANGUAGE_EN;
                 ctx->active_codepage =
-                    session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
+                    session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
             }
+        } else {
+            ctx->ui_language = SESSION_UI_LANGUAGE_EN;
+            ctx->active_codepage =
+                session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
         }
 
         /* Favor CP437-style output for legacy telnet clients */
@@ -4270,26 +4232,7 @@ void host_init(host_t *host, auth_profile_t *auth)
                             "failed to initialise layered message encryption",
                             errno != 0 ? errno : EIO);
     }
-    atomic_store(&host->auto_ban_enabled, false);
-    const char *auto_ban_toggle = getenv("CHATTER_AUTO_BAN");
-    if (auto_ban_toggle != nullptr && auto_ban_toggle[0] != '\0') {
-        if (strcasecmp(auto_ban_toggle, "1") == 0 ||
-            strcasecmp(auto_ban_toggle, "true") == 0 ||
-            strcasecmp(auto_ban_toggle, "on") == 0 ||
-            strcasecmp(auto_ban_toggle, "enable") == 0 ||
-            strcasecmp(auto_ban_toggle, "enabled") == 0 ||
-            strcasecmp(auto_ban_toggle, "yes") == 0) {
-            atomic_store(&host->auto_ban_enabled, true);
-            printf("[config] automatic bans enabled via CHATTER_AUTO_BAN\n");
-        } else if (strcasecmp(auto_ban_toggle, "0") == 0 ||
-                   strcasecmp(auto_ban_toggle, "false") == 0 ||
-                   strcasecmp(auto_ban_toggle, "off") == 0 ||
-                   strcasecmp(auto_ban_toggle, "disable") == 0 ||
-                   strcasecmp(auto_ban_toggle, "disabled") == 0 ||
-                   strcasecmp(auto_ban_toggle, "no") == 0) {
-            printf("[config] automatic bans disabled via CHATTER_AUTO_BAN\n");
-        }
-    }
+    atomic_store(&host->geo_language_enabled, false);
     host_load_lan_operator_credentials(host);
     const palette_descriptor_t *default_palette =
         palette_find_descriptor("clean");
@@ -5496,8 +5439,6 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 peer_address[sizeof(peer_address) - 1U] = '\0';
             }
 
-            bool allow_auto_ban = host_auto_ban_enabled(host);
-
             connection_guard_result_t guard =
                 host_connection_guard_register(host, peer_address);
             if (guard.blocked) {
@@ -5516,16 +5457,6 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     peer_address, guard.attempt_count, wait_seconds);
                 ssh_disconnect(session);
                 ssh_free(session);
-                if (allow_auto_ban && guard.escalate_ban &&
-                    host_add_ban_entry(host, "", peer_address)) {
-                    printf("[auto-ban] %s banned after repeated connection "
-                           "flooding\n",
-                           peer_address);
-                } else if (guard.escalate_ban && !allow_auto_ban) {
-                    printf("[throttle] auto-ban disabled; %s would be banned "
-                           "after repeated connection flooding\n",
-                           peer_address);
-                }
                 continue;
             }
 
@@ -5533,9 +5464,8 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
             const char *client_banner = ssh_get_clientbanner(session);
             const version_ip_ban_rule_t *matched_rule = nullptr;
-            if (allow_auto_ban && host_version_ip_should_ban(host, client_banner,
-                                                             peer_address,
-                                                             &matched_rule)) {
+            if (host_version_ip_should_ban(host, client_banner, peer_address,
+                                           &matched_rule)) {
                 const char *version_display =
                     (client_banner != nullptr && client_banner[0] != '\0')
                         ? client_banner
@@ -5553,35 +5483,13 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     (matched_rule != nullptr && matched_rule->note[0] != '\0')
                         ? matched_rule->note
                         : "version/IP policy";
-                printf("[auto-ban] %s banned for client version '%s' (%s in "
+                printf("[reject] %s disconnected for client version '%s' (%s in "
                        "%s; %s)\n",
                        peer_address, version_display, pattern_display,
                        cidr_display, note_display);
-                (void)host_add_ban_entry(host, "", peer_address);
                 ssh_disconnect(session);
                 ssh_free(session);
                 continue;
-            } else if (!allow_auto_ban &&
-                       host_version_ip_should_ban(host, client_banner,
-                                                  peer_address, &matched_rule)) {
-                const char *version_display =
-                    (client_banner != nullptr && client_banner[0] != '\0')
-                        ? client_banner
-                        : "unknown";
-                printf("[auto-ban disabled] %s matched version/IP policy for '%s'"\
-                       " but ban was suppressed\n",
-                       peer_address, version_display);
-            }
-
-            if (allow_auto_ban && guard.escalate_ban &&
-                host_add_ban_entry(host, "", peer_address)) {
-                printf(
-                    "[auto-ban] %s banned after repeated connection flooding\n",
-                    peer_address);
-            } else if (guard.escalate_ban && !allow_auto_ban) {
-                printf("[connect] auto-ban disabled; continuing after connection "
-                       "flooding from %s\n",
-                       peer_address);
             }
 
             session_ctx_t *ctx = session_create();
@@ -5626,17 +5534,22 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                      (int)sizeof(ctx->client_ip) - 1, peer_address);
             ctx->input_mode = SESSION_INPUT_MODE_CHAT;
 
-            session_ui_language_t provider_language = SESSION_UI_LANGUAGE_COUNT;
+            bool geo_language_enabled =
+                atomic_load(&ctx->owner->geo_language_enabled);
+            session_ui_language_t provider_language =
+                SESSION_UI_LANGUAGE_COUNT;
             char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
-            bool provider_detected = session_detect_provider_ip(
-                ctx->client_ip, provider_label, sizeof(provider_label));
+            bool provider_detected =
+                geo_language_enabled &&
+                session_detect_provider_ip(ctx->client_ip, provider_label,
+                                           sizeof(provider_label));
             if (provider_detected &&
                 host_provider_language_preference(host, provider_label,
                                                   &provider_language)) {
                 ctx->ui_language = provider_language;
                 ctx->active_codepage =
                     session_codepage_for_language(provider_language);
-            } else {
+            } else if (geo_language_enabled) {
                 session_ui_language_t geo_language =
                     session_client_geo_language(ctx);
                 if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
@@ -5644,10 +5557,14 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     ctx->active_codepage =
                         session_codepage_for_language(geo_language);
                 } else {
-                    ctx->ui_language = SESSION_UI_LANGUAGE_KO;
+                    ctx->ui_language = SESSION_UI_LANGUAGE_EN;
                     ctx->active_codepage =
-                        session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
+                        session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
                 }
+            } else {
+                ctx->ui_language = SESSION_UI_LANGUAGE_EN;
+                ctx->active_codepage =
+                    session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
             }
             if (client_banner != nullptr && client_banner[0] != '\0') {
                 snprintf(ctx->client_banner, sizeof(ctx->client_banner), "%s",

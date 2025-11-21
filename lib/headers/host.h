@@ -44,6 +44,7 @@
 #define SSH_CHATTER_HISTORY_CACHE_LIMIT 512
 #define SSH_CHATTER_INPUT_HISTORY_LIMIT 64
 #define SSH_CHATTER_SCROLLBACK_CHUNK 30
+#define MSG_SHOULDSINK 0x1U
 #define SSH_CHATTER_MAX_PREFERENCES 1024
 #define SSH_CHATTER_ATTACHMENT_TARGET_LEN 256
 #define SSH_CHATTER_ATTACHMENT_CAPTION_LEN 256
@@ -709,6 +710,7 @@ typedef struct session_ctx {
     bool history_latest_notified;
     bool
         no_update; // Flag to prevent automatic message updates when scrolling history
+    bool pending_should_sink;
     // Output buffering to prevent flickering
     bool output_buffering_enabled;
     char output_buffer[SSH_CHATTER_OUTPUT_BUFFER_SIZE];

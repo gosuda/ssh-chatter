@@ -4,6 +4,9 @@
 
 // Session output, history delivery, and client-facing helpers.
 
+void session_process_pending_sink(session_ctx_t *ctx);
+void session_flag_should_sink(session_ctx_t *ctx);
+
 static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
 {
     if (ctx == nullptr || banner == nullptr) {
@@ -2649,6 +2652,65 @@ void session_scrollback_reset_position(session_ctx_t *ctx)
     ctx->history_oldest_notified = false;
     // Clear no_update flag when returning to latest messages
     ctx->no_update = false;
+
+    // If a sink flag is pending, synchronize the latest chat chunk now
+    session_process_pending_sink(ctx);
+}
+
+void session_process_pending_sink(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || !ctx->pending_should_sink) {
+        return;
+    }
+
+    if (ctx->history_scroll_position > 0U) {
+        return;
+    }
+
+    size_t total = host_history_total(ctx->owner);
+    if (total == 0U) {
+        ctx->pending_should_sink = false;
+        return;
+    }
+
+    size_t chunk = SSH_CHATTER_SCROLLBACK_CHUNK;
+    if (chunk > total) {
+        chunk = total;
+    }
+
+    size_t start_index = (total > 0U && total > chunk) ? (total - chunk) : 0U;
+    chat_history_entry_t buffer[SSH_CHATTER_SCROLLBACK_CHUNK];
+    size_t copied = host_history_copy_range(ctx->owner, start_index, buffer, chunk);
+    if (copied == 0U) {
+        return;
+    }
+
+    ctx->pending_should_sink = false;
+
+    const bool buffering_started = !ctx->output_buffering_enabled;
+    if (buffering_started) {
+        session_output_buffer_start(ctx);
+    }
+
+    for (size_t idx = 0; idx < copied; ++idx) {
+        session_send_history_entry(ctx, &buffer[idx]);
+    }
+
+    if (buffering_started) {
+        session_output_buffer_stop(ctx);
+    }
+
+    session_refresh_input_line(ctx);
+}
+
+void session_flag_should_sink(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    ctx->pending_should_sink = true;
+    session_process_pending_sink(ctx);
 }
 
 static size_t session_visible_history_lines(const session_ctx_t *ctx)
@@ -2905,6 +2967,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
             ctx->history_latest_notified = true;
         }
         session_render_prompt(ctx, false);
+        session_process_pending_sink(ctx);
         goto cleanup;
     }
 
@@ -2960,6 +3023,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
     }
 
     session_render_prompt(ctx, false);
+    session_process_pending_sink(ctx);
 
 cleanup:
     if (buffering_started) {
@@ -3040,6 +3104,7 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
 
     if (direction < 0 && at_boundary && new_position == 0U) {
         session_render_prompt(ctx, false);
+        session_process_pending_sink(ctx);
         goto cleanup;
     }
 
@@ -3084,6 +3149,7 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     }
 
     session_render_prompt(ctx, false);
+    session_process_pending_sink(ctx);
 
 cleanup:
     if (buffering_started) {

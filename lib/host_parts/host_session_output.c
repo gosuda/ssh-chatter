@@ -3602,8 +3602,7 @@ static void session_send_history_entry(session_ctx_t *ctx,
         }
         if (has_custom_codes) {
             snprintf(name_block, sizeof(name_block),
-                     "[%s] <%s%s%s%s%s>", id_display, highlight, color, bold,
-                     entry->username, ANSI_RESET);
+                     "[%s] <%s%s%s%s>", id_display, highlight, color, bold, ANSI_RESET);
         } else {
             snprintf(name_block, sizeof(name_block), "%s%s%s [%s] <%s>%s",
                      highlight, bold, color, id_display, entry->username,

@@ -72,6 +72,8 @@ typedef struct user_data_record {
 
 bool user_data_sanitize_username(const char *restrict username,
                                  char *restrict sanitized, size_t length);
+bool user_data_strip_ansi_sequences(const char *restrict input,
+                                    char *restrict output, size_t length);
 bool user_data_path_for(const char *restrict root,
                         const char *restrict username, const char *restrict ip,
                         bool create_if_missing, char *restrict path,

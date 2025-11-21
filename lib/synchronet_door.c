@@ -114,7 +114,14 @@ static bool parse_door32_lines(session_ctx_t *ctx,
         return false;
     }
 
-    snprintf(ctx->user.name, sizeof(ctx->user.name), "%s", alias);
+    char cleaned_alias[SSH_CHATTER_USERNAME_LEN];
+    if (!user_data_strip_ansi_sequences(alias, cleaned_alias,
+                                        sizeof(cleaned_alias)) ||
+        cleaned_alias[0] == '\0') {
+        snprintf(cleaned_alias, sizeof(cleaned_alias), "%s", alias);
+    }
+
+    snprintf(ctx->user.name, sizeof(ctx->user.name), "%s", cleaned_alias);
     ctx->user.is_authenticated = true;
 
     if (line_count > 6U) {
@@ -175,7 +182,14 @@ static bool parse_classic_door_lines(session_ctx_t *ctx,
         return false;
     }
 
-    snprintf(ctx->user.name, sizeof(ctx->user.name), "%s", alias);
+    char cleaned_alias[SSH_CHATTER_USERNAME_LEN];
+    if (!user_data_strip_ansi_sequences(alias, cleaned_alias,
+                                        sizeof(cleaned_alias)) ||
+        cleaned_alias[0] == '\0') {
+        snprintf(cleaned_alias, sizeof(cleaned_alias), "%s", alias);
+    }
+
+    snprintf(ctx->user.name, sizeof(ctx->user.name), "%s", cleaned_alias);
     ctx->user.is_authenticated = true;
 
     for (size_t idx = 7U; idx < line_count && idx < 12U; ++idx) {

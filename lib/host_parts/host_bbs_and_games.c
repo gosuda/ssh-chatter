@@ -5984,33 +5984,29 @@ static bool session_parse_color_arguments(char *working, char **tokens,
 #include <stdlib.h>
 #include <stdio.h>
 
-/* * Ensure SSH_CHATTER_USERNAME_LEN is defined.
- * Usually this is in a header file.
- */
-#ifndef SSH_CHATTER_USERNAME_LEN
-#define SSH_CHATTER_USERNAME_LEN 256
-#endif
-
 static bool session_valid_ansi_256_sequence(const char *sequence)
 {
     if (sequence == NULL) {
         return false;
     }
 
-    size_t length = strnlen(sequence, SSH_CHATTER_USERNAME_LEN);
-    if (length == SSH_CHATTER_USERNAME_LEN && sequence[SSH_CHATTER_USERNAME_LEN] != '\0') {
+    size_t length = strnlen(sequence, SSH_CHATTER_COLOR_CODE_LEN);
+    if (length >= SSH_CHATTER_COLOR_CODE_LEN) {
         return false;
     }
 
     size_t idx = 0;
+    bool found_escape = false;
     while (idx < length) {
         if (sequence[idx] != '\x1b') {
             idx++;
             continue;
         }
 
+        found_escape = true;
+
         if (idx + 1 >= length || sequence[idx + 1] != '[') {
-            return false; 
+            return false;
         }
 
         size_t end = idx + 2;
@@ -6047,25 +6043,42 @@ static bool session_valid_ansi_256_sequence(const char *sequence)
 
             char *fg_ptr = strstr(buffer, "38;5;");
             char *bg_ptr = strstr(buffer, "48;5;");
+            char *fg_truecolor_ptr = strstr(buffer, "38;2;");
+            char *bg_truecolor_ptr = strstr(buffer, "48;2;");
             char *target = (fg_ptr) ? fg_ptr : bg_ptr;
+            char *truecolor_target = (fg_truecolor_ptr) ? fg_truecolor_ptr : bg_truecolor_ptr;
 
-            if (target) {
+            if (target != NULL) {
                 target += 5;
 
                 char *endptr = NULL;
                 long val = strtol(target, &endptr, 10);
-                if (val < 0 || val > 255) {
+                if (val < 0 || val > 255 || target == endptr) {
                     return false;
                 }
+            }
 
-                if (target == endptr) {
-                    return false;
+            if (truecolor_target != NULL) {
+                truecolor_target += 5;
+                for (int component = 0; component < 3; ++component) {
+                    char *endptr = NULL;
+                    long val = strtol(truecolor_target, &endptr, 10);
+                    if (val < 0 || val > 255 || truecolor_target == endptr) {
+                        return false;
+                    }
+
+                    if (component < 2) {
+                        if (endptr == NULL || *endptr != ';') {
+                            return false;
+                        }
+                        truecolor_target = endptr + 1;
+                    }
                 }
             }
         }
         idx = end + 1;
     }
-    return true;
+    return found_escape;
 }
 
 static void session_handle_color(session_ctx_t *ctx, const char *arguments)
@@ -6075,8 +6088,7 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
     }
 
     static const char *kColorUsage =
-//        "Usage: /color (text;highlight[;bold]) or /color advanced <ansi-256>"; //not ready
-          "Usage: /color (text;highlight[;bold])";
+        "Usage: /color (text;highlight[;bold]) or /color advanced <ansi>";
 
     if (arguments == nullptr) {
         session_send_system_line(ctx, kColorUsage);

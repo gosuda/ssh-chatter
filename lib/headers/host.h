@@ -36,7 +36,7 @@
 #define SSH_CHATTER_USERNAME_LEN 128
 #define SSH_CHATTER_IP_LEN 64
 #define SSH_CHATTER_COLOR_NAME_LEN 32
-#define SSH_CHATTER_COLOR_CODE_LEN 48
+#define SSH_CHATTER_COLOR_CODE_LEN 256
 #define ALPHA_GRAVITY_NAME_LEN 32
 #define ALPHA_MAX_GRAVITY_SOURCES 16
 #define ALPHA_MAX_WAYPOINTS 4U
@@ -727,6 +727,8 @@ typedef struct user_preference {
     bool has_system_theme;
     char username[SSH_CHATTER_USERNAME_LEN];
     char ip[SSH_CHATTER_IP_LEN];
+    char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
     char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
     bool user_is_bold;

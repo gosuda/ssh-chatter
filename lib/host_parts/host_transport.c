@@ -3031,7 +3031,7 @@ static const char TETROMINO_DISPLAY_CHARS[7] = {'I', 'J', 'L', 'O',
                                                 'S', 'T', 'Z'};
 
 static const uint32_t HOST_STATE_MAGIC = 0x53484354U; /* 'SHCT' */
-static const uint32_t HOST_STATE_VERSION = 13U;
+static const uint32_t HOST_STATE_VERSION = 14U;
 static const uint32_t ELIZA_STATE_MAGIC = 0x454c5354U; /* 'ELST' */
 static const uint32_t ELIZA_STATE_VERSION = 1U;
 
@@ -3296,6 +3296,8 @@ typedef struct host_state_preference_entry {
     uint8_t system_is_bold;
     char username[SSH_CHATTER_USERNAME_LEN];
     char ip[SSH_CHATTER_IP_LEN];
+    char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
     char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
     char system_fg_name[SSH_CHATTER_COLOR_NAME_LEN];
@@ -5749,6 +5751,12 @@ static void host_store_user_theme(host_t *host, const session_ctx_t *ctx)
         host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
         pref->has_user_theme = true;
+        snprintf(pref->user_color_code, sizeof(pref->user_color_code), "%s",
+                 ctx->user_color_code != nullptr ? ctx->user_color_code : "");
+        snprintf(pref->user_highlight_code, sizeof(pref->user_highlight_code),
+                 "%s",
+                 ctx->user_highlight_code != nullptr ? ctx->user_highlight_code
+                                                    : "");
         snprintf(pref->user_color_name, sizeof(pref->user_color_name), "%s",
                  ctx->user_color_name);
         snprintf(pref->user_highlight_name, sizeof(pref->user_highlight_name),

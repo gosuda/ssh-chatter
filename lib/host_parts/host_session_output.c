@@ -2663,9 +2663,11 @@ static void session_scrollback_prepare_display(session_ctx_t *ctx)
         return;
     }
 
-    session_clear_screen(ctx);
-    session_apply_background_fill(ctx);
-    session_render_separator(ctx, "Chatroom");
+    // Avoid clearing the entire screen to reduce flicker when loading chat
+    // history. Clearing only the current line keeps the prompt tidy without
+    // forcing a full redraw.
+    static const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
+    session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
 }
 
 void session_process_pending_sink(session_ctx_t *ctx)
@@ -3149,9 +3151,6 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         session_render_prompt(ctx, false);
         goto cleanup;
     }
-
-    // Clear screen before displaying messages (as per requirement)
-    session_clear_screen(ctx);
 
     // Show header indicating the message range being displayed
     char header[SSH_CHATTER_MESSAGE_LIMIT];

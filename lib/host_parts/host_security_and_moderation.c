@@ -315,6 +315,7 @@ static void host_security_handle_suspicious_activity(
 {
     size_t attempts = 0U;
     bool banned = false;
+    bool auto_ban = host_auto_ban_enabled(host);
 
     if (host != nullptr) {
         const char *register_ip =
@@ -337,6 +338,11 @@ static void host_security_handle_suspicious_activity(
                 "Further suspicious activity will result in a ban (%zu/%u).",
                 attempts, (unsigned int)SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD);
             session_send_system_line(session, warning);
+        }
+        if (attempts >= SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD && !auto_ban) {
+            printf("[security] auto-ban disabled; %s (%s) reached suspicious "
+                   "payload threshold\n",
+                   identity->name, identity->address);
         }
         return;
     }

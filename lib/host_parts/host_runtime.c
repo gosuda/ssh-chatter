@@ -4252,7 +4252,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     atomic_store(&host->geo_language_enabled, false);
     host_load_lan_operator_credentials(host);
     const palette_descriptor_t *default_palette =
-        palette_find_descriptor("clean");
+        palette_find_descriptor("blackpink");
     if (default_palette != nullptr) {
         host_apply_palette_descriptor(host, default_palette);
     } else {

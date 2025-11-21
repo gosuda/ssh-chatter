@@ -2319,6 +2319,10 @@ static void host_state_save_locked(host_t *host)
         return;
     }
 
+    if (!host_ensure_private_data_path(host, host->state_file_path, true)) {
+        return;
+    }
+
     char temp_path[PATH_MAX];
     int written =
         snprintf(temp_path, sizeof(temp_path), "%s.tmp", host->state_file_path);

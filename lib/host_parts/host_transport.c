@@ -4138,10 +4138,23 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
             const char *color =
                 from->user_color_code != nullptr ? from->user_color_code : "";
+            const char *highlight =
+                from->user_highlight_code != nullptr ? from->user_highlight_code
+                                                     : "";
             const char *bold = from->user_is_bold ? ANSI_BOLD : "";
 
-            snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s", color,
-                     bold, from->user.name, ANSI_RESET, message);
+            const bool has_custom_codes =
+                (color[0] != '\0') || (highlight[0] != '\0');
+
+            if (has_custom_codes) {
+                snprintf(formatted, sizeof(formatted),
+                         "[-] <%s%s%s%s%s> %s", highlight, color, bold,
+                         from->user.name, ANSI_RESET, message);
+            } else {
+                snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s",
+                         color, bold, from->user.name, ANSI_RESET, message);
+            }
+
             session_send_plain_line(member, formatted);
         } else {
             session_send_system_line(member, message);
@@ -4323,6 +4336,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
             const char *color =
                 entry->user_color_code != nullptr ? entry->user_color_code : "";
+            const char *highlight = entry->user_highlight_code != nullptr
+                                         ? entry->user_highlight_code
+                                         : "";
             const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
 
             char id_label[32] = "-";
@@ -4331,9 +4347,18 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                                        sizeof(id_label));
             }
 
+            const bool has_custom_codes =
+                (color[0] != '\0') || (highlight[0] != '\0');
+
             char name_block[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s", color,
-                     bold, id_label, entry->username, ANSI_RESET);
+            if (has_custom_codes) {
+                snprintf(name_block, sizeof(name_block),
+                         "[%s] <%s%s%s%s%s>", id_label, highlight, color, bold,
+                         entry->username, ANSI_RESET);
+            } else {
+                snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s", color,
+                         bold, id_label, entry->username, ANSI_RESET);
+            }
 
             if (entry->message[0] != '\0') {
                 const bool multiline = strchr(entry->message, '\n') != nullptr;

@@ -3037,7 +3037,7 @@ static const char TETROMINO_DISPLAY_CHARS[7] = {'I', 'J', 'L', 'O',
                                                 'S', 'T', 'Z'};
 
 static const uint32_t HOST_STATE_MAGIC = 0x53484354U; /* 'SHCT' */
-static const uint32_t HOST_STATE_VERSION = 14U;
+static const uint32_t HOST_STATE_VERSION = 15U;
 static const uint32_t ELIZA_STATE_MAGIC = 0x454c5354U; /* 'ELST' */
 static const uint32_t ELIZA_STATE_VERSION = 1U;
 
@@ -3121,6 +3121,52 @@ typedef struct host_state_history_entry_v4 {
     char attachment_caption[SSH_CHATTER_ATTACHMENT_CAPTION_LEN];
     uint32_t reaction_counts[SSH_CHATTER_REACTION_KIND_COUNT];
 } host_state_history_entry_v4_t;
+
+typedef struct host_state_history_entry_v5 {
+    host_state_history_entry_v1_t base;
+    uint64_t message_id;
+    int64_t created_at;
+    uint8_t attachment_type;
+    uint8_t reserved[7];
+    char attachment_target[SSH_CHATTER_ATTACHMENT_TARGET_LEN];
+    char attachment_caption[SSH_CHATTER_ATTACHMENT_CAPTION_LEN];
+    char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
+    uint32_t reaction_counts[SSH_CHATTER_REACTION_KIND_COUNT];
+} host_state_history_entry_v5_t;
+
+static void host_state_assign_color_codes(chat_history_entry_t *entry,
+                                          const char *color_code,
+                                          const char *highlight_code)
+{
+    if (entry == nullptr) {
+        return;
+    }
+
+    entry->user_color_code = nullptr;
+    entry->user_highlight_code = nullptr;
+
+    if (color_code != nullptr && color_code[0] != '\0') {
+        size_t length = strnlen(color_code, SSH_CHATTER_COLOR_CODE_LEN - 1U);
+        char *copy = GC_MALLOC(length + 1U);
+        if (copy != nullptr) {
+            memcpy(copy, color_code, length);
+            copy[length] = '\0';
+            entry->user_color_code = copy;
+        }
+    }
+
+    if (highlight_code != nullptr && highlight_code[0] != '\0') {
+        size_t length =
+            strnlen(highlight_code, SSH_CHATTER_COLOR_CODE_LEN - 1U);
+        char *copy = GC_MALLOC(length + 1U);
+        if (copy != nullptr) {
+            memcpy(copy, highlight_code, length);
+            copy[length] = '\0';
+            entry->user_highlight_code = copy;
+        }
+    }
+}
 
 typedef struct host_state_preference_entry_v3 {
     uint8_t has_user_theme;
@@ -4596,6 +4642,43 @@ static bool host_state_read_history_entry(FILE *fp, uint32_t version,
 
     memset(entry, 0, sizeof(*entry));
 
+    if (version >= 15U) {
+        host_state_history_entry_v5_t serialized = {0};
+        if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
+            return false;
+        }
+
+        entry->is_user_message = serialized.base.is_user_message != 0U;
+        entry->user_is_bold = serialized.base.user_is_bold != 0U;
+        snprintf(entry->username, sizeof(entry->username), "%s",
+                 serialized.base.username);
+        snprintf(entry->message, sizeof(entry->message), "%s",
+                 serialized.base.message);
+        snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
+                 serialized.base.user_color_name);
+        snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name),
+                 "%s", serialized.base.user_highlight_name);
+        entry->message_id = serialized.message_id;
+        if (serialized.attachment_type > CHAT_ATTACHMENT_FILE) {
+            entry->attachment_type = CHAT_ATTACHMENT_NONE;
+        } else {
+            entry->attachment_type =
+                (chat_attachment_type_t)serialized.attachment_type;
+        }
+        entry->created_at = (time_t)serialized.created_at;
+        entry->preserve_whitespace = serialized.reserved[0] != 0U;
+        snprintf(entry->attachment_target, sizeof(entry->attachment_target),
+                 "%s", serialized.attachment_target);
+        snprintf(entry->attachment_caption,
+                 sizeof(entry->attachment_caption), "%s",
+                 serialized.attachment_caption);
+        host_state_assign_color_codes(entry, serialized.user_color_code,
+                                      serialized.user_highlight_code);
+        memcpy(entry->reaction_counts, serialized.reaction_counts,
+               sizeof(entry->reaction_counts));
+        return true;
+    }
+
     if (version >= 11U) {
         host_state_history_entry_v4_t serialized = {0};
         if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
@@ -4730,7 +4813,7 @@ static bool host_state_write_history_entry(FILE *fp,
         return false;
     }
 
-    host_state_history_entry_v4_t serialized = {0};
+    host_state_history_entry_v5_t serialized = {0};
     serialized.base.is_user_message = entry->is_user_message ? 1U : 0U;
     serialized.base.user_is_bold = entry->user_is_bold ? 1U : 0U;
     snprintf(serialized.base.username, sizeof(serialized.base.username), "%s",
@@ -4751,6 +4834,11 @@ static bool host_state_write_history_entry(FILE *fp,
     snprintf(serialized.attachment_caption,
              sizeof(serialized.attachment_caption), "%s",
              entry->attachment_caption);
+    snprintf(serialized.user_color_code, sizeof(serialized.user_color_code), "%s",
+             entry->user_color_code != nullptr ? entry->user_color_code : "");
+    snprintf(serialized.user_highlight_code,
+             sizeof(serialized.user_highlight_code), "%s",
+             entry->user_highlight_code != nullptr ? entry->user_highlight_code : "");
     memcpy(serialized.reaction_counts, entry->reaction_counts,
            sizeof(serialized.reaction_counts));
     memset(serialized.reserved, 0, sizeof(serialized.reserved));
@@ -4820,6 +4908,9 @@ static bool host_state_stream_open(const char *path, FILE **out_fp,
 
 static size_t host_state_history_entry_stride(uint32_t version)
 {
+    if (version >= 15U) {
+        return sizeof(host_state_history_entry_v5_t);
+    }
     if (version >= 11U) {
         return sizeof(host_state_history_entry_v4_t);
     }

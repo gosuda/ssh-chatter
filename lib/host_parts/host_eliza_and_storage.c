@@ -5540,7 +5540,7 @@ static void session_send_line(session_ctx_t *ctx, const char *message)
         if (spacing > 8U) {
             spacing = 8U;
         }
-        placeholder_lines = spacing + 1U;
+        placeholder_lines = spacing;
     }
 
     if (translation_ready && session_translation_queue_caption(

@@ -827,6 +827,11 @@ session_client_geo_language(const session_ctx_t *ctx)
         return SESSION_UI_LANGUAGE_COUNT;
     }
 
+    if (ctx->owner != nullptr &&
+        !atomic_load(&ctx->owner->geo_language_enabled)) {
+        return SESSION_UI_LANGUAGE_COUNT;
+    }
+
     char label[64];
     if (!session_detect_provider_ip(ctx->client_ip, label, sizeof(label))) {
         return SESSION_UI_LANGUAGE_COUNT;
@@ -4181,6 +4186,11 @@ session_captcha_primary_language(const session_ctx_t *ctx)
         return CAPTCHA_LANGUAGE_KO;
     }
 
+    bool geo_language_enabled =
+        ctx->owner != nullptr
+            ? atomic_load(&ctx->owner->geo_language_enabled)
+            : true;
+
     session_ui_language_t preferred = session_ui_language_current(ctx);
     captcha_language_t preferred_language =
         session_captcha_language_from_ui(preferred);
@@ -4189,21 +4199,23 @@ session_captcha_primary_language(const session_ctx_t *ctx)
         return preferred_language;
     }
 
-    session_ui_language_t geo_language = session_client_geo_language(ctx);
-    if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
-        return session_captcha_language_from_ui(geo_language);
-    }
+    if (geo_language_enabled) {
+        session_ui_language_t geo_language = session_client_geo_language(ctx);
+        if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
+            return session_captcha_language_from_ui(geo_language);
+        }
 
-    char label[64];
-    if (session_detect_provider_ip(ctx->client_ip, label, sizeof(label))) {
-        if (string_contains_case_insensitive(label, "Chinese")) {
-            return CAPTCHA_LANGUAGE_ZH;
-        }
-        if (string_contains_case_insensitive(label, "Russian")) {
-            return CAPTCHA_LANGUAGE_RU;
-        }
-        if (string_contains_case_insensitive(label, "Korean")) {
-            return CAPTCHA_LANGUAGE_KO;
+        char label[64];
+        if (session_detect_provider_ip(ctx->client_ip, label, sizeof(label))) {
+            if (string_contains_case_insensitive(label, "Chinese")) {
+                return CAPTCHA_LANGUAGE_ZH;
+            }
+            if (string_contains_case_insensitive(label, "Russian")) {
+                return CAPTCHA_LANGUAGE_RU;
+            }
+            if (string_contains_case_insensitive(label, "Korean")) {
+                return CAPTCHA_LANGUAGE_KO;
+            }
         }
     }
 

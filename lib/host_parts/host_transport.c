@@ -4138,10 +4138,23 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
             const char *color =
                 from->user_color_code != nullptr ? from->user_color_code : "";
+            const char *highlight =
+                from->user_highlight_code != nullptr ? from->user_highlight_code
+                                                     : "";
             const char *bold = from->user_is_bold ? ANSI_BOLD : "";
 
-            snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s", color,
-                     bold, from->user.name, ANSI_RESET, message);
+            const bool has_custom_codes =
+                (color[0] != '\0') || (highlight[0] != '\0');
+
+            if (has_custom_codes) {
+                snprintf(formatted, sizeof(formatted),
+                         "[-] <%s%s%s%s%s> %s", highlight, color, bold,
+                         from->user.name, ANSI_RESET, message);
+            } else {
+                snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s",
+                         color, bold, from->user.name, ANSI_RESET, message);
+            }
+
             session_send_plain_line(member, formatted);
         } else {
             session_send_system_line(member, message);
@@ -4323,6 +4336,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
             const char *color =
                 entry->user_color_code != nullptr ? entry->user_color_code : "";
+            const char *highlight = entry->user_highlight_code != nullptr
+                                         ? entry->user_highlight_code
+                                         : "";
             const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
 
             char id_label[32] = "-";
@@ -4331,9 +4347,18 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                                        sizeof(id_label));
             }
 
+            const bool has_custom_codes =
+                (color[0] != '\0') || (highlight[0] != '\0');
+
             char name_block[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s", color,
-                     bold, id_label, entry->username, ANSI_RESET);
+            if (has_custom_codes) {
+                snprintf(name_block, sizeof(name_block),
+                         "[%s] <%s%s%s%s%s>", id_label, highlight, color, bold,
+                         entry->username, ANSI_RESET);
+            } else {
+                snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s", color,
+                         bold, id_label, entry->username, ANSI_RESET);
+            }
 
             if (entry->message[0] != '\0') {
                 const bool multiline = strchr(entry->message, '\n') != nullptr;
@@ -5350,8 +5375,29 @@ static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
     }
     snprintf(entry->username, sizeof(entry->username), "%s", from->user.name);
     snprintf(entry->user_ip, sizeof(entry->user_ip), "%s", from->client_ip);
-    entry->user_color_code = from->user_color_code;
-    entry->user_highlight_code = from->user_highlight_code;
+    if (from->user_color_code != nullptr && from->user_color_code[0] != '\0') {
+        size_t color_len = strlen(from->user_color_code);
+        char *color_copy = GC_MALLOC(color_len + 1U);
+        if (color_copy != nullptr) {
+            memcpy(color_copy, from->user_color_code, color_len + 1U);
+            entry->user_color_code = color_copy;
+        }
+    } else {
+        entry->user_color_code = nullptr;
+    }
+
+    if (from->user_highlight_code != nullptr &&
+        from->user_highlight_code[0] != '\0') {
+        size_t highlight_len = strlen(from->user_highlight_code);
+        char *highlight_copy = GC_MALLOC(highlight_len + 1U);
+        if (highlight_copy != nullptr) {
+            memcpy(highlight_copy, from->user_highlight_code,
+                   highlight_len + 1U);
+            entry->user_highlight_code = highlight_copy;
+        }
+    } else {
+        entry->user_highlight_code = nullptr;
+    }
     entry->user_is_bold = from->user_is_bold;
     snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
              from->user_color_name);
@@ -6132,27 +6178,36 @@ static void host_history_normalize_entry(host_t *host,
         return;
     }
 
-    const char *color_code = lookup_color_code(
-        USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
-        entry->user_color_name);
-    if (color_code == nullptr) {
-        color_code = host->user_theme.userColor;
-        snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
-                 host->default_user_color_name);
+    const bool has_color_code =
+        entry->user_color_code != nullptr && entry->user_color_code[0] != '\0';
+    const bool has_highlight_code = entry->user_highlight_code != nullptr &&
+                                    entry->user_highlight_code[0] != '\0';
+
+    if (!has_color_code) {
+        const char *color_code = lookup_color_code(
+            USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
+            entry->user_color_name);
+        if (color_code == nullptr) {
+            color_code = host->user_theme.userColor;
+            snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
+                     host->default_user_color_name);
+        }
+        entry->user_color_code = color_code;
     }
 
-    const char *highlight_code = lookup_color_code(
-        HIGHLIGHT_COLOR_MAP,
-        sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
-        entry->user_highlight_name);
-    if (highlight_code == nullptr) {
-        highlight_code = host->user_theme.highlight;
-        snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name),
-                 "%s", host->default_user_highlight_name);
+    if (!has_highlight_code) {
+        const char *highlight_code = lookup_color_code(
+            HIGHLIGHT_COLOR_MAP,
+            sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
+            entry->user_highlight_name);
+        if (highlight_code == nullptr) {
+            highlight_code = host->user_theme.highlight;
+            snprintf(entry->user_highlight_name,
+                     sizeof(entry->user_highlight_name), "%s",
+                     host->default_user_highlight_name);
+        }
+        entry->user_highlight_code = highlight_code;
     }
-
-    entry->user_color_code = color_code;
-    entry->user_highlight_code = highlight_code;
 }
 
 static void host_security_configure(host_t *host)

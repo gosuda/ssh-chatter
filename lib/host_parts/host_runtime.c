@@ -3487,14 +3487,31 @@ static void *session_thread(void *arg)
     session_apply_granted_privileges(ctx);
     session_apply_saved_preferences(ctx);
 
-    // Auto-nick for pure ASCII names if a preferred nickname is available
-    if (ctx->user.is_authenticated && is_pure_ascii(ctx->user.name) &&
-        ctx->user_data_loaded && ctx->user_data.preferred_nickname[0] != '\0' &&
-        strcasecmp(ctx->user.name, ctx->user_data.preferred_nickname) != 0) {
-        char nick_command[SSH_CHATTER_MAX_INPUT_LEN];
-        snprintf(nick_command, sizeof(nick_command), "/nick %s",
-                 ctx->user_data.preferred_nickname);
-        ctx->ops->dispatch_command(ctx, nick_command);
+    char preferred_nickname[SSH_CHATTER_USERNAME_LEN] = {0};
+    if (ctx->user.is_authenticated && ctx->user_data_loaded &&
+        ctx->user_data.preferred_nickname[0] != '\0') {
+        if (!user_data_strip_ansi_sequences(ctx->user_data.preferred_nickname,
+                                            preferred_nickname,
+                                            sizeof(preferred_nickname))) {
+            snprintf(preferred_nickname, sizeof(preferred_nickname), "%s",
+                     ctx->user_data.preferred_nickname);
+        }
+
+        trim_whitespace_inplace(preferred_nickname);
+        if (preferred_nickname[0] != '\0' &&
+            strcasecmp(preferred_nickname, ctx->user_data.preferred_nickname) != 0) {
+            snprintf(ctx->user_data.preferred_nickname,
+                     sizeof(ctx->user_data.preferred_nickname), "%s",
+                     preferred_nickname);
+        }
+
+        if (preferred_nickname[0] != '\0' &&
+            strcasecmp(ctx->user.name, preferred_nickname) != 0) {
+            char nick_command[SSH_CHATTER_MAX_INPUT_LEN];
+            snprintf(nick_command, sizeof(nick_command), "/nick %s",
+                     preferred_nickname);
+            ctx->ops->dispatch_command(ctx, nick_command);
+        }
     }
 
     bool captcha_enabled = false;

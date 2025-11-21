@@ -7839,6 +7839,9 @@ static void session_handle_geo_language(session_ctx_t *ctx,
                  ctx->user.name);
         host_history_record_system(host, notice, nullptr);
         chat_room_broadcast(&host->room, notice, nullptr);
+        pthread_mutex_lock(&host->lock);
+        host_state_save_locked(host);
+        pthread_mutex_unlock(&host->lock);
         return;
     }
 
@@ -7856,6 +7859,9 @@ static void session_handle_geo_language(session_ctx_t *ctx,
              ctx->user.name);
     host_history_record_system(host, notice, nullptr);
     chat_room_broadcast(&host->room, notice, nullptr);
+    pthread_mutex_lock(&host->lock);
+    host_state_save_locked(host);
+    pthread_mutex_unlock(&host->lock);
 }
 
 static void session_handle_eliza(session_ctx_t *ctx, const char *arguments)

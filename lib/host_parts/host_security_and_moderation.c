@@ -2453,6 +2453,8 @@ static void host_state_save_locked(host_t *host)
     header.grant_count = (uint32_t)host->operator_grant_count;
     header.next_message_id = host->next_message_id;
     header.captcha_enabled = atomic_load(&host->captcha_enabled) ? 1U : 0U;
+    header.geo_language_enabled =
+        atomic_load(&host->geo_language_enabled) ? 1U : 0U;
     memset(header.reserved, 0, sizeof(header.reserved));
 
     bool success = fwrite(&header, sizeof(header), 1U, fp) == 1U;
@@ -3160,16 +3162,19 @@ static bool host_state_read_base_header(FILE *fp,
 static bool host_state_read_metadata(FILE *fp, uint32_t version,
                                      uint64_t *next_message_id,
                                      uint32_t *grant_count,
-                                     uint8_t *captcha_enabled_raw)
+                                     uint8_t *captcha_enabled_raw,
+                                     uint8_t *geo_language_enabled_raw)
 {
     if (fp == nullptr || next_message_id == nullptr || grant_count == nullptr ||
-        captcha_enabled_raw == nullptr) {
+        captcha_enabled_raw == nullptr ||
+        geo_language_enabled_raw == nullptr) {
         return false;
     }
 
     *next_message_id = 1U;
     *grant_count = 0U;
     *captcha_enabled_raw = 0U;
+    *geo_language_enabled_raw = 0U;
 
     if (version >= 2U) {
         uint32_t sound_count_raw = 0U;
@@ -3192,6 +3197,10 @@ static bool host_state_read_metadata(FILE *fp, uint32_t version,
                 1U ||
             fread(reserved_bytes, sizeof(reserved_bytes), 1U, fp) != 1U) {
             return false;
+        }
+
+        if (version >= 13U) {
+            *geo_language_enabled_raw = reserved_bytes[0];
         }
     }
 
@@ -3843,9 +3852,11 @@ static void host_state_load(host_t *host)
     uint64_t next_message_id = 1U;
     uint32_t grant_count = 0U;
     uint8_t captcha_enabled_raw = 0U;
+    uint8_t geo_language_enabled_raw = 0U;
 
     if (!host_state_read_metadata(fp, version, &next_message_id, &grant_count,
-                                  &captcha_enabled_raw)) {
+                                  &captcha_enabled_raw,
+                                  &geo_language_enabled_raw)) {
         fclose(fp);
         return;
     }
@@ -3858,6 +3869,11 @@ static void host_state_load(host_t *host)
 
     if (version >= 8U) {
         atomic_store(&host->captcha_enabled, captcha_enabled_raw != 0U);
+    }
+
+    if (version >= 13U) {
+        atomic_store(&host->geo_language_enabled,
+                     geo_language_enabled_raw != 0U);
     }
 
     bool success =

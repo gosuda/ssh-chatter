@@ -3031,7 +3031,7 @@ static const char TETROMINO_DISPLAY_CHARS[7] = {'I', 'J', 'L', 'O',
                                                 'S', 'T', 'Z'};
 
 static const uint32_t HOST_STATE_MAGIC = 0x53484354U; /* 'SHCT' */
-static const uint32_t HOST_STATE_VERSION = 12U;
+static const uint32_t HOST_STATE_VERSION = 13U;
 static const uint32_t ELIZA_STATE_MAGIC = 0x454c5354U; /* 'ELST' */
 static const uint32_t ELIZA_STATE_VERSION = 1U;
 
@@ -3072,7 +3072,8 @@ typedef struct host_state_header {
     uint32_t grant_count;
     uint64_t next_message_id;
     uint8_t captcha_enabled;
-    uint8_t reserved[7];
+    uint8_t geo_language_enabled;
+    uint8_t reserved[6];
 } host_state_header_t;
 
 typedef struct host_state_history_entry_v1 {

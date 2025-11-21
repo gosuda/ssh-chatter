@@ -1680,14 +1680,35 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
         }
 
         if (base_snapshot.has_user_theme) {
-            const char *color_code = lookup_color_code(
-                USER_COLOR_MAP,
-                sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
-                base_snapshot.user_color_name);
-            const char *highlight_code = lookup_color_code(
-                HIGHLIGHT_COLOR_MAP,
-                sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
-                base_snapshot.user_highlight_name);
+            const bool has_custom_color = base_snapshot.user_color_code[0] != '\0';
+            const bool has_custom_highlight =
+                base_snapshot.user_highlight_code[0] != '\0';
+
+            const char *color_code = nullptr;
+            if (has_custom_color) {
+                snprintf(ctx->user_color_code_buffer,
+                         sizeof(ctx->user_color_code_buffer), "%s",
+                         base_snapshot.user_color_code);
+                color_code = ctx->user_color_code_buffer;
+            } else {
+                color_code = lookup_color_code(
+                    USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
+                    base_snapshot.user_color_name);
+            }
+
+            const char *highlight_code = nullptr;
+            if (has_custom_highlight) {
+                snprintf(ctx->user_highlight_code_buffer,
+                         sizeof(ctx->user_highlight_code_buffer), "%s",
+                         base_snapshot.user_highlight_code);
+                highlight_code = ctx->user_highlight_code_buffer;
+            } else {
+                highlight_code = lookup_color_code(
+                    HIGHLIGHT_COLOR_MAP,
+                    sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
+                    base_snapshot.user_highlight_name);
+            }
+
             if (color_code != nullptr && highlight_code != nullptr) {
                 ctx->user_color_code = color_code;
                 ctx->user_highlight_code = highlight_code;

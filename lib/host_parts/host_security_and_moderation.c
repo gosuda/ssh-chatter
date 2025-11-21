@@ -2531,6 +2531,11 @@ static void host_state_save_locked(host_t *host)
         snprintf(serialized.username, sizeof(serialized.username), "%s",
                  pref->username);
         snprintf(serialized.ip, sizeof(serialized.ip), "%s", pref->ip);
+        snprintf(serialized.user_color_code, sizeof(serialized.user_color_code),
+                 "%s", pref->user_color_code);
+        snprintf(serialized.user_highlight_code,
+                 sizeof(serialized.user_highlight_code), "%s",
+                 pref->user_highlight_code);
         snprintf(serialized.user_color_name, sizeof(serialized.user_color_name),
                  "%s", pref->user_color_name);
         snprintf(serialized.user_highlight_name,
@@ -3389,10 +3394,22 @@ static bool host_state_read_preference_entry(FILE *fp, uint32_t version,
 
     memset(out, 0, sizeof(*out));
 
-    if (version >= 12U) {
+    if (version >= 14U) {
         if (fread(out, sizeof(*out), 1U, fp) != 1U) {
             return false;
         }
+        return true;
+    }
+
+    if (version >= 12U) {
+        host_state_preference_entry_v10_t legacy10 = {0};
+        if (fread(&legacy10, sizeof(legacy10), 1U, fp) != 1U) {
+            return false;
+        }
+
+        memcpy(out, &legacy10, sizeof(legacy10));
+        out->user_color_code[0] = '\0';
+        out->user_highlight_code[0] = '\0';
         return true;
     }
 
@@ -3403,6 +3420,8 @@ static bool host_state_read_preference_entry(FILE *fp, uint32_t version,
         }
         memcpy(out, &legacy9, sizeof(legacy9));
         out->ip[0] = '\0';
+        out->user_color_code[0] = '\0';
+        out->user_highlight_code[0] = '\0';
         out->provider_label[0] = '\0';
         memset(out->reserved2, 0, sizeof(out->reserved2));
         return true;
@@ -3692,6 +3711,10 @@ static void host_state_apply_preference_entry(
     snprintf(pref->username, sizeof(pref->username), "%s",
              serialized->username);
     snprintf(pref->ip, sizeof(pref->ip), "%s", serialized->ip);
+    snprintf(pref->user_color_code, sizeof(pref->user_color_code), "%s",
+             serialized->user_color_code);
+    snprintf(pref->user_highlight_code, sizeof(pref->user_highlight_code), "%s",
+             serialized->user_highlight_code);
     snprintf(pref->user_color_name, sizeof(pref->user_color_name), "%s",
              serialized->user_color_name);
     snprintf(pref->user_highlight_name, sizeof(pref->user_highlight_name), "%s",

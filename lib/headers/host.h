@@ -727,6 +727,8 @@ typedef struct user_preference {
     bool has_system_theme;
     char username[SSH_CHATTER_USERNAME_LEN];
     char ip[SSH_CHATTER_IP_LEN];
+    char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
     char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
     bool user_is_bold;

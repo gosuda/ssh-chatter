@@ -5179,6 +5179,7 @@ static void host_ban_state_load(host_t *host)
     if (!success) {
         humanized_log_error("host", "failed to read ban state file",
                             read_error != 0 ? read_error : EIO);
+        GC_FREE(entries);
         return;
     }
 
@@ -5218,6 +5219,7 @@ static void host_ban_state_load(host_t *host)
         ++host->ban_count;
     }
     pthread_mutex_unlock(&host->lock);
+    GC_FREE(entries);
 }
 
 static void host_reply_state_load(host_t *host)

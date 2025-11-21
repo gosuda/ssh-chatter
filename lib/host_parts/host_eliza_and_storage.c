@@ -3984,12 +3984,24 @@ static void session_channel_flush(session_ctx_t *ctx)
         return;
     }
 
-    // For Telnet connections, ensure output buffer is flushed immediately
+    // For Telnet connections, explicitly force a socket flush so chat messages
+    // are synchronized immediately (without waiting for subsequent input)
     if (ctx->transport_kind == SESSION_TRANSPORT_TELNET) {
-        // Flush any pending data in the output buffer to ensure immediate delivery
-        // TCP_NODELAY is already set on the socket when the connection is accepted,
-        // so flushing the output buffer will cause immediate transmission
+        // Flush any pending buffered output first
         session_output_buffer_flush(ctx);
+
+        // Confirm the socket is writable and nudge the TCP stack so any queued
+        // bytes are delivered even if the client is idle
+        struct pollfd pfd = {
+            .fd = ctx->telnet_fd,
+            .events = POLLOUT,
+            .revents = 0,
+        };
+
+        if (poll(&pfd, 1, SSH_CHATTER_CHANNEL_WRITE_TIMEOUT_MS) > 0 &&
+            (pfd.revents & POLLOUT) != 0) {
+            (void)send(ctx->telnet_fd, "", 0, MSG_NOSIGNAL);
+        }
         return;
     }
 

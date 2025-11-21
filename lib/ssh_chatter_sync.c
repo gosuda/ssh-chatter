@@ -114,9 +114,15 @@ void ssh_chatter_sync_add_message_to_history(const chat_message_t *new_msg)
             cur = cur->next;
         }
         if (prev && cur) {
+#if !(defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC)
             GC_FREE(cur->username);
             GC_FREE(cur->message_body);
             GC_FREE(cur);
+#else
+            cur->username = nullptr;
+            cur->message_body = nullptr;
+            cur->next = nullptr;
+#endif
             prev->next = nullptr;
             chat_history_size--;
         }
@@ -135,9 +141,15 @@ void ssh_chatter_sync_free_history()
     chat_message_t *cur = chat_history_head;
     while (cur) {
         chat_message_t *next = cur->next;
+#if !(defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC)
         GC_FREE(cur->username);
         GC_FREE(cur->message_body);
         GC_FREE(cur);
+#else
+        cur->username = nullptr;
+        cur->message_body = nullptr;
+        cur->next = nullptr;
+#endif
         cur = next;
     }
     chat_history_head = nullptr;

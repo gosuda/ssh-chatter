@@ -1617,6 +1617,9 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
                                          &args)) {
         session_handle_captcha(ctx, args);
         return;
+    } else if (session_parse_command(effective_line, "/geo", &args)) {
+        session_handle_geo_language(ctx, args);
+        return;
     } else if (session_parse_command_any(ctx, "/eliza", effective_line,
                                          &args)) {
         session_handle_eliza(ctx, args);
@@ -3151,17 +3154,21 @@ static void *host_telnet_thread(void *arg)
                  (int)sizeof(ctx->client_ip) - 1, peer_address);
         ctx->input_mode = SESSION_INPUT_MODE_CHAT;
 
+        bool geo_language_enabled =
+            atomic_load(&ctx->owner->geo_language_enabled);
         session_ui_language_t provider_language = SESSION_UI_LANGUAGE_COUNT;
         char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
-        bool provider_detected = session_detect_provider_ip(
-            ctx->client_ip, provider_label, sizeof(provider_label));
+        bool provider_detected =
+            geo_language_enabled &&
+            session_detect_provider_ip(ctx->client_ip, provider_label,
+                                       sizeof(provider_label));
         if (provider_detected &&
             host_provider_language_preference(host, provider_label,
                                               &provider_language)) {
             ctx->ui_language = provider_language;
             ctx->active_codepage =
                 session_codepage_for_language(provider_language);
-        } else {
+        } else if (geo_language_enabled) {
             session_ui_language_t geo_language =
                 session_client_geo_language(ctx);
             if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
@@ -3169,10 +3176,14 @@ static void *host_telnet_thread(void *arg)
                 ctx->active_codepage =
                     session_codepage_for_language(geo_language);
             } else {
-                ctx->ui_language = SESSION_UI_LANGUAGE_KO;
+                ctx->ui_language = SESSION_UI_LANGUAGE_EN;
                 ctx->active_codepage =
-                    session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
+                    session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
             }
+        } else {
+            ctx->ui_language = SESSION_UI_LANGUAGE_EN;
+            ctx->active_codepage =
+                session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
         }
 
         /* Favor CP437-style output for legacy telnet clients */
@@ -4271,6 +4282,7 @@ void host_init(host_t *host, auth_profile_t *auth)
                             errno != 0 ? errno : EIO);
     }
     atomic_store(&host->auto_ban_enabled, false);
+    atomic_store(&host->geo_language_enabled, false);
     const char *auto_ban_toggle = getenv("CHATTER_AUTO_BAN");
     if (auto_ban_toggle != nullptr && auto_ban_toggle[0] != '\0') {
         if (strcasecmp(auto_ban_toggle, "1") == 0 ||
@@ -5626,17 +5638,22 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                      (int)sizeof(ctx->client_ip) - 1, peer_address);
             ctx->input_mode = SESSION_INPUT_MODE_CHAT;
 
-            session_ui_language_t provider_language = SESSION_UI_LANGUAGE_COUNT;
+            bool geo_language_enabled =
+                atomic_load(&ctx->owner->geo_language_enabled);
+            session_ui_language_t provider_language =
+                SESSION_UI_LANGUAGE_COUNT;
             char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
-            bool provider_detected = session_detect_provider_ip(
-                ctx->client_ip, provider_label, sizeof(provider_label));
+            bool provider_detected =
+                geo_language_enabled &&
+                session_detect_provider_ip(ctx->client_ip, provider_label,
+                                           sizeof(provider_label));
             if (provider_detected &&
                 host_provider_language_preference(host, provider_label,
                                                   &provider_language)) {
                 ctx->ui_language = provider_language;
                 ctx->active_codepage =
                     session_codepage_for_language(provider_language);
-            } else {
+            } else if (geo_language_enabled) {
                 session_ui_language_t geo_language =
                     session_client_geo_language(ctx);
                 if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
@@ -5644,10 +5661,14 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     ctx->active_codepage =
                         session_codepage_for_language(geo_language);
                 } else {
-                    ctx->ui_language = SESSION_UI_LANGUAGE_KO;
+                    ctx->ui_language = SESSION_UI_LANGUAGE_EN;
                     ctx->active_codepage =
-                        session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
+                        session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
                 }
+            } else {
+                ctx->ui_language = SESSION_UI_LANGUAGE_EN;
+                ctx->active_codepage =
+                    session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
             }
             if (client_banner != nullptr && client_banner[0] != '\0') {
                 snprintf(ctx->client_banner, sizeof(ctx->client_banner), "%s",

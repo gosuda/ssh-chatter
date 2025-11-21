@@ -36,6 +36,7 @@
 #define SSH_CHATTER_USERNAME_LEN 24
 #define SSH_CHATTER_IP_LEN 64
 #define SSH_CHATTER_COLOR_NAME_LEN 32
+#define SSH_CHATTER_COLOR_CODE_LEN 48
 #define ALPHA_GRAVITY_NAME_LEN 32
 #define ALPHA_MAX_GRAVITY_SOURCES 16
 #define ALPHA_MAX_WAYPOINTS 4U
@@ -598,6 +599,8 @@ typedef struct session_ctx {
     const char *user_color_code;
     const char *user_highlight_code;
     bool user_is_bold;
+    char user_color_code_buffer[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code_buffer[SSH_CHATTER_COLOR_CODE_LEN];
     char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
     const char *system_fg_code;
@@ -876,6 +879,7 @@ typedef struct host {
     _Atomic bool security_clamav_enabled;
     _Atomic bool security_clamav_failure_logged;
     _Atomic bool auto_ban_enabled;
+    _Atomic bool geo_language_enabled;
     char security_clamav_command[PATH_MAX];
     pthread_t security_clamav_thread;
     bool security_clamav_thread_initialized;

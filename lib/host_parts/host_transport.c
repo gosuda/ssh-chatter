@@ -2033,6 +2033,8 @@ static void session_render_caption_with_offset(session_ctx_t *ctx,
                                                size_t move_up);
 static void session_send_line(session_ctx_t *ctx, const char *message);
 static void session_send_plain_line(session_ctx_t *ctx, const char *message);
+static void session_send_multiline_message(session_ctx_t *ctx,
+                                           const char *message);
 static void session_send_system_line(session_ctx_t *ctx, const char *message);
 void session_send_raw_text(session_ctx_t *ctx, const char *text);
 
@@ -4313,7 +4315,8 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         }
 
         if (entry->is_user_message) {
-            // Format user message directly
+            // Format user message directly, handling multi-line content to avoid
+            // inserting unintended blank lines.
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
             const char *color =
                 entry->user_color_code != nullptr ? entry->user_color_code : "";
@@ -4325,10 +4328,24 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                                        sizeof(id_label));
             }
 
-            snprintf(formatted, sizeof(formatted), "%s%s [%s] <%s>%s %s", color,
-                     bold, id_label, entry->username, ANSI_RESET,
-                     entry->message);
-            session_send_plain_line(member, formatted);
+            char name_block[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s", color,
+                     bold, id_label, entry->username, ANSI_RESET);
+
+            if (entry->message[0] != '\0') {
+                const bool multiline = strchr(entry->message, '\n') != nullptr;
+                if (multiline) {
+                    snprintf(formatted, sizeof(formatted), "%s ", name_block);
+                    session_send_plain_line(member, formatted);
+                    session_send_multiline_message(member, entry->message);
+                } else {
+                    snprintf(formatted, sizeof(formatted), "%s %s", name_block,
+                             entry->message);
+                    session_send_plain_line(member, formatted);
+                }
+            } else {
+                session_send_plain_line(member, name_block);
+            }
 
             // Send attachment if present
             if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&

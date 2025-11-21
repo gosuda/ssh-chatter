@@ -26,6 +26,7 @@ static message_received_callback_t msg_callback = nullptr;
 static chat_message_t *chat_history_head = nullptr;
 static int chat_history_size = 0;
 static pthread_mutex_t history_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool history_mutex_initialized = false;
 
 static sync_settings_t current_settings = {.sync_in_enabled = true,
                                            .sync_out_enabled = true,
@@ -79,6 +80,10 @@ static void *retry_connection_thread(void *arg)
 
 void ssh_chatter_sync_add_message_to_history(const chat_message_t *new_msg)
 {
+    if (!history_mutex_initialized) {
+        return;
+    }
+
     pthread_mutex_lock(&history_mutex);
 
     if (chat_history_head &&
@@ -122,6 +127,10 @@ void ssh_chatter_sync_add_message_to_history(const chat_message_t *new_msg)
 
 void ssh_chatter_sync_free_history()
 {
+    if (!history_mutex_initialized) {
+        return;
+    }
+
     pthread_mutex_lock(&history_mutex);
     chat_message_t *cur = chat_history_head;
     while (cur) {
@@ -134,7 +143,6 @@ void ssh_chatter_sync_free_history()
     chat_history_head = nullptr;
     chat_history_size = 0;
     pthread_mutex_unlock(&history_mutex);
-    pthread_mutex_destroy(&history_mutex);
 }
 
 chat_message_t *ssh_chatter_sync_get_last_messages(int count)
@@ -146,7 +154,10 @@ chat_message_t *ssh_chatter_sync_get_last_messages(int count)
 void ssh_chatter_sync_init()
 {
     fprintf(stderr, "[SSH_SYNC] Initialized SSH Chatter Sync module.\n");
-    pthread_mutex_init(&history_mutex, nullptr);
+    if (!history_mutex_initialized) {
+        pthread_mutex_init(&history_mutex, nullptr);
+        history_mutex_initialized = true;
+    }
     ssh_chatter_sync_load_settings();
 
     if (pthread_create(&retry_thread, nullptr, retry_connection_thread,
@@ -250,6 +261,17 @@ void ssh_chatter_sync_stop()
     }
 
     ssh_chatter_sync_free_history();
+}
+
+void ssh_chatter_sync_cleanup()
+{
+    if (!history_mutex_initialized) {
+        return;
+    }
+
+    ssh_chatter_sync_free_history();
+    pthread_mutex_destroy(&history_mutex);
+    history_mutex_initialized = false;
 }
 
 void ssh_chatter_sync_manual_trigger()

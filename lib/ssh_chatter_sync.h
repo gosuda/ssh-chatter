@@ -43,6 +43,9 @@ void ssh_chatter_sync_start();
 // Stop the synchronization process
 void ssh_chatter_sync_stop();
 
+// Cleanup synchronization resources (history and mutex)
+void ssh_chatter_sync_cleanup();
+
 // Manually trigger synchronization
 void ssh_chatter_sync_manual_trigger();
 

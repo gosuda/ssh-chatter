@@ -2115,6 +2115,7 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
                                         uint64_t *first_removed,
                                         uint64_t *last_removed,
                                         size_t *replies_removed);
+static void chat_room_broadcast_should_sink(chat_room_t *room);
 static void chat_room_broadcast_entry(chat_room_t *room,
                                       const chat_history_entry_t *entry,
                                       const session_ctx_t *from);
@@ -4061,6 +4062,43 @@ static void chat_room_remove(chat_room_t *room, const session_ctx_t *session)
     pthread_mutex_unlock(&room->lock);
 }
 
+static void chat_room_broadcast_should_sink(chat_room_t *room)
+{
+    if (room == nullptr) {
+        return;
+    }
+
+    session_ctx_t **targets = nullptr;
+    size_t target_count = 0U;
+
+    pthread_mutex_lock(&room->lock);
+    size_t expected_targets = room->member_count;
+    if (expected_targets > 0U) {
+        targets = GC_MALLOC(expected_targets * sizeof(*targets));
+        if (targets != nullptr) {
+            memset(targets, 0, expected_targets * sizeof(*targets));
+            for (size_t idx = 0; idx < room->member_count; ++idx) {
+                session_ctx_t *member = room->members[idx];
+                if (member == nullptr || member->channel == nullptr) {
+                    continue;
+                }
+                targets[target_count++] = member;
+            }
+        }
+    }
+    pthread_mutex_unlock(&room->lock);
+
+    if (targets == nullptr && target_count == 0U) {
+        return;
+    }
+
+    for (size_t idx = 0; idx < target_count; ++idx) {
+        session_flag_should_sink(targets[idx]);
+    }
+
+    GC_FREE(targets);
+}
+
 static void chat_room_broadcast(chat_room_t *room, const char *message,
                                 const session_ctx_t *from)
 {
@@ -4075,8 +4113,9 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     pthread_mutex_lock(&room->lock);
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
-        targets = calloc(expected_targets, sizeof(*targets));
+        targets = GC_MALLOC(expected_targets * sizeof(*targets));
         if (targets != nullptr) {
+            memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
                 if (member == nullptr || member->channel == nullptr) {
@@ -4168,8 +4207,9 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
     pthread_mutex_lock(&room->lock);
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
-        targets = calloc(expected_targets, sizeof(*targets));
+        targets = GC_MALLOC(expected_targets * sizeof(*targets));
         if (targets != nullptr) {
+            memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
                 if (member == nullptr || member->channel == nullptr) {
@@ -4240,6 +4280,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         return;
     }
 
+    // Broadcast sink flag so listeners can pull the latest chat chunk when appropriate
+    chat_room_broadcast_should_sink(room);
+
     session_ctx_t **targets = nullptr;
     size_t target_count = 0U;
     size_t expected_targets = 0U;
@@ -4247,8 +4290,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     pthread_mutex_lock(&room->lock);
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
-        targets = calloc(expected_targets, sizeof(*targets));
+        targets = GC_MALLOC(expected_targets * sizeof(*targets));
         if (targets != nullptr) {
+            memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
                 if (member == nullptr || member->channel == nullptr) {

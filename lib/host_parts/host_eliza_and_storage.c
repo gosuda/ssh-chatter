@@ -5177,7 +5177,9 @@ static bool session_telnet_prompt_unicode_check(session_ctx_t *ctx)
         int ret = 0;
         if (!ret)
             ret = setjmp(ask_unicode_sanity);
-        session_send_system_line(ctx, "Does it display fine? >> 한국 << <Y/N>");
+        session_send_plain_line(ctx, "Are you using Unicode terminal? <Y/N>");
+        session_send_plain_line(ctx, "If you are using SyncTerm/other Retro Terms,");
+        session_send_plain_line(ctx, "Type N");
         session_channel_write(ctx, "> ", 2U);
 
         if (!session_telnet_collect_line(ctx, resp, sizeof(resp))) {

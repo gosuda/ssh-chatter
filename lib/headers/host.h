@@ -224,9 +224,8 @@ typedef struct chat_history_entry {
     bool preserve_whitespace;
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     char username[SSH_CHATTER_USERNAME_LEN];
-    char user_ip[SSH_CHATTER_IP_LEN];
-    const char *user_color_code;
-    const char *user_highlight_code;
+    char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
     bool user_is_bold;
     char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
@@ -597,8 +596,8 @@ typedef struct session_ctx {
     char terminal_type[SSH_CHATTER_TERMINAL_TYPE_LEN];
     char retro_client_marker[SSH_CHATTER_TERMINAL_TYPE_LEN];
     char telnet_identity[SSH_CHATTER_CLIENT_BANNER_LEN];
-    const char *user_color_code;
-    const char *user_highlight_code;
+    char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
     bool user_is_bold;
     char user_color_code_buffer[SSH_CHATTER_COLOR_CODE_LEN];
     char user_highlight_code_buffer[SSH_CHATTER_COLOR_CODE_LEN];

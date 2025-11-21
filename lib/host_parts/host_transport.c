@@ -4079,7 +4079,7 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
             memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
-                if (member == nullptr || member->channel == nullptr) {
+                if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4118,7 +4118,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
-                if (member == nullptr || member->channel == nullptr) {
+                if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
                 if (from != nullptr && member == from) {
@@ -4212,7 +4212,7 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
             memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
-                if (member == nullptr || member->channel == nullptr) {
+                if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
                 // Skip users who have the no_update flag set (scrolled back in history)
@@ -4295,7 +4295,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
-                if (member == nullptr || member->channel == nullptr) {
+                if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
                 if (from != nullptr && member == from) {

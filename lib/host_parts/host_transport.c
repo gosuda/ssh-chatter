@@ -2115,7 +2115,6 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
                                         uint64_t *first_removed,
                                         uint64_t *last_removed,
                                         size_t *replies_removed);
-static void chat_room_broadcast_should_sink(chat_room_t *room);
 static void chat_room_broadcast_entry(chat_room_t *room,
                                       const chat_history_entry_t *entry,
                                       const session_ctx_t *from);
@@ -4062,43 +4061,6 @@ static void chat_room_remove(chat_room_t *room, const session_ctx_t *session)
     pthread_mutex_unlock(&room->lock);
 }
 
-static void chat_room_broadcast_should_sink(chat_room_t *room)
-{
-    if (room == nullptr) {
-        return;
-    }
-
-    session_ctx_t **targets = nullptr;
-    size_t target_count = 0U;
-
-    pthread_mutex_lock(&room->lock);
-    size_t expected_targets = room->member_count;
-    if (expected_targets > 0U) {
-        targets = GC_MALLOC(expected_targets * sizeof(*targets));
-        if (targets != nullptr) {
-            memset(targets, 0, expected_targets * sizeof(*targets));
-            for (size_t idx = 0; idx < room->member_count; ++idx) {
-                session_ctx_t *member = room->members[idx];
-                if (member == nullptr || !session_transport_active(member)) {
-                    continue;
-                }
-                targets[target_count++] = member;
-            }
-        }
-    }
-    pthread_mutex_unlock(&room->lock);
-
-    if (targets == nullptr && target_count == 0U) {
-        return;
-    }
-
-    for (size_t idx = 0; idx < target_count; ++idx) {
-        session_flag_should_sink(targets[idx]);
-    }
-
-    GC_FREE(targets);
-}
-
 static void chat_room_broadcast(chat_room_t *room, const char *message,
                                 const session_ctx_t *from)
 {
@@ -4280,19 +4242,20 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         return;
     }
 
-    // Broadcast sink flag so listeners can pull the latest chat chunk when appropriate
-    chat_room_broadcast_should_sink(room);
-
     session_ctx_t **targets = nullptr;
     size_t target_count = 0U;
     size_t expected_targets = 0U;
+    session_ctx_t **sink_targets = nullptr;
+    size_t sink_count = 0U;
 
     pthread_mutex_lock(&room->lock);
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
         targets = GC_MALLOC(expected_targets * sizeof(*targets));
-        if (targets != nullptr) {
+        sink_targets = GC_MALLOC(expected_targets * sizeof(*sink_targets));
+        if (targets != nullptr && sink_targets != nullptr) {
             memset(targets, 0, expected_targets * sizeof(*targets));
+            memset(sink_targets, 0, expected_targets * sizeof(*sink_targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
                 if (member == nullptr || !session_transport_active(member)) {
@@ -4310,6 +4273,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                 }
                 if (member->no_update &&
                     member->transport_kind != SESSION_TRANSPORT_TELNET) {
+                    sink_targets[sink_count++] = member;
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4318,9 +4282,16 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     }
     pthread_mutex_unlock(&room->lock);
 
+    if (sink_targets != nullptr && sink_count > 0U) {
+        for (size_t idx = 0; idx < sink_count; ++idx) {
+            session_flag_should_sink(sink_targets[idx]);
+        }
+    }
+
     if (targets == nullptr && expected_targets > 0U) {
         humanized_log_error(
             "chat-room", "failed to allocate entry broadcast buffer", ENOMEM);
+        GC_FREE(sink_targets);
         return;
     }
 
@@ -4409,6 +4380,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     }
 
     GC_FREE(targets);
+    GC_FREE(sink_targets);
 }
 
 static void

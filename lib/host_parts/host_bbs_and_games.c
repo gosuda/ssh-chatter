@@ -6081,6 +6081,51 @@ static bool session_valid_ansi_256_sequence(const char *sequence)
     return found_escape;
 }
 
+static bool session_translate_escape_sequences(const char *input,
+                                                char *output,
+                                                size_t output_size)
+{
+    if (input == NULL || output == NULL || output_size == 0U) {
+        return false;
+    }
+
+    const char *cursor = input;
+    char *out = output;
+    char *out_limit = output + output_size - 1U;
+
+    while (*cursor != '\0') {
+        if (out >= out_limit) {
+            return false;
+        }
+
+        if (*cursor == '\\') {
+            if (strncmp(cursor, "\\033", 4U) == 0 || strncmp(cursor, "\\x1b", 4U) == 0 ||
+                strncmp(cursor, "\\x1B", 4U) == 0) {
+                *out++ = '\x1b';
+                cursor += 4U;
+                continue;
+            }
+
+            if (strncmp(cursor, "\\u001b", 6U) == 0 || strncmp(cursor, "\\u001B", 6U) == 0) {
+                *out++ = '\x1b';
+                cursor += 6U;
+                continue;
+            }
+
+            if (cursor[1] == 'e' || cursor[1] == 'E') {
+                *out++ = '\x1b';
+                cursor += 2U;
+                continue;
+            }
+        }
+
+        *out++ = *cursor++;
+    }
+
+    *out = '\0';
+    return true;
+}
+
 static void session_handle_color(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr) {
@@ -6138,7 +6183,10 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
             return;
         }
 
-        if (!session_valid_ansi_256_sequence(raw_code)) {
+        char translated_code[SSH_CHATTER_COLOR_CODE_LEN];
+        if (!session_translate_escape_sequences(raw_code, translated_code,
+                                                sizeof(translated_code)) ||
+            !session_valid_ansi_256_sequence(translated_code)) {
             session_send_system_line(
                 ctx,
                 "Invalid ANSI/256 expression. Use sequences like \\033[38;5;196m.");
@@ -6146,7 +6194,7 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
         }
 
         snprintf(ctx->user_color_code_buffer,
-                 sizeof(ctx->user_color_code_buffer), "%s", raw_code);
+                 sizeof(ctx->user_color_code_buffer), "%s", translated_code);
         ctx->user_color_code = ctx->user_color_code_buffer;
         ctx->user_highlight_code_buffer[0] = '\0';
         ctx->user_highlight_code = ctx->user_highlight_code_buffer;

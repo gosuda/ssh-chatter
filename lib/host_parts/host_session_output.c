@@ -2657,6 +2657,17 @@ void session_scrollback_reset_position(session_ctx_t *ctx)
     session_process_pending_sink(ctx);
 }
 
+static void session_scrollback_prepare_display(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || !session_transport_active(ctx)) {
+        return;
+    }
+
+    session_clear_screen(ctx);
+    session_apply_background_fill(ctx);
+    session_render_separator(ctx, "Chatroom");
+}
+
 void session_process_pending_sink(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr || !ctx->pending_should_sink) {
@@ -2877,6 +2888,8 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
         session_output_buffer_start(ctx);
     }
 
+    session_scrollback_prepare_display(ctx);
+
     size_t step = session_visible_history_lines(ctx);
     if (step == 0U) {
         step = 1U;
@@ -3056,6 +3069,8 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     if (buffering_started) {
         session_output_buffer_start(ctx);
     }
+
+    session_scrollback_prepare_display(ctx);
 
     size_t visible_lines = session_visible_history_lines(ctx);
     if (visible_lines == 0U) {

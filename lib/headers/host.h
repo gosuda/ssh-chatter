@@ -875,6 +875,7 @@ typedef struct host {
     _Atomic bool security_ai_enabled;
     _Atomic bool security_clamav_enabled;
     _Atomic bool security_clamav_failure_logged;
+    _Atomic bool auto_ban_enabled;
     char security_clamav_command[PATH_MAX];
     pthread_t security_clamav_thread;
     bool security_clamav_thread_initialized;
@@ -976,6 +977,7 @@ void session_send_raw_text(session_ctx_t *ctx, const char *text);
 void host_init(host_t *host, auth_profile_t *auth);
 void host_set_motd(host_t *host, const char *motd);
 void host_set_welcome_banner(host_t *host, const char *banner);
+bool host_auto_ban_enabled(const host_t *host);
 int host_serve(host_t *host, const char *bind_addr, const char *port,
                const char *key_directory, const char *telnet_bind_addr,
                const char *telnet_port);

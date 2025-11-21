@@ -900,6 +900,15 @@ static size_t host_prepare_join_delay(host_t *host,
     return progress;
 }
 
+bool host_auto_ban_enabled(const host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+
+    return atomic_load(&host->auto_ban_enabled);
+}
+
 static host_join_attempt_result_t
 host_register_join_attempt(host_t *host, const char *username, const char *ip)
 {
@@ -913,6 +922,7 @@ host_register_join_attempt(host_t *host, const char *username, const char *ip)
     bool ban_ip = false;
     bool ban_same_name = false;
     bool exempt_ip = false;
+    bool allow_auto_ban = host_auto_ban_enabled(host);
     bool kick_ip = false;
 
     pthread_mutex_lock(&host->lock);
@@ -992,7 +1002,7 @@ host_register_join_attempt(host_t *host, const char *username, const char *ip)
     }
     pthread_mutex_unlock(&host->lock);
 
-    if (!exempt_ip && (ban_ip || ban_same_name)) {
+    if (allow_auto_ban && !exempt_ip && (ban_ip || ban_same_name)) {
         const char *ban_user =
             (ban_same_name && username != nullptr && username[0] != '\0')
                 ? username
@@ -1033,6 +1043,8 @@ static bool host_register_suspicious_activity(host_t *host,
         return false;
     }
 
+    bool allow_auto_ban = host_auto_ban_enabled(host);
+
     struct timespec now = {0, 0};
     clock_gettime(CLOCK_MONOTONIC, &now);
 
@@ -1064,7 +1076,8 @@ static bool host_register_suspicious_activity(host_t *host,
         *attempts_out = attempts;
     }
 
-    if (attempts >= SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD) {
+    if (attempts >= SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD &&
+        allow_auto_ban) {
         const char *ban_user =
             (username != nullptr && username[0] != '\0') ? username : "";
         (void)host_add_ban_entry(host, ban_user, ip);
@@ -4257,6 +4270,19 @@ void host_init(host_t *host, auth_profile_t *auth)
                             "failed to initialise layered message encryption",
                             errno != 0 ? errno : EIO);
     }
+    atomic_store(&host->auto_ban_enabled, true);
+    const char *auto_ban_toggle = getenv("CHATTER_AUTO_BAN");
+    if (auto_ban_toggle != nullptr && auto_ban_toggle[0] != '\0') {
+        if (strcasecmp(auto_ban_toggle, "0") == 0 ||
+            strcasecmp(auto_ban_toggle, "false") == 0 ||
+            strcasecmp(auto_ban_toggle, "off") == 0 ||
+            strcasecmp(auto_ban_toggle, "disable") == 0 ||
+            strcasecmp(auto_ban_toggle, "disabled") == 0 ||
+            strcasecmp(auto_ban_toggle, "no") == 0) {
+            atomic_store(&host->auto_ban_enabled, false);
+            printf("[config] automatic bans disabled via CHATTER_AUTO_BAN\n");
+        }
+    }
     host_load_lan_operator_credentials(host);
     const palette_descriptor_t *default_palette =
         palette_find_descriptor("clean");
@@ -5463,6 +5489,8 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 peer_address[sizeof(peer_address) - 1U] = '\0';
             }
 
+            bool allow_auto_ban = host_auto_ban_enabled(host);
+
             connection_guard_result_t guard =
                 host_connection_guard_register(host, peer_address);
             if (guard.blocked) {
@@ -5481,10 +5509,14 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     peer_address, guard.attempt_count, wait_seconds);
                 ssh_disconnect(session);
                 ssh_free(session);
-                if (guard.escalate_ban &&
+                if (allow_auto_ban && guard.escalate_ban &&
                     host_add_ban_entry(host, "", peer_address)) {
                     printf("[auto-ban] %s banned after repeated connection "
                            "flooding\n",
+                           peer_address);
+                } else if (guard.escalate_ban && !allow_auto_ban) {
+                    printf("[throttle] auto-ban disabled; %s would be banned "
+                           "after repeated connection flooding\n",
                            peer_address);
                 }
                 continue;
@@ -5494,8 +5526,9 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
             const char *client_banner = ssh_get_clientbanner(session);
             const version_ip_ban_rule_t *matched_rule = nullptr;
-            if (host_version_ip_should_ban(host, client_banner, peer_address,
-                                           &matched_rule)) {
+            if (allow_auto_ban && host_version_ip_should_ban(host, client_banner,
+                                                             peer_address,
+                                                             &matched_rule)) {
                 const char *version_display =
                     (client_banner != nullptr && client_banner[0] != '\0')
                         ? client_banner
@@ -5521,13 +5554,27 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 ssh_disconnect(session);
                 ssh_free(session);
                 continue;
+            } else if (!allow_auto_ban &&
+                       host_version_ip_should_ban(host, client_banner,
+                                                  peer_address, &matched_rule)) {
+                const char *version_display =
+                    (client_banner != nullptr && client_banner[0] != '\0')
+                        ? client_banner
+                        : "unknown";
+                printf("[auto-ban disabled] %s matched version/IP policy for '%s'"\
+                       " but ban was suppressed\n",
+                       peer_address, version_display);
             }
 
-            if (guard.escalate_ban &&
+            if (allow_auto_ban && guard.escalate_ban &&
                 host_add_ban_entry(host, "", peer_address)) {
                 printf(
                     "[auto-ban] %s banned after repeated connection flooding\n",
                     peer_address);
+            } else if (guard.escalate_ban && !allow_auto_ban) {
+                printf("[connect] auto-ban disabled; continuing after connection "
+                       "flooding from %s\n",
+                       peer_address);
             }
 
             session_ctx_t *ctx = session_create();

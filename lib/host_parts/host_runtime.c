@@ -4270,16 +4270,23 @@ void host_init(host_t *host, auth_profile_t *auth)
                             "failed to initialise layered message encryption",
                             errno != 0 ? errno : EIO);
     }
-    atomic_store(&host->auto_ban_enabled, true);
+    atomic_store(&host->auto_ban_enabled, false);
     const char *auto_ban_toggle = getenv("CHATTER_AUTO_BAN");
     if (auto_ban_toggle != nullptr && auto_ban_toggle[0] != '\0') {
-        if (strcasecmp(auto_ban_toggle, "0") == 0 ||
-            strcasecmp(auto_ban_toggle, "false") == 0 ||
-            strcasecmp(auto_ban_toggle, "off") == 0 ||
-            strcasecmp(auto_ban_toggle, "disable") == 0 ||
-            strcasecmp(auto_ban_toggle, "disabled") == 0 ||
-            strcasecmp(auto_ban_toggle, "no") == 0) {
-            atomic_store(&host->auto_ban_enabled, false);
+        if (strcasecmp(auto_ban_toggle, "1") == 0 ||
+            strcasecmp(auto_ban_toggle, "true") == 0 ||
+            strcasecmp(auto_ban_toggle, "on") == 0 ||
+            strcasecmp(auto_ban_toggle, "enable") == 0 ||
+            strcasecmp(auto_ban_toggle, "enabled") == 0 ||
+            strcasecmp(auto_ban_toggle, "yes") == 0) {
+            atomic_store(&host->auto_ban_enabled, true);
+            printf("[config] automatic bans enabled via CHATTER_AUTO_BAN\n");
+        } else if (strcasecmp(auto_ban_toggle, "0") == 0 ||
+                   strcasecmp(auto_ban_toggle, "false") == 0 ||
+                   strcasecmp(auto_ban_toggle, "off") == 0 ||
+                   strcasecmp(auto_ban_toggle, "disable") == 0 ||
+                   strcasecmp(auto_ban_toggle, "disabled") == 0 ||
+                   strcasecmp(auto_ban_toggle, "no") == 0) {
             printf("[config] automatic bans disabled via CHATTER_AUTO_BAN\n");
         }
     }

@@ -30,8 +30,19 @@ static void session_channel_flush(session_ctx_t *ctx)
         return;
     }
 
-    // Telnet uses direct socket writes, no flush needed
+    // For telnet, flush buffered output and nudge the socket so queued bytes
+    // are delivered immediately even if the client is idle
     if (ctx->transport_kind == SESSION_TRANSPORT_TELNET) {
+        session_output_buffer_flush(ctx);
+        struct pollfd pfd = {
+            .fd = ctx->telnet_fd,
+            .events = POLLOUT,
+            .revents = 0,
+        };
+        if (poll(&pfd, 1, SSH_CHATTER_CHANNEL_WRITE_TIMEOUT_MS) > 0 &&
+            (pfd.revents & POLLOUT) != 0) {
+            send(ctx->telnet_fd, "", 0, MSG_NOSIGNAL);
+        }
         return;
     }
 
@@ -46,7 +57,8 @@ static void session_channel_flush(session_ctx_t *ctx)
 This function:
 - Calls `ssh_blocking_flush()` from libssh to force buffered data to be transmitted
 - Uses a 50ms timeout to avoid blocking indefinitely
-- Only applies to SSH connections (telnet doesn't need this)
+- Also forces telnet sockets to flush any pending bytes so chat output stays
+  synchronized even when the user is idle
 
 ### 2. Flush After Broadcasting
 

@@ -3921,8 +3921,16 @@ static int session_authenticate(session_ctx_t *ctx)
         case SSH_REQUEST_AUTH: {
             const char *username = ssh_message_auth_user(message);
             if (username != nullptr && username[0] != '\0') {
-                snprintf(ctx->user.name, sizeof(ctx->user.name), "%.*s",
-                         SSH_CHATTER_USERNAME_LEN - 1, username);
+                char cleaned_username[SSH_CHATTER_USERNAME_LEN];
+                if (!user_data_strip_ansi_sequences(username, cleaned_username,
+                                                    sizeof(cleaned_username)) ||
+                    cleaned_username[0] == '\0') {
+                    snprintf(cleaned_username, sizeof(cleaned_username),
+                             "%.*s", SSH_CHATTER_USERNAME_LEN - 1, username);
+                }
+
+                snprintf(ctx->user.name, sizeof(ctx->user.name), "%s",
+                         cleaned_username);
             }
 
             // Load user data

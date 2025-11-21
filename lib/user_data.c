@@ -34,6 +34,77 @@ static void user_data_profile_picture_overlay(const char *root,
 static bool user_data_profile_picture_store(const char *root,
                                             const user_data_record_t *record);
 
+static bool user_data_should_skip_osc_terminator(const char *text,
+                                                 size_t idx)
+{
+    return text[idx] == '\033' && text[idx + 1U] != '\0' &&
+           text[idx + 1U] == '\\';
+}
+
+bool user_data_strip_ansi_sequences(const char *restrict input,
+                                    char *restrict output, size_t length)
+{
+    if (output == nullptr || length == 0U) {
+        return false;
+    }
+
+    output[0] = '\0';
+    if (input == nullptr) {
+        return false;
+    }
+
+    size_t out_idx = 0U;
+    for (size_t idx = 0U; input[idx] != '\0';) {
+        unsigned char ch = (unsigned char)input[idx];
+        if (ch == '\033') {
+            ++idx; // Skip ESC
+            if (input[idx] == '\0') {
+                break;
+            }
+            if (input[idx] == '[') {
+                ++idx;
+                while (input[idx] != '\0' &&
+                       !(input[idx] >= '@' && input[idx] <= '~')) {
+                    ++idx;
+                }
+                if (input[idx] != '\0') {
+                    ++idx; // Consume final byte
+                }
+                continue;
+            }
+
+            if (input[idx] == ']') {
+                ++idx;
+                while (input[idx] != '\0' && input[idx] != '\007' &&
+                       !user_data_should_skip_osc_terminator(input, idx)) {
+                    ++idx;
+                }
+                if (input[idx] == '\007') {
+                    ++idx;
+                } else if (user_data_should_skip_osc_terminator(input, idx)) {
+                    idx += 2U;
+                }
+                continue;
+            }
+
+            continue;
+        }
+
+        if (iscntrl(ch) && ch != '\t') {
+            ++idx;
+            continue;
+        }
+
+        if (out_idx + 1U < length) {
+            output[out_idx++] = (char)ch;
+        }
+        ++idx;
+    }
+
+    output[out_idx] = '\0';
+    return true;
+}
+
 static size_t user_data_column_reset_sequence_length(const char *text)
 {
     if (text == nullptr) {

@@ -1280,7 +1280,7 @@ static const l10n_string_t PALETTE_DESC_HI_TEL =
     L10N_ALL("1990s Korean BBS blue background and text style");
 static const l10n_string_t PALETTE_NAME_BLACKPINK = L10N_ALL("blackpink");
 static const l10n_string_t PALETTE_DESC_BLACKPINK = L10N_ALL(
-    "Hi-Tel inspired palette with a black background and pink accents.");
+    "K-Pop inspired palette with a black background and pink accents.");
 static const l10n_string_t PALETTE_NAME_AMIGA_CLI = L10N_ALL("amiga-cli");
 static const l10n_string_t PALETTE_DESC_AMIGA_CLI =
     L10N_ALL("AmigaOS style with cyan/blue");
@@ -1699,7 +1699,7 @@ static const palette_descriptor_t PALETTE_DEFINITIONS[] = {
     {"hi-tel", &PALETTE_NAME_HI_TEL, &PALETTE_DESC_HI_TEL, "bright-white",
      "blue", true, "bright-white", "blue", "magenta", true, false},
     {"blackpink", &PALETTE_NAME_BLACKPINK, &PALETTE_DESC_BLACKPINK,
-     "bright-white", "blue", true, "bright-white", "black", "magenta", true,
+     "bright-white", "blue", false, "bright-white", "black", "magenta", false,
      false},
     {"amiga-cli", &PALETTE_NAME_AMIGA_CLI, &PALETTE_DESC_AMIGA_CLI, "cyan",
      "blue", true, "cyan", "blue", "blue", true, false},

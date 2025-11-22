@@ -1633,6 +1633,21 @@ static const l10n_string_t PALETTE_DESC_INDEPENDENCE_SPIRIT_256 =
     L10N_ALL("256-color reinterpretation of The spirit of independence. A "
              "soul that we must remember.");
 
+static const l10n_string_t PALETTE_NAME_FRENCH_ROCOCO_256 = L10N_ALL("french-rococo-256");
+static const l10n_string_t PALETTE_DESC_FRENCH_ROCOCO_256 = L10N_ALL("Dramatic Silence—Rameau to Couperin");
+
+static const l10n_string_t PALETTE_NAME_POLISH_CATHOLIC_256 = L10N_ALL("polish-catholic-256");
+static const l10n_string_t PALETTE_DESC_POLISH_CATHOLIC_256 = L10N_ALL("Sacred Echoes—Chant to Solidarity");
+
+static const l10n_string_t PALETTE_NAME_GERMAN_INDUSTRY_256 = L10N_ALL("german-industry-256");
+static const l10n_string_t PALETTE_DESC_GERMAN_INDUSTRY_256 = L10N_ALL("Iron Will & Innovation—Ruhr to Raumfahrt");
+
+static const l10n_string_t PALETTE_NAME_LEIPZIG_BLACK_256 = L10N_ALL("leipzig-black-256");
+static const l10n_string_t PALETTE_DESC_LEIPZIG_BLACK_256 = L10N_ALL("Timeless Trendsetter—J.S Bach To Graffiti");
+
+static const l10n_string_t PALETTE_NAME_CHOPIN_MAZURKA_256 = L10N_ALL("chopin-mazurka-256");
+static const l10n_string_t PALETTE_DESC_CHOPIN_MAZURKA_256 = L10N_ALL("Poetic Melancholy—Salon to Soul");
+
 static const palette_descriptor_t PALETTE_DEFINITIONS[] = {
     {"windows", &PALETTE_NAME_WINDOWS, &PALETTE_DESC_WINDOWS, "cyan", "blue",
      true, "white", "blue", "yellow", true, false},
@@ -1938,6 +1953,21 @@ static const palette_descriptor_t PALETTE_DEFINITIONS[] = {
      "xterm:20", "xterm-bg:16", "xterm-bg:229", true, true},
     {"monokai", &PALETTE_NAME_MONOKAI, &PALETTE_DESC_MONOKAI, "xterm:118",
      "xterm-bg:239", false, "xterm:255", "xterm-bg:235", "xterm-bg:239", false,
+     true},
+    {"french-rococo-256", &PALETTE_NAME_FRENCH_ROCOCO_256, &PALETTE_DESC_FRENCH_ROCOCO_256,
+     "xterm:218", "xterm-bg:229", false, "xterm:222", "xterm-bg:231", "xterm-bg:147", false,
+     true},
+    {"polish-catholic-256", &PALETTE_NAME_POLISH_CATHOLIC_256, &PALETTE_DESC_POLISH_CATHOLIC_256,
+     "xterm:226", "xterm-bg:21", true, "xterm:231", "xterm-bg:16", "xterm-bg:196", true,
+     true},
+    {"german-industry-256", &PALETTE_NAME_GERMAN_INDUSTRY_256, &PALETTE_DESC_GERMAN_INDUSTRY_256,
+     "xterm:208", "xterm-bg:238", true, "xterm:252", "xterm-bg:235", "xterm-bg:220", true,
+     true},
+    {"leipzig-black-256", &PALETTE_NAME_LEIPZIG_BLACK_256, &PALETTE_DESC_LEIPZIG_BLACK_256,
+     "xterm:250", "xterm-bg:232", false, "xterm:255", "xterm-bg:16", "xterm-bg:240", false,
+     true},
+    {"chopin-mazurka-256", &PALETTE_NAME_CHOPIN_MAZURKA_256, &PALETTE_DESC_CHOPIN_MAZURKA_256,
+     "xterm:111", "xterm-bg:16", false, "xterm:253", "xterm-bg:233", "xterm-bg:176", false,
      true},
 };
 

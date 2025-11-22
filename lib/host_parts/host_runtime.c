@@ -622,11 +622,20 @@ static void session_handle_nick(session_ctx_t *ctx, const char *arguments)
     snprintf(old_name, sizeof(old_name), "%s", ctx->user.name);
     snprintf(ctx->user.name, sizeof(ctx->user.name), "%s", new_name);
 
+    if (ctx->user_data_loaded) {
+        snprintf(ctx->user_data.preferred_nickname,
+                 sizeof(ctx->user_data.preferred_nickname), "%s", new_name);
+        if (ctx->owner != NULL && ctx->owner->user_data_root[0] != '\0') {
+            user_data_save(ctx->owner->user_data_root, &ctx->user_data,
+                           ctx->user_data.username);
+        }
+    }
+
     char announcement[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(announcement, sizeof(announcement), "* [%s] is now known as [%s]",
              old_name, ctx->user.name);
-    host_history_record_system(ctx->owner, announcement, nullptr);
-    chat_room_broadcast(&ctx->owner->room, announcement, nullptr);
+    host_history_record_system(ctx->owner, announcement, NULL);
+    chat_room_broadcast(&ctx->owner->room, announcement, NULL);
     session_apply_saved_preferences(ctx);
     session_send_system_line(ctx, "Display name updated.");
 }

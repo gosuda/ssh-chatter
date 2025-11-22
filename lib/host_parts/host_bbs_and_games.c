@@ -6189,7 +6189,7 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
             !session_valid_ansi_256_sequence(translated_code)) {
             session_send_system_line(
                 ctx,
-                "Invalid ANSI/256 expression. Use sequences like \\033[38;5;196m.");
+                "Invalid ANSI/256 expression. Use sequences like \\x1b[38;5;196m.");
             return;
         }
 

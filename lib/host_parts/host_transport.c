@@ -5029,55 +5029,6 @@ static bool host_history_find_entry_by_id(host_t *host, uint64_t message_id,
     return found;
 }
 
-static bool host_history_remove_join_entry(host_t *host, const char *username)
-{
-    if (host == nullptr || username == nullptr || username[0] == '\0') {
-        return false;
-    }
-
-    char join_message[SSH_CHATTER_MESSAGE_LIMIT];
-    int written = snprintf(join_message, sizeof(join_message),
-                           "* [%s] has joined the chat", username);
-    if (written < 0 || (size_t)written >= sizeof(join_message)) {
-        return false;
-    }
-
-    bool removed = false;
-    pthread_mutex_lock(&host->lock);
-    if (host->history != nullptr && host->history_count > 0U) {
-        size_t index = SIZE_MAX;
-        for (size_t idx = 0U; idx < host->history_count; ++idx) {
-            chat_history_entry_t *entry = &host->history[idx];
-            if (entry->is_user_message) {
-                continue;
-            }
-            if (strncmp(entry->message, join_message, sizeof(entry->message)) ==
-                0) {
-                index = idx;
-                break;
-            }
-        }
-
-        if (index != SIZE_MAX) {
-            for (size_t shift = index; shift + 1U < host->history_count;
-                 ++shift) {
-                host->history[shift] = host->history[shift + 1U];
-            }
-            memset(&host->history[host->history_count - 1U], 0,
-                   sizeof(host->history[host->history_count - 1U]));
-            --host->history_count;
-            if (host->history_total > 0U) {
-                --host->history_total;
-            }
-            removed = true;
-            host_state_save_locked(host);
-        }
-    }
-    pthread_mutex_unlock(&host->lock);
-
-    return removed;
-}
-
 static size_t host_history_delete_range(host_t *host, uint64_t start_id,
                                         uint64_t end_id,
                                         uint64_t *first_removed,

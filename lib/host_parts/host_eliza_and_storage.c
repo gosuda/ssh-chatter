@@ -1621,6 +1621,51 @@ static bool session_detect_retro_client(session_ctx_t *ctx)
     return detected;
 }
 
+static void session_apply_user_data_theme(session_ctx_t *ctx,
+                                          const user_data_record_t *record)
+{
+    if (ctx == nullptr || record == nullptr || !record->has_user_theme) {
+        return;
+    }
+
+    const char *color_code = nullptr;
+    const char *highlight_code = nullptr;
+
+    if (record->user_color_code[0] != '\0') {
+        snprintf(ctx->user_color_code_buffer,
+                 sizeof(ctx->user_color_code_buffer), "%s",
+                 record->user_color_code);
+        color_code = ctx->user_color_code_buffer;
+    } else if (record->user_color_name[0] != '\0') {
+        color_code = lookup_color_code(USER_COLOR_MAP,
+                                       sizeof(USER_COLOR_MAP) /
+                                           sizeof(USER_COLOR_MAP[0]),
+                                       record->user_color_name);
+    }
+
+    if (record->user_highlight_code[0] != '\0') {
+        snprintf(ctx->user_highlight_code_buffer,
+                 sizeof(ctx->user_highlight_code_buffer), "%s",
+                 record->user_highlight_code);
+        highlight_code = ctx->user_highlight_code_buffer;
+    } else if (record->user_highlight_name[0] != '\0') {
+        highlight_code = lookup_color_code(
+            HIGHLIGHT_COLOR_MAP,
+            sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
+            record->user_highlight_name);
+    }
+
+    if (color_code != nullptr && highlight_code != nullptr) {
+        ctx->user_color_code = color_code;
+        ctx->user_highlight_code = highlight_code;
+        ctx->user_is_bold = record->user_is_bold != 0U;
+        snprintf(ctx->user_color_name, sizeof(ctx->user_color_name), "%s",
+                 record->user_color_name);
+        snprintf(ctx->user_highlight_name, sizeof(ctx->user_highlight_name),
+                 "%s", record->user_highlight_name);
+    }
+}
+
 static void session_apply_saved_preferences(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
@@ -1628,10 +1673,14 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
     }
 
     host_t *host = ctx->owner;
+    const bool user_data_loaded = session_user_data_load(ctx);
+    const user_data_record_t *user_record =
+        user_data_loaded ? &ctx->user_data : nullptr;
     user_preference_t base_snapshot = (user_preference_t){0};
     user_preference_t ip_snapshot = (user_preference_t){0};
     bool has_base_snapshot = false;
     bool has_ip_snapshot = false;
+    bool user_theme_applied = false;
 
     pthread_mutex_lock(&host->lock);
     user_preference_t *pref =
@@ -1718,6 +1767,7 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
                 snprintf(ctx->user_highlight_name,
                          sizeof(ctx->user_highlight_name), "%s",
                          base_snapshot.user_highlight_name);
+                user_theme_applied = true;
             }
         }
 
@@ -1803,6 +1853,10 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
                  base_snapshot.camouflage_language);
     }
 
+    if (!user_theme_applied && user_record != nullptr) {
+        session_apply_user_data_theme(ctx, user_record);
+    }
+
     if (has_ip_snapshot && ip_snapshot.ui_language[0] != '\0') {
         session_ui_language_t saved_language =
             session_ui_language_from_code(ip_snapshot.ui_language);
@@ -1823,7 +1877,9 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
 
     session_refresh_output_encoding(ctx);
 
-    (void)session_user_data_load(ctx);
+    if (!user_data_loaded) {
+        (void)session_user_data_load(ctx);
+    }
     session_force_dark_mode_foreground(ctx);
 }
 

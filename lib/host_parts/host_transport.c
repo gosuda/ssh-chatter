@@ -2186,12 +2186,12 @@ static const char *session_display_name(const session_ctx_t *ctx)
         return "";
     }
 
-    if (ctx->user.name[0] != '\0') {
-        return ctx->user.name;
-    }
-
     if (ctx->user_data_loaded && ctx->user_data.preferred_nickname[0] != '\0') {
         return ctx->user_data.preferred_nickname;
+    }
+
+    if (ctx->user.name[0] != '\0') {
+        return ctx->user.name;
     }
 
     return "";

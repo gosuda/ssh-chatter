@@ -18,7 +18,7 @@
 #include <unistd.h>
 
 #define USER_DATA_MAGIC 0x4D424F58U /* 'MBOX' */
-#define USER_DATA_VERSION 5U
+#define USER_DATA_VERSION 6U
 
 #define USER_DATA_PROFILE_DIRECTORY "profiles"
 #define USER_DATA_VARIANT_LIMIT 32U
@@ -254,16 +254,12 @@ static bool user_data_load_raw(const char *path, user_data_record_t *record,
     const size_t expected_size = sizeof(user_data_record_t);
 
     user_data_record_t temp;
-    bool loaded = false;
+    memset(&temp, 0, sizeof(temp));
 
-    // current userdata
-    if (file_size == expected_size) {
-        size_t read = fread(&temp, sizeof(temp), 1U, fp);
-        if (read == 1U && temp.magic == USER_DATA_MAGIC &&
-            temp.version == USER_DATA_VERSION) {
-            loaded = true;
-        }
-    }
+    const size_t to_read = file_size < expected_size ? file_size : expected_size;
+    bool loaded = fread(&temp, 1U, to_read, fp) == to_read &&
+                  temp.magic == USER_DATA_MAGIC && temp.version > 0U &&
+                  temp.version <= USER_DATA_VERSION;
 
     fclose(fp);
 
@@ -272,7 +268,8 @@ static bool user_data_load_raw(const char *path, user_data_record_t *record,
     }
 
     if (needs_upgrade != nullptr) {
-        *needs_upgrade = false;
+        *needs_upgrade =
+            temp.version != USER_DATA_VERSION || file_size != expected_size;
     }
 
     *record = temp;
@@ -612,6 +609,12 @@ static void user_data_normalize_record(user_data_record_t *record,
     if (record->flag_history_count > USER_DATA_FLAG_HISTORY_LIMIT) {
         record->flag_history_count = USER_DATA_FLAG_HISTORY_LIMIT;
     }
+    record->has_user_theme = record->has_user_theme ? 1U : 0U;
+    record->user_is_bold = record->user_is_bold ? 1U : 0U;
+    record->user_color_code[SSH_CHATTER_COLOR_CODE_LEN - 1U] = '\0';
+    record->user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN - 1U] = '\0';
+    record->user_color_name[SSH_CHATTER_COLOR_NAME_LEN - 1U] = '\0';
+    record->user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN - 1U] = '\0';
     record->profile_picture[USER_DATA_PROFILE_PICTURE_LEN - 1U] = '\0';
     record->last_ip[SSH_CHATTER_IP_LEN - 1U] = '\0';
     user_data_strip_column_reset(record->profile_picture);
@@ -633,6 +636,8 @@ bool user_data_init(user_data_record_t *restrict record,
     if (username != nullptr) {
         snprintf(record->username, sizeof(record->username), "%s", username);
     }
+    record->has_user_theme = 0U;
+    record->user_is_bold = 0U;
     if (ip != nullptr) {
         snprintf(record->last_ip, sizeof(record->last_ip), "%s", ip);
     }

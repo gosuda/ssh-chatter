@@ -2442,7 +2442,7 @@ host_find_preference_locked(host_t *host, const char *username, const char *ip);
 static user_preference_t *host_ensure_preference_locked(host_t *host,
                                                         const char *username,
                                                         const char *ip);
-static void host_store_user_theme(host_t *host, const session_ctx_t *ctx);
+static void host_store_user_theme(host_t *host, session_ctx_t *ctx);
 static size_t host_prepare_join_delay(host_t *host,
                                       struct timespec *wait_duration);
 static host_join_attempt_result_t
@@ -5913,7 +5913,7 @@ static user_preference_t *host_ensure_preference_locked(host_t *host,
     return existing;
 }
 
-static void host_store_user_theme(host_t *host, const session_ctx_t *ctx)
+static void host_store_user_theme(host_t *host, session_ctx_t *ctx)
 {
     if (host == nullptr || ctx == nullptr) {
         return;
@@ -5935,6 +5935,24 @@ static void host_store_user_theme(host_t *host, const session_ctx_t *ctx)
         snprintf(pref->user_highlight_name, sizeof(pref->user_highlight_name),
                  "%s", ctx->user_highlight_name);
         pref->user_is_bold = ctx->user_is_bold;
+    }
+    if (ctx->user_data_loaded) {
+        ctx->user_data.has_user_theme = 1U;
+        ctx->user_data.user_is_bold = ctx->user_is_bold ? 1U : 0U;
+        snprintf(ctx->user_data.user_color_code,
+                 sizeof(ctx->user_data.user_color_code), "%s",
+                 ctx->user_color_code != nullptr ? ctx->user_color_code : "");
+        snprintf(ctx->user_data.user_highlight_code,
+                 sizeof(ctx->user_data.user_highlight_code), "%s",
+                 ctx->user_highlight_code != nullptr ? ctx->user_highlight_code
+                                                     : "");
+        snprintf(ctx->user_data.user_color_name,
+                 sizeof(ctx->user_data.user_color_name), "%s",
+                 ctx->user_color_name);
+        snprintf(ctx->user_data.user_highlight_name,
+                 sizeof(ctx->user_data.user_highlight_name), "%s",
+                 ctx->user_highlight_name);
+        (void)session_user_data_commit(ctx);
     }
     host_state_save_locked(host);
     pthread_mutex_unlock(&host->lock);

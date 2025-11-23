@@ -279,25 +279,6 @@ static const provider_prefix_t kProviderPrefixes[] = {
     {"2406:", "Indian ISP"},
     {"100.64.", "Carrier-grade NAT"}};
 
-static void session_copy_lowercase(const char *source, char *dest,
-                                   size_t dest_len)
-{
-    if (dest == nullptr || dest_len == 0U) {
-        return;
-    }
-
-    if (source == nullptr) {
-        dest[0] = '\0';
-        return;
-    }
-
-    size_t write = 0U;
-    while (source[write] != '\0' && write + 1U < dest_len) {
-        dest[write] = (char)tolower((unsigned char)source[write]);
-        ++write;
-    }
-    dest[write] = '\0';
-}
 
 bool is_pure_ascii(const char *str)
 {
@@ -423,363 +404,6 @@ bool is_string_random(const char *str)
     } else {
         return chi_squared < 10.0;
     }
-}
-
-static bool session_token_is_suspicious_command(const char *token)
-{
-    if (token == nullptr || token[0] == '\0') {
-        return false;
-    }
-
-    static const char *const kExactCommands[] = {
-        "ls",        "pwd",     "whoami",  "uname",    "id",       "ps",
-        "cd",        "rm",      "chmod",   "chown",    "apt",      "apt-get",
-        "aptitude",  "yum",     "dnf",     "apk",      "pacman",   "brew",
-        "curl",      "wget",    "scp",     "ssh",      "sudo",     "service",
-        "systemctl", "kill",    "tar",     "zip",      "unzip",    "nc",
-        "netcat",    "bash",    "sh",      "shell",    "enable",   "system",
-        "nconnect",  "busybox", "python",  "python2",  "python3",  "perl",
-        "php",       "ruby",    "node",    "npm",      "npx",      "pip",
-        "pip3",      "docker",  "kubectl", "ifconfig", "ipconfig", "powershell",
-        "cmd",       "dir",     "tftp",    "ftpget",   "admin",    "bash",
-        "su",        "root"};
-
-    if (!is_pure_ascii(token) ||
-        strnlen(token, SSH_CHATTER_MESSAGE_LIMIT) < 8) {
-        return false;
-    }
-
-    if (is_string_random(token)) {
-        return true;
-    }
-
-    for (size_t idx = 0U;
-         idx < sizeof(kExactCommands) / sizeof(kExactCommands[0]); ++idx) {
-        if (strcmp(token, kExactCommands[idx]) == 0) {
-            return true;
-        }
-    }
-
-    // Check for file path patterns like "./script" or "/bin/sh"
-    // but NOT single-word commands like "/help"
-    if (token[0] == '.' && token[1] == '/') {
-        return true;
-    }
-    if (token[0] == '/') {
-        // Check if it looks like a file path (contains another slash or
-        // is suspiciously long for a command name)
-        const char *second_slash = strchr(token + 1, '/');
-        if (second_slash != nullptr) {
-            return true;
-        }
-        // Also flag if it's too long to be a legitimate command
-        // (most commands are < 20 chars, file paths are often longer)
-        size_t len = strlen(token);
-        if (len > 30) {
-            return true;
-        }
-    }
-
-    if (strncmp(token, "python", 6) == 0) {
-        char next = token[6];
-        if (next == '\0' || next == '.' || (next >= '0' && next <= '9')) {
-            return true;
-        }
-    }
-
-    if (strncmp(token, "pip", 3) == 0) {
-        char next = token[3];
-        if (next == '\0' || next == '3' || next == '.') {
-            return true;
-        }
-    }
-
-    if (strncmp(token, "node", 4) == 0) {
-        char next = token[4];
-        if (next == '\0' || next == '.' || (next >= '0' && next <= '9')) {
-            return true;
-        }
-    }
-
-    if (strncmp(token, "npm", 3) == 0) {
-        char next = token[3];
-        if (next == '\0' || next == '-' || (next >= '0' && next <= '9')) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static bool session_line_contains_shell_operator(const char *text)
-{
-    if (text == nullptr || text[0] == '\0') {
-        return false;
-    }
-
-    if (strstr(text, "&&") != nullptr || strstr(text, "||") != nullptr ||
-        strstr(text, "$(") != nullptr || strchr(text, '`') != nullptr) {
-        return true;
-    }
-
-    for (const char *cursor = text; *cursor != '\0'; ++cursor) {
-        char ch = *cursor;
-        if (ch == ';') {
-            char prev = (cursor > text) ? cursor[-1] : '\0';
-            char next = cursor[1];
-            bool prev_sep = prev == '\0' || isspace((unsigned char)prev) ||
-                            prev == ';' || prev == '&' || prev == '|';
-            bool next_sep = next == '\0' || isspace((unsigned char)next) ||
-                            next == '&' || next == '|' || next == ';';
-            if (prev_sep || next_sep) {
-                return true;
-            }
-        } else if (ch == '|') {
-            char prev = (cursor > text) ? cursor[-1] : '\0';
-            char next = cursor[1];
-            if (next == '|' || isspace((unsigned char)next) ||
-                isspace((unsigned char)prev)) {
-                return true;
-            }
-        } else if (ch == '>') {
-            char prev = (cursor > text) ? cursor[-1] : '\0';
-            char next = cursor[1];
-            if (next == '>' || next == '&' || isspace((unsigned char)next) ||
-                isspace((unsigned char)prev)) {
-                return true;
-            }
-        } else if (ch == '<') {
-            char prev = (cursor > text) ? cursor[-1] : '\0';
-            char next = cursor[1];
-            if (next == '<' || isspace((unsigned char)next) ||
-                isspace((unsigned char)prev)) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-static bool session_line_contains_suspicious_keyword(const char *text)
-{
-    if (text == nullptr || text[0] == '\0') {
-        return false;
-    }
-
-    static const char *const kKeywords[] = {
-        "sudo ", "rm -",    "chmod ", "chown ", "wget ",
-        "curl ", "apt-get", " apt ",  "dnf ",   "yum ",
-        "scp ",  "ssh ",    "enable", "system", "nconnect"};
-
-    for (size_t idx = 0U; idx < sizeof(kKeywords) / sizeof(kKeywords[0]);
-         ++idx) {
-        const char *keyword = kKeywords[idx];
-        const char *match = text;
-        while ((match = strstr(match, keyword)) != nullptr) {
-            char before = (match == text) ? ' ' : match[-1];
-            if (isspace((unsigned char)before) || before == ';' ||
-                before == '|' || before == '&') {
-                return true;
-            }
-            match += strlen(keyword);
-        }
-    }
-
-    return false;
-}
-
-static bool session_line_matches_telnet_bot_pattern(const char *text)
-{
-    if (text == nullptr || text[0] == '\0') {
-        return false;
-    }
-
-    static const char *const kPatterns[] = {
-        "busybox",   " cd /tmp",     " cd /var/run", " cd /var/tmp",
-        " cd /tmp/", "wget http",    "curl http",    "tftp ",
-        "ftpget ",   "/bin/busybox", "/bin/sh",      "/sbin/ifconfig",
-        "chmod 777", ">/dev/null",   "killall",      "pkill",
-        "udpflood",  "tcpflood",     "nconnect"};
-
-    for (size_t idx = 0U; idx < sizeof(kPatterns) / sizeof(kPatterns[0]);
-         ++idx) {
-        if (strstr(text, kPatterns[idx]) != nullptr) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static bool session_first_message_is_suspicious(session_ctx_t *ctx,
-                                                const char *message)
-{
-    if (ctx == nullptr || message == nullptr) {
-        return false;
-    }
-
-    if (!ctx->has_joined_room || ctx->chat_message_count > 0U) {
-        return false;
-    }
-
-    char working[SSH_CHATTER_MAX_INPUT_LEN];
-    snprintf(working, sizeof(working), "%s", message);
-    trim_whitespace_inplace(working);
-
-    if (working[0] == '\0') {
-        return false;
-    }
-
-    char lower_message[sizeof(working)];
-    session_copy_lowercase(working, lower_message, sizeof(lower_message));
-
-    char username_lower[SSH_CHATTER_USERNAME_LEN];
-    session_copy_lowercase(ctx->user.name, username_lower,
-                           sizeof(username_lower));
-    if (strcmp(lower_message, username_lower) == 0) {
-        return true;
-    }
-
-    if (username_lower[0] != '\0') {
-        const size_t username_len = strlen(username_lower);
-        size_t remaining = 0U;
-        bool found_username = false;
-        const char *cursor = lower_message;
-        while (*cursor != '\0') {
-            if (strncmp(cursor, username_lower, username_len) == 0) {
-                cursor += username_len;
-                found_username = true;
-                continue;
-            }
-            if (!isspace((unsigned char)*cursor)) {
-                ++remaining;
-            }
-            ++cursor;
-        }
-        if (found_username && remaining <= 3U) {
-            return true;
-        }
-    }
-
-    const char *cursor = working;
-    while (*cursor == ' ' || *cursor == '\t') {
-        ++cursor;
-    }
-
-    char token[SSH_CHATTER_MAX_INPUT_LEN];
-    size_t token_len = 0U;
-    while (*cursor != '\0' && !isspace((unsigned char)*cursor) &&
-           *cursor != ';' && *cursor != '&' && *cursor != '|' &&
-           *cursor != '>' && *cursor != '<') {
-        if (token_len + 1U >= sizeof(token)) {
-            break;
-        }
-        token[token_len++] = (char)tolower((unsigned char)*cursor);
-        ++cursor;
-    }
-    token[token_len] = '\0';
-
-    if (session_token_is_suspicious_command(token)) {
-        return true;
-    }
-
-    if (session_line_contains_shell_operator(lower_message)) {
-        return true;
-    }
-
-    if (session_line_contains_suspicious_keyword(lower_message)) {
-        return true;
-    }
-
-    if (session_line_matches_telnet_bot_pattern(lower_message)) {
-        return true;
-    }
-
-    return false;
-}
-
-static void session_handle_suspicious_first_message(session_ctx_t *ctx,
-                                                    const char *message)
-{
-    if (ctx == nullptr) {
-        return;
-    }
-
-    char trimmed[SSH_CHATTER_MAX_INPUT_LEN];
-    snprintf(trimmed, sizeof(trimmed), "%s", message != nullptr ? message : "");
-    trim_whitespace_inplace(trimmed);
-
-    const char *ip = nullptr;
-    if (ctx->client_ip[0] != '\0' &&
-        strncmp(ctx->client_ip, "unknown", SSH_CHATTER_IP_LEN) != 0) {
-        ip = ctx->client_ip;
-    }
-
-    const char *address = (ip != nullptr) ? ip : "unknown";
-    printf("\[security] suspicious first message from %s (%s): %s\n",
-           ctx->user.name, address, trimmed[0] != '\0' ? trimmed : "(empty)");
-
-    host_t *host = ctx->owner;
-    if (host != nullptr) {
-        (void)host_history_remove_join_entry(host, ctx->user.name);
-        const char *ban_ip = (ip != nullptr) ? ip : "";
-        if (host_add_ban_entry(host, ctx->user.name, ban_ip)) {
-            printf("\[security] permanently banned %s (%s) for "
-                   "suspicious first "
-                   "message\n",
-                   ctx->user.name, address);
-        } else {
-            printf("[security] unable to record permanent ban for %s "
-                   "(%s)\n",
-                   ctx->user.name, address);
-        }
-
-        const char *admin_user = getenv("ADMIN1");
-        if (admin_user != nullptr && admin_user[0] != '\0') {
-            char admin_ip[SSH_CHATTER_IP_LEN];
-            admin_ip[0] = '\0';
-            if (!host_lookup_member_ip(host, admin_user, admin_ip,
-                                       sizeof(admin_ip))) {
-                (void)host_lookup_last_ip(host, admin_user, admin_ip,
-                                          sizeof(admin_ip));
-            }
-
-            char notification[USER_DATA_MAILBOX_MESSAGE_LEN];
-            snprintf(notification, sizeof(notification),
-                     "Suspicious first message ban: [%s] from %s sent '%s'.",
-                     ctx->user.name, address,
-                     trimmed[0] != '\0' ? trimmed : "(empty)");
-
-            char mail_error[128];
-            if (!host_user_data_send_mail(
-                    host, admin_user, admin_ip[0] != '\0' ? admin_ip : nullptr,
-                    "system", notification, mail_error, sizeof(mail_error))) {
-                if (mail_error[0] != '\0') {
-                    printf("[mail] failed to notify %s about "
-                           "suspicious first "
-                           "message: %s\n",
-                           admin_user, mail_error);
-                } else {
-                    printf("[mail] failed to notify %s about "
-                           "suspicious first "
-                           "message\n",
-                           admin_user);
-                }
-            } else {
-                printf("[mail] notified %s about suspicious first "
-                       "message from "
-                       "%s\n",
-                       admin_user, ctx->user.name);
-            }
-        }
-    }
-
-    ctx->user_data_loaded = false;
-    memset(&ctx->user_data, 0, sizeof(ctx->user_data));
-
-    session_force_disconnect(ctx, "Suspicious command activity detected. You "
-                                  "have been permanently banned.");
 }
 
 bool session_detect_provider_ip(const char *ip, char *label, size_t length)
@@ -1424,19 +1048,27 @@ static void session_format_separator_line(session_ctx_t *ctx, const char *label,
     size_t left = dash_total / 2U;
     size_t right = dash_total - left;
 
-    char body[128];
+    char body[SSH_CHATTER_MESSAGE_LIMIT];
+    size_t max_body = sizeof(body);
+    if (length > 0U && length < max_body) {
+        max_body = length;
+    }
     size_t offset = 0U;
-    for (size_t idx = 0U; idx < left && offset + 1U < sizeof(body); ++idx) {
+    for (size_t idx = 0U; idx < left && offset + 1U < max_body; ++idx) {
         body[offset++] = '-';
     }
-    if (offset + label_len < sizeof(body)) {
-        memcpy(body + offset, label_block, label_len);
-        offset += label_len;
+    if (offset + 1U < max_body) {
+        size_t copy_limit = max_body - offset - 1U;
+        size_t copy_len = label_len < copy_limit ? label_len : copy_limit;
+        if (copy_len > 0U) {
+            memcpy(body + offset, label_block, copy_len);
+            offset += copy_len;
+        }
     }
-    for (size_t idx = 0U; idx < right && offset < sizeof(body); ++idx) {
+    for (size_t idx = 0U; idx < right && offset + 1U < max_body; ++idx) {
         body[offset++] = '-';
     }
-    body[offset] = '\0';
+    body[offset < max_body ? offset : max_body - 1U] = '\0';
 
     snprintf(out, length, "%s%s%s%s%s", hl, fg, bold, body, ANSI_RESET);
 }
@@ -3600,13 +3232,14 @@ static void session_send_history_entry(session_ctx_t *ctx,
                                    sizeof(id_label))) {
             id_display = id_label;
         }
+        const char *display_name = chat_history_entry_display_name(entry);
         if (has_custom_codes) {
             snprintf(name_block, sizeof(name_block),
-                     "[%s] <%s%s%s%s>", id_display, highlight, color, bold, ANSI_RESET);
+                     "[%s] <%s%s%s%s%s>", id_display, highlight, color, bold,
+                     display_name, ANSI_RESET);
         } else {
             snprintf(name_block, sizeof(name_block), "%s%s%s [%s] <%s>%s",
-                     highlight, bold, color, id_display, entry->username,
-                     ANSI_RESET);
+                     highlight, bold, color, id_display, display_name, ANSI_RESET);
         }
         strncat(formatted, name_block,
                 sizeof(formatted) - strlen(formatted) - 1U);
@@ -4919,10 +4552,6 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
     ctx->last_message_time = now;
     ctx->has_last_message_time = true;
 
-    if (session_first_message_is_suspicious(ctx, normalized)) {
-        session_handle_suspicious_first_message(ctx, normalized);
-        return;
-    }
     if (!translation_bypass && ctx->translation_enabled &&
         ctx->input_translation_enabled &&
         ctx->input_translation_language[0] != '\0') {

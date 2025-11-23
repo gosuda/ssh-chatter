@@ -93,4 +93,18 @@ void session_flag_should_sink(session_ctx_t *ctx);
 session_ui_language_t session_ui_language_from_code(const char *code);
 void host_store_ui_language(host_t *host, const session_ctx_t *ctx);
 
+static inline const char *chat_history_entry_display_name(
+    const chat_history_entry_t *entry)
+{
+    if (entry == nullptr) {
+        return "";
+    }
+
+    if (entry->raw_username[0] != '\0') {
+        return entry->raw_username;
+    }
+
+    return entry->username;
+}
+
 #endif // SSH_CHATTER_HOST_INTERNAL_H

@@ -3496,29 +3496,37 @@ static void *session_thread(void *arg)
     session_apply_granted_privileges(ctx);
     session_apply_saved_preferences(ctx);
 
+    char preferred_nickname_raw[SSH_CHATTER_USERNAME_LEN] = {0};
     char preferred_nickname[SSH_CHATTER_USERNAME_LEN] = {0};
     if (ctx->user.is_authenticated && ctx->user_data_loaded &&
         ctx->user_data.preferred_nickname[0] != '\0') {
-        if (!user_data_strip_ansi_sequences(ctx->user_data.preferred_nickname,
+        snprintf(preferred_nickname_raw, sizeof(preferred_nickname_raw), "%s",
+                 ctx->user_data.preferred_nickname);
+        snprintf(preferred_nickname, sizeof(preferred_nickname), "%s",
+                 preferred_nickname_raw);
+        if (!user_data_strip_ansi_sequences(preferred_nickname_raw,
                                             preferred_nickname,
                                             sizeof(preferred_nickname))) {
             snprintf(preferred_nickname, sizeof(preferred_nickname), "%s",
-                     ctx->user_data.preferred_nickname);
+                     preferred_nickname_raw);
         }
 
+        trim_whitespace_inplace(preferred_nickname_raw);
         trim_whitespace_inplace(preferred_nickname);
-        if (preferred_nickname[0] != '\0' &&
-            strcasecmp(preferred_nickname, ctx->user_data.preferred_nickname) != 0) {
-            snprintf(ctx->user_data.preferred_nickname,
-                     sizeof(ctx->user_data.preferred_nickname), "%s",
+        if (preferred_nickname_raw[0] == '\0' && preferred_nickname[0] != '\0') {
+            snprintf(preferred_nickname_raw, sizeof(preferred_nickname_raw), "%s",
                      preferred_nickname);
         }
 
-        if (preferred_nickname[0] != '\0' &&
-            strcasecmp(ctx->user.name, preferred_nickname) != 0) {
+        const char *nick_to_apply = preferred_nickname_raw[0] != '\0'
+                                        ? preferred_nickname_raw
+                                        : preferred_nickname;
+
+        if (nick_to_apply[0] != '\0' &&
+            strcasecmp(ctx->user.name, nick_to_apply) != 0) {
             char nick_command[SSH_CHATTER_MAX_INPUT_LEN];
             snprintf(nick_command, sizeof(nick_command), "/nick %s",
-                     preferred_nickname);
+                     nick_to_apply);
             ctx->ops->dispatch_command(ctx, nick_command);
         }
     }

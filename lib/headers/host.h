@@ -224,6 +224,7 @@ typedef struct chat_history_entry {
     bool preserve_whitespace;
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     char username[SSH_CHATTER_USERNAME_LEN];
+    char raw_username[SSH_CHATTER_USERNAME_LEN];
     char user_ip[SSH_CHATTER_IP_LEN];
     const char *user_color_code;
     const char *user_highlight_code;

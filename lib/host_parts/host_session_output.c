@@ -1424,19 +1424,27 @@ static void session_format_separator_line(session_ctx_t *ctx, const char *label,
     size_t left = dash_total / 2U;
     size_t right = dash_total - left;
 
-    char body[128];
+    char body[SSH_CHATTER_MESSAGE_LIMIT];
+    size_t max_body = sizeof(body);
+    if (length > 0U && length < max_body) {
+        max_body = length;
+    }
     size_t offset = 0U;
-    for (size_t idx = 0U; idx < left && offset + 1U < sizeof(body); ++idx) {
+    for (size_t idx = 0U; idx < left && offset + 1U < max_body; ++idx) {
         body[offset++] = '-';
     }
-    if (offset + label_len < sizeof(body)) {
-        memcpy(body + offset, label_block, label_len);
-        offset += label_len;
+    if (offset + 1U < max_body) {
+        size_t copy_limit = max_body - offset - 1U;
+        size_t copy_len = label_len < copy_limit ? label_len : copy_limit;
+        if (copy_len > 0U) {
+            memcpy(body + offset, label_block, copy_len);
+            offset += copy_len;
+        }
     }
-    for (size_t idx = 0U; idx < right && offset < sizeof(body); ++idx) {
+    for (size_t idx = 0U; idx < right && offset + 1U < max_body; ++idx) {
         body[offset++] = '-';
     }
-    body[offset] = '\0';
+    body[offset < max_body ? offset : max_body - 1U] = '\0';
 
     snprintf(out, length, "%s%s%s%s%s", hl, fg, bold, body, ANSI_RESET);
 }
@@ -3600,13 +3608,14 @@ static void session_send_history_entry(session_ctx_t *ctx,
                                    sizeof(id_label))) {
             id_display = id_label;
         }
+        const char *display_name = chat_history_entry_display_name(entry);
         if (has_custom_codes) {
             snprintf(name_block, sizeof(name_block),
-                     "[%s] <%s%s%s%s>", id_display, highlight, color, bold, ANSI_RESET);
+                     "[%s] <%s%s%s%s%s>", id_display, highlight, color, bold,
+                     display_name, ANSI_RESET);
         } else {
             snprintf(name_block, sizeof(name_block), "%s%s%s [%s] <%s>%s",
-                     highlight, bold, color, id_display, entry->username,
-                     ANSI_RESET);
+                     highlight, bold, color, id_display, display_name, ANSI_RESET);
         }
         strncat(formatted, name_block,
                 sizeof(formatted) - strlen(formatted) - 1U);

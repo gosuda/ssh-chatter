@@ -6183,38 +6183,42 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
             return;
         }
 
-        char translated_code[SSH_CHATTER_COLOR_CODE_LEN];
-        if (!session_translate_escape_sequences(raw_code, translated_code,
-                                                sizeof(translated_code)) ||
-            !session_valid_ansi_256_sequence(translated_code)) {
+        char translated_name[SSH_CHATTER_USERNAME_LEN];
+        if (!session_translate_escape_sequences(raw_code, translated_name,
+                                                sizeof(translated_name)) ||
+            !session_valid_ansi_256_sequence(translated_name)) {
             session_send_system_line(
                 ctx,
                 "Invalid ANSI/256 expression. Use sequences like \\x1b[38;5;196m.");
             return;
         }
 
-        snprintf(ctx->user_color_code_buffer,
-                 sizeof(ctx->user_color_code_buffer), "%s", translated_code);
-        ctx->user_color_code = ctx->user_color_code_buffer;
-        ctx->user_highlight_code_buffer[0] = '\0';
-        ctx->user_highlight_code = ctx->user_highlight_code_buffer;
-        ctx->user_is_bold = false;
-        snprintf(ctx->user_color_name, sizeof(ctx->user_color_name), "%s",
-                 "custom");
-        snprintf(ctx->user_highlight_name, sizeof(ctx->user_highlight_name), "%s",
-                 "custom");
+        if (!ctx->user_data_loaded) {
+            (void)session_user_data_load(ctx);
+        }
 
-        session_send_system_line(ctx,
-                                 "Handle colors updated with a custom ANSI code.");
+        snprintf(ctx->user_data.preferred_nickname,
+                 sizeof(ctx->user_data.preferred_nickname), "%s",
+                 translated_name);
+
+        if (ctx->owner != nullptr && ctx->owner->user_data_root[0] != '\0' &&
+            ctx->user_data.username[0] != '\0') {
+            user_data_save(ctx->owner->user_data_root, &ctx->user_data,
+                           ctx->user_data.username);
+        }
+
+        ctx->user_color_code = "";
+        ctx->user_highlight_code = "";
+        ctx->user_highlight_code_buffer[0] = '\0';
+        ctx->user_color_code_buffer[0] = '\0';
+        ctx->user_is_bold = false;
+
+        session_send_system_line(
+            ctx, "Display name updated with advanced ANSI formatting.");
 
         char preview[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(preview, sizeof(preview), "%s[%s] preview%s",
-                 ctx->user_color_code, ctx->user.name, ANSI_RESET);
+        snprintf(preview, sizeof(preview), "%s%s", translated_name, ANSI_RESET);
         session_send_line(ctx, preview);
-
-        if (ctx->owner != nullptr) {
-            host_store_user_theme(ctx->owner, ctx);
-        }
 
         return;
     }

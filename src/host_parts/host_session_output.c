@@ -72,6 +72,70 @@ void host_set_welcome_banner(host_t *host, const char *banner)
 
 static void session_game_show_camouflage(session_ctx_t *ctx);
 
+#define SESSION_REALTIME_CLEAR_INTERVAL 100U
+#define SESSION_REALTIME_RECENT_LIMIT 5U
+
+static void session_realtime_refresh(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || !session_transport_active(ctx)) {
+        return;
+    }
+
+    const bool previous_capture = ctx->capture_realtime_output;
+    ctx->capture_realtime_output = false;
+
+    session_clear_screen(ctx);
+
+    size_t lines_to_show = ctx->realtime_recent_count;
+    if (lines_to_show > SESSION_REALTIME_RECENT_LIMIT) {
+        lines_to_show = SESSION_REALTIME_RECENT_LIMIT;
+    }
+
+    for (size_t idx = 0U; idx < lines_to_show; ++idx) {
+        size_t slot =
+            (ctx->realtime_recent_start + idx) % SESSION_REALTIME_RECENT_LIMIT;
+        session_send_plain_line(ctx, ctx->realtime_recent_lines[slot]);
+    }
+
+    ctx->capture_realtime_output = previous_capture;
+    ctx->realtime_line_count = ctx->realtime_recent_count;
+
+    if (ctx->history_scroll_position == 0U && !ctx->bracket_paste_active) {
+        session_refresh_input_line(ctx);
+    }
+}
+
+static void session_realtime_record_line(session_ctx_t *ctx, const char *line)
+{
+    if (ctx == nullptr || line == nullptr || !ctx->capture_realtime_output ||
+        ctx->history_scroll_position > 0U) {
+        return;
+    }
+
+    size_t insert_pos = 0U;
+    if (ctx->realtime_recent_count < SESSION_REALTIME_RECENT_LIMIT) {
+        insert_pos = ctx->realtime_recent_count;
+        ++ctx->realtime_recent_count;
+    } else {
+        ctx->realtime_recent_start =
+            (ctx->realtime_recent_start + 1U) % SESSION_REALTIME_RECENT_LIMIT;
+        insert_pos =
+            (ctx->realtime_recent_start + ctx->realtime_recent_count - 1U) %
+            SESSION_REALTIME_RECENT_LIMIT;
+    }
+
+    snprintf(ctx->realtime_recent_lines[insert_pos],
+             sizeof(ctx->realtime_recent_lines[insert_pos]), "%s", line);
+
+    if (ctx->realtime_line_count < SIZE_MAX) {
+        ++ctx->realtime_line_count;
+    }
+
+    if (ctx->realtime_line_count >= SESSION_REALTIME_CLEAR_INTERVAL) {
+        session_realtime_refresh(ctx);
+    }
+}
+
 static void session_send_plain_line(session_ctx_t *ctx, const char *message)
 {
     if (ctx == nullptr || !session_transport_active(ctx) ||
@@ -86,6 +150,7 @@ static void session_send_plain_line(session_ctx_t *ctx, const char *message)
     }
 
     session_write_rendered_line(ctx, message);
+    session_realtime_record_line(ctx, message);
 }
 
 static void session_send_reply_tree(session_ctx_t *ctx,

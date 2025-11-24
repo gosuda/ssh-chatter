@@ -736,6 +736,12 @@ typedef struct session_ctx {
     bool output_buffering_enabled;
     char output_buffer[SSH_CHATTER_OUTPUT_BUFFER_SIZE];
     size_t output_buffer_length;
+    // Live chat rendering controls
+    size_t realtime_line_count;
+    size_t realtime_recent_count;
+    size_t realtime_recent_start;
+    char realtime_recent_lines[5][SSH_CHATTER_MESSAGE_LIMIT];
+    bool capture_realtime_output;
 } session_ctx_t;
 
 typedef struct user_preference {

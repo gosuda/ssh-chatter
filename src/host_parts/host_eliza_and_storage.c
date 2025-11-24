@@ -1659,10 +1659,9 @@ static void session_apply_user_data_theme(session_ctx_t *ctx,
                  record->user_color_code);
         color_code = ctx->user_color_code_buffer;
     } else if (record->user_color_name[0] != '\0') {
-        color_code = lookup_color_code(USER_COLOR_MAP,
-                                       sizeof(USER_COLOR_MAP) /
-                                           sizeof(USER_COLOR_MAP[0]),
-                                       record->user_color_name);
+        color_code = lookup_color_code(
+            USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
+            record->user_color_name);
     }
 
     if (record->user_highlight_code[0] != '\0') {
@@ -1671,10 +1670,10 @@ static void session_apply_user_data_theme(session_ctx_t *ctx,
                  record->user_highlight_code);
         highlight_code = ctx->user_highlight_code_buffer;
     } else if (record->user_highlight_name[0] != '\0') {
-        highlight_code = lookup_color_code(
-            HIGHLIGHT_COLOR_MAP,
-            sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
-            record->user_highlight_name);
+        highlight_code = lookup_color_code(HIGHLIGHT_COLOR_MAP,
+                                           sizeof(HIGHLIGHT_COLOR_MAP) /
+                                               sizeof(HIGHLIGHT_COLOR_MAP[0]),
+                                           record->user_highlight_name);
     }
 
     if (color_code != nullptr && highlight_code != nullptr) {
@@ -1751,7 +1750,8 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
         }
 
         if (base_snapshot.has_user_theme) {
-            const bool has_custom_color = base_snapshot.user_color_code[0] != '\0';
+            const bool has_custom_color =
+                base_snapshot.user_color_code[0] != '\0';
             const bool has_custom_highlight =
                 base_snapshot.user_highlight_code[0] != '\0';
 
@@ -1762,9 +1762,10 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
                          base_snapshot.user_color_code);
                 color_code = ctx->user_color_code_buffer;
             } else {
-                color_code = lookup_color_code(
-                    USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
-                    base_snapshot.user_color_name);
+                color_code = lookup_color_code(USER_COLOR_MAP,
+                                               sizeof(USER_COLOR_MAP) /
+                                                   sizeof(USER_COLOR_MAP[0]),
+                                               base_snapshot.user_color_name);
             }
 
             const char *highlight_code = nullptr;
@@ -1774,10 +1775,11 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
                          base_snapshot.user_highlight_code);
                 highlight_code = ctx->user_highlight_code_buffer;
             } else {
-                highlight_code = lookup_color_code(
-                    HIGHLIGHT_COLOR_MAP,
-                    sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
-                    base_snapshot.user_highlight_name);
+                highlight_code =
+                    lookup_color_code(HIGHLIGHT_COLOR_MAP,
+                                      sizeof(HIGHLIGHT_COLOR_MAP) /
+                                          sizeof(HIGHLIGHT_COLOR_MAP[0]),
+                                      base_snapshot.user_highlight_name);
             }
 
             if (color_code != nullptr && highlight_code != nullptr) {
@@ -5359,7 +5361,8 @@ static bool session_telnet_prompt_unicode_check(session_ctx_t *ctx)
         if (!ret)
             ret = setjmp(ask_unicode_sanity);
         session_send_plain_line(ctx, "Are you using Unicode terminal? <Y/N>");
-        session_send_plain_line(ctx, "If you are using SyncTerm/other Retro Terms,");
+        session_send_plain_line(ctx,
+                                "If you are using SyncTerm/other Retro Terms,");
         session_send_plain_line(ctx, "Type N");
         session_channel_write(ctx, "> ", 2U);
 
@@ -5641,26 +5644,35 @@ static bool session_is_first_message_bot_probe(const session_ctx_t *ctx,
         return false;
     }
 
-    static const char *kTelnetBotFirstMessages[] = {"enable", "nconnect"};
-
-    char normalized[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(normalized, sizeof(normalized), "%s", message);
-    trim_whitespace_inplace(normalized);
-
-    if (normalized[0] == '\0') {
-        return false;
+    if (strncmp(ctx->user.name, message, 64) == 0) {
+        return true;
     }
 
-    const size_t pattern_count =
-        sizeof(kTelnetBotFirstMessages) / sizeof(kTelnetBotFirstMessages[0]);
-
-    for (size_t idx = 0U; idx < pattern_count; ++idx) {
-        if (strcasecmp(normalized, kTelnetBotFirstMessages[idx]) == 0) {
-            return true;
-        }
+    if (strncmp(ctx->user.name, "Host:", 5) == 0 &&
+        strncmp(message, "User-Agent: ", 12) == 0) {
+        return true;
     }
 
-    return false;
+   static const char *kTelnetBotFirstMessages[] = {"enable", "nconnect"};
+    
+   char normalized[SSH_CHATTER_MESSAGE_LIMIT];
+   snprintf(normalized, sizeof(normalized), "%s", message);
+   trim_whitespace_inplace(normalized);
+   
+   if (normalized[0] == '\0') {
+       return false;
+   }
+   
+   const size_t pattern_count =
+       sizeof(kTelnetBotFirstMessages) / sizeof(kTelnetBotFirstMessages[0]);
+   
+   for (size_t idx = 0U; idx < pattern_count; ++idx) {
+       if (strcasecmp(normalized, kTelnetBotFirstMessages[idx]) == 0) {
+           return true;
+       }
+   }
+
+   return false;
 }
 
 static void session_deliver_outgoing_message(session_ctx_t *ctx,

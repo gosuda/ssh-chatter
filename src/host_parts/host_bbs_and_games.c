@@ -6027,7 +6027,7 @@ static bool session_valid_ansi_256_sequence(const char *sequence)
         }
 
         if (!found_terminator) {
-            return false; 
+            return false;
         }
 
         size_t param_len = end - (idx + 2);
@@ -6046,7 +6046,8 @@ static bool session_valid_ansi_256_sequence(const char *sequence)
             char *fg_truecolor_ptr = strstr(buffer, "38;2;");
             char *bg_truecolor_ptr = strstr(buffer, "48;2;");
             char *target = (fg_ptr) ? fg_ptr : bg_ptr;
-            char *truecolor_target = (fg_truecolor_ptr) ? fg_truecolor_ptr : bg_truecolor_ptr;
+            char *truecolor_target =
+                (fg_truecolor_ptr) ? fg_truecolor_ptr : bg_truecolor_ptr;
 
             if (target != NULL) {
                 target += 5;
@@ -6081,9 +6082,8 @@ static bool session_valid_ansi_256_sequence(const char *sequence)
     return found_escape;
 }
 
-static bool session_translate_escape_sequences(const char *input,
-                                                char *output,
-                                                size_t output_size)
+static bool session_translate_escape_sequences(const char *input, char *output,
+                                               size_t output_size)
 {
     if (input == NULL || output == NULL || output_size == 0U) {
         return false;
@@ -6099,14 +6099,16 @@ static bool session_translate_escape_sequences(const char *input,
         }
 
         if (*cursor == '\\') {
-            if (strncmp(cursor, "\\033", 4U) == 0 || strncmp(cursor, "\\x1b", 4U) == 0 ||
+            if (strncmp(cursor, "\\033", 4U) == 0 ||
+                strncmp(cursor, "\\x1b", 4U) == 0 ||
                 strncmp(cursor, "\\x1B", 4U) == 0) {
                 *out++ = '\x1b';
                 cursor += 4U;
                 continue;
             }
 
-            if (strncmp(cursor, "\\u001b", 6U) == 0 || strncmp(cursor, "\\u001B", 6U) == 0) {
+            if (strncmp(cursor, "\\u001b", 6U) == 0 ||
+                strncmp(cursor, "\\u001B", 6U) == 0) {
                 *out++ = '\x1b';
                 cursor += 6U;
                 continue;
@@ -6187,9 +6189,8 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
         if (!session_translate_escape_sequences(raw_code, translated_name,
                                                 sizeof(translated_name)) ||
             !session_valid_ansi_256_sequence(translated_name)) {
-            session_send_system_line(
-                ctx,
-                "Invalid ANSI/256 expression. Use sequences like \\x1b[38;5;196m.");
+            session_send_system_line(ctx, "Invalid ANSI/256 expression. Use "
+                                          "sequences like \\x1b[38;5;196m.");
             return;
         }
 
@@ -7177,8 +7178,7 @@ static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
     }
 
     (void)arguments;
-    session_send_system_line(ctx,
-                             "User status lookups have been retired.");
+    session_send_system_line(ctx, "User status lookups have been retired.");
 }
 
 static void session_handle_weather(session_ctx_t *ctx, const char *arguments)
@@ -7824,7 +7824,7 @@ static void session_handle_captcha(session_ctx_t *ctx, const char *arguments)
 }
 
 static void session_handle_geo_language(session_ctx_t *ctx,
-                                         const char *arguments)
+                                        const char *arguments)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
         return;
@@ -7870,8 +7870,8 @@ static void session_handle_geo_language(session_ctx_t *ctx,
         return;
     }
 
-    bool was_enabled = atomic_exchange(&host->geo_language_enabled,
-                                       requested_enable);
+    bool was_enabled =
+        atomic_exchange(&host->geo_language_enabled, requested_enable);
     if (requested_enable) {
         if (was_enabled) {
             session_send_system_line(ctx, "Geo-IP UI language is already on.");
@@ -7879,8 +7879,7 @@ static void session_handle_geo_language(session_ctx_t *ctx,
         }
 
         session_send_system_line(
-            ctx,
-            "Geo-IP UI language detection enabled for new connections.");
+            ctx, "Geo-IP UI language detection enabled for new connections.");
         char notice[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(notice, sizeof(notice),
                  "* [%s] enabled Geo-IP UI language detection.",

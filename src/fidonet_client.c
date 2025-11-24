@@ -30,20 +30,20 @@
 #define BINKP_KEEPALIVE_INTERVAL_SECONDS 60
 
 /* Binkp message types */
-#define BINKP_BLK_DATA 0x00      /* Data block */
-#define BINKP_BLK_CMD  0x80      /* Command block */
+#define BINKP_BLK_DATA 0x00 /* Data block */
+#define BINKP_BLK_CMD  0x80  /* Command block */
 
 /* Binkp commands */
-#define BINKP_CMD_NUL  0  /* No operation/comment */
-#define BINKP_CMD_ADR  1  /* Address list */
-#define BINKP_CMD_PWD  2  /* Session password */
+#define BINKP_CMD_NUL  0   /* No operation/comment */
+#define BINKP_CMD_ADR  1   /* Address list */
+#define BINKP_CMD_PWD  2   /* Session password */
 #define BINKP_CMD_FILE 3  /* File information */
-#define BINKP_CMD_OK   4  /* Password accepted */
-#define BINKP_CMD_EOB  5  /* End of batch */
-#define BINKP_CMD_GOT  6  /* File received */
-#define BINKP_CMD_ERR  7  /* Error */
-#define BINKP_CMD_BSY  8  /* Busy */
-#define BINKP_CMD_GET  9  /* Get file */
+#define BINKP_CMD_OK   4    /* Password accepted */
+#define BINKP_CMD_EOB  5   /* End of batch */
+#define BINKP_CMD_GOT  6   /* File received */
+#define BINKP_CMD_ERR  7   /* Error */
+#define BINKP_CMD_BSY  8   /* Busy */
+#define BINKP_CMD_GET  9   /* Get file */
 #define BINKP_CMD_SKIP 10 /* Skip file */
 #define BINKP_CMD_CHAT 11 /* Chat message - custom extension */
 
@@ -79,8 +79,8 @@ static bool fidonet_contains_multibyte(const char *line)
         return false;
     }
 
-    for (const unsigned char *cursor = (const unsigned char *)line; *cursor != '\0';
-         ++cursor) {
+    for (const unsigned char *cursor = (const unsigned char *)line;
+         *cursor != '\0'; ++cursor) {
         if ((*cursor & 0x80U) != 0U) {
             if ((*cursor & 0xC0U) == 0xC0U) {
                 return true;
@@ -91,7 +91,8 @@ static bool fidonet_contains_multibyte(const char *line)
     return false;
 }
 
-static void fidonet_client_log(fidonet_client_t *client, const char *format, ...)
+static void fidonet_client_log(fidonet_client_t *client, const char *format,
+                               ...)
 {
     if (client == nullptr || format == nullptr) {
         return;
@@ -101,7 +102,8 @@ static void fidonet_client_log(fidonet_client_t *client, const char *format, ...
     va_start(args, format);
 
     pthread_mutex_lock(&client->lock);
-    size_t index = (client->log_start + client->log_count) % FIDONET_LOG_CAPACITY;
+    size_t index =
+        (client->log_start + client->log_count) % FIDONET_LOG_CAPACITY;
     vsnprintf(client->logs[index], sizeof(client->logs[index]), format, args);
     if (client->log_count < FIDONET_LOG_CAPACITY) {
         ++client->log_count;
@@ -219,7 +221,8 @@ static bool fidonet_send_chat_message(fidonet_client_t *client,
         return false;
     }
 
-    if (fidonet_contains_multibyte(message) || fidonet_contains_multibyte(username)) {
+    if (fidonet_contains_multibyte(message) ||
+        fidonet_contains_multibyte(username)) {
         fidonet_client_log(client, "Skipped outbound (non-ASCII): %s: %s",
                            username, message);
         return false;
@@ -413,7 +416,8 @@ static bool fidonet_connect_socket(fidonet_client_t *client)
             (void)fcntl(client->socket_fd, F_SETFL, flags | O_NONBLOCK);
         }
 
-        int connect_result = connect(client->socket_fd, rp->ai_addr, rp->ai_addrlen);
+        int connect_result =
+            connect(client->socket_fd, rp->ai_addr, rp->ai_addrlen);
         if (connect_result == 0) {
             if (flags >= 0) {
                 (void)fcntl(client->socket_fd, F_SETFL, flags);
@@ -426,13 +430,13 @@ static bool fidonet_connect_socket(fidonet_client_t *client)
             FD_ZERO(&write_fds);
             FD_SET(client->socket_fd, &write_fds);
             struct timeval timeout = {.tv_sec = 5, .tv_usec = 0};
-            int ready = select(client->socket_fd + 1, nullptr, &write_fds, nullptr,
-                               &timeout);
+            int ready = select(client->socket_fd + 1, nullptr, &write_fds,
+                               nullptr, &timeout);
             if (ready > 0 && FD_ISSET(client->socket_fd, &write_fds)) {
                 int so_error = 0;
                 socklen_t len = sizeof(so_error);
-                if (getsockopt(client->socket_fd, SOL_SOCKET, SO_ERROR, &so_error,
-                               &len) == 0 &&
+                if (getsockopt(client->socket_fd, SOL_SOCKET, SO_ERROR,
+                               &so_error, &len) == 0 &&
                     so_error == 0) {
                     if (flags >= 0) {
                         (void)fcntl(client->socket_fd, F_SETFL, flags);

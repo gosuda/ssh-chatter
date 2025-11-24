@@ -675,8 +675,7 @@ static void session_handle_profile_picture(session_ctx_t *ctx,
     }
 
     (void)arguments;
-    session_send_system_line(ctx,
-                             "Profile pictures are no longer supported.");
+    session_send_system_line(ctx, "Profile pictures are no longer supported.");
 }
 
 static void session_handle_reaction(session_ctx_t *ctx, size_t reaction_index,
@@ -766,7 +765,8 @@ static void session_handle_usercount(session_ctx_t *ctx)
     pthread_mutex_unlock(&ctx->owner->room.lock);
 
     char message[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(message, sizeof(message), "There %s currently %zu user%s connected.",
+    snprintf(message, sizeof(message),
+             "There %s currently %zu user%s connected.",
              count == 1U ? "is" : "are", count, count == 1U ? "" : "s");
 
     host_history_record_system(ctx->owner, message, nullptr);
@@ -1179,7 +1179,8 @@ static void session_handle_soulmate(session_ctx_t *ctx)
         return;
     }
 
-    session_send_system_line(ctx, "Birthday soulmates are no longer supported.");
+    session_send_system_line(ctx,
+                             "Birthday soulmates are no longer supported.");
 }
 
 static void session_pw_auth_hex_encode(const uint8_t *input, size_t length,
@@ -1777,13 +1778,12 @@ static void session_handle_delete_message(session_ctx_t *ctx,
 
         chat_history_entry_t entry = {0};
         if (!host_history_find_entry_by_id(ctx->owner, start_id, &entry)) {
-            session_send_system_line(ctx,
-                                     "No chat messages matched that identifier.");
+            session_send_system_line(
+                ctx, "No chat messages matched that identifier.");
             return;
         }
 
-        const bool name_match =
-            strcasecmp(entry.username, ctx->user.name) == 0;
+        const bool name_match = strcasecmp(entry.username, ctx->user.name) == 0;
         const bool ip_match = entry.user_ip[0] != '\0' &&
                               ctx->client_ip[0] != '\0' &&
                               strcmp(entry.user_ip, ctx->client_ip) == 0;
@@ -2050,9 +2050,9 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
                  "  /ddial <url> <port>|logs|status - Manage D-Dial relay.");
         session_send_system_line(ctx, line);
 
-        snprintf(
-            line, sizeof(line),
-            "  /fidonet status|reconnect|disconnect|logs - Manage FidoNet relay.");
+        snprintf(line, sizeof(line),
+                 "  /fidonet status|reconnect|disconnect|logs - Manage FidoNet "
+                 "relay.");
         session_send_system_line(ctx, line);
 
         snprintf(

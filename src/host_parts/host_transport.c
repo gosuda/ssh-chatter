@@ -1633,20 +1633,30 @@ static const l10n_string_t PALETTE_DESC_INDEPENDENCE_SPIRIT_256 =
     L10N_ALL("256-color reinterpretation of The spirit of independence. A "
              "soul that we must remember.");
 
-static const l10n_string_t PALETTE_NAME_FRENCH_ROCOCO_256 = L10N_ALL("french-rococo-256");
-static const l10n_string_t PALETTE_DESC_FRENCH_ROCOCO_256 = L10N_ALL("Dramatic Silence—Rameau to Couperin");
+static const l10n_string_t PALETTE_NAME_FRENCH_ROCOCO_256 =
+    L10N_ALL("french-rococo-256");
+static const l10n_string_t PALETTE_DESC_FRENCH_ROCOCO_256 =
+    L10N_ALL("Dramatic Silence—Rameau to Couperin");
 
-static const l10n_string_t PALETTE_NAME_POLISH_CATHOLIC_256 = L10N_ALL("polish-catholic-256");
-static const l10n_string_t PALETTE_DESC_POLISH_CATHOLIC_256 = L10N_ALL("Sacred Echoes—Chant to Solidarity");
+static const l10n_string_t PALETTE_NAME_POLISH_CATHOLIC_256 =
+    L10N_ALL("polish-catholic-256");
+static const l10n_string_t PALETTE_DESC_POLISH_CATHOLIC_256 =
+    L10N_ALL("Sacred Echoes—Chant to Solidarity");
 
-static const l10n_string_t PALETTE_NAME_GERMAN_INDUSTRY_256 = L10N_ALL("german-industry-256");
-static const l10n_string_t PALETTE_DESC_GERMAN_INDUSTRY_256 = L10N_ALL("Iron Will & Innovation—Ruhr to Raumfahrt");
+static const l10n_string_t PALETTE_NAME_GERMAN_INDUSTRY_256 =
+    L10N_ALL("german-industry-256");
+static const l10n_string_t PALETTE_DESC_GERMAN_INDUSTRY_256 =
+    L10N_ALL("Iron Will & Innovation—Ruhr to Raumfahrt");
 
-static const l10n_string_t PALETTE_NAME_LEIPZIG_BLACK_256 = L10N_ALL("leipzig-black-256");
-static const l10n_string_t PALETTE_DESC_LEIPZIG_BLACK_256 = L10N_ALL("Timeless Trendsetter—J.S Bach To Graffiti");
+static const l10n_string_t PALETTE_NAME_LEIPZIG_BLACK_256 =
+    L10N_ALL("leipzig-black-256");
+static const l10n_string_t PALETTE_DESC_LEIPZIG_BLACK_256 =
+    L10N_ALL("Timeless Trendsetter—J.S Bach To Graffiti");
 
-static const l10n_string_t PALETTE_NAME_CHOPIN_MAZURKA_256 = L10N_ALL("chopin-mazurka-256");
-static const l10n_string_t PALETTE_DESC_CHOPIN_MAZURKA_256 = L10N_ALL("Poetic Melancholy—Salon to Soul");
+static const l10n_string_t PALETTE_NAME_CHOPIN_MAZURKA_256 =
+    L10N_ALL("chopin-mazurka-256");
+static const l10n_string_t PALETTE_DESC_CHOPIN_MAZURKA_256 =
+    L10N_ALL("Poetic Melancholy—Salon to Soul");
 
 static const palette_descriptor_t PALETTE_DEFINITIONS[] = {
     {"windows", &PALETTE_NAME_WINDOWS, &PALETTE_DESC_WINDOWS, "cyan", "blue",
@@ -1954,21 +1964,21 @@ static const palette_descriptor_t PALETTE_DEFINITIONS[] = {
     {"monokai", &PALETTE_NAME_MONOKAI, &PALETTE_DESC_MONOKAI, "xterm:118",
      "xterm-bg:239", false, "xterm:255", "xterm-bg:235", "xterm-bg:239", false,
      true},
-    {"french-rococo-256", &PALETTE_NAME_FRENCH_ROCOCO_256, &PALETTE_DESC_FRENCH_ROCOCO_256,
-     "xterm:218", "xterm-bg:229", false, "xterm:222", "xterm-bg:231", "xterm-bg:147", false,
-     true},
-    {"polish-catholic-256", &PALETTE_NAME_POLISH_CATHOLIC_256, &PALETTE_DESC_POLISH_CATHOLIC_256,
-     "xterm:226", "xterm-bg:21", true, "xterm:231", "xterm-bg:16", "xterm-bg:196", true,
-     true},
-    {"german-industry-256", &PALETTE_NAME_GERMAN_INDUSTRY_256, &PALETTE_DESC_GERMAN_INDUSTRY_256,
-     "xterm:208", "xterm-bg:238", true, "xterm:252", "xterm-bg:235", "xterm-bg:220", true,
-     true},
-    {"leipzig-black-256", &PALETTE_NAME_LEIPZIG_BLACK_256, &PALETTE_DESC_LEIPZIG_BLACK_256,
-     "xterm:250", "xterm-bg:232", false, "xterm:255", "xterm-bg:16", "xterm-bg:240", false,
-     true},
-    {"chopin-mazurka-256", &PALETTE_NAME_CHOPIN_MAZURKA_256, &PALETTE_DESC_CHOPIN_MAZURKA_256,
-     "xterm:111", "xterm-bg:16", false, "xterm:253", "xterm-bg:233", "xterm-bg:176", false,
-     true},
+    {"french-rococo-256", &PALETTE_NAME_FRENCH_ROCOCO_256,
+     &PALETTE_DESC_FRENCH_ROCOCO_256, "xterm:218", "xterm-bg:229", false,
+     "xterm:222", "xterm-bg:231", "xterm-bg:147", false, true},
+    {"polish-catholic-256", &PALETTE_NAME_POLISH_CATHOLIC_256,
+     &PALETTE_DESC_POLISH_CATHOLIC_256, "xterm:226", "xterm-bg:21", true,
+     "xterm:231", "xterm-bg:16", "xterm-bg:196", true, true},
+    {"german-industry-256", &PALETTE_NAME_GERMAN_INDUSTRY_256,
+     &PALETTE_DESC_GERMAN_INDUSTRY_256, "xterm:208", "xterm-bg:238", true,
+     "xterm:252", "xterm-bg:235", "xterm-bg:220", true, true},
+    {"leipzig-black-256", &PALETTE_NAME_LEIPZIG_BLACK_256,
+     &PALETTE_DESC_LEIPZIG_BLACK_256, "xterm:250", "xterm-bg:232", false,
+     "xterm:255", "xterm-bg:16", "xterm-bg:240", false, true},
+    {"chopin-mazurka-256", &PALETTE_NAME_CHOPIN_MAZURKA_256,
+     &PALETTE_DESC_CHOPIN_MAZURKA_256, "xterm:111", "xterm-bg:16", false,
+     "xterm:253", "xterm-bg:233", "xterm-bg:176", false, true},
 };
 
 typedef int (*accept_channel_fn_t)(ssh_message, ssh_channel);
@@ -4242,18 +4252,18 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
             const char *color =
                 from->user_color_code != nullptr ? from->user_color_code : "";
-            const char *highlight =
-                from->user_highlight_code != nullptr ? from->user_highlight_code
-                                                     : "";
+            const char *highlight = from->user_highlight_code != nullptr
+                                        ? from->user_highlight_code
+                                        : "";
             const char *bold = from->user_is_bold ? ANSI_BOLD : "";
 
             const bool has_custom_codes =
                 (color[0] != '\0') || (highlight[0] != '\0');
 
             if (has_custom_codes) {
-                snprintf(formatted, sizeof(formatted),
-                         "[-] <%s%s%s%s%s> %s", highlight, color, bold,
-                         from->user.name, ANSI_RESET, message);
+                snprintf(formatted, sizeof(formatted), "[-] <%s%s%s%s%s> %s",
+                         highlight, color, bold, from->user.name, ANSI_RESET,
+                         message);
             } else {
                 snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s",
                          color, bold, from->user.name, ANSI_RESET, message);
@@ -4446,8 +4456,8 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             const char *color =
                 entry->user_color_code != nullptr ? entry->user_color_code : "";
             const char *highlight = entry->user_highlight_code != nullptr
-                                         ? entry->user_highlight_code
-                                         : "";
+                                        ? entry->user_highlight_code
+                                        : "";
             const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
 
             char id_label[32] = "-";
@@ -4462,12 +4472,12 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             char name_block[SSH_CHATTER_MESSAGE_LIMIT];
             const char *display_name = chat_history_entry_display_name(entry);
             if (has_custom_codes) {
-                snprintf(name_block, sizeof(name_block),
-                         "[%s] <%s%s%s%s%s>", id_label, highlight, color, bold,
-                         display_name, ANSI_RESET);
+                snprintf(name_block, sizeof(name_block), "[%s] <%s%s%s%s%s>",
+                         id_label, highlight, color, bold, display_name,
+                         ANSI_RESET);
             } else {
-                snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s", color,
-                         bold, id_label, display_name, ANSI_RESET);
+                snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s",
+                         color, bold, id_label, display_name, ANSI_RESET);
             }
 
             if (entry->message[0] != '\0') {
@@ -4713,19 +4723,21 @@ static bool host_state_read_history_entry(FILE *fp, uint32_t version,
 
     entry->is_user_message = serialized.is_user_message != 0U;
     entry->user_is_bold = serialized.user_is_bold != 0U;
-    snprintf(entry->username, sizeof(entry->username), "%s", serialized.username);
+    snprintf(entry->username, sizeof(entry->username), "%s",
+             serialized.username);
     snprintf(entry->raw_username, sizeof(entry->raw_username), "%s",
              serialized.raw_username);
     snprintf(entry->message, sizeof(entry->message), "%s", serialized.message);
     snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
              serialized.user_color_name);
-    snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name), "%s",
-             serialized.user_highlight_name);
+    snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name),
+             "%s", serialized.user_highlight_name);
     entry->message_id = serialized.message_id;
     if (serialized.attachment_type > CHAT_ATTACHMENT_FILE) {
         entry->attachment_type = CHAT_ATTACHMENT_NONE;
     } else {
-        entry->attachment_type = (chat_attachment_type_t)serialized.attachment_type;
+        entry->attachment_type =
+            (chat_attachment_type_t)serialized.attachment_type;
     }
     entry->created_at = (time_t)serialized.created_at;
     entry->preserve_whitespace = serialized.reserved[0] != 0U;
@@ -4759,23 +4771,26 @@ static bool host_state_write_history_entry(FILE *fp,
              entry->raw_username);
     snprintf(serialized.message, sizeof(serialized.message), "%s",
              entry->message);
-    snprintf(serialized.user_color_name, sizeof(serialized.user_color_name), "%s",
-             entry->user_color_name);
+    snprintf(serialized.user_color_name, sizeof(serialized.user_color_name),
+             "%s", entry->user_color_name);
     snprintf(serialized.user_highlight_name,
              sizeof(serialized.user_highlight_name), "%s",
              entry->user_highlight_name);
     serialized.message_id = entry->message_id;
     serialized.created_at = (int64_t)entry->created_at;
     serialized.attachment_type = (uint8_t)entry->attachment_type;
-    snprintf(serialized.attachment_target, sizeof(serialized.attachment_target), "%s",
-             entry->attachment_target);
-    snprintf(serialized.attachment_caption, sizeof(serialized.attachment_caption), "%s",
+    snprintf(serialized.attachment_target, sizeof(serialized.attachment_target),
+             "%s", entry->attachment_target);
+    snprintf(serialized.attachment_caption,
+             sizeof(serialized.attachment_caption), "%s",
              entry->attachment_caption);
-    snprintf(serialized.user_color_code, sizeof(serialized.user_color_code), "%s",
+    snprintf(serialized.user_color_code, sizeof(serialized.user_color_code),
+             "%s",
              entry->user_color_code != nullptr ? entry->user_color_code : "");
     snprintf(serialized.user_highlight_code,
              sizeof(serialized.user_highlight_code), "%s",
-             entry->user_highlight_code != nullptr ? entry->user_highlight_code : "");
+             entry->user_highlight_code != nullptr ? entry->user_highlight_code
+                                                   : "");
     memcpy(serialized.reaction_counts, entry->reaction_counts,
            sizeof(serialized.reaction_counts));
     memset(serialized.reserved, 0, sizeof(serialized.reserved));
@@ -5346,10 +5361,10 @@ static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
         snprintf(entry->message, sizeof(entry->message), "%s", message);
     }
     const char *username = session_display_name(from);
-    const char *raw_username =
-        (from->user_data_loaded && from->user_data.preferred_nickname[0] != '\0')
-            ? from->user_data.preferred_nickname
-            : from->user.name;
+    const char *raw_username = (from->user_data_loaded &&
+                                from->user_data.preferred_nickname[0] != '\0')
+                                   ? from->user_data.preferred_nickname
+                                   : from->user.name;
     if (raw_username == nullptr || raw_username[0] == '\0') {
         raw_username = username;
     }
@@ -5785,7 +5800,7 @@ static void host_store_user_theme(host_t *host, session_ctx_t *ctx)
         snprintf(pref->user_highlight_code, sizeof(pref->user_highlight_code),
                  "%s",
                  ctx->user_highlight_code != nullptr ? ctx->user_highlight_code
-                                                    : "");
+                                                     : "");
         snprintf(pref->user_color_name, sizeof(pref->user_color_name), "%s",
                  ctx->user_color_name);
         snprintf(pref->user_highlight_name, sizeof(pref->user_highlight_name),
@@ -6190,8 +6205,8 @@ static void host_history_normalize_entry(host_t *host,
             entry->user_color_name);
         if (color_code == nullptr) {
             color_code = host->user_theme.userColor;
-            snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
-                     host->default_user_color_name);
+            snprintf(entry->user_color_name, sizeof(entry->user_color_name),
+                     "%s", host->default_user_color_name);
         }
         entry->user_color_code = color_code;
     }

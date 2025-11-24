@@ -17,8 +17,7 @@ static session_ctx_t *session_create(void)
     return ctx;
 }
 
-static const char *
-session_cp437_scope_label(session_cp437_scope_t cp437_scope)
+static const char *session_cp437_scope_label(session_cp437_scope_t cp437_scope)
 {
     switch (cp437_scope) {
     case SESSION_CP437_SCOPE_SYSTEM_ONLY:
@@ -77,12 +76,13 @@ void session_handle_hybrid(session_ctx_t *ctx, const char *arguments)
 
     if (working[0] == '\0' || strcasecmp(working, "status") == 0) {
         session_send_system_line(
-            ctx, ctx->hybrid_output_mode
-                     ? "Hybrid encoding detection is enabled. Mixed content will"
-                       " stay UTF-8 while retro-safe system output uses legacy"
-                       " encoding."
-                     : "Hybrid encoding detection is disabled. Output encoding"
-                       " follows the retro scope as-is.");
+            ctx,
+            ctx->hybrid_output_mode
+                ? "Hybrid encoding detection is enabled. Mixed content will"
+                  " stay UTF-8 while retro-safe system output uses legacy"
+                  " encoding."
+                : "Hybrid encoding detection is disabled. Output encoding"
+                  " follows the retro scope as-is.");
         return;
     }
 
@@ -196,8 +196,7 @@ static void host_sync_state_resolve_path(host_t *host)
     }
 
     int written = snprintf(host->sync_state_file_path,
-                           sizeof(host->sync_state_file_path), "%s",
-                           sync_path);
+                           sizeof(host->sync_state_file_path), "%s", sync_path);
     if (written < 0 || (size_t)written >= sizeof(host->sync_state_file_path)) {
         humanized_log_error("host", "sync state file path is too long",
                             ENAMETOOLONG);
@@ -459,8 +458,8 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
 
 void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 {
-    static const char *kUsage =
-        "Usage: /retro <on [ko|en|jp|zh|ru|de|fr|pl] [system|chat|all]|off|auto|status>";
+    static const char *kUsage = "Usage: /retro <on [ko|en|jp|zh|ru|de|fr|pl] "
+                                "[system|chat|all]|off|auto|status>";
 
     if (ctx == nullptr) {
         return;
@@ -497,14 +496,17 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
                 break;
             case SESSION_CP437_SCOPE_ALL:
             default:
-                snprintf(output_description, sizeof(output_description), "legacy");
+                snprintf(output_description, sizeof(output_description),
+                         "legacy");
                 break;
             }
         } else {
-            snprintf(output_description, sizeof(output_description), "UTF-8 only");
+            snprintf(output_description, sizeof(output_description),
+                     "UTF-8 only");
         }
 
-        const char *scope_label = session_cp437_scope_label(ctx->cp437_output_scope);
+        const char *scope_label =
+            session_cp437_scope_label(ctx->cp437_output_scope);
         snprintf(message, sizeof(message),
                  "Retro encoding mode: %s (scope: %s, codepage: %s, input: %s, "
                  "output: %s).",
@@ -600,11 +602,10 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
         const char *codepage_name = session_codepage_name(ctx->active_codepage);
         const char *scope_label = session_cp437_scope_label(requested_scope);
         if (lang_token != nullptr && lang_token[0] != '\0') {
-            snprintf(
-                message, sizeof(message),
-                "Retro encoding enabled with language %s (%s) for %s. "
-                "Legacy code page input and output are forced on.",
-                lang_token, codepage_name, scope_label);
+            snprintf(message, sizeof(message),
+                     "Retro encoding enabled with language %s (%s) for %s. "
+                     "Legacy code page input and output are forced on.",
+                     lang_token, codepage_name, scope_label);
         } else {
             snprintf(message, sizeof(message),
                      "Retro encoding enabled (%s) for %s. "
@@ -3714,9 +3715,10 @@ static void *session_thread(void *arg)
 
         trim_whitespace_inplace(preferred_nickname_raw);
         trim_whitespace_inplace(preferred_nickname);
-        if (preferred_nickname_raw[0] == '\0' && preferred_nickname[0] != '\0') {
-            snprintf(preferred_nickname_raw, sizeof(preferred_nickname_raw), "%s",
-                     preferred_nickname);
+        if (preferred_nickname_raw[0] == '\0' &&
+            preferred_nickname[0] != '\0') {
+            snprintf(preferred_nickname_raw, sizeof(preferred_nickname_raw),
+                     "%s", preferred_nickname);
         }
 
         const char *nick_to_apply = preferred_nickname_raw[0] != '\0'
@@ -4717,9 +4719,8 @@ void host_init(host_t *host, auth_profile_t *auth)
 
             host->ddial_client = ddial_client_create(host, host->clients);
             if (host->ddial_client == nullptr) {
-                humanized_log_error("ddial",
-                                    "D-Dial relay unavailable; check memory",
-                                    ENOMEM);
+                humanized_log_error(
+                    "ddial", "D-Dial relay unavailable; check memory", ENOMEM);
             }
         }
     }
@@ -5068,8 +5069,8 @@ static bool host_prepare_chat_entry(host_t *host, const char *username,
         (highlight_name != nullptr && highlight_name[0] != '\0')
             ? highlight_name
             : host->default_user_highlight_name;
-    snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name), "%s",
-             highlight_label);
+    snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name),
+             "%s", highlight_label);
 
     const char *color_code = lookup_color_code(
         USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
@@ -5086,8 +5087,7 @@ static bool host_prepare_chat_entry(host_t *host, const char *username,
     return true;
 }
 
-void host_append_sync_log(host_t *host, const char *source,
-                          const char *message)
+void host_append_sync_log(host_t *host, const char *source, const char *message)
 {
     if (host == nullptr || source == nullptr || source[0] == '\0' ||
         message == nullptr || message[0] == '\0') {
@@ -5798,10 +5798,11 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     (matched_rule != nullptr && matched_rule->note[0] != '\0')
                         ? matched_rule->note
                         : "version/IP policy";
-                printf("[reject] %s disconnected for client version '%s' (%s in "
-                       "%s; %s)\n",
-                       peer_address, version_display, pattern_display,
-                       cidr_display, note_display);
+                printf(
+                    "[reject] %s disconnected for client version '%s' (%s in "
+                    "%s; %s)\n",
+                    peer_address, version_display, pattern_display,
+                    cidr_display, note_display);
                 ssh_disconnect(session);
                 ssh_free(session);
                 continue;
@@ -5851,8 +5852,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
             bool geo_language_enabled =
                 atomic_load(&ctx->owner->geo_language_enabled);
-            session_ui_language_t provider_language =
-                SESSION_UI_LANGUAGE_COUNT;
+            session_ui_language_t provider_language = SESSION_UI_LANGUAGE_COUNT;
             char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
             bool provider_detected =
                 geo_language_enabled &&

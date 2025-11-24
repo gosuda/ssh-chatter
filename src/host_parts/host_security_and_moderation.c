@@ -331,8 +331,8 @@ static void host_security_handle_suspicious_activity(
     if (attempts > 0U && session != nullptr) {
         char warning[256];
         snprintf(warning, sizeof(warning),
-                 "Suspicious activity detected (%zu/%u).",
-                 attempts, (unsigned int)SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD);
+                 "Suspicious activity detected (%zu/%u).", attempts,
+                 (unsigned int)SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD);
         session_send_system_line(session, warning);
     }
 
@@ -1317,8 +1317,8 @@ host_eliza_prepare_private_reply(const char *message, char *reply,
              "I'm listening. Share anything that's on your mind.");
 }
 
-static __attribute__((unused)) void host_eliza_handle_private_message(
-    session_ctx_t *ctx, const char *message)
+static __attribute__((unused)) void
+host_eliza_handle_private_message(session_ctx_t *ctx, const char *message)
 {
     (void)message;
     if (ctx == nullptr) {
@@ -1328,7 +1328,8 @@ static __attribute__((unused)) void host_eliza_handle_private_message(
     session_send_system_line(ctx, "eliza is no longer available.");
 }
 
-static __attribute__((unused)) bool host_eliza_content_is_severe(const char *text)
+static __attribute__((unused)) bool
+host_eliza_content_is_severe(const char *text)
 {
     if (text == nullptr || text[0] == '\0') {
         return false;
@@ -1478,8 +1479,8 @@ static void host_eliza_worker_shutdown(host_t *host)
     atomic_store(&worker->stop, false);
 }
 
-static __attribute__((unused)) bool host_eliza_worker_enqueue(
-    host_t *host, host_eliza_intervene_task_t *task)
+static __attribute__((unused)) bool
+host_eliza_worker_enqueue(host_t *host, host_eliza_intervene_task_t *task)
 {
     if (host == nullptr || task == nullptr) {
         return false;
@@ -3097,8 +3098,7 @@ static bool host_state_read_metadata(FILE *fp, uint32_t version,
                                      uint8_t *geo_language_enabled_raw)
 {
     if (fp == nullptr || next_message_id == nullptr || grant_count == nullptr ||
-        captcha_enabled_raw == nullptr ||
-        geo_language_enabled_raw == nullptr) {
+        captcha_enabled_raw == nullptr || geo_language_enabled_raw == nullptr) {
         return false;
     }
 
@@ -3165,8 +3165,8 @@ host_state_read_history_entry_from_stream(FILE *fp, uint32_t version,
              serialized.raw_username);
     snprintf(entry_value->message, sizeof(entry_value->message), "%s",
              serialized.message);
-    snprintf(entry_value->user_color_name, sizeof(entry_value->user_color_name), "%s",
-             serialized.user_color_name);
+    snprintf(entry_value->user_color_name, sizeof(entry_value->user_color_name),
+             "%s", serialized.user_color_name);
     snprintf(entry_value->user_highlight_name,
              sizeof(entry_value->user_highlight_name), "%s",
              serialized.user_highlight_name);
@@ -3190,9 +3190,8 @@ host_state_read_history_entry_from_stream(FILE *fp, uint32_t version,
     memcpy(entry_value->reaction_counts, serialized.reaction_counts,
            sizeof(entry_value->reaction_counts));
     if (entry_value->raw_username[0] == '\0') {
-        snprintf(entry_value->raw_username,
-                 sizeof(entry_value->raw_username), "%s",
-                 entry_value->username);
+        snprintf(entry_value->raw_username, sizeof(entry_value->raw_username),
+                 "%s", entry_value->username);
     }
 
     return true;
@@ -3263,8 +3262,7 @@ static bool host_state_read_preference_entry(FILE *fp, uint32_t version,
             offsetof(host_state_preference_entry_t, user_color_code);
         const size_t legacy_suffix_offset =
             offsetof(host_state_preference_entry_t, user_color_name);
-        const size_t legacy_suffix_size =
-            sizeof(*out) - legacy_suffix_offset;
+        const size_t legacy_suffix_size = sizeof(*out) - legacy_suffix_offset;
 
         if (fread(out, legacy_prefix_size, 1U, fp) != 1U) {
             return false;
@@ -3273,8 +3271,8 @@ static bool host_state_read_preference_entry(FILE *fp, uint32_t version,
         out->user_color_code[0] = '\0';
         out->user_highlight_code[0] = '\0';
 
-        if (fread(((uint8_t *)out) + legacy_suffix_offset, legacy_suffix_size, 1U,
-                  fp) != 1U) {
+        if (fread(((uint8_t *)out) + legacy_suffix_offset, legacy_suffix_size,
+                  1U, fp) != 1U) {
             return false;
         }
 

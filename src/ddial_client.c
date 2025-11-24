@@ -58,8 +58,8 @@ static bool ddial_contains_multibyte(const char *line)
         return false;
     }
 
-    for (const unsigned char *cursor = (const unsigned char *)line; *cursor != '\0';
-         ++cursor) {
+    for (const unsigned char *cursor = (const unsigned char *)line;
+         *cursor != '\0'; ++cursor) {
         if ((*cursor & 0x80U) != 0U) {
             if ((*cursor & 0xC0U) == 0xC0U) {
                 return true;
@@ -144,9 +144,8 @@ static bool ddial_client_send_line(ddial_client_t *client, const char *line)
 
     size_t sent_total = 0U;
     while (sent_total < encoded_len) {
-        ssize_t sent =
-            send(client->socket_fd, encoded + sent_total, encoded_len - sent_total,
-                 0);
+        ssize_t sent = send(client->socket_fd, encoded + sent_total,
+                            encoded_len - sent_total, 0);
         if (sent < 0) {
             if (errno == EINTR) {
                 continue;
@@ -170,9 +169,9 @@ static void ddial_client_process_line(ddial_client_t *client, const char *line,
     }
 
     char utf8[SSH_CHATTER_MESSAGE_LIMIT];
-    size_t produced = session_codepage_to_utf8(
-        SESSION_CODEPAGE_CP437, (const unsigned char *)line, length, utf8,
-        sizeof(utf8) - 1U);
+    size_t produced = session_codepage_to_utf8(SESSION_CODEPAGE_CP437,
+                                               (const unsigned char *)line,
+                                               length, utf8, sizeof(utf8) - 1U);
 
     if (produced == 0U) {
         produced = (length < sizeof(utf8) - 1U) ? length : sizeof(utf8) - 1U;
@@ -186,7 +185,8 @@ static void ddial_client_process_line(ddial_client_t *client, const char *line,
     const char *colon = (bracket != nullptr) ? strchr(bracket, ':') : nullptr;
     const char *close = (colon != nullptr) ? strchr(colon, ')') : nullptr;
 
-    if (bracket != nullptr && colon != nullptr && close != nullptr && colon < close) {
+    if (bracket != nullptr && colon != nullptr && close != nullptr &&
+        colon < close) {
         char nickname[SSH_CHATTER_USERNAME_LEN];
         size_t nick_len = (size_t)(close - colon - 1);
         if (nick_len >= sizeof(nickname)) {
@@ -257,7 +257,8 @@ static void *ddial_client_worker(void *arg)
     int sock = -1;
     struct addrinfo *cursor = result;
     for (; cursor != nullptr; cursor = cursor->ai_next) {
-        sock = socket(cursor->ai_family, cursor->ai_socktype, cursor->ai_protocol);
+        sock =
+            socket(cursor->ai_family, cursor->ai_socktype, cursor->ai_protocol);
         if (sock < 0) {
             continue;
         }
@@ -280,11 +281,13 @@ static void *ddial_client_worker(void *arg)
             FD_ZERO(&write_fds);
             FD_SET(sock, &write_fds);
             struct timeval timeout = {.tv_sec = 5, .tv_usec = 0};
-            int ready = select(sock + 1, nullptr, &write_fds, nullptr, &timeout);
+            int ready =
+                select(sock + 1, nullptr, &write_fds, nullptr, &timeout);
             if (ready > 0 && FD_ISSET(sock, &write_fds)) {
                 int so_error = 0;
                 socklen_t len = sizeof(so_error);
-                if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &so_error, &len) == 0 &&
+                if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &so_error, &len) ==
+                        0 &&
                     so_error == 0) {
                     if (flags >= 0) {
                         (void)fcntl(sock, F_SETFL, flags);
@@ -302,8 +305,8 @@ static void *ddial_client_worker(void *arg)
 
     if (sock < 0) {
         ddial_client_set_status(client, "Unable to connect to D-Dial endpoint");
-        ddial_client_log(client, "Connection attempt failed for %s:%s", host_copy,
-                         port_copy);
+        ddial_client_log(client, "Connection attempt failed for %s:%s",
+                         host_copy, port_copy);
         goto exit_worker;
     }
 
@@ -322,8 +325,8 @@ static void *ddial_client_worker(void *arg)
     buffer[0] = '\0';
 
     while (!atomic_load(&client->thread_stop)) {
-        ssize_t received = recv(sock, buffer + buffered,
-                                sizeof(buffer) - buffered - 1U, 0);
+        ssize_t received =
+            recv(sock, buffer + buffered, sizeof(buffer) - buffered - 1U, 0);
         if (received > 0) {
             size_t available = (size_t)received + buffered;
             size_t start = 0U;
@@ -334,9 +337,8 @@ static void *ddial_client_worker(void *arg)
                         ddial_client_process_line(client, buffer + start,
                                                   idx - start);
                     }
-                    while (idx + 1U < available &&
-                           (buffer[idx + 1U] == '\r' ||
-                            buffer[idx + 1U] == '\n')) {
+                    while (idx + 1U < available && (buffer[idx + 1U] == '\r' ||
+                                                    buffer[idx + 1U] == '\n')) {
                         ++idx;
                     }
                     start = idx + 1U;
@@ -350,7 +352,8 @@ static void *ddial_client_worker(void *arg)
                 buffered = 0U;
             }
         } else if (received == 0) {
-            ddial_client_set_status(client, "D-Dial connection closed by remote");
+            ddial_client_set_status(client,
+                                    "D-Dial connection closed by remote");
             ddial_client_log(client, "Connection closed by remote");
             break;
         } else {
@@ -406,7 +409,8 @@ static void ddial_client_on_detach(client_connection_t *connection)
     (void)connection;
 }
 
-ddial_client_t *ddial_client_create(struct host *host, client_manager_t *manager)
+ddial_client_t *ddial_client_create(struct host *host,
+                                    client_manager_t *manager)
 {
     if (host == nullptr || manager == nullptr) {
         return nullptr;
@@ -434,8 +438,8 @@ ddial_client_t *ddial_client_create(struct host *host, client_manager_t *manager
     client->endpoint_port[0] = '\0';
 
     client->connection.kind = CLIENT_KIND_BOT;
-    snprintf(client->connection.identifier, sizeof(client->connection.identifier),
-             "%s", "ddial");
+    snprintf(client->connection.identifier,
+             sizeof(client->connection.identifier), "%s", "ddial");
     client->connection.receive_system_messages = false;
     client->connection.on_message = ddial_client_on_message;
     client->connection.on_detach = ddial_client_on_detach;
@@ -481,8 +485,8 @@ bool ddial_client_connect(ddial_client_t *client, const char *host,
     ddial_client_log(client, "Connect requested to %s:%s", host, port);
 
     atomic_store(&client->thread_stop, false);
-    if (pthread_create(&client->thread, nullptr, ddial_client_worker,
-                       client) != 0) {
+    if (pthread_create(&client->thread, nullptr, ddial_client_worker, client) !=
+        0) {
         ddial_client_set_status(client, "Failed to start D-Dial worker");
         return false;
     }
@@ -550,4 +554,3 @@ bool ddial_client_snapshot_logs(ddial_client_t *client,
     *count = available;
     return true;
 }
-

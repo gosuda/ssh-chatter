@@ -1523,11 +1523,12 @@ static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
             .chat_spacing_multiple =
                 "Translation captions will reserve %s blank lines before "
                 "appearing in chat threads.",
-            .set_ui_lang_usage = "Usage: %sset-ui-lang <ko|en|jp|zh|ru|de|fr|pl>",
+            .set_ui_lang_usage =
+                "Usage: %sset-ui-lang <ko|en|jp|zh|ru|de|fr|pl>",
             .set_ui_lang_success =
                 "UI language set to %s. Use %shelp to review commands.",
-            .set_ui_lang_invalid =
-                "Unsupported language. Use one of: ko, en, jp, zh, ru, de, fr, pl.",
+            .set_ui_lang_invalid = "Unsupported language. Use one of: ko, en, "
+                                   "jp, zh, ru, de, fr, pl.",
             .mode_status_format = "Current input mode: %s.",
             .mode_label_chat = "chat",
             .mode_label_command = "command",
@@ -1572,11 +1573,13 @@ static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
                 "번역 자막이 표시되기 전에 빈 줄 1줄을 예약합니다.",
             .chat_spacing_multiple =
                 "번역 자막이 표시되기 전에 빈 줄 %s줄을 예약합니다.",
-            .set_ui_lang_usage = "사용법: %sset-ui-lang <ko|en|jp|zh|ru|de|fr|pl>",
+            .set_ui_lang_usage =
+                "사용법: %sset-ui-lang <ko|en|jp|zh|ru|de|fr|pl>",
             .set_ui_lang_success = "UI 언어를 %s로 설정했습니다. %shelp "
                                    "명령으로 목록을 다시 확인하세요.",
-            .set_ui_lang_invalid = "지원하지 않는 언어입니다. ko, en, jp, zh, ru, de, fr, pl"
-                                   "ru 중에서 선택하세요.",
+            .set_ui_lang_invalid =
+                "지원하지 않는 언어입니다. ko, en, jp, zh, ru, de, fr, pl"
+                "ru 중에서 선택하세요.",
             .mode_status_format = "현재 입력 모드: %s.",
             .mode_label_chat = "채팅",
             .mode_label_command = "명령",
@@ -1620,11 +1623,13 @@ static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
             .chat_spacing_single = "翻訳字幕は表示前に空行を 1 行確保します。",
             .chat_spacing_multiple =
                 "翻訳字幕は表示前に空行を %s 行確保します。",
-            .set_ui_lang_usage = "使い方: %sset-ui-lang <ko|en|jp|zh|ru|de|fr|pl>",
+            .set_ui_lang_usage =
+                "使い方: %sset-ui-lang <ko|en|jp|zh|ru|de|fr|pl>",
             .set_ui_lang_success = "UI 言語を %s に設定しました。%shelp "
                                    "でコマンドを再確認してください。",
-            .set_ui_lang_invalid = "対応していない言語です。ko, en, jp, zh, ru, de, fr, pl"
-                                   "から選んでください。",
+            .set_ui_lang_invalid =
+                "対応していない言語です。ko, en, jp, zh, ru, de, fr, pl"
+                "から選んでください。",
             .mode_status_format = "現在の入力モード: %s。",
             .mode_label_chat = "チャット",
             .mode_label_command = "コマンド",
@@ -1665,10 +1670,12 @@ static const session_ui_locale_t kSessionUiLocales[SESSION_UI_LANGUAGE_COUNT] =
             .chat_spacing_immediate = "翻译字幕会立即显示，不再预留空行。",
             .chat_spacing_single = "翻译字幕在显示前会预留 1 行空白。",
             .chat_spacing_multiple = "翻译字幕在显示前会预留 %s 行空白。",
-            .set_ui_lang_usage = "用法：%sset-ui-lang <ko|en|jp|zh|ru|de|fr|pl>",
+            .set_ui_lang_usage =
+                "用法：%sset-ui-lang <ko|en|jp|zh|ru|de|fr|pl>",
             .set_ui_lang_success =
                 "界面语言已切换为 %s。可用 %shelp 重新查看命令。",
-            .set_ui_lang_invalid = "不支持的语言，请选择 ko、en、jp、zh、ru、de、fr、pl。",
+            .set_ui_lang_invalid =
+                "不支持的语言，请选择 ko、en、jp、zh、ru、de、fr、pl。",
             .mode_status_format = "当前输入模式：%s。",
             .mode_label_chat = "聊天",
             .mode_label_command = "命令",
@@ -2608,7 +2615,6 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
 static const size_t kSessionBbsSubcommandCount =
     sizeof(kSessionBbsSubcommands) / sizeof(kSessionBbsSubcommands[0]);
 
-
 static const session_help_entry_t kSessionHelpEssential[] = {
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
@@ -2761,7 +2767,6 @@ static const session_help_entry_t kSessionHelpEssential[] = {
         .description_args = {SESSION_HELP_TEMPLATE_ARG_COMMAND_GOOD},
     },
 };
-
 
 static const session_help_entry_t kSessionHelpExtended[] = {
     {
@@ -3196,7 +3201,6 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label_args = {},
     },
 
-
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "connected",
@@ -3239,8 +3243,6 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label_arg_count = 0U,
         .label_args = {},
     },
-
-
 
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
@@ -3808,11 +3810,14 @@ static const session_help_entry_t kSessionHelpOperator[] = {
         .label = "ddial <url> <port>|logs|status",
         .description =
             {
-                "Manage D-Dial relay connection, status, and logs (operator only).",
+                "Manage D-Dial relay connection, status, and logs (operator "
+                "only).",
                 "D-Dial 릴레이 연결·상태·로그를 관리합니다 (운영자 전용).",
-                "D-Dial リレーの接続・状態・ログを管理します（オペレーター専用）。",
+                "D-Dial "
+                "リレーの接続・状態・ログを管理します（オペレーター専用）。",
                 "管理 D-Dial 中继的连接、状态和日志（仅限管理员）。",
-                "Управление подключением, статусом и логами ретранслятора D-Dial (только оператор).",
+                "Управление подключением, статусом и логами ретранслятора "
+                "D-Dial (только оператор).",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -3822,9 +3827,11 @@ static const session_help_entry_t kSessionHelpOperator[] = {
         .label = "fidonet <status|reconnect|disconnect|logs>",
         .description =
             {
-                "Manage FidoNet/Binkp relay connection and logs (operator only).",
+                "Manage FidoNet/Binkp relay connection and logs (operator "
+                "only).",
                 "FidoNet/Binkp 릴레이 연결과 로그를 관리합니다 (운영자 전용).",
-                "FidoNet/Binkp リレーの接続・ログを管理します（オペレーター専用）。",
+                "FidoNet/Binkp "
+                "リレーの接続・ログを管理します（オペレーター専用）。",
                 "管理 FidoNet/Binkp 中继的连接与日志（仅限管理员）。",
                 "Управление подключением и логами FidoNet/Binkp (оператор).",
             },

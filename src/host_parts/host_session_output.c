@@ -349,7 +349,6 @@ static const provider_prefix_t kProviderPrefixes[] = {
     {"2406:", "Indian ISP"},
     {"100.64.", "Carrier-grade NAT"}};
 
-
 bool is_pure_ascii(const char *str)
 {
     size_t len = strlen(str);
@@ -2394,7 +2393,8 @@ void session_process_pending_sink(session_ctx_t *ctx)
 
     size_t start_index = (total > 0U && total > chunk) ? (total - chunk) : 0U;
     chat_history_entry_t buffer[SSH_CHATTER_SCROLLBACK_CHUNK];
-    size_t copied = host_history_copy_range(ctx->owner, start_index, buffer, chunk);
+    size_t copied =
+        host_history_copy_range(ctx->owner, start_index, buffer, chunk);
     if (copied == 0U) {
         return;
     }
@@ -3282,8 +3282,8 @@ static void session_send_history_entry(session_ctx_t *ctx,
         formatted[0] = '\0';
 
         const char *highlight = (entry->user_highlight_code != nullptr)
-                                     ? entry->user_highlight_code
-                                     : "";
+                                    ? entry->user_highlight_code
+                                    : "";
         const char *color =
             (entry->user_color_code != nullptr) ? entry->user_color_code : "";
         const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
@@ -3301,12 +3301,13 @@ static void session_send_history_entry(session_ctx_t *ctx,
         }
         const char *display_name = chat_history_entry_display_name(entry);
         if (has_custom_codes) {
-            snprintf(name_block, sizeof(name_block),
-                     "[%s] <%s%s%s%s%s>", id_display, highlight, color, bold,
-                     display_name, ANSI_RESET);
+            snprintf(name_block, sizeof(name_block), "[%s] <%s%s%s%s%s>",
+                     id_display, highlight, color, bold, display_name,
+                     ANSI_RESET);
         } else {
             snprintf(name_block, sizeof(name_block), "%s%s%s [%s] <%s>%s",
-                     highlight, bold, color, id_display, display_name, ANSI_RESET);
+                     highlight, bold, color, id_display, display_name,
+                     ANSI_RESET);
         }
         strncat(formatted, name_block,
                 sizeof(formatted) - strlen(formatted) - 1U);
@@ -3434,7 +3435,8 @@ static void session_send_poll_summary_generic(session_ctx_t *ctx,
 }
 
 // Gather the main poll and any named polls and present summaries to the caller.
-static __attribute__((unused)) void session_send_poll_summary(session_ctx_t *ctx)
+static __attribute__((unused)) void
+session_send_poll_summary(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
         return;
@@ -3636,8 +3638,8 @@ static int session_authenticate(session_ctx_t *ctx)
                 if (!user_data_strip_ansi_sequences(username, cleaned_username,
                                                     sizeof(cleaned_username)) ||
                     cleaned_username[0] == '\0') {
-                    snprintf(cleaned_username, sizeof(cleaned_username),
-                             "%.*s", SSH_CHATTER_USERNAME_LEN - 1, username);
+                    snprintf(cleaned_username, sizeof(cleaned_username), "%.*s",
+                             SSH_CHATTER_USERNAME_LEN - 1, username);
                 }
 
                 snprintf(ctx->user.name, sizeof(ctx->user.name), "%s",
@@ -3913,9 +3915,8 @@ session_captcha_primary_language(const session_ctx_t *ctx)
     }
 
     bool geo_language_enabled =
-        ctx->owner != nullptr
-            ? atomic_load(&ctx->owner->geo_language_enabled)
-            : true;
+        ctx->owner != nullptr ? atomic_load(&ctx->owner->geo_language_enabled)
+                              : true;
 
     session_ui_language_t preferred = session_ui_language_current(ctx);
     captcha_language_t preferred_language =
@@ -5028,7 +5029,8 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
     char endpoint[256];
     char port_text[16];
 
-    const char *rest = session_consume_token(arguments, endpoint, sizeof(endpoint));
+    const char *rest =
+        session_consume_token(arguments, endpoint, sizeof(endpoint));
 
     if (strcmp(endpoint, "logs") == 0) {
         char logs[DDIAL_LOG_CAPACITY][DDIAL_LOG_ENTRY_LENGTH];
@@ -5055,8 +5057,8 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
         const char *status = ddial_client_get_status(host->ddial_client);
         bool connected = ddial_client_is_connected(host->ddial_client);
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "D-Dial relay status: %s (%s)", status,
-                 connected ? "connected" : "disconnected");
+        snprintf(message, sizeof(message), "D-Dial relay status: %s (%s)",
+                 status, connected ? "connected" : "disconnected");
         session_send_system_line(ctx, message);
         return;
     }
@@ -5204,7 +5206,8 @@ static void session_handle_fidonet(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    static const char *kUsage = "Usage: /fidonet status|reconnect|disconnect|logs";
+    static const char *kUsage =
+        "Usage: /fidonet status|reconnect|disconnect|logs";
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/fidonet", kUsage, usage, sizeof(usage));
 

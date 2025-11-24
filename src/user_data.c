@@ -34,8 +34,7 @@ static void user_data_profile_picture_overlay(const char *root,
 static bool user_data_profile_picture_store(const char *root,
                                             const user_data_record_t *record);
 
-static bool user_data_should_skip_osc_terminator(const char *text,
-                                                 size_t idx)
+static bool user_data_should_skip_osc_terminator(const char *text, size_t idx)
 {
     return text[idx] == '\033' && text[idx + 1U] != '\0' &&
            text[idx + 1U] == '\\';
@@ -256,7 +255,8 @@ static bool user_data_load_raw(const char *path, user_data_record_t *record,
     user_data_record_t temp;
     memset(&temp, 0, sizeof(temp));
 
-    const size_t to_read = file_size < expected_size ? file_size : expected_size;
+    const size_t to_read =
+        file_size < expected_size ? file_size : expected_size;
     bool loaded = fread(&temp, 1U, to_read, fp) == to_read &&
                   temp.magic == USER_DATA_MAGIC && temp.version > 0U &&
                   temp.version <= USER_DATA_VERSION;

@@ -87,6 +87,8 @@ bool host_compact_id_decode(const char *text, uint64_t *id_out);
 
 void session_scrollback_reset_position(session_ctx_t *ctx);
 void session_scrollback_navigate(session_ctx_t *ctx, int direction);
+void session_process_pending_sink(session_ctx_t *ctx);
+void session_flag_should_sink(session_ctx_t *ctx);
 
 session_ui_language_t session_ui_language_from_code(const char *code);
 void host_store_ui_language(host_t *host, const session_ctx_t *ctx);

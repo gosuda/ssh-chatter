@@ -1353,7 +1353,6 @@ static const char *const kSessionCommandNames[] = {
     "help",
     "history",
     "advanced",
-    "ssh-chat-server",
     "image",
     "kick",
     "mode",
@@ -3833,19 +3832,6 @@ static const session_help_entry_t kSessionHelpOperator[] = {
             },
         .label_arg_count = 0U,
         .label_args = {},
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "ssh-chat-server "
-                 "<set|port|credentials|enable|disable|status|trigger|stop>",
-        .description =
-            {
-                "Configure the ssh-chat integration (operator only).",
-                "ssh-chat 연동을 설정합니다 (운영자 전용).",
-                "ssh-chat 連携を設定します (運営者専用)。",
-                "配置 ssh-chat 集成（仅管理员）。",
-                "Настроить интеграцию ssh-chat (только оператор).",
-            },
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,

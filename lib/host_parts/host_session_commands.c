@@ -2702,8 +2702,7 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
             char token[64];
             const char *remaining =
                 session_consume_token(delegated_buffer, token, sizeof(token));
-            if (strcasecmp(token, "ssh-chat-server") == 0 ||
-                strcasecmp(token, "telnet-server") == 0) {
+            if (strcasecmp(token, "telnet-server") == 0) {
                 char forwarded[SSH_CHATTER_MESSAGE_LIMIT];
                 if (remaining != nullptr) {
                     snprintf(forwarded, sizeof(forwarded), "%s", remaining);

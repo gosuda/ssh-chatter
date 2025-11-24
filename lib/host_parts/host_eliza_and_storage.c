@@ -1496,6 +1496,7 @@ static bool session_detect_retro_client(session_ctx_t *ctx)
     const char *label = nullptr;
     const char *identity_label = nullptr;
     bool detected = false;
+    bool saerom_client = false;
 
     for (size_t source_idx = 0U;
          source_idx < sizeof(sources) / sizeof(sources[0]) && !detected;
@@ -1512,6 +1513,10 @@ static bool session_detect_retro_client(session_ctx_t *ctx)
                 label = kRetroMarkers[marker_idx].label;
                 identity_label = label;
                 detected = true;
+                if (string_contains_case_insensitive(candidate, "saerom") ||
+                    string_contains_case_insensitive(candidate, "dataman")) {
+                    saerom_client = true;
+                }
                 break;
             }
         }
@@ -1523,6 +1528,12 @@ static bool session_detect_retro_client(session_ctx_t *ctx)
             label = "SyncTERM";
             identity_label = label;
             detected = true;
+        } else if (string_contains_case_insensitive(type, "saerom") ||
+                   string_contains_case_insensitive(type, "dataman")) {
+            label = "Saerom DataMan";
+            identity_label = label;
+            detected = true;
+            saerom_client = true;
         } else if (string_contains_token_case_insensitive(type, "ANSI-BBS")) {
             label = "ANSI-BBS terminal";
             identity_label = label;
@@ -1577,6 +1588,12 @@ static bool session_detect_retro_client(session_ctx_t *ctx)
             label = "SyncTERM";
             identity_label = label;
             detected = true;
+        } else if (string_contains_case_insensitive(banner, "saerom") ||
+                   string_contains_case_insensitive(banner, "dataman")) {
+            label = "Saerom DataMan";
+            identity_label = label;
+            detected = true;
+            saerom_client = true;
         } else if (string_contains_token_case_insensitive(banner, "ANSI-BBS") ||
                    string_contains_token_case_insensitive(banner, "PC-ANSI")) {
             label = "ANSI-BBS banner";
@@ -1612,11 +1629,16 @@ static bool session_detect_retro_client(session_ctx_t *ctx)
             (label != nullptr && label[0] != '\0') ? label : "Retro terminal";
         snprintf(ctx->retro_client_marker, sizeof(ctx->retro_client_marker),
                  "%s", display);
+
+        if (saerom_client) {
+            ctx->cp437_output_scope = SESSION_CP437_SCOPE_SYSTEM_ONLY;
+            ctx->hybrid_output_mode = true;
+        }
     }
 
     session_format_telnet_identity(ctx, detected ? identity_label : nullptr);
 
-    ctx->cp437_input_enabled = detected;
+    ctx->cp437_input_enabled = saerom_client ? false : detected;
 
     return detected;
 }
@@ -2207,6 +2229,9 @@ static void session_translation_reserve_placeholders(session_ctx_t *ctx,
         return;
     }
 
+    session_output_kind_t previous_kind =
+        session_output_set_kind(ctx, SESSION_OUTPUT_KIND_CHAT);
+
     for (size_t idx = 0U; idx < placeholder_lines; ++idx) {
         session_write_rendered_line(ctx, "");
     }
@@ -2221,6 +2246,8 @@ static void session_translation_reserve_placeholders(session_ctx_t *ctx,
     if (ctx->history_scroll_position == 0U) {
         session_refresh_input_line(ctx);
     }
+
+    session_output_restore_kind(ctx, previous_kind);
 }
 
 static bool session_translation_push_scope_override(session_ctx_t *ctx)
@@ -4001,6 +4028,41 @@ static bool session_output_buffer_append(session_ctx_t *ctx, const void *data,
     return true;
 }
 
+static bool session_output_requires_utf8(const char *data, size_t length)
+{
+    if (data == nullptr || length == 0U) {
+        return false;
+    }
+
+    mbstate_t state;
+    memset(&state, 0, sizeof(state));
+
+    const char *cursor = data;
+    size_t remaining = length;
+    while (remaining > 0U) {
+        wchar_t wc;
+        size_t consumed = mbrtowc(&wc, cursor, remaining, &state);
+        if (consumed == (size_t)-2 || consumed == (size_t)-1) {
+            return true;
+        }
+
+        if (consumed == 0U) {
+            ++cursor;
+            --remaining;
+            continue;
+        }
+
+        if (consumed > 1U) {
+            return true;
+        }
+
+        cursor += consumed;
+        remaining -= consumed;
+    }
+
+    return false;
+}
+
 static void session_channel_write(session_ctx_t *ctx, const void *data,
                                   size_t length)
 {
@@ -4028,7 +4090,17 @@ static void session_channel_write(session_ctx_t *ctx, const void *data,
         }
     }
 
-    if (ctx->prefer_cp437_output) {
+    const bool use_cp437_output =
+        session_output_should_use_cp437(ctx, ctx->output_kind);
+
+    bool prefer_utf8_for_hybrid = false;
+    if (ctx->hybrid_output_mode && use_cp437_output &&
+        ctx->output_kind != SESSION_OUTPUT_KIND_SYSTEM) {
+        prefer_utf8_for_hybrid =
+            session_output_requires_utf8((const char *)data, length);
+    }
+
+    if (use_cp437_output && !prefer_utf8_for_hybrid) {
         /* Use the generic codepage conversion with the active codepage */
         success = session_channel_write_codepage(ctx, (const char *)data,
                                                  length, ctx->active_codepage);
@@ -4571,7 +4643,10 @@ static void session_send_caption_line(session_ctx_t *ctx, const char *message)
                           sizeof(SESSION_COLUMN_RESET) - 1U);
     session_channel_write(ctx, ANSI_INSERT_LINE, sizeof(ANSI_INSERT_LINE) - 1U);
 
+    session_output_kind_t previous_kind =
+        session_output_set_kind(ctx, SESSION_OUTPUT_KIND_SYSTEM);
     session_write_rendered_line(ctx, message);
+    session_output_restore_kind(ctx, previous_kind);
 
     if (locked) {
         session_output_unlock(ctx);
@@ -4603,7 +4678,10 @@ static void session_render_caption_with_offset(session_ctx_t *ctx,
 
     session_channel_write(ctx, SESSION_COLUMN_RESET,
                           sizeof(SESSION_COLUMN_RESET) - 1U);
+    session_output_kind_t previous_kind =
+        session_output_set_kind(ctx, SESSION_OUTPUT_KIND_SYSTEM);
     session_write_rendered_line(ctx, message);
+    session_output_restore_kind(ctx, previous_kind);
     session_channel_write(ctx, "\033[u", 3U);
 
     if (locked) {
@@ -5633,6 +5711,9 @@ static void session_send_line(session_ctx_t *ctx, const char *message)
         return;
     }
 
+    session_output_kind_t previous_kind =
+        session_output_set_kind(ctx, SESSION_OUTPUT_KIND_CHAT);
+
     char buffer[SSH_CHATTER_MESSAGE_LIMIT];
     memset(buffer, 0, sizeof(buffer));
     strncpy(buffer, message, SSH_CHATTER_MESSAGE_LIMIT);
@@ -5672,6 +5753,8 @@ static void session_send_line(session_ctx_t *ctx, const char *message)
     }
 
     session_translation_flush_ready(ctx);
+
+    session_output_restore_kind(ctx, previous_kind);
 }
 
 static size_t session_append_fragment(char *dest, size_t dest_size,

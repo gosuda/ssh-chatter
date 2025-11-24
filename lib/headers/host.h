@@ -564,6 +564,18 @@ typedef enum session_cp437_override {
     SESSION_CP437_OVERRIDE_FORCE_ON,
 } session_cp437_override_t;
 
+typedef enum session_cp437_scope {
+    SESSION_CP437_SCOPE_ALL = 0,
+    SESSION_CP437_SCOPE_SYSTEM_ONLY,
+    SESSION_CP437_SCOPE_CHAT_ONLY,
+} session_cp437_scope_t;
+
+typedef enum session_output_kind {
+    SESSION_OUTPUT_KIND_SYSTEM = 0,
+    SESSION_OUTPUT_KIND_CHAT,
+    SESSION_OUTPUT_KIND_GENERIC,
+} session_output_kind_t;
+
 typedef struct session_ctx {
     ssh_session session;
     ssh_channel channel;
@@ -656,6 +668,9 @@ typedef struct session_ctx {
     bool breaking_alerts_enabled;
     bool prefer_utf16_output;
     bool prefer_cp437_output;
+    session_cp437_scope_t cp437_output_scope;
+    session_output_kind_t output_kind;
+    bool hybrid_output_mode;
     session_cp437_override_t cp437_override;
     bool cp437_input_enabled;
     session_codepage_t active_codepage;
@@ -1016,4 +1031,6 @@ void host_session_process_line_for_testing(session_ctx_t *ctx,
                                            const char *line);
 
 void session_handle_retro(session_ctx_t *ctx, const char *arguments);
+void session_handle_hybrid(session_ctx_t *ctx, const char *arguments);
+void session_handle_saerom(session_ctx_t *ctx);
 #endif

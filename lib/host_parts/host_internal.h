@@ -78,6 +78,47 @@ bool session_detect_provider_ip(const char *ip, char *label, size_t length);
 
 bool session_game_othello_handle_forced_exit(session_ctx_t *ctx);
 
+static inline session_output_kind_t
+session_output_set_kind(session_ctx_t *ctx, session_output_kind_t new_kind)
+{
+    if (ctx == nullptr) {
+        return SESSION_OUTPUT_KIND_SYSTEM;
+    }
+
+    session_output_kind_t previous = ctx->output_kind;
+    ctx->output_kind = new_kind;
+    return previous;
+}
+
+static inline void
+session_output_restore_kind(session_ctx_t *ctx,
+                            session_output_kind_t previous_kind)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    ctx->output_kind = previous_kind;
+}
+
+static inline bool session_output_should_use_cp437(const session_ctx_t *ctx,
+                                                   session_output_kind_t kind)
+{
+    if (ctx == nullptr || !ctx->prefer_cp437_output) {
+        return false;
+    }
+
+    switch (ctx->cp437_output_scope) {
+    case SESSION_CP437_SCOPE_SYSTEM_ONLY:
+        return kind == SESSION_OUTPUT_KIND_SYSTEM;
+    case SESSION_CP437_SCOPE_CHAT_ONLY:
+        return kind == SESSION_OUTPUT_KIND_CHAT;
+    case SESSION_CP437_SCOPE_ALL:
+    default:
+        return true;
+    }
+}
+
 size_t session_cp437_byte_to_utf8(unsigned char byte, char *output,
                                   size_t capacity);
 

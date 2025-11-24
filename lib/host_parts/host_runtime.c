@@ -17,6 +17,108 @@ static session_ctx_t *session_create(void)
     return ctx;
 }
 
+static const char *
+session_cp437_scope_label(session_cp437_scope_t cp437_scope)
+{
+    switch (cp437_scope) {
+    case SESSION_CP437_SCOPE_SYSTEM_ONLY:
+        return "system-only";
+    case SESSION_CP437_SCOPE_CHAT_ONLY:
+        return "chat-only";
+    case SESSION_CP437_SCOPE_ALL:
+    default:
+        return "all output";
+    }
+}
+
+static bool session_cp437_scope_parse(const char *token,
+                                      session_cp437_scope_t *out_scope)
+{
+    if (token == nullptr || out_scope == nullptr || token[0] == '\0') {
+        return false;
+    }
+
+    if (strcasecmp(token, "system") == 0 ||
+        strcasecmp(token, "system-only") == 0 ||
+        strcasecmp(token, "system_only") == 0) {
+        *out_scope = SESSION_CP437_SCOPE_SYSTEM_ONLY;
+        return true;
+    }
+
+    if (strcasecmp(token, "chat") == 0 || strcasecmp(token, "chat-only") == 0 ||
+        strcasecmp(token, "chat_only") == 0) {
+        *out_scope = SESSION_CP437_SCOPE_CHAT_ONLY;
+        return true;
+    }
+
+    if (strcasecmp(token, "all") == 0 || strcasecmp(token, "both") == 0) {
+        *out_scope = SESSION_CP437_SCOPE_ALL;
+        return true;
+    }
+
+    return false;
+}
+
+void session_handle_hybrid(session_ctx_t *ctx, const char *arguments)
+{
+    static const char *kUsage = "Usage: /hybrid <on|off|status>";
+
+    if (ctx == nullptr) {
+        return;
+    }
+
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    if (arguments != nullptr) {
+        snprintf(working, sizeof(working), "%s", arguments);
+        trim_whitespace_inplace(working);
+    } else {
+        working[0] = '\0';
+    }
+
+    if (working[0] == '\0' || strcasecmp(working, "status") == 0) {
+        session_send_system_line(
+            ctx, ctx->hybrid_output_mode
+                     ? "Hybrid encoding detection is enabled. Mixed content will"
+                       " stay UTF-8 while retro-safe system output uses legacy"
+                       " encoding."
+                     : "Hybrid encoding detection is disabled. Output encoding"
+                       " follows the retro scope as-is.");
+        return;
+    }
+
+    if (strcasecmp(working, "on") == 0) {
+        ctx->hybrid_output_mode = true;
+        session_send_system_line(
+            ctx, "Hybrid encoding detection enabled for retro output.");
+        return;
+    }
+
+    if (strcasecmp(working, "off") == 0) {
+        ctx->hybrid_output_mode = false;
+        session_send_system_line(ctx, "Hybrid encoding detection disabled.");
+        return;
+    }
+
+    session_send_system_line(ctx, kUsage);
+}
+
+void session_handle_saerom(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    ctx->cp437_output_scope = SESSION_CP437_SCOPE_SYSTEM_ONLY;
+    ctx->cp437_override = SESSION_CP437_OVERRIDE_FORCE_ON;
+    ctx->hybrid_output_mode = true;
+    session_refresh_output_encoding(ctx);
+
+    session_send_system_line(
+        ctx,
+        "Saerom DataMan profile enabled: system output uses CP437 while chat"
+        " stays UTF-8 with hybrid detection.");
+}
+
 static bool
 host_provider_language_preference(host_t *host, const char *provider_label,
                                   session_ui_language_t *out_language)
@@ -358,7 +460,7 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
 void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage =
-        "Usage: /retro <on [ko|en|jp|zh|ru|de|fr|pl]|off|auto|status>";
+        "Usage: /retro <on [ko|en|jp|zh|ru|de|fr|pl] [system|chat|all]|off|auto|status>";
 
     if (ctx == nullptr) {
         return;
@@ -382,11 +484,36 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 
         const char *codepage_name = session_codepage_name(ctx->active_codepage);
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(
-            message, sizeof(message),
-            "Retro encoding mode: %s (codepage: %s, input: %s, output: %s).",
-            mode, codepage_name, ctx->cp437_input_enabled ? "legacy" : "UTF-8",
-            ctx->prefer_cp437_output ? "legacy" : "UTF-8");
+        char output_description[64];
+        if (ctx->prefer_cp437_output) {
+            switch (ctx->cp437_output_scope) {
+            case SESSION_CP437_SCOPE_SYSTEM_ONLY:
+                snprintf(output_description, sizeof(output_description),
+                         "legacy (system-only)");
+                break;
+            case SESSION_CP437_SCOPE_CHAT_ONLY:
+                snprintf(output_description, sizeof(output_description),
+                         "legacy (chat-only)");
+                break;
+            case SESSION_CP437_SCOPE_ALL:
+            default:
+                snprintf(output_description, sizeof(output_description), "legacy");
+                break;
+            }
+        } else {
+            snprintf(output_description, sizeof(output_description), "UTF-8 only");
+        }
+
+        const char *scope_label = session_cp437_scope_label(ctx->cp437_output_scope);
+        snprintf(message, sizeof(message),
+                 "Retro encoding mode: %s (scope: %s, codepage: %s, input: %s, "
+                 "output: %s).",
+                 mode, scope_label, codepage_name,
+                 ctx->cp437_input_enabled ? "legacy" : "UTF-8",
+                 output_description);
+        session_send_system_line(ctx, message);
+        snprintf(message, sizeof(message), "Hybrid detection: %s.",
+                 ctx->hybrid_output_mode ? "enabled" : "disabled");
         session_send_system_line(ctx, message);
         session_send_system_line(
             ctx, "Toggle with /retro on [lang], /retro off, or /retro auto.");
@@ -402,17 +529,39 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
             ++lang_arg;
         }
 
-        // If language is specified, set UI language
-        if (lang_arg[0] != '\0') {
-            char lang_code[16];
-            snprintf(lang_code, sizeof(lang_code), "%s", lang_arg);
-            trim_whitespace_inplace(lang_code);
+        char first_token[16] = {0};
+        char second_token[16] = {0};
+        int token_count =
+            sscanf(lang_arg, "%15s %15s", first_token, second_token);
 
+        const char *lang_token = nullptr;
+        const char *scope_token = nullptr;
+        session_cp437_scope_t requested_scope = ctx->cp437_output_scope;
+
+        if (token_count >= 1) {
+            session_ui_language_t token_language =
+                session_ui_language_from_code(first_token);
+            if (token_language != SESSION_UI_LANGUAGE_COUNT ||
+                strcasecmp(first_token, "en") == 0) {
+                lang_token = first_token;
+                if (token_count >= 2) {
+                    scope_token = second_token;
+                }
+            } else {
+                scope_token = first_token;
+                if (token_count >= 2) {
+                    lang_token = second_token;
+                }
+            }
+        }
+
+        // If language is specified, set UI language
+        if (lang_token != nullptr && lang_token[0] != '\0') {
             // Try to parse language code
             session_ui_language_t new_lang =
-                session_ui_language_from_code(lang_code);
+                session_ui_language_from_code(lang_token);
             if (new_lang != SESSION_UI_LANGUAGE_EN ||
-                strcasecmp(lang_code, "en") == 0) {
+                strcasecmp(lang_token, "en") == 0) {
                 ctx->ui_language = new_lang;
                 /* Set the appropriate code page for the language */
                 ctx->active_codepage = session_codepage_for_language(new_lang);
@@ -426,21 +575,36 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
                 session_codepage_for_language(ctx->ui_language);
         }
 
+        if (scope_token != nullptr && scope_token[0] != '\0') {
+            session_cp437_scope_t parsed_scope = requested_scope;
+            if (!session_cp437_scope_parse(scope_token, &parsed_scope)) {
+                session_send_system_line(
+                    ctx, "Scope must be one of: all, system, or chat.");
+                return;
+            }
+            requested_scope = parsed_scope;
+        }
+
+        ctx->cp437_output_scope = requested_scope;
+
         ctx->cp437_override = SESSION_CP437_OVERRIDE_FORCE_ON;
+        ctx->hybrid_output_mode = true;
         session_refresh_output_encoding(ctx);
 
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         const char *codepage_name = session_codepage_name(ctx->active_codepage);
-        if (lang_arg[0] != '\0') {
-            snprintf(message, sizeof(message),
-                     "Retro encoding enabled with language %s (%s). "
-                     "Legacy code page input and output are forced on.",
-                     lang_arg, codepage_name);
+        const char *scope_label = session_cp437_scope_label(requested_scope);
+        if (lang_token != nullptr && lang_token[0] != '\0') {
+            snprintf(
+                message, sizeof(message),
+                "Retro encoding enabled with language %s (%s) for %s. "
+                "Legacy code page input and output are forced on.",
+                lang_token, codepage_name, scope_label);
         } else {
             snprintf(message, sizeof(message),
-                     "Retro encoding enabled (%s). "
+                     "Retro encoding enabled (%s) for %s. "
                      "Legacy code page input and output are forced on.",
-                     codepage_name);
+                     codepage_name, scope_label);
         }
         session_send_system_line(ctx, message);
         return;
@@ -1617,6 +1781,18 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
 
     else if (session_parse_command_any(ctx, "/retro", effective_line, &args)) {
         session_handle_retro(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/hybrid", effective_line,
+                                         &args)) {
+        session_handle_hybrid(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/saerom", effective_line,
+                                         &args)) {
+        if (*args != '\0') {
+            session_send_system_line(ctx, "Usage: /saerom");
+        } else {
+            session_handle_saerom(ctx);
+        }
         return;
     }
 
@@ -2837,6 +3013,8 @@ static void session_reset_for_retry(session_ctx_t *ctx)
     ctx->telnet_terminal_type_requested = false;
     ctx->terminal_type[0] = '\0';
     ctx->prefer_cp437_output = false;
+    ctx->cp437_output_scope = SESSION_CP437_SCOPE_ALL;
+    ctx->output_kind = SESSION_OUTPUT_KIND_SYSTEM;
     ctx->cp437_override = SESSION_CP437_OVERRIDE_NONE;
     ctx->cp437_input_enabled = false;
     session_asciiart_reset(ctx);

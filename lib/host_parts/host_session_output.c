@@ -963,14 +963,19 @@ static void session_send_system_line(session_ctx_t *ctx, const char *message)
         return;
     }
 
+    session_output_kind_t previous_kind =
+        session_output_set_kind(ctx, SESSION_OUTPUT_KIND_SYSTEM);
+
     if (session_bbs_should_defer_breaking(ctx, message)) {
         session_bbs_buffer_breaking_notice(ctx, message);
+        session_output_restore_kind(ctx, previous_kind);
         return;
     }
 
     if (ctx->game
             .active) { // If game is active, send raw text without [system] prefix
         session_send_raw_text(ctx, message);
+        session_output_restore_kind(ctx, previous_kind);
         return;
     }
 
@@ -978,6 +983,8 @@ static void session_send_system_line(session_ctx_t *ctx, const char *message)
     snprintf(prefixed_message, sizeof(prefixed_message), "+ %s", message);
 
     session_send_plain_line(ctx, prefixed_message);
+
+    session_output_restore_kind(ctx, previous_kind);
 }
 
 void session_send_raw_text(session_ctx_t *ctx, const char *text)
@@ -3206,6 +3213,9 @@ static void session_send_history_entry(session_ctx_t *ctx,
         return;
     }
 
+    session_output_kind_t previous_kind =
+        session_output_set_kind(ctx, SESSION_OUTPUT_KIND_CHAT);
+
     if (session_should_hide_entry(ctx, entry)) {
         return;
     }
@@ -3293,6 +3303,8 @@ static void session_send_history_entry(session_ctx_t *ctx,
     } else {
         session_send_plain_line(ctx, entry->message);
     }
+
+    session_output_restore_kind(ctx, previous_kind);
 }
 
 // Present a summary of a poll, optionally showing the label used for named polls.

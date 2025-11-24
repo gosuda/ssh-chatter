@@ -25,6 +25,14 @@
 #error "SSH_CHATTER_USERNAME_LEN must be defined before including user_data.h"
 #endif
 
+#ifndef SSH_CHATTER_COLOR_CODE_LEN
+#error "SSH_CHATTER_COLOR_CODE_LEN must be defined before including user_data.h"
+#endif
+
+#ifndef SSH_CHATTER_COLOR_NAME_LEN
+#error "SSH_CHATTER_COLOR_NAME_LEN must be defined before including user_data.h"
+#endif
+
 #ifndef SSH_CHAT_SERVER_URL_LEN
 #define SSH_CHAT_SERVER_URL_LEN 256U
 #endif
@@ -54,6 +62,12 @@ typedef struct user_data_record {
     uint32_t version;
     char username[SSH_CHATTER_USERNAME_LEN];
     char preferred_nickname[SSH_CHATTER_USERNAME_LEN];
+    uint8_t has_user_theme;
+    uint8_t user_is_bold;
+    char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
+    char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
     char last_ip[SSH_CHATTER_IP_LEN];
     uint32_t mailbox_count;
     user_data_mail_entry_t mailbox[USER_DATA_MAILBOX_LIMIT];
@@ -72,6 +86,8 @@ typedef struct user_data_record {
 
 bool user_data_sanitize_username(const char *restrict username,
                                  char *restrict sanitized, size_t length);
+bool user_data_strip_ansi_sequences(const char *restrict input,
+                                    char *restrict output, size_t length);
 bool user_data_path_for(const char *restrict root,
                         const char *restrict username, const char *restrict ip,
                         bool create_if_missing, char *restrict path,

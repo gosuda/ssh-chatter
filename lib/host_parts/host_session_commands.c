@@ -1923,16 +1923,13 @@ static void session_handle_delete_message(session_ctx_t *ctx,
         return;
     }
 
-    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
-        session_send_system_line(ctx, "Only operators may delete messages.");
-        return;
-    }
-
     static const char *kUsage = "Usage: /delete-msg <id|start-end>";
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/delete-msg", kUsage, usage,
                                  sizeof(usage));
+    const bool is_operator = ctx->user.is_operator || ctx->user.is_lan_operator;
+
     if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
         return;
@@ -1978,6 +1975,32 @@ static void session_handle_delete_message(session_ctx_t *ctx,
             return;
         }
         end_id = start_id;
+    }
+
+    if (!is_operator) {
+        if (dash != nullptr) {
+            session_send_system_line(
+                ctx, "You may only delete your own single message.");
+            return;
+        }
+
+        chat_history_entry_t entry = {0};
+        if (!host_history_find_entry_by_id(ctx->owner, start_id, &entry)) {
+            session_send_system_line(ctx,
+                                     "No chat messages matched that identifier.");
+            return;
+        }
+
+        const bool name_match =
+            strcasecmp(entry.username, ctx->user.name) == 0;
+        const bool ip_match = entry.user_ip[0] != '\0' &&
+                              ctx->client_ip[0] != '\0' &&
+                              strcmp(entry.user_ip, ctx->client_ip) == 0;
+        if (!(name_match && ip_match)) {
+            session_send_system_line(
+                ctx, "You can only delete your own messages from this IP.");
+            return;
+        }
     }
 
     uint64_t first_removed = 0U;
@@ -2778,9 +2801,13 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
                  telnet_command);
         session_send_system_line(ctx, line);
 
+        snprintf(line, sizeof(line),
+                 "  /ddial <url> <port>|logs|status - Manage D-Dial relay.");
+        session_send_system_line(ctx, line);
+
         snprintf(
             line, sizeof(line),
-            "  /fidonet status|reconnect|disconnect - Manage FidoNet relay.");
+            "  /fidonet status|reconnect|disconnect|logs - Manage FidoNet relay.");
         session_send_system_line(ctx, line);
 
         snprintf(

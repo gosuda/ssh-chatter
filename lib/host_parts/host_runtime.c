@@ -17,6 +17,108 @@ static session_ctx_t *session_create(void)
     return ctx;
 }
 
+static const char *
+session_cp437_scope_label(session_cp437_scope_t cp437_scope)
+{
+    switch (cp437_scope) {
+    case SESSION_CP437_SCOPE_SYSTEM_ONLY:
+        return "system-only";
+    case SESSION_CP437_SCOPE_CHAT_ONLY:
+        return "chat-only";
+    case SESSION_CP437_SCOPE_ALL:
+    default:
+        return "all output";
+    }
+}
+
+static bool session_cp437_scope_parse(const char *token,
+                                      session_cp437_scope_t *out_scope)
+{
+    if (token == nullptr || out_scope == nullptr || token[0] == '\0') {
+        return false;
+    }
+
+    if (strcasecmp(token, "system") == 0 ||
+        strcasecmp(token, "system-only") == 0 ||
+        strcasecmp(token, "system_only") == 0) {
+        *out_scope = SESSION_CP437_SCOPE_SYSTEM_ONLY;
+        return true;
+    }
+
+    if (strcasecmp(token, "chat") == 0 || strcasecmp(token, "chat-only") == 0 ||
+        strcasecmp(token, "chat_only") == 0) {
+        *out_scope = SESSION_CP437_SCOPE_CHAT_ONLY;
+        return true;
+    }
+
+    if (strcasecmp(token, "all") == 0 || strcasecmp(token, "both") == 0) {
+        *out_scope = SESSION_CP437_SCOPE_ALL;
+        return true;
+    }
+
+    return false;
+}
+
+void session_handle_hybrid(session_ctx_t *ctx, const char *arguments)
+{
+    static const char *kUsage = "Usage: /hybrid <on|off|status>";
+
+    if (ctx == nullptr) {
+        return;
+    }
+
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    if (arguments != nullptr) {
+        snprintf(working, sizeof(working), "%s", arguments);
+        trim_whitespace_inplace(working);
+    } else {
+        working[0] = '\0';
+    }
+
+    if (working[0] == '\0' || strcasecmp(working, "status") == 0) {
+        session_send_system_line(
+            ctx, ctx->hybrid_output_mode
+                     ? "Hybrid encoding detection is enabled. Mixed content will"
+                       " stay UTF-8 while retro-safe system output uses legacy"
+                       " encoding."
+                     : "Hybrid encoding detection is disabled. Output encoding"
+                       " follows the retro scope as-is.");
+        return;
+    }
+
+    if (strcasecmp(working, "on") == 0) {
+        ctx->hybrid_output_mode = true;
+        session_send_system_line(
+            ctx, "Hybrid encoding detection enabled for retro output.");
+        return;
+    }
+
+    if (strcasecmp(working, "off") == 0) {
+        ctx->hybrid_output_mode = false;
+        session_send_system_line(ctx, "Hybrid encoding detection disabled.");
+        return;
+    }
+
+    session_send_system_line(ctx, kUsage);
+}
+
+void session_handle_saerom(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    ctx->cp437_output_scope = SESSION_CP437_SCOPE_SYSTEM_ONLY;
+    ctx->cp437_override = SESSION_CP437_OVERRIDE_FORCE_ON;
+    ctx->hybrid_output_mode = true;
+    session_refresh_output_encoding(ctx);
+
+    session_send_system_line(
+        ctx,
+        "Saerom DataMan profile enabled: system output uses CP437 while chat"
+        " stays UTF-8 with hybrid detection.");
+}
+
 static bool
 host_provider_language_preference(host_t *host, const char *provider_label,
                                   session_ui_language_t *out_language)
@@ -80,6 +182,27 @@ host_provider_language_preference(host_t *host, const char *provider_label,
 
     *out_language = best_language;
     return true;
+}
+
+static void host_sync_state_resolve_path(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    const char *sync_path = getenv("CHATTER_SYNC_STATE_FILE");
+    if (sync_path == nullptr || sync_path[0] == '\0') {
+        sync_path = "sync_chatter_state.dat";
+    }
+
+    int written = snprintf(host->sync_state_file_path,
+                           sizeof(host->sync_state_file_path), "%s",
+                           sync_path);
+    if (written < 0 || (size_t)written >= sizeof(host->sync_state_file_path)) {
+        humanized_log_error("host", "sync state file path is too long",
+                            ENAMETOOLONG);
+        host->sync_state_file_path[0] = '\0';
+    }
 }
 
 static void session_destroy(session_ctx_t *ctx);
@@ -337,7 +460,7 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
 void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage =
-        "Usage: /retro <on [ko|en|jp|zh|ru|de|fr|pl]|off|auto|status>";
+        "Usage: /retro <on [ko|en|jp|zh|ru|de|fr|pl] [system|chat|all]|off|auto|status>";
 
     if (ctx == nullptr) {
         return;
@@ -361,11 +484,36 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 
         const char *codepage_name = session_codepage_name(ctx->active_codepage);
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(
-            message, sizeof(message),
-            "Retro encoding mode: %s (codepage: %s, input: %s, output: %s).",
-            mode, codepage_name, ctx->cp437_input_enabled ? "legacy" : "UTF-8",
-            ctx->prefer_cp437_output ? "legacy" : "UTF-8");
+        char output_description[64];
+        if (ctx->prefer_cp437_output) {
+            switch (ctx->cp437_output_scope) {
+            case SESSION_CP437_SCOPE_SYSTEM_ONLY:
+                snprintf(output_description, sizeof(output_description),
+                         "legacy (system-only)");
+                break;
+            case SESSION_CP437_SCOPE_CHAT_ONLY:
+                snprintf(output_description, sizeof(output_description),
+                         "legacy (chat-only)");
+                break;
+            case SESSION_CP437_SCOPE_ALL:
+            default:
+                snprintf(output_description, sizeof(output_description), "legacy");
+                break;
+            }
+        } else {
+            snprintf(output_description, sizeof(output_description), "UTF-8 only");
+        }
+
+        const char *scope_label = session_cp437_scope_label(ctx->cp437_output_scope);
+        snprintf(message, sizeof(message),
+                 "Retro encoding mode: %s (scope: %s, codepage: %s, input: %s, "
+                 "output: %s).",
+                 mode, scope_label, codepage_name,
+                 ctx->cp437_input_enabled ? "legacy" : "UTF-8",
+                 output_description);
+        session_send_system_line(ctx, message);
+        snprintf(message, sizeof(message), "Hybrid detection: %s.",
+                 ctx->hybrid_output_mode ? "enabled" : "disabled");
         session_send_system_line(ctx, message);
         session_send_system_line(
             ctx, "Toggle with /retro on [lang], /retro off, or /retro auto.");
@@ -386,17 +534,39 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
             ++lang_arg;
         }
 
-        // If language is specified, set UI language
-        if (lang_arg[0] != '\0') {
-            char lang_code[16];
-            snprintf(lang_code, sizeof(lang_code), "%s", lang_arg);
-            trim_whitespace_inplace(lang_code);
+        char first_token[16] = {0};
+        char second_token[16] = {0};
+        int token_count =
+            sscanf(lang_arg, "%15s %15s", first_token, second_token);
 
+        const char *lang_token = nullptr;
+        const char *scope_token = nullptr;
+        session_cp437_scope_t requested_scope = ctx->cp437_output_scope;
+
+        if (token_count >= 1) {
+            session_ui_language_t token_language =
+                session_ui_language_from_code(first_token);
+            if (token_language != SESSION_UI_LANGUAGE_COUNT ||
+                strcasecmp(first_token, "en") == 0) {
+                lang_token = first_token;
+                if (token_count >= 2) {
+                    scope_token = second_token;
+                }
+            } else {
+                scope_token = first_token;
+                if (token_count >= 2) {
+                    lang_token = second_token;
+                }
+            }
+        }
+
+        // If language is specified, set UI language
+        if (lang_token != nullptr && lang_token[0] != '\0') {
             // Try to parse language code
             session_ui_language_t new_lang =
-                session_ui_language_from_code(lang_code);
+                session_ui_language_from_code(lang_token);
             if (new_lang != SESSION_UI_LANGUAGE_EN ||
-                strcasecmp(lang_code, "en") == 0) {
+                strcasecmp(lang_token, "en") == 0) {
                 ctx->ui_language = new_lang;
                 /* Set the appropriate code page for the language */
                 ctx->active_codepage = session_codepage_for_language(new_lang);
@@ -410,21 +580,36 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
                 session_codepage_for_language(ctx->ui_language);
         }
 
+        if (scope_token != nullptr && scope_token[0] != '\0') {
+            session_cp437_scope_t parsed_scope = requested_scope;
+            if (!session_cp437_scope_parse(scope_token, &parsed_scope)) {
+                session_send_system_line(
+                    ctx, "Scope must be one of: all, system, or chat.");
+                return;
+            }
+            requested_scope = parsed_scope;
+        }
+
+        ctx->cp437_output_scope = requested_scope;
+
         ctx->cp437_override = SESSION_CP437_OVERRIDE_FORCE_ON;
+        ctx->hybrid_output_mode = true;
         session_refresh_output_encoding(ctx);
 
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         const char *codepage_name = session_codepage_name(ctx->active_codepage);
-        if (lang_arg[0] != '\0') {
-            snprintf(message, sizeof(message),
-                     "Retro encoding enabled with language %s (%s). "
-                     "Legacy code page input and output are forced on.",
-                     lang_arg, codepage_name);
+        const char *scope_label = session_cp437_scope_label(requested_scope);
+        if (lang_token != nullptr && lang_token[0] != '\0') {
+            snprintf(
+                message, sizeof(message),
+                "Retro encoding enabled with language %s (%s) for %s. "
+                "Legacy code page input and output are forced on.",
+                lang_token, codepage_name, scope_label);
         } else {
             snprintf(message, sizeof(message),
-                     "Retro encoding enabled (%s). "
+                     "Retro encoding enabled (%s) for %s. "
                      "Legacy code page input and output are forced on.",
-                     codepage_name);
+                     codepage_name, scope_label);
         }
         session_send_system_line(ctx, message);
         return;
@@ -627,11 +812,20 @@ static void session_handle_nick(session_ctx_t *ctx, const char *arguments)
     snprintf(old_name, sizeof(old_name), "%s", ctx->user.name);
     snprintf(ctx->user.name, sizeof(ctx->user.name), "%s", new_name);
 
+    if (ctx->user_data_loaded) {
+        snprintf(ctx->user_data.preferred_nickname,
+                 sizeof(ctx->user_data.preferred_nickname), "%s", new_name);
+        if (ctx->owner != NULL && ctx->owner->user_data_root[0] != '\0') {
+            user_data_save(ctx->owner->user_data_root, &ctx->user_data,
+                           ctx->user_data.username);
+        }
+    }
+
     char announcement[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(announcement, sizeof(announcement), "* [%s] is now known as [%s]",
              old_name, ctx->user.name);
-    host_history_record_system(ctx->owner, announcement, nullptr);
-    chat_room_broadcast(&ctx->owner->room, announcement, nullptr);
+    host_history_record_system(ctx->owner, announcement, NULL);
+    chat_room_broadcast(&ctx->owner->room, announcement, NULL);
     session_apply_saved_preferences(ctx);
     session_send_system_line(ctx, "Display name updated.");
 }
@@ -915,8 +1109,6 @@ host_register_join_attempt(host_t *host, const char *username, const char *ip)
     struct timespec now = {0, 0};
     clock_gettime(CLOCK_MONOTONIC, &now);
 
-    bool ban_ip = false;
-    bool ban_same_name = false;
     bool exempt_ip = false;
     bool kick_ip = false;
 
@@ -983,40 +1175,11 @@ host_register_join_attempt(host_t *host, const char *username, const char *ip)
         exempt_ip = true;
     }
 
-    if (!exempt_ip && within_window &&
-        entry->rapid_attempts >= SSH_CHATTER_JOIN_IP_THRESHOLD) {
-        ban_ip = true;
-    }
-    if (within_window &&
-        entry->same_name_attempts >= SSH_CHATTER_JOIN_NAME_THRESHOLD) {
-        ban_same_name = true;
-    }
     if (!exempt_ip &&
         entry->join_window_attempts >= SSH_CHATTER_JOIN_KICK_THRESHOLD) {
         kick_ip = true;
     }
     pthread_mutex_unlock(&host->lock);
-
-    if (!exempt_ip && (ban_ip || ban_same_name)) {
-        const char *ban_user =
-            (ban_same_name && username != nullptr && username[0] != '\0')
-                ? username
-                : "";
-        (void)host_add_ban_entry(host, ban_user, ip);
-
-        if (ban_ip && ban_same_name) {
-            printf(
-                "[auto-ban] %s (%s) banned for rapid reconnects and repeated "
-                "username attempts\n",
-                ip, ban_user[0] != '\0' ? ban_user : "unknown");
-        } else if (ban_ip) {
-            printf("[auto-ban] %s banned for rapid reconnects\n", ip);
-        } else {
-            printf("[auto-ban] %s (%s) banned for repeated username attempts\n",
-                   ip, ban_user[0] != '\0' ? ban_user : "unknown");
-        }
-        return HOST_JOIN_ATTEMPT_BAN;
-    }
 
     if (!exempt_ip && kick_ip) {
         printf("[auto-kick] %s exceeded join limit\n", ip);
@@ -1037,6 +1200,8 @@ static bool host_register_suspicious_activity(host_t *host,
         }
         return false;
     }
+
+    (void)username;
 
     struct timespec now = {0, 0};
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -1067,13 +1232,6 @@ static bool host_register_suspicious_activity(host_t *host,
 
     if (attempts_out != nullptr) {
         *attempts_out = attempts;
-    }
-
-    if (attempts >= SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD) {
-        const char *ban_user =
-            (username != nullptr && username[0] != '\0') ? username : "";
-        (void)host_add_ban_entry(host, ban_user, ip);
-        return true;
     }
 
     return false;
@@ -1602,6 +1760,9 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
                                          &args)) {
         session_handle_captcha(ctx, args);
         return;
+    } else if (session_parse_command(effective_line, "/geo", &args)) {
+        session_handle_geo_language(ctx, args);
+        return;
     } else if (session_parse_command_any(ctx, "/eliza", effective_line,
                                          &args)) {
         session_handle_eliza(ctx, args);
@@ -1618,6 +1779,18 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
 
     else if (session_parse_command_any(ctx, "/retro", effective_line, &args)) {
         session_handle_retro(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/hybrid", effective_line,
+                                         &args)) {
+        session_handle_hybrid(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/saerom", effective_line,
+                                         &args)) {
+        if (*args != '\0') {
+            session_send_system_line(ctx, "Usage: /saerom");
+        } else {
+            session_handle_saerom(ctx);
+        }
         return;
     }
 
@@ -1657,6 +1830,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     } else if (session_parse_command_any(ctx, "/getaddr", effective_line,
                                          &args)) {
         session_handle_getaddr(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/ddial", effective_line,
+                                         &args)) {
+        session_handle_ddial(ctx, args);
         return;
     } else if (session_parse_command_any(ctx, "/ircserver", effective_line,
                                          &args)) {
@@ -2834,6 +3011,8 @@ static void session_reset_for_retry(session_ctx_t *ctx)
     ctx->telnet_terminal_type_requested = false;
     ctx->terminal_type[0] = '\0';
     ctx->prefer_cp437_output = false;
+    ctx->cp437_output_scope = SESSION_CP437_SCOPE_ALL;
+    ctx->output_kind = SESSION_OUTPUT_KIND_SYSTEM;
     ctx->cp437_override = SESSION_CP437_OVERRIDE_NONE;
     ctx->cp437_input_enabled = false;
     session_asciiart_reset(ctx);
@@ -3136,17 +3315,21 @@ static void *host_telnet_thread(void *arg)
                  (int)sizeof(ctx->client_ip) - 1, peer_address);
         ctx->input_mode = SESSION_INPUT_MODE_CHAT;
 
+        bool geo_language_enabled =
+            atomic_load(&ctx->owner->geo_language_enabled);
         session_ui_language_t provider_language = SESSION_UI_LANGUAGE_COUNT;
         char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
-        bool provider_detected = session_detect_provider_ip(
-            ctx->client_ip, provider_label, sizeof(provider_label));
+        bool provider_detected =
+            geo_language_enabled &&
+            session_detect_provider_ip(ctx->client_ip, provider_label,
+                                       sizeof(provider_label));
         if (provider_detected &&
             host_provider_language_preference(host, provider_label,
                                               &provider_language)) {
             ctx->ui_language = provider_language;
             ctx->active_codepage =
                 session_codepage_for_language(provider_language);
-        } else {
+        } else if (geo_language_enabled) {
             session_ui_language_t geo_language =
                 session_client_geo_language(ctx);
             if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
@@ -3154,10 +3337,14 @@ static void *host_telnet_thread(void *arg)
                 ctx->active_codepage =
                     session_codepage_for_language(geo_language);
             } else {
-                ctx->ui_language = SESSION_UI_LANGUAGE_KO;
+                ctx->ui_language = SESSION_UI_LANGUAGE_EN;
                 ctx->active_codepage =
-                    session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
+                    session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
             }
+        } else {
+            ctx->ui_language = SESSION_UI_LANGUAGE_EN;
+            ctx->active_codepage =
+                session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
         }
 
         /* Favor CP437-style output for legacy telnet clients */
@@ -3510,14 +3697,39 @@ static void *session_thread(void *arg)
     session_apply_granted_privileges(ctx);
     session_apply_saved_preferences(ctx);
 
-    // Auto-nick for pure ASCII names if a preferred nickname is available
-    if (ctx->user.is_authenticated && is_pure_ascii(ctx->user.name) &&
-        ctx->user_data_loaded && ctx->user_data.preferred_nickname[0] != '\0' &&
-        strcasecmp(ctx->user.name, ctx->user_data.preferred_nickname) != 0) {
-        char nick_command[SSH_CHATTER_MAX_INPUT_LEN];
-        snprintf(nick_command, sizeof(nick_command), "/nick %s",
+    char preferred_nickname_raw[SSH_CHATTER_USERNAME_LEN] = {0};
+    char preferred_nickname[SSH_CHATTER_USERNAME_LEN] = {0};
+    if (ctx->user.is_authenticated && ctx->user_data_loaded &&
+        ctx->user_data.preferred_nickname[0] != '\0') {
+        snprintf(preferred_nickname_raw, sizeof(preferred_nickname_raw), "%s",
                  ctx->user_data.preferred_nickname);
-        ctx->ops->dispatch_command(ctx, nick_command);
+        snprintf(preferred_nickname, sizeof(preferred_nickname), "%s",
+                 preferred_nickname_raw);
+        if (!user_data_strip_ansi_sequences(preferred_nickname_raw,
+                                            preferred_nickname,
+                                            sizeof(preferred_nickname))) {
+            snprintf(preferred_nickname, sizeof(preferred_nickname), "%s",
+                     preferred_nickname_raw);
+        }
+
+        trim_whitespace_inplace(preferred_nickname_raw);
+        trim_whitespace_inplace(preferred_nickname);
+        if (preferred_nickname_raw[0] == '\0' && preferred_nickname[0] != '\0') {
+            snprintf(preferred_nickname_raw, sizeof(preferred_nickname_raw), "%s",
+                     preferred_nickname);
+        }
+
+        const char *nick_to_apply = preferred_nickname_raw[0] != '\0'
+                                        ? preferred_nickname_raw
+                                        : preferred_nickname;
+
+        if (nick_to_apply[0] != '\0' &&
+            strcasecmp(ctx->user.name, nick_to_apply) != 0) {
+            char nick_command[SSH_CHATTER_MAX_INPUT_LEN];
+            snprintf(nick_command, sizeof(nick_command), "/nick %s",
+                     nick_to_apply);
+            ctx->ops->dispatch_command(ctx, nick_command);
+        }
     }
 
     bool captcha_enabled = false;
@@ -4255,9 +4467,10 @@ void host_init(host_t *host, auth_profile_t *auth)
                             "failed to initialise layered message encryption",
                             errno != 0 ? errno : EIO);
     }
+    atomic_store(&host->geo_language_enabled, false);
     host_load_lan_operator_credentials(host);
     const palette_descriptor_t *default_palette =
-        palette_find_descriptor("clean");
+        palette_find_descriptor("blackpink");
     if (default_palette != nullptr) {
         host_apply_palette_descriptor(host, default_palette);
     } else {
@@ -4331,6 +4544,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->preference_count = 0U;
     host->state_file_path[0] = '\0';
     host_state_resolve_path(host);
+    host->sync_state_file_path[0] = '\0';
+    host_sync_state_resolve_path(host);
     host->bbs_state_file_path[0] = '\0';
     host_bbs_resolve_path(host);
     host->vote_state_file_path[0] = '\0';
@@ -4498,6 +4713,13 @@ void host_init(host_t *host, auth_profile_t *auth)
                                     "FidoNet relay inactive; check "
                                     "CHATTER_FIDONET_* configuration",
                                     EINVAL);
+            }
+
+            host->ddial_client = ddial_client_create(host, host->clients);
+            if (host->ddial_client == nullptr) {
+                humanized_log_error("ddial",
+                                    "D-Dial relay unavailable; check memory",
+                                    ENOMEM);
             }
         }
     }
@@ -4816,41 +5038,37 @@ exit_host_set_motd:
     }
 }
 
-bool host_post_client_message(host_t *host, const char *username,
-                              const char *message, const char *color_name,
-                              const char *highlight_name, bool is_bold)
+static bool host_prepare_chat_entry(host_t *host, const char *username,
+                                    const char *message, const char *color_name,
+                                    const char *highlight_name, bool is_bold,
+                                    chat_history_entry_t *entry)
 {
-    bool success = false;
-    sshc_memory_context_t *memory_scope = nullptr;
-    if (host != nullptr) {
-        memory_scope = sshc_memory_context_push(host->memory_context);
-    }
     if (host == nullptr || username == nullptr || username[0] == '\0' ||
-        message == nullptr) {
-        goto exit_host_post_client_message;
+        message == nullptr || entry == nullptr) {
+        return false;
     }
 
-    chat_history_entry_t entry = {0};
-    entry.is_user_message = true;
-    snprintf(entry.username, sizeof(entry.username), "%s", username);
-    snprintf(entry.message, sizeof(entry.message), "%s", message);
-    entry.attachment_type = CHAT_ATTACHMENT_NONE;
-    entry.user_is_bold = is_bold;
+    memset(entry, 0, sizeof(*entry));
+    entry->is_user_message = true;
+    snprintf(entry->username, sizeof(entry->username), "%s", username);
+    snprintf(entry->message, sizeof(entry->message), "%s", message);
+    entry->attachment_type = CHAT_ATTACHMENT_NONE;
+    entry->user_is_bold = is_bold;
     time_t now = time(nullptr);
     if (now != (time_t)-1) {
-        entry.created_at = now;
+        entry->created_at = now;
     }
 
     const char *color_label = (color_name != nullptr && color_name[0] != '\0')
                                   ? color_name
                                   : host->default_user_color_name;
-    snprintf(entry.user_color_name, sizeof(entry.user_color_name), "%s",
+    snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
              color_label);
     const char *highlight_label =
         (highlight_name != nullptr && highlight_name[0] != '\0')
             ? highlight_name
             : host->default_user_highlight_name;
-    snprintf(entry.user_highlight_name, sizeof(entry.user_highlight_name), "%s",
+    snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name), "%s",
              highlight_label);
 
     const char *color_code = lookup_color_code(
@@ -4860,10 +5078,53 @@ bool host_post_client_message(host_t *host, const char *username,
         HIGHLIGHT_COLOR_MAP,
         sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
         highlight_label);
-    entry.user_color_code =
+    entry->user_color_code =
         color_code != nullptr ? color_code : host->user_theme.userColor;
-    entry.user_highlight_code =
+    entry->user_highlight_code =
         highlight_code != nullptr ? highlight_code : host->user_theme.highlight;
+
+    return true;
+}
+
+void host_append_sync_log(host_t *host, const char *source,
+                          const char *message)
+{
+    if (host == nullptr || source == nullptr || source[0] == '\0' ||
+        message == nullptr || message[0] == '\0') {
+        return;
+    }
+
+    if (host->sync_state_file_path[0] == '\0') {
+        return;
+    }
+
+    FILE *fp = fopen(host->sync_state_file_path, "a");
+    if (fp == nullptr) {
+        humanized_log_error("sync", "failed to open sync state file",
+                            errno != 0 ? errno : EIO);
+        return;
+    }
+
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    fprintf(fp, "%ld|%s|%s\n", (long)now.tv_sec, source, message);
+    fclose(fp);
+}
+
+bool host_post_client_message(host_t *host, const char *username,
+                              const char *message, const char *color_name,
+                              const char *highlight_name, bool is_bold)
+{
+    bool success = false;
+    sshc_memory_context_t *memory_scope = nullptr;
+    if (host != nullptr) {
+        memory_scope = sshc_memory_context_push(host->memory_context);
+    }
+    chat_history_entry_t entry = {0};
+    if (!host_prepare_chat_entry(host, username, message, color_name,
+                                 highlight_name, is_bold, &entry)) {
+        goto exit_host_post_client_message;
+    }
 
     chat_history_entry_t stored = {0};
     if (!host_history_commit_entry(host, &entry, &stored)) {
@@ -4872,6 +5133,32 @@ bool host_post_client_message(host_t *host, const char *username,
 
     chat_room_broadcast_entry(&host->room, &stored, nullptr);
     host_notify_external_clients(host, &stored);
+    success = true;
+
+exit_host_post_client_message:
+    if (memory_scope != nullptr) {
+        sshc_memory_context_pop(memory_scope);
+    }
+    return success;
+}
+
+bool host_post_ephemeral_message(host_t *host, const char *username,
+                                 const char *message, const char *color_name,
+                                 const char *highlight_name, bool is_bold)
+{
+    bool success = false;
+    sshc_memory_context_t *memory_scope = nullptr;
+    if (host != nullptr) {
+        memory_scope = sshc_memory_context_push(host->memory_context);
+    }
+    chat_history_entry_t entry = {0};
+    if (!host_prepare_chat_entry(host, username, message, color_name,
+                                 highlight_name, is_bold, &entry)) {
+        goto exit_host_post_client_message;
+    }
+
+    chat_room_broadcast_entry(&host->room, &entry, nullptr);
+    host_notify_external_clients(host, &entry);
     success = true;
 
 exit_host_post_client_message:
@@ -5019,6 +5306,10 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     if (host->fidonet_client != nullptr) {
         fidonet_client_destroy(host->fidonet_client);
         host->fidonet_client = nullptr;
+    }
+    if (host->ddial_client != nullptr) {
+        ddial_client_destroy(host->ddial_client);
+        host->ddial_client = nullptr;
     }
     if (host->web_client != nullptr) {
         webssh_client_destroy(host->web_client);
@@ -5479,12 +5770,6 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     peer_address, guard.attempt_count, wait_seconds);
                 ssh_disconnect(session);
                 ssh_free(session);
-                if (guard.escalate_ban &&
-                    host_add_ban_entry(host, "", peer_address)) {
-                    printf("[auto-ban] %s banned after repeated connection "
-                           "flooding\n",
-                           peer_address);
-                }
                 continue;
             }
 
@@ -5511,21 +5796,13 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     (matched_rule != nullptr && matched_rule->note[0] != '\0')
                         ? matched_rule->note
                         : "version/IP policy";
-                printf("[auto-ban] %s banned for client version '%s' (%s in "
+                printf("[reject] %s disconnected for client version '%s' (%s in "
                        "%s; %s)\n",
                        peer_address, version_display, pattern_display,
                        cidr_display, note_display);
-                (void)host_add_ban_entry(host, "", peer_address);
                 ssh_disconnect(session);
                 ssh_free(session);
                 continue;
-            }
-
-            if (guard.escalate_ban &&
-                host_add_ban_entry(host, "", peer_address)) {
-                printf(
-                    "[auto-ban] %s banned after repeated connection flooding\n",
-                    peer_address);
             }
 
             session_ctx_t *ctx = session_create();
@@ -5570,17 +5847,22 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                      (int)sizeof(ctx->client_ip) - 1, peer_address);
             ctx->input_mode = SESSION_INPUT_MODE_CHAT;
 
-            session_ui_language_t provider_language = SESSION_UI_LANGUAGE_COUNT;
+            bool geo_language_enabled =
+                atomic_load(&ctx->owner->geo_language_enabled);
+            session_ui_language_t provider_language =
+                SESSION_UI_LANGUAGE_COUNT;
             char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
-            bool provider_detected = session_detect_provider_ip(
-                ctx->client_ip, provider_label, sizeof(provider_label));
+            bool provider_detected =
+                geo_language_enabled &&
+                session_detect_provider_ip(ctx->client_ip, provider_label,
+                                           sizeof(provider_label));
             if (provider_detected &&
                 host_provider_language_preference(host, provider_label,
                                                   &provider_language)) {
                 ctx->ui_language = provider_language;
                 ctx->active_codepage =
                     session_codepage_for_language(provider_language);
-            } else {
+            } else if (geo_language_enabled) {
                 session_ui_language_t geo_language =
                     session_client_geo_language(ctx);
                 if (geo_language != SESSION_UI_LANGUAGE_COUNT) {
@@ -5588,10 +5870,14 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     ctx->active_codepage =
                         session_codepage_for_language(geo_language);
                 } else {
-                    ctx->ui_language = SESSION_UI_LANGUAGE_KO;
+                    ctx->ui_language = SESSION_UI_LANGUAGE_EN;
                     ctx->active_codepage =
-                        session_codepage_for_language(SESSION_UI_LANGUAGE_KO);
+                        session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
                 }
+            } else {
+                ctx->ui_language = SESSION_UI_LANGUAGE_EN;
+                ctx->active_codepage =
+                    session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
             }
             if (client_banner != nullptr && client_banner[0] != '\0') {
                 snprintf(ctx->client_banner, sizeof(ctx->client_banner), "%s",

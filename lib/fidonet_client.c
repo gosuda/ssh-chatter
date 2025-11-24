@@ -7,15 +7,18 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
@@ -65,7 +68,50 @@ struct fidonet_client {
     int socket_fd;
     time_t last_keepalive;
     bool session_established;
+    char logs[FIDONET_LOG_CAPACITY][FIDONET_LOG_ENTRY_LENGTH];
+    size_t log_start;
+    size_t log_count;
 };
+
+static bool fidonet_contains_multibyte(const char *line)
+{
+    if (line == nullptr) {
+        return false;
+    }
+
+    for (const unsigned char *cursor = (const unsigned char *)line; *cursor != '\0';
+         ++cursor) {
+        if ((*cursor & 0x80U) != 0U) {
+            if ((*cursor & 0xC0U) == 0xC0U) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static void fidonet_client_log(fidonet_client_t *client, const char *format, ...)
+{
+    if (client == nullptr || format == nullptr) {
+        return;
+    }
+
+    va_list args;
+    va_start(args, format);
+
+    pthread_mutex_lock(&client->lock);
+    size_t index = (client->log_start + client->log_count) % FIDONET_LOG_CAPACITY;
+    vsnprintf(client->logs[index], sizeof(client->logs[index]), format, args);
+    if (client->log_count < FIDONET_LOG_CAPACITY) {
+        ++client->log_count;
+    } else {
+        client->log_start = (client->log_start + 1U) % FIDONET_LOG_CAPACITY;
+    }
+    pthread_mutex_unlock(&client->lock);
+
+    va_end(args);
+}
 
 static const char *fidonet_getenv(const char *name)
 {
@@ -85,6 +131,8 @@ static void fidonet_set_status(fidonet_client_t *client, const char *status)
     snprintf(client->status_message, sizeof(client->status_message), "%s",
              status);
     pthread_mutex_unlock(&client->lock);
+
+    fidonet_client_log(client, "%s", status);
 }
 
 __attribute__((unused)) static void
@@ -171,6 +219,12 @@ static bool fidonet_send_chat_message(fidonet_client_t *client,
         return false;
     }
 
+    if (fidonet_contains_multibyte(message) || fidonet_contains_multibyte(username)) {
+        fidonet_client_log(client, "Skipped outbound (non-ASCII): %s: %s",
+                           username, message);
+        return false;
+    }
+
     /* Format: "username: message" */
     char buffer[BINKP_BUFFER_SIZE];
     int written = snprintf(buffer, sizeof(buffer), "%s: %s", username, message);
@@ -178,7 +232,12 @@ static bool fidonet_send_chat_message(fidonet_client_t *client,
         return false;
     }
 
-    return fidonet_send_command(client, BINKP_CMD_CHAT, buffer);
+    bool ok = fidonet_send_command(client, BINKP_CMD_CHAT, buffer);
+    if (ok) {
+        fidonet_client_log(client, "Sent: %s", buffer);
+        host_append_sync_log(client->host, "fidonet", buffer);
+    }
+    return ok;
 }
 
 /* Receive a Binkp frame */
@@ -279,6 +338,7 @@ static void fidonet_handle_message(fidonet_client_t *client, uint8_t type,
         case BINKP_CMD_CHAT: {
             /* Chat message - custom extension */
             /* Format: "username: message" */
+            fidonet_client_log(client, "Recv: %s", args);
             const char *colon = strchr(args, ':');
             if (colon != nullptr) {
                 size_t username_len = (size_t)(colon - args);
@@ -295,13 +355,12 @@ static void fidonet_handle_message(fidonet_client_t *client, uint8_t type,
                         msg_start++;
                     }
 
-                    snprintf(message, sizeof(message), "[FidoNet] %s",
-                             msg_start);
+                    snprintf(message, sizeof(message), "%s", msg_start);
 
-                    if (!host_post_client_message(client->host, username,
-                                                  message, nullptr, nullptr,
-                                                  false)) {
-                        /* Silently fail */
+                    if (host_post_client_message(client->host, username,
+                                                 message, nullptr, nullptr,
+                                                 false)) {
+                        host_append_sync_log(client->host, "fidonet", message);
                     }
                 }
             }
@@ -349,8 +408,38 @@ static bool fidonet_connect_socket(fidonet_client_t *client)
             continue;
         }
 
-        if (connect(client->socket_fd, rp->ai_addr, rp->ai_addrlen) != -1) {
+        int flags = fcntl(client->socket_fd, F_GETFL, 0);
+        if (flags >= 0) {
+            (void)fcntl(client->socket_fd, F_SETFL, flags | O_NONBLOCK);
+        }
+
+        int connect_result = connect(client->socket_fd, rp->ai_addr, rp->ai_addrlen);
+        if (connect_result == 0) {
+            if (flags >= 0) {
+                (void)fcntl(client->socket_fd, F_SETFL, flags);
+            }
             break;
+        }
+
+        if (errno == EINPROGRESS) {
+            fd_set write_fds;
+            FD_ZERO(&write_fds);
+            FD_SET(client->socket_fd, &write_fds);
+            struct timeval timeout = {.tv_sec = 5, .tv_usec = 0};
+            int ready = select(client->socket_fd + 1, nullptr, &write_fds, nullptr,
+                               &timeout);
+            if (ready > 0 && FD_ISSET(client->socket_fd, &write_fds)) {
+                int so_error = 0;
+                socklen_t len = sizeof(so_error);
+                if (getsockopt(client->socket_fd, SOL_SOCKET, SO_ERROR, &so_error,
+                               &len) == 0 &&
+                    so_error == 0) {
+                    if (flags >= 0) {
+                        (void)fcntl(client->socket_fd, F_SETFL, flags);
+                    }
+                    break;
+                }
+            }
         }
 
         close(client->socket_fd);
@@ -546,6 +635,8 @@ fidonet_client_t *fidonet_client_create(host_t *host, client_manager_t *manager)
     atomic_init(&client->disabled, false);
     atomic_init(&client->connected, false);
     client->session_established = false;
+    client->log_start = 0U;
+    client->log_count = 0U;
 
     snprintf(client->server_host, sizeof(client->server_host), "%s", server);
     client->server_port =
@@ -665,4 +756,29 @@ bool fidonet_client_send_message(fidonet_client_t *client, const char *username,
     }
 
     return fidonet_send_chat_message(client, username, message);
+}
+
+bool fidonet_client_snapshot_logs(fidonet_client_t *client,
+                                  char entries[][FIDONET_LOG_ENTRY_LENGTH],
+                                  size_t capacity, size_t *count)
+{
+    if (client == nullptr || entries == nullptr || count == nullptr ||
+        capacity == 0U) {
+        return false;
+    }
+
+    pthread_mutex_lock(&client->lock);
+    size_t available = client->log_count;
+    if (available > capacity) {
+        available = capacity;
+    }
+
+    for (size_t i = 0; i < available; ++i) {
+        size_t idx = (client->log_start + i) % FIDONET_LOG_CAPACITY;
+        snprintf(entries[i], FIDONET_LOG_ENTRY_LENGTH, "%s", client->logs[idx]);
+    }
+    pthread_mutex_unlock(&client->lock);
+
+    *count = available;
+    return true;
 }

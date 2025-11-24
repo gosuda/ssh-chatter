@@ -33,9 +33,10 @@
 #define SSH_CHATTER_MOTD_MAX_NOTIFICATION_LEN 16384
 #define SSH_CHATTER_BANNER_MAX_LEN SSH_CHATTER_MOTD_MAX_NOTIFICATION_LEN * 4
 #define SSH_CHATTER_MAX_INPUT_LEN 1024
-#define SSH_CHATTER_USERNAME_LEN 24
+#define SSH_CHATTER_USERNAME_LEN 256
 #define SSH_CHATTER_IP_LEN 64
 #define SSH_CHATTER_COLOR_NAME_LEN 32
+#define SSH_CHATTER_COLOR_CODE_LEN 256
 #define ALPHA_GRAVITY_NAME_LEN 32
 #define ALPHA_MAX_GRAVITY_SOURCES 16
 #define ALPHA_MAX_WAYPOINTS 4U
@@ -116,6 +117,7 @@ struct webssh_client;
 struct matrix_client;
 struct irc_client;
 struct fidonet_client;
+struct ddial_client;
 struct translation_job;
 struct translation_result;
 
@@ -223,6 +225,8 @@ typedef struct chat_history_entry {
     bool preserve_whitespace;
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     char username[SSH_CHATTER_USERNAME_LEN];
+    char raw_username[SSH_CHATTER_USERNAME_LEN];
+    char user_ip[SSH_CHATTER_IP_LEN];
     const char *user_color_code;
     const char *user_highlight_code;
     bool user_is_bold;
@@ -560,6 +564,18 @@ typedef enum session_cp437_override {
     SESSION_CP437_OVERRIDE_FORCE_ON,
 } session_cp437_override_t;
 
+typedef enum session_cp437_scope {
+    SESSION_CP437_SCOPE_ALL = 0,
+    SESSION_CP437_SCOPE_SYSTEM_ONLY,
+    SESSION_CP437_SCOPE_CHAT_ONLY,
+} session_cp437_scope_t;
+
+typedef enum session_output_kind {
+    SESSION_OUTPUT_KIND_SYSTEM = 0,
+    SESSION_OUTPUT_KIND_CHAT,
+    SESSION_OUTPUT_KIND_GENERIC,
+} session_output_kind_t;
+
 typedef struct session_ctx {
     ssh_session session;
     ssh_channel channel;
@@ -598,6 +614,8 @@ typedef struct session_ctx {
     const char *user_color_code;
     const char *user_highlight_code;
     bool user_is_bold;
+    char user_color_code_buffer[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code_buffer[SSH_CHATTER_COLOR_CODE_LEN];
     char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
     const char *system_fg_code;
@@ -650,6 +668,9 @@ typedef struct session_ctx {
     bool breaking_alerts_enabled;
     bool prefer_utf16_output;
     bool prefer_cp437_output;
+    session_cp437_scope_t cp437_output_scope;
+    session_output_kind_t output_kind;
+    bool hybrid_output_mode;
     session_cp437_override_t cp437_override;
     bool cp437_input_enabled;
     session_codepage_t active_codepage;
@@ -723,6 +744,8 @@ typedef struct user_preference {
     bool has_system_theme;
     char username[SSH_CHATTER_USERNAME_LEN];
     char ip[SSH_CHATTER_IP_LEN];
+    char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
     char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
     bool user_is_bold;
@@ -857,6 +880,7 @@ typedef struct host {
     size_t preference_count;
     pthread_mutex_t lock;
     char state_file_path[PATH_MAX];
+    char sync_state_file_path[PATH_MAX];
     char bbs_state_file_path[PATH_MAX];
     char vote_state_file_path[PATH_MAX];
     char ban_state_file_path[PATH_MAX];
@@ -875,6 +899,7 @@ typedef struct host {
     _Atomic bool security_ai_enabled;
     _Atomic bool security_clamav_enabled;
     _Atomic bool security_clamav_failure_logged;
+    _Atomic bool geo_language_enabled;
     char security_clamav_command[PATH_MAX];
     pthread_t security_clamav_thread;
     bool security_clamav_thread_initialized;
@@ -904,6 +929,7 @@ typedef struct host {
     struct matrix_client *matrix_client;
     struct irc_client *irc_client;
     struct fidonet_client *fidonet_client;
+    struct ddial_client *ddial_client;
     security_layer_t security_layer;
     bool security_layer_initialized;
     _Atomic bool eliza_enabled;
@@ -982,6 +1008,11 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 bool host_post_client_message(host_t *host, const char *username,
                               const char *message, const char *color_name,
                               const char *highlight_name, bool is_bold);
+void host_append_sync_log(host_t *host, const char *source,
+                          const char *message);
+bool host_post_ephemeral_message(host_t *host, const char *username,
+                                 const char *message, const char *color_name,
+                                 const char *highlight_name, bool is_bold);
 void host_shutdown(host_t *host);
 void host_shutdown_for_testing(host_t *host);
 bool host_snapshot_last_captcha(host_t *host, char *question,
@@ -1000,4 +1031,6 @@ void host_session_process_line_for_testing(session_ctx_t *ctx,
                                            const char *line);
 
 void session_handle_retro(session_ctx_t *ctx, const char *arguments);
+void session_handle_hybrid(session_ctx_t *ctx, const char *arguments);
+void session_handle_saerom(session_ctx_t *ctx);
 #endif

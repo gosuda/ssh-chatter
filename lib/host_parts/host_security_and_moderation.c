@@ -314,13 +314,12 @@ static void host_security_handle_suspicious_activity(
     session_ctx_t *session)
 {
     size_t attempts = 0U;
-    bool banned = false;
 
     if (host != nullptr) {
         const char *register_ip =
             (identity->register_ip != nullptr) ? identity->register_ip : "";
-        banned = host_register_suspicious_activity(host, identity->name,
-                                                   register_ip, &attempts);
+        host_register_suspicious_activity(host, identity->name, register_ip,
+                                          &attempts);
     }
 
     if (attempts > 0U) {
@@ -329,26 +328,17 @@ static void host_security_handle_suspicious_activity(
                (unsigned int)SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD);
     }
 
-    if (!banned) {
-        if (attempts > 0U && session != nullptr) {
-            char warning[256];
-            snprintf(
-                warning, sizeof(warning),
-                "Further suspicious activity will result in a ban (%zu/%u).",
-                attempts, (unsigned int)SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD);
-            session_send_system_line(session, warning);
-        }
-        return;
+    if (attempts > 0U && session != nullptr) {
+        char warning[256];
+        snprintf(warning, sizeof(warning),
+                 "Suspicious activity detected (%zu/%u).",
+                 attempts, (unsigned int)SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD);
+        session_send_system_line(session, warning);
     }
 
-    printf("[security] auto-banned %s (%s) for repeated suspicious payloads\n",
-           identity->name, identity->address);
-    if (session != nullptr) {
-        char notice[256];
-        snprintf(
-            notice, sizeof(notice),
-            "Repeated suspicious activity detected. You have been banned.");
-        session_force_disconnect(session, notice);
+    if (attempts >= SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD) {
+        printf("[security] suspicious payload threshold reached for %s (%s)\n",
+               identity->name, identity->address);
     }
 }
 
@@ -2329,6 +2319,10 @@ static void host_state_save_locked(host_t *host)
         return;
     }
 
+    if (!host_ensure_private_data_path(host, host->state_file_path, true)) {
+        return;
+    }
+
     char temp_path[PATH_MAX];
     int written =
         snprintf(temp_path, sizeof(temp_path), "%s.tmp", host->state_file_path);
@@ -2447,6 +2441,8 @@ static void host_state_save_locked(host_t *host)
     header.grant_count = (uint32_t)host->operator_grant_count;
     header.next_message_id = host->next_message_id;
     header.captcha_enabled = atomic_load(&host->captcha_enabled) ? 1U : 0U;
+    header.geo_language_enabled =
+        atomic_load(&host->geo_language_enabled) ? 1U : 0U;
     memset(header.reserved, 0, sizeof(header.reserved));
 
     bool success = fwrite(&header, sizeof(header), 1U, fp) == 1U;
@@ -2539,6 +2535,11 @@ static void host_state_save_locked(host_t *host)
         snprintf(serialized.username, sizeof(serialized.username), "%s",
                  pref->username);
         snprintf(serialized.ip, sizeof(serialized.ip), "%s", pref->ip);
+        snprintf(serialized.user_color_code, sizeof(serialized.user_color_code),
+                 "%s", pref->user_color_code);
+        snprintf(serialized.user_highlight_code,
+                 sizeof(serialized.user_highlight_code), "%s",
+                 pref->user_highlight_code);
         snprintf(serialized.user_color_name, sizeof(serialized.user_color_name),
                  "%s", pref->user_color_name);
         snprintf(serialized.user_highlight_name,
@@ -3154,16 +3155,19 @@ static bool host_state_read_base_header(FILE *fp,
 static bool host_state_read_metadata(FILE *fp, uint32_t version,
                                      uint64_t *next_message_id,
                                      uint32_t *grant_count,
-                                     uint8_t *captcha_enabled_raw)
+                                     uint8_t *captcha_enabled_raw,
+                                     uint8_t *geo_language_enabled_raw)
 {
     if (fp == nullptr || next_message_id == nullptr || grant_count == nullptr ||
-        captcha_enabled_raw == nullptr) {
+        captcha_enabled_raw == nullptr ||
+        geo_language_enabled_raw == nullptr) {
         return false;
     }
 
     *next_message_id = 1U;
     *grant_count = 0U;
     *captcha_enabled_raw = 0U;
+    *geo_language_enabled_raw = 0U;
 
     if (version >= 2U) {
         uint32_t sound_count_raw = 0U;
@@ -3187,6 +3191,10 @@ static bool host_state_read_metadata(FILE *fp, uint32_t version,
             fread(reserved_bytes, sizeof(reserved_bytes), 1U, fp) != 1U) {
             return false;
         }
+
+        if (version >= 13U) {
+            *geo_language_enabled_raw = reserved_bytes[0];
+        }
     }
 
     return true;
@@ -3202,140 +3210,55 @@ host_state_read_history_entry_from_stream(FILE *fp, uint32_t version,
 
     memset(entry_value, 0, sizeof(*entry_value));
 
-    if (version >= 11U) {
-        host_state_history_entry_v4_t serialized = {0};
-        if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
-            return false;
-        }
+    if (version != HOST_STATE_VERSION) {
+        return false;
+    }
 
-        entry_value->is_user_message = serialized.base.is_user_message != 0U;
-        entry_value->user_is_bold = serialized.base.user_is_bold != 0U;
-        snprintf(entry_value->username, sizeof(entry_value->username), "%s",
-                 serialized.base.username);
-        snprintf(entry_value->message, sizeof(entry_value->message), "%s",
-                 serialized.base.message);
-        snprintf(entry_value->user_color_name,
-                 sizeof(entry_value->user_color_name), "%s",
-                 serialized.base.user_color_name);
-        snprintf(entry_value->user_highlight_name,
-                 sizeof(entry_value->user_highlight_name), "%s",
-                 serialized.base.user_highlight_name);
-        entry_value->message_id = serialized.message_id;
-        if (serialized.attachment_type > CHAT_ATTACHMENT_FILE) {
-            entry_value->attachment_type = CHAT_ATTACHMENT_NONE;
-        } else {
-            entry_value->attachment_type =
-                (chat_attachment_type_t)serialized.attachment_type;
-        }
-        entry_value->created_at = (time_t)serialized.created_at;
-        snprintf(entry_value->attachment_target,
-                 sizeof(entry_value->attachment_target), "%s",
-                 serialized.attachment_target);
-        snprintf(entry_value->attachment_caption,
-                 sizeof(entry_value->attachment_caption), "%s",
-                 serialized.attachment_caption);
-        memcpy(entry_value->reaction_counts, serialized.reaction_counts,
-               sizeof(entry_value->reaction_counts));
-    } else if (version >= 3U) {
-        host_state_history_entry_v3_t serialized = {0};
-        if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
-            return false;
-        }
+    host_state_history_entry_t serialized = {0};
+    if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
+        return false;
+    }
 
-        entry_value->is_user_message = serialized.base.is_user_message != 0U;
-        entry_value->user_is_bold = serialized.base.user_is_bold != 0U;
-        snprintf(entry_value->username, sizeof(entry_value->username), "%s",
-                 serialized.base.username);
-        snprintf(entry_value->message, sizeof(entry_value->message), "%s",
-                 serialized.base.message);
-        snprintf(entry_value->user_color_name,
-                 sizeof(entry_value->user_color_name), "%s",
-                 serialized.base.user_color_name);
-        snprintf(entry_value->user_highlight_name,
-                 sizeof(entry_value->user_highlight_name), "%s",
-                 serialized.base.user_highlight_name);
-        entry_value->message_id = serialized.message_id;
-        if (serialized.attachment_type > CHAT_ATTACHMENT_FILE) {
-            entry_value->attachment_type = CHAT_ATTACHMENT_NONE;
-        } else {
-            entry_value->attachment_type =
-                (chat_attachment_type_t)serialized.attachment_type;
-        }
-        entry_value->created_at = 0;
-        snprintf(entry_value->attachment_target,
-                 sizeof(entry_value->attachment_target), "%s",
-                 serialized.attachment_target);
-        snprintf(entry_value->attachment_caption,
-                 sizeof(entry_value->attachment_caption), "%s",
-                 serialized.attachment_caption);
-        memcpy(entry_value->reaction_counts, serialized.reaction_counts,
-               sizeof(entry_value->reaction_counts));
-    } else if (version == 2U) {
-        host_state_history_entry_v2_t serialized = {0};
-        if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
-            return false;
-        }
-
-        entry_value->is_user_message = serialized.base.is_user_message != 0U;
-        entry_value->user_is_bold = serialized.base.user_is_bold != 0U;
-        snprintf(entry_value->username, sizeof(entry_value->username), "%s",
-                 serialized.base.username);
-        snprintf(entry_value->message, sizeof(entry_value->message), "%s",
-                 serialized.base.message);
-        snprintf(entry_value->user_color_name,
-                 sizeof(entry_value->user_color_name), "%s",
-                 serialized.base.user_color_name);
-        snprintf(entry_value->user_highlight_name,
-                 sizeof(entry_value->user_highlight_name), "%s",
-                 serialized.base.user_highlight_name);
-        entry_value->message_id = serialized.message_id;
-        if (serialized.attachment_type > CHAT_ATTACHMENT_AUDIO) {
-            entry_value->attachment_type = CHAT_ATTACHMENT_NONE;
-        } else {
-            entry_value->attachment_type =
-                (chat_attachment_type_t)serialized.attachment_type;
-        }
-        entry_value->created_at = 0;
-        snprintf(entry_value->attachment_target,
-                 sizeof(entry_value->attachment_target), "%s",
-                 serialized.attachment_target);
-        snprintf(entry_value->attachment_caption,
-                 sizeof(entry_value->attachment_caption), "%s",
-                 serialized.attachment_caption);
-        memcpy(entry_value->reaction_counts, serialized.reaction_counts,
-               sizeof(entry_value->reaction_counts));
-        if (serialized.sound_alias[0] != '\0' &&
-            entry_value->attachment_caption[0] == '\0') {
-            snprintf(entry_value->attachment_caption,
-                     sizeof(entry_value->attachment_caption), "%s",
-                     serialized.sound_alias);
-        }
-    } else {
-        host_state_history_entry_v1_t serialized = {0};
-        if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
-            return false;
-        }
-
-        entry_value->is_user_message = serialized.is_user_message != 0U;
-        entry_value->user_is_bold = serialized.user_is_bold != 0U;
-        snprintf(entry_value->username, sizeof(entry_value->username), "%s",
-                 serialized.username);
-        snprintf(entry_value->message, sizeof(entry_value->message), "%s",
-                 serialized.message);
-        snprintf(entry_value->user_color_name,
-                 sizeof(entry_value->user_color_name), "%s",
-                 serialized.user_color_name);
-        snprintf(entry_value->user_highlight_name,
-                 sizeof(entry_value->user_highlight_name), "%s",
-                 serialized.user_highlight_name);
+    entry_value->is_user_message = serialized.is_user_message != 0U;
+    entry_value->user_is_bold = serialized.user_is_bold != 0U;
+    snprintf(entry_value->username, sizeof(entry_value->username), "%s",
+             serialized.username);
+    snprintf(entry_value->raw_username, sizeof(entry_value->raw_username), "%s",
+             serialized.raw_username);
+    snprintf(entry_value->message, sizeof(entry_value->message), "%s",
+             serialized.message);
+    snprintf(entry_value->user_color_name, sizeof(entry_value->user_color_name), "%s",
+             serialized.user_color_name);
+    snprintf(entry_value->user_highlight_name,
+             sizeof(entry_value->user_highlight_name), "%s",
+             serialized.user_highlight_name);
+    entry_value->message_id = serialized.message_id;
+    if (serialized.attachment_type > CHAT_ATTACHMENT_FILE) {
         entry_value->attachment_type = CHAT_ATTACHMENT_NONE;
-        entry_value->message_id = 0U;
-        entry_value->created_at = 0;
+    } else {
+        entry_value->attachment_type =
+            (chat_attachment_type_t)serialized.attachment_type;
+    }
+    entry_value->created_at = (time_t)serialized.created_at;
+    entry_value->preserve_whitespace = serialized.reserved[0] != 0U;
+    snprintf(entry_value->attachment_target,
+             sizeof(entry_value->attachment_target), "%s",
+             serialized.attachment_target);
+    snprintf(entry_value->attachment_caption,
+             sizeof(entry_value->attachment_caption), "%s",
+             serialized.attachment_caption);
+    host_state_assign_color_codes(entry_value, serialized.user_color_code,
+                                  serialized.user_highlight_code);
+    memcpy(entry_value->reaction_counts, serialized.reaction_counts,
+           sizeof(entry_value->reaction_counts));
+    if (entry_value->raw_username[0] == '\0') {
+        snprintf(entry_value->raw_username,
+                 sizeof(entry_value->raw_username), "%s",
+                 entry_value->username);
     }
 
     return true;
 }
-
 static bool host_state_load_history_entries(FILE *fp, host_t *host,
                                             uint32_t version,
                                             uint32_t history_count)
@@ -3390,10 +3313,33 @@ static bool host_state_read_preference_entry(FILE *fp, uint32_t version,
 
     memset(out, 0, sizeof(*out));
 
-    if (version >= 12U) {
+    if (version >= 14U) {
         if (fread(out, sizeof(*out), 1U, fp) != 1U) {
             return false;
         }
+        return true;
+    }
+
+    if (version >= 12U) {
+        const size_t legacy_prefix_size =
+            offsetof(host_state_preference_entry_t, user_color_code);
+        const size_t legacy_suffix_offset =
+            offsetof(host_state_preference_entry_t, user_color_name);
+        const size_t legacy_suffix_size =
+            sizeof(*out) - legacy_suffix_offset;
+
+        if (fread(out, legacy_prefix_size, 1U, fp) != 1U) {
+            return false;
+        }
+
+        out->user_color_code[0] = '\0';
+        out->user_highlight_code[0] = '\0';
+
+        if (fread(((uint8_t *)out) + legacy_suffix_offset, legacy_suffix_size, 1U,
+                  fp) != 1U) {
+            return false;
+        }
+
         return true;
     }
 
@@ -3404,6 +3350,8 @@ static bool host_state_read_preference_entry(FILE *fp, uint32_t version,
         }
         memcpy(out, &legacy9, sizeof(legacy9));
         out->ip[0] = '\0';
+        out->user_color_code[0] = '\0';
+        out->user_highlight_code[0] = '\0';
         out->provider_label[0] = '\0';
         memset(out->reserved2, 0, sizeof(out->reserved2));
         return true;
@@ -3693,6 +3641,10 @@ static void host_state_apply_preference_entry(
     snprintf(pref->username, sizeof(pref->username), "%s",
              serialized->username);
     snprintf(pref->ip, sizeof(pref->ip), "%s", serialized->ip);
+    snprintf(pref->user_color_code, sizeof(pref->user_color_code), "%s",
+             serialized->user_color_code);
+    snprintf(pref->user_highlight_code, sizeof(pref->user_highlight_code), "%s",
+             serialized->user_highlight_code);
     snprintf(pref->user_color_name, sizeof(pref->user_color_name), "%s",
              serialized->user_color_name);
     snprintf(pref->user_highlight_name, sizeof(pref->user_highlight_name), "%s",
@@ -3837,9 +3789,11 @@ static void host_state_load(host_t *host)
     uint64_t next_message_id = 1U;
     uint32_t grant_count = 0U;
     uint8_t captcha_enabled_raw = 0U;
+    uint8_t geo_language_enabled_raw = 0U;
 
     if (!host_state_read_metadata(fp, version, &next_message_id, &grant_count,
-                                  &captcha_enabled_raw)) {
+                                  &captcha_enabled_raw,
+                                  &geo_language_enabled_raw)) {
         fclose(fp);
         return;
     }
@@ -3852,6 +3806,11 @@ static void host_state_load(host_t *host)
 
     if (version >= 8U) {
         atomic_store(&host->captcha_enabled, captcha_enabled_raw != 0U);
+    }
+
+    if (version >= 13U) {
+        atomic_store(&host->geo_language_enabled,
+                     geo_language_enabled_raw != 0U);
     }
 
     bool success =
@@ -5173,6 +5132,7 @@ static void host_ban_state_load(host_t *host)
     if (!success) {
         humanized_log_error("host", "failed to read ban state file",
                             read_error != 0 ? read_error : EIO);
+        GC_FREE(entries);
         return;
     }
 
@@ -5212,6 +5172,7 @@ static void host_ban_state_load(host_t *host)
         ++host->ban_count;
     }
     pthread_mutex_unlock(&host->lock);
+    GC_FREE(entries);
 }
 
 static void host_reply_state_load(host_t *host)

@@ -471,7 +471,7 @@ cleanup:
     }
     if (g_sync_initialized) {
         ssh_chatter_sync_stop();
-        ssh_chatter_sync_free_history();
+        ssh_chatter_sync_cleanup();
     }
     translator_global_cleanup();
     sshc_memory_runtime_shutdown();

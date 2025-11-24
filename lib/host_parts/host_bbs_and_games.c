@@ -5978,14 +5978,165 @@ static bool session_parse_color_arguments(char *working, char **tokens,
     return !extra_tokens;
 }
 
+#include <stdbool.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+static bool session_valid_ansi_256_sequence(const char *sequence)
+{
+    if (sequence == NULL) {
+        return false;
+    }
+
+    size_t length = strnlen(sequence, SSH_CHATTER_COLOR_CODE_LEN);
+    if (length >= SSH_CHATTER_COLOR_CODE_LEN) {
+        return false;
+    }
+
+    size_t idx = 0;
+    bool found_escape = false;
+    while (idx < length) {
+        if (sequence[idx] != '\x1b') {
+            idx++;
+            continue;
+        }
+
+        found_escape = true;
+
+        if (idx + 1 >= length || sequence[idx + 1] != '[') {
+            return false;
+        }
+
+        size_t end = idx + 2;
+        bool found_terminator = false;
+
+        while (end < length) {
+            char ch = sequence[end];
+
+            if (ch == 'm') {
+                found_terminator = true;
+                break;
+            }
+
+            if (!isdigit((unsigned char)ch) && ch != ';') {
+                return false;
+            }
+            end++;
+        }
+
+        if (!found_terminator) {
+            return false; 
+        }
+
+        size_t param_len = end - (idx + 2);
+
+        if (param_len > 64) {
+            return false;
+        }
+
+        if (param_len > 0) {
+            char buffer[65];
+            memcpy(buffer, sequence + idx + 2, param_len);
+            buffer[param_len] = '\0';
+
+            char *fg_ptr = strstr(buffer, "38;5;");
+            char *bg_ptr = strstr(buffer, "48;5;");
+            char *fg_truecolor_ptr = strstr(buffer, "38;2;");
+            char *bg_truecolor_ptr = strstr(buffer, "48;2;");
+            char *target = (fg_ptr) ? fg_ptr : bg_ptr;
+            char *truecolor_target = (fg_truecolor_ptr) ? fg_truecolor_ptr : bg_truecolor_ptr;
+
+            if (target != NULL) {
+                target += 5;
+
+                char *endptr = NULL;
+                long val = strtol(target, &endptr, 10);
+                if (val < 0 || val > 255 || target == endptr) {
+                    return false;
+                }
+            }
+
+            if (truecolor_target != NULL) {
+                truecolor_target += 5;
+                for (int component = 0; component < 3; ++component) {
+                    char *endptr = NULL;
+                    long val = strtol(truecolor_target, &endptr, 10);
+                    if (val < 0 || val > 255 || truecolor_target == endptr) {
+                        return false;
+                    }
+
+                    if (component < 2) {
+                        if (endptr == NULL || *endptr != ';') {
+                            return false;
+                        }
+                        truecolor_target = endptr + 1;
+                    }
+                }
+            }
+        }
+        idx = end + 1;
+    }
+    return found_escape;
+}
+
+static bool session_translate_escape_sequences(const char *input,
+                                                char *output,
+                                                size_t output_size)
+{
+    if (input == NULL || output == NULL || output_size == 0U) {
+        return false;
+    }
+
+    const char *cursor = input;
+    char *out = output;
+    char *out_limit = output + output_size - 1U;
+
+    while (*cursor != '\0') {
+        if (out >= out_limit) {
+            return false;
+        }
+
+        if (*cursor == '\\') {
+            if (strncmp(cursor, "\\033", 4U) == 0 || strncmp(cursor, "\\x1b", 4U) == 0 ||
+                strncmp(cursor, "\\x1B", 4U) == 0) {
+                *out++ = '\x1b';
+                cursor += 4U;
+                continue;
+            }
+
+            if (strncmp(cursor, "\\u001b", 6U) == 0 || strncmp(cursor, "\\u001B", 6U) == 0) {
+                *out++ = '\x1b';
+                cursor += 6U;
+                continue;
+            }
+
+            if (cursor[1] == 'e' || cursor[1] == 'E') {
+                *out++ = '\x1b';
+                cursor += 2U;
+                continue;
+            }
+        }
+
+        *out++ = *cursor++;
+    }
+
+    *out = '\0';
+    return true;
+}
+
 static void session_handle_color(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr) {
         return;
     }
 
+    static const char *kColorUsage =
+        "Usage: /color (text;highlight[;bold]) or /color advanced <ansi>";
+
     if (arguments == nullptr) {
-        session_send_system_line(ctx, "Usage: /color (text;highlight[;bold])");
+        session_send_system_line(ctx, kColorUsage);
         return;
     }
 
@@ -5994,7 +6145,7 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
     trim_whitespace_inplace(working);
 
     if (working[0] == '\0') {
-        session_send_system_line(ctx, "Usage: /color (text;highlight[;bold])");
+        session_send_system_line(ctx, kColorUsage);
         return;
     }
 
@@ -6017,7 +6168,63 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
     }
 
     if (working[0] == '\0') {
-        session_send_system_line(ctx, "Usage: /color (text;highlight[;bold])");
+        session_send_system_line(ctx, kColorUsage);
+        return;
+    }
+
+    if (strncasecmp(working, "advanced", strlen("advanced")) == 0) {
+        const char *raw_code = working + strlen("advanced");
+        while (raw_code[0] != '\0' && isspace((unsigned char)raw_code[0])) {
+            ++raw_code;
+        }
+
+        if (raw_code[0] == '\0') {
+            session_send_system_line(ctx, kColorUsage);
+            return;
+        }
+
+        char translated_name[SSH_CHATTER_USERNAME_LEN];
+        if (!session_translate_escape_sequences(raw_code, translated_name,
+                                                sizeof(translated_name)) ||
+            !session_valid_ansi_256_sequence(translated_name)) {
+            session_send_system_line(
+                ctx,
+                "Invalid ANSI/256 expression. Use sequences like \\x1b[38;5;196m.");
+            return;
+        }
+
+        if (!ctx->user_data_loaded) {
+            (void)session_user_data_load(ctx);
+        }
+
+        snprintf(ctx->user_data.preferred_nickname,
+                 sizeof(ctx->user_data.preferred_nickname), "%s",
+                 translated_name);
+
+        if (ctx->owner != nullptr && ctx->owner->user_data_root[0] != '\0' &&
+            ctx->user_data.username[0] != '\0') {
+            user_data_save(ctx->owner->user_data_root, &ctx->user_data,
+                           ctx->user_data.username);
+        }
+
+        ctx->user_color_code = "";
+        ctx->user_highlight_code = "";
+        ctx->user_highlight_code_buffer[0] = '\0';
+        ctx->user_color_code_buffer[0] = '\0';
+        ctx->user_is_bold = false;
+
+        session_send_system_line(
+            ctx, "Display name updated with advanced ANSI formatting.");
+
+        char preview[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(preview, sizeof(preview), "%s%s", translated_name, ANSI_RESET);
+        session_send_line(ctx, preview);
+
+        return;
+    }
+
+    if (working[0] == '\0') {
+        session_send_system_line(ctx, kColorUsage);
         return;
     }
 
@@ -6025,7 +6232,7 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
     size_t token_count = 0U;
     if (!session_parse_color_arguments(working, tokens, 3U, &token_count) ||
         token_count < 2U) {
-        session_send_system_line(ctx, "Usage: /color (text;highlight[;bold])");
+        session_send_system_line(ctx, kColorUsage);
         return;
     }
 
@@ -7673,6 +7880,95 @@ static void session_handle_captcha(session_ctx_t *ctx, const char *arguments)
         pthread_mutex_unlock(&host->lock);
     }
     return;
+}
+
+static void session_handle_geo_language(session_ctx_t *ctx,
+                                         const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(ctx,
+                                 "Only operators may control geo language.");
+        return;
+    }
+
+    char token[32];
+    if (arguments != nullptr) {
+        snprintf(token, sizeof(token), "%s", arguments);
+        trim_whitespace_inplace(token);
+    } else {
+        token[0] = '\0';
+    }
+
+    host_t *host = ctx->owner;
+    if (token[0] == '\0') {
+        bool enabled = atomic_load(&host->geo_language_enabled);
+        char status[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(status, sizeof(status),
+                 "Geo-IP UI language detection is currently %s.",
+                 enabled ? "enabled" : "disabled");
+        session_send_system_line(ctx, status);
+        session_send_system_line(ctx, "Usage: /geo <on|off>");
+        return;
+    }
+
+    bool requested_enable = false;
+    bool recognized = false;
+    if (session_argument_is_disable(token)) {
+        recognized = true;
+        requested_enable = false;
+    } else {
+        recognized = parse_bool_token(token, &requested_enable);
+    }
+
+    if (!recognized) {
+        session_send_system_line(ctx, "Usage: /geo <on|off>");
+        return;
+    }
+
+    bool was_enabled = atomic_exchange(&host->geo_language_enabled,
+                                       requested_enable);
+    if (requested_enable) {
+        if (was_enabled) {
+            session_send_system_line(ctx, "Geo-IP UI language is already on.");
+            return;
+        }
+
+        session_send_system_line(
+            ctx,
+            "Geo-IP UI language detection enabled for new connections.");
+        char notice[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(notice, sizeof(notice),
+                 "* [%s] enabled Geo-IP UI language detection.",
+                 ctx->user.name);
+        host_history_record_system(host, notice, nullptr);
+        chat_room_broadcast(&host->room, notice, nullptr);
+        pthread_mutex_lock(&host->lock);
+        host_state_save_locked(host);
+        pthread_mutex_unlock(&host->lock);
+        return;
+    }
+
+    if (!was_enabled) {
+        session_send_system_line(ctx,
+                                 "Geo-IP UI language is already disabled.");
+        return;
+    }
+
+    session_send_system_line(
+        ctx, "Geo-IP UI language detection disabled; defaulting to English.");
+    char notice[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(notice, sizeof(notice),
+             "* [%s] disabled Geo-IP UI language detection (English default).",
+             ctx->user.name);
+    host_history_record_system(host, notice, nullptr);
+    chat_room_broadcast(&host->room, notice, nullptr);
+    pthread_mutex_lock(&host->lock);
+    host_state_save_locked(host);
+    pthread_mutex_unlock(&host->lock);
 }
 
 static void session_handle_eliza(session_ctx_t *ctx, const char *arguments)

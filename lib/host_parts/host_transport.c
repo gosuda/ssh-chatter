@@ -1278,6 +1278,9 @@ static const l10n_string_t PALETTE_DESC_SOVIET_COLD =
 static const l10n_string_t PALETTE_NAME_HI_TEL = L10N_ALL("hi-tel");
 static const l10n_string_t PALETTE_DESC_HI_TEL =
     L10N_ALL("1990s Korean BBS blue background and text style");
+static const l10n_string_t PALETTE_NAME_BLACKPINK = L10N_ALL("blackpink");
+static const l10n_string_t PALETTE_DESC_BLACKPINK = L10N_ALL(
+    "K-Pop inspired palette with a black background and pink accents.");
 static const l10n_string_t PALETTE_NAME_AMIGA_CLI = L10N_ALL("amiga-cli");
 static const l10n_string_t PALETTE_DESC_AMIGA_CLI =
     L10N_ALL("AmigaOS style with cyan/blue");
@@ -1630,6 +1633,21 @@ static const l10n_string_t PALETTE_DESC_INDEPENDENCE_SPIRIT_256 =
     L10N_ALL("256-color reinterpretation of The spirit of independence. A "
              "soul that we must remember.");
 
+static const l10n_string_t PALETTE_NAME_FRENCH_ROCOCO_256 = L10N_ALL("french-rococo-256");
+static const l10n_string_t PALETTE_DESC_FRENCH_ROCOCO_256 = L10N_ALL("Dramatic Silence—Rameau to Couperin");
+
+static const l10n_string_t PALETTE_NAME_POLISH_CATHOLIC_256 = L10N_ALL("polish-catholic-256");
+static const l10n_string_t PALETTE_DESC_POLISH_CATHOLIC_256 = L10N_ALL("Sacred Echoes—Chant to Solidarity");
+
+static const l10n_string_t PALETTE_NAME_GERMAN_INDUSTRY_256 = L10N_ALL("german-industry-256");
+static const l10n_string_t PALETTE_DESC_GERMAN_INDUSTRY_256 = L10N_ALL("Iron Will & Innovation—Ruhr to Raumfahrt");
+
+static const l10n_string_t PALETTE_NAME_LEIPZIG_BLACK_256 = L10N_ALL("leipzig-black-256");
+static const l10n_string_t PALETTE_DESC_LEIPZIG_BLACK_256 = L10N_ALL("Timeless Trendsetter—J.S Bach To Graffiti");
+
+static const l10n_string_t PALETTE_NAME_CHOPIN_MAZURKA_256 = L10N_ALL("chopin-mazurka-256");
+static const l10n_string_t PALETTE_DESC_CHOPIN_MAZURKA_256 = L10N_ALL("Poetic Melancholy—Salon to Soul");
+
 static const palette_descriptor_t PALETTE_DEFINITIONS[] = {
     {"windows", &PALETTE_NAME_WINDOWS, &PALETTE_DESC_WINDOWS, "cyan", "blue",
      true, "white", "blue", "yellow", true, false},
@@ -1695,6 +1713,9 @@ static const palette_descriptor_t PALETTE_DEFINITIONS[] = {
      "xterm:231", "xterm-bg:19", "xterm-bg:19", true, true},
     {"hi-tel", &PALETTE_NAME_HI_TEL, &PALETTE_DESC_HI_TEL, "bright-white",
      "blue", true, "bright-white", "blue", "magenta", true, false},
+    {"blackpink", &PALETTE_NAME_BLACKPINK, &PALETTE_DESC_BLACKPINK,
+     "bright-white", "blue", false, "bright-white", "black", "magenta", false,
+     false},
     {"amiga-cli", &PALETTE_NAME_AMIGA_CLI, &PALETTE_DESC_AMIGA_CLI, "cyan",
      "blue", true, "cyan", "blue", "blue", true, false},
     {"jpn-pc98", &PALETTE_NAME_JPN_PC98, &PALETTE_DESC_JPN_PC98, "yellow",
@@ -1933,6 +1954,21 @@ static const palette_descriptor_t PALETTE_DEFINITIONS[] = {
     {"monokai", &PALETTE_NAME_MONOKAI, &PALETTE_DESC_MONOKAI, "xterm:118",
      "xterm-bg:239", false, "xterm:255", "xterm-bg:235", "xterm-bg:239", false,
      true},
+    {"french-rococo-256", &PALETTE_NAME_FRENCH_ROCOCO_256, &PALETTE_DESC_FRENCH_ROCOCO_256,
+     "xterm:218", "xterm-bg:229", false, "xterm:222", "xterm-bg:231", "xterm-bg:147", false,
+     true},
+    {"polish-catholic-256", &PALETTE_NAME_POLISH_CATHOLIC_256, &PALETTE_DESC_POLISH_CATHOLIC_256,
+     "xterm:226", "xterm-bg:21", true, "xterm:231", "xterm-bg:16", "xterm-bg:196", true,
+     true},
+    {"german-industry-256", &PALETTE_NAME_GERMAN_INDUSTRY_256, &PALETTE_DESC_GERMAN_INDUSTRY_256,
+     "xterm:208", "xterm-bg:238", true, "xterm:252", "xterm-bg:235", "xterm-bg:220", true,
+     true},
+    {"leipzig-black-256", &PALETTE_NAME_LEIPZIG_BLACK_256, &PALETTE_DESC_LEIPZIG_BLACK_256,
+     "xterm:250", "xterm-bg:232", false, "xterm:255", "xterm-bg:16", "xterm-bg:240", false,
+     true},
+    {"chopin-mazurka-256", &PALETTE_NAME_CHOPIN_MAZURKA_256, &PALETTE_DESC_CHOPIN_MAZURKA_256,
+     "xterm:111", "xterm-bg:16", false, "xterm:253", "xterm-bg:233", "xterm-bg:176", false,
+     true},
 };
 
 typedef int (*accept_channel_fn_t)(ssh_message, ssh_channel);
@@ -2033,6 +2069,8 @@ static void session_render_caption_with_offset(session_ctx_t *ctx,
                                                size_t move_up);
 static void session_send_line(session_ctx_t *ctx, const char *message);
 static void session_send_plain_line(session_ctx_t *ctx, const char *message);
+static void session_send_multiline_message(session_ctx_t *ctx,
+                                           const char *message);
 static void session_send_system_line(session_ctx_t *ctx, const char *message);
 void session_send_raw_text(session_ctx_t *ctx, const char *text);
 
@@ -2089,6 +2127,7 @@ void session_scrollback_reset_position(session_ctx_t *ctx);
 void session_scrollback_navigate(session_ctx_t *ctx, int direction);
 static bool session_try_localized_command_forward(session_ctx_t *ctx,
                                                   const char *line);
+static const char *session_display_name(const session_ctx_t *ctx);
 static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
                                             const session_ctx_t *from,
                                             const char *message,
@@ -2141,6 +2180,24 @@ static bool host_replies_commit_entry(host_t *host, chat_reply_entry_t *entry,
 static void session_send_reply_tree(session_ctx_t *ctx,
                                     uint64_t parent_message_id,
                                     uint64_t parent_reply_id, size_t depth);
+
+static const char *session_display_name(const session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return "";
+    }
+
+    if (ctx->user_data_loaded && ctx->user_data.preferred_nickname[0] != '\0') {
+        return ctx->user_data.preferred_nickname;
+    }
+
+    if (ctx->user.name[0] != '\0') {
+        return ctx->user.name;
+    }
+
+    return "";
+}
+
 // static void host_broadcast_reply(host_t *host, const chat_reply_entry_t *entry);
 static void session_send_private_message_line(session_ctx_t *ctx,
                                               const session_ctx_t *color_source,
@@ -2293,6 +2350,7 @@ static void session_handle_getos(session_ctx_t *ctx, const char *arguments);
 static void session_handle_getaddr(session_ctx_t *ctx, const char *arguments);
 static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments);
 static void session_handle_fidonet(session_ctx_t *ctx, const char *arguments);
+static void session_handle_ddial(session_ctx_t *ctx, const char *arguments);
 static void session_handle_telnetserver(session_ctx_t *ctx,
                                         const char *arguments);
 static void session_handle_pair(session_ctx_t *ctx);
@@ -2405,7 +2463,7 @@ host_find_preference_locked(host_t *host, const char *username, const char *ip);
 static user_preference_t *host_ensure_preference_locked(host_t *host,
                                                         const char *username,
                                                         const char *ip);
-static void host_store_user_theme(host_t *host, const session_ctx_t *ctx);
+static void host_store_user_theme(host_t *host, session_ctx_t *ctx);
 static size_t host_prepare_join_delay(host_t *host,
                                       struct timespec *wait_duration);
 static host_join_attempt_result_t
@@ -3030,11 +3088,9 @@ static const char TETROMINO_DISPLAY_CHARS[7] = {'I', 'J', 'L', 'O',
                                                 'S', 'T', 'Z'};
 
 static const uint32_t HOST_STATE_MAGIC = 0x53484354U; /* 'SHCT' */
-static const uint32_t HOST_STATE_VERSION = 12U;
+static const uint32_t HOST_STATE_VERSION = 16U;
 static const uint32_t ELIZA_STATE_MAGIC = 0x454c5354U; /* 'ELST' */
 static const uint32_t ELIZA_STATE_VERSION = 1U;
-
-#define HOST_STATE_SOUND_ALIAS_LEN 32U
 
 typedef struct eliza_memory_header {
     uint32_t magic;
@@ -3071,48 +3127,61 @@ typedef struct host_state_header {
     uint32_t grant_count;
     uint64_t next_message_id;
     uint8_t captcha_enabled;
-    uint8_t reserved[7];
+    uint8_t geo_language_enabled;
+    uint8_t reserved[6];
 } host_state_header_t;
 
-typedef struct host_state_history_entry_v1 {
+typedef struct host_state_history_entry {
     uint8_t is_user_message;
     uint8_t user_is_bold;
     char username[SSH_CHATTER_USERNAME_LEN];
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
-} host_state_history_entry_v1_t;
-
-typedef struct host_state_history_entry_v2 {
-    host_state_history_entry_v1_t base;
-    uint64_t message_id;
-    uint8_t attachment_type;
-    char attachment_target[SSH_CHATTER_ATTACHMENT_TARGET_LEN];
-    char attachment_caption[SSH_CHATTER_ATTACHMENT_CAPTION_LEN];
-    char sound_alias[HOST_STATE_SOUND_ALIAS_LEN];
-    uint32_t reaction_counts[SSH_CHATTER_REACTION_KIND_COUNT];
-} host_state_history_entry_v2_t;
-
-typedef struct host_state_history_entry_v3 {
-    host_state_history_entry_v1_t base;
-    uint64_t message_id;
-    uint8_t attachment_type;
-    uint8_t reserved[7];
-    char attachment_target[SSH_CHATTER_ATTACHMENT_TARGET_LEN];
-    char attachment_caption[SSH_CHATTER_ATTACHMENT_CAPTION_LEN];
-    uint32_t reaction_counts[SSH_CHATTER_REACTION_KIND_COUNT];
-} host_state_history_entry_v3_t;
-
-typedef struct host_state_history_entry_v4 {
-    host_state_history_entry_v1_t base;
+    char raw_username[SSH_CHATTER_USERNAME_LEN];
     uint64_t message_id;
     int64_t created_at;
     uint8_t attachment_type;
     uint8_t reserved[7];
     char attachment_target[SSH_CHATTER_ATTACHMENT_TARGET_LEN];
     char attachment_caption[SSH_CHATTER_ATTACHMENT_CAPTION_LEN];
+    char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
     uint32_t reaction_counts[SSH_CHATTER_REACTION_KIND_COUNT];
-} host_state_history_entry_v4_t;
+} host_state_history_entry_t;
+
+static void host_state_assign_color_codes(chat_history_entry_t *entry,
+                                          const char *color_code,
+                                          const char *highlight_code)
+{
+    if (entry == nullptr) {
+        return;
+    }
+
+    entry->user_color_code = nullptr;
+    entry->user_highlight_code = nullptr;
+
+    if (color_code != nullptr && color_code[0] != '\0') {
+        size_t length = strnlen(color_code, SSH_CHATTER_COLOR_CODE_LEN - 1U);
+        char *copy = GC_MALLOC(length + 1U);
+        if (copy != nullptr) {
+            memcpy(copy, color_code, length);
+            copy[length] = '\0';
+            entry->user_color_code = copy;
+        }
+    }
+
+    if (highlight_code != nullptr && highlight_code[0] != '\0') {
+        size_t length =
+            strnlen(highlight_code, SSH_CHATTER_COLOR_CODE_LEN - 1U);
+        char *copy = GC_MALLOC(length + 1U);
+        if (copy != nullptr) {
+            memcpy(copy, highlight_code, length);
+            copy[length] = '\0';
+            entry->user_highlight_code = copy;
+        }
+    }
+}
 
 typedef struct host_state_preference_entry_v3 {
     uint8_t has_user_theme;
@@ -3294,6 +3363,8 @@ typedef struct host_state_preference_entry {
     uint8_t system_is_bold;
     char username[SSH_CHATTER_USERNAME_LEN];
     char ip[SSH_CHATTER_IP_LEN];
+    char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
+    char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
     char user_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char user_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
     char system_fg_name[SSH_CHATTER_COLOR_NAME_LEN];
@@ -4118,7 +4189,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
-                if (member == nullptr || member->channel == nullptr) {
+                if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
                 if (from != nullptr && member == from) {
@@ -4171,10 +4242,23 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
             const char *color =
                 from->user_color_code != nullptr ? from->user_color_code : "";
+            const char *highlight =
+                from->user_highlight_code != nullptr ? from->user_highlight_code
+                                                     : "";
             const char *bold = from->user_is_bold ? ANSI_BOLD : "";
 
-            snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s", color,
-                     bold, from->user.name, ANSI_RESET, message);
+            const bool has_custom_codes =
+                (color[0] != '\0') || (highlight[0] != '\0');
+
+            if (has_custom_codes) {
+                snprintf(formatted, sizeof(formatted),
+                         "[-] <%s%s%s%s%s> %s", highlight, color, bold,
+                         from->user.name, ANSI_RESET, message);
+            } else {
+                snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s",
+                         color, bold, from->user.name, ANSI_RESET, message);
+            }
+
             session_send_plain_line(member, formatted);
         } else {
             session_send_system_line(member, message);
@@ -4212,7 +4296,7 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
             memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
-                if (member == nullptr || member->channel == nullptr) {
+                if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
                 // Skip users who have the no_update flag set (scrolled back in history)
@@ -4286,6 +4370,8 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     session_ctx_t **targets = nullptr;
     size_t target_count = 0U;
     size_t expected_targets = 0U;
+    session_ctx_t **sink_targets = nullptr;
+    size_t sink_count = 0U;
 
     pthread_mutex_lock(&room->lock);
     expected_targets = room->member_count;
@@ -4295,7 +4381,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
-                if (member == nullptr || member->channel == nullptr) {
+                if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
                 if (from != nullptr && member == from) {
@@ -4310,6 +4396,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                 }
                 if (member->no_update &&
                     member->transport_kind != SESSION_TRANSPORT_TELNET) {
+                    sink_targets[sink_count++] = member;
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4318,9 +4405,16 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     }
     pthread_mutex_unlock(&room->lock);
 
+    if (sink_targets != nullptr && sink_count > 0U) {
+        for (size_t idx = 0; idx < sink_count; ++idx) {
+            session_flag_should_sink(sink_targets[idx]);
+        }
+    }
+
     if (targets == nullptr && expected_targets > 0U) {
         humanized_log_error(
             "chat-room", "failed to allocate entry broadcast buffer", ENOMEM);
+        GC_FREE(sink_targets);
         return;
     }
 
@@ -4342,10 +4436,14 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         }
 
         if (entry->is_user_message) {
-            // Format user message directly
+            // Format user message directly, handling multi-line content to avoid
+            // inserting unintended blank lines.
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
             const char *color =
                 entry->user_color_code != nullptr ? entry->user_color_code : "";
+            const char *highlight = entry->user_highlight_code != nullptr
+                                         ? entry->user_highlight_code
+                                         : "";
             const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
 
             char id_label[32] = "-";
@@ -4354,10 +4452,34 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                                        sizeof(id_label));
             }
 
-            snprintf(formatted, sizeof(formatted), "%s%s [%s] <%s>%s %s", color,
-                     bold, id_label, entry->username, ANSI_RESET,
-                     entry->message);
-            session_send_plain_line(member, formatted);
+            const bool has_custom_codes =
+                (color[0] != '\0') || (highlight[0] != '\0');
+
+            char name_block[SSH_CHATTER_MESSAGE_LIMIT];
+            const char *display_name = chat_history_entry_display_name(entry);
+            if (has_custom_codes) {
+                snprintf(name_block, sizeof(name_block),
+                         "[%s] <%s%s%s%s%s>", id_label, highlight, color, bold,
+                         display_name, ANSI_RESET);
+            } else {
+                snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s", color,
+                         bold, id_label, display_name, ANSI_RESET);
+            }
+
+            if (entry->message[0] != '\0') {
+                const bool multiline = strchr(entry->message, '\n') != nullptr;
+                if (multiline) {
+                    snprintf(formatted, sizeof(formatted), "%s ", name_block);
+                    session_send_plain_line(member, formatted);
+                    session_send_multiline_message(member, entry->message);
+                } else {
+                    snprintf(formatted, sizeof(formatted), "%s %s", name_block,
+                             entry->message);
+                    session_send_plain_line(member, formatted);
+                }
+            } else {
+                session_send_plain_line(member, name_block);
+            }
 
             // Send attachment if present
             if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&
@@ -4409,6 +4531,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     }
 
     GC_FREE(targets);
+    GC_FREE(sink_targets);
 }
 
 static void
@@ -4573,133 +4696,47 @@ static bool host_state_read_history_entry(FILE *fp, uint32_t version,
 
     memset(entry, 0, sizeof(*entry));
 
-    if (version >= 11U) {
-        host_state_history_entry_v4_t serialized = {0};
-        if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
-            return false;
-        }
-
-        entry->is_user_message = serialized.base.is_user_message != 0U;
-        entry->user_is_bold = serialized.base.user_is_bold != 0U;
-        snprintf(entry->username, sizeof(entry->username), "%s",
-                 serialized.base.username);
-        snprintf(entry->message, sizeof(entry->message), "%s",
-                 serialized.base.message);
-        snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
-                 serialized.base.user_color_name);
-        snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name),
-                 "%s", serialized.base.user_highlight_name);
-        entry->message_id = serialized.message_id;
-        if (serialized.attachment_type > CHAT_ATTACHMENT_FILE) {
-            entry->attachment_type = CHAT_ATTACHMENT_NONE;
-        } else {
-            entry->attachment_type =
-                (chat_attachment_type_t)serialized.attachment_type;
-        }
-        entry->created_at = (time_t)serialized.created_at;
-        entry->preserve_whitespace = serialized.reserved[0] != 0U;
-        snprintf(entry->attachment_target, sizeof(entry->attachment_target),
-                 "%s", serialized.attachment_target);
-        snprintf(entry->attachment_caption, sizeof(entry->attachment_caption),
-                 "%s", serialized.attachment_caption);
-        memcpy(entry->reaction_counts, serialized.reaction_counts,
-               sizeof(entry->reaction_counts));
-        return true;
+    if (version != HOST_STATE_VERSION) {
+        return false;
     }
 
-    if (version >= 3U) {
-        host_state_history_entry_v3_t serialized = {0};
-        if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
-            return false;
-        }
-
-        entry->is_user_message = serialized.base.is_user_message != 0U;
-        entry->user_is_bold = serialized.base.user_is_bold != 0U;
-        snprintf(entry->username, sizeof(entry->username), "%s",
-                 serialized.base.username);
-        snprintf(entry->message, sizeof(entry->message), "%s",
-                 serialized.base.message);
-        snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
-                 serialized.base.user_color_name);
-        snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name),
-                 "%s", serialized.base.user_highlight_name);
-        entry->message_id = serialized.message_id;
-        if (serialized.attachment_type > CHAT_ATTACHMENT_FILE) {
-            entry->attachment_type = CHAT_ATTACHMENT_NONE;
-        } else {
-            entry->attachment_type =
-                (chat_attachment_type_t)serialized.attachment_type;
-        }
-        entry->created_at = 0;
-        entry->preserve_whitespace = serialized.reserved[0] != 0U;
-        snprintf(entry->attachment_target, sizeof(entry->attachment_target),
-                 "%s", serialized.attachment_target);
-        snprintf(entry->attachment_caption, sizeof(entry->attachment_caption),
-                 "%s", serialized.attachment_caption);
-        memcpy(entry->reaction_counts, serialized.reaction_counts,
-               sizeof(entry->reaction_counts));
-        return true;
-    }
-
-    if (version == 2U) {
-        host_state_history_entry_v2_t serialized = {0};
-        if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
-            return false;
-        }
-
-        entry->is_user_message = serialized.base.is_user_message != 0U;
-        entry->user_is_bold = serialized.base.user_is_bold != 0U;
-        snprintf(entry->username, sizeof(entry->username), "%s",
-                 serialized.base.username);
-        snprintf(entry->message, sizeof(entry->message), "%s",
-                 serialized.base.message);
-        snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
-                 serialized.base.user_color_name);
-        snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name),
-                 "%s", serialized.base.user_highlight_name);
-        entry->message_id = serialized.message_id;
-        if (serialized.attachment_type > CHAT_ATTACHMENT_AUDIO) {
-            entry->attachment_type = CHAT_ATTACHMENT_NONE;
-        } else {
-            entry->attachment_type =
-                (chat_attachment_type_t)serialized.attachment_type;
-        }
-        entry->created_at = 0;
-        snprintf(entry->attachment_target, sizeof(entry->attachment_target),
-                 "%s", serialized.attachment_target);
-        snprintf(entry->attachment_caption, sizeof(entry->attachment_caption),
-                 "%s", serialized.attachment_caption);
-        memcpy(entry->reaction_counts, serialized.reaction_counts,
-               sizeof(entry->reaction_counts));
-        if (serialized.sound_alias[0] != '\0' &&
-            entry->attachment_caption[0] == '\0') {
-            snprintf(entry->attachment_caption,
-                     sizeof(entry->attachment_caption), "%s",
-                     serialized.sound_alias);
-        }
-        return true;
-    }
-
-    host_state_history_entry_v1_t serialized = {0};
+    host_state_history_entry_t serialized = {0};
     if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
         return false;
     }
 
     entry->is_user_message = serialized.is_user_message != 0U;
     entry->user_is_bold = serialized.user_is_bold != 0U;
-    snprintf(entry->username, sizeof(entry->username), "%s",
-             serialized.username);
+    snprintf(entry->username, sizeof(entry->username), "%s", serialized.username);
+    snprintf(entry->raw_username, sizeof(entry->raw_username), "%s",
+             serialized.raw_username);
     snprintf(entry->message, sizeof(entry->message), "%s", serialized.message);
     snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
              serialized.user_color_name);
-    snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name),
-             "%s", serialized.user_highlight_name);
-    entry->attachment_type = CHAT_ATTACHMENT_NONE;
-    entry->message_id = 0U;
-    entry->created_at = 0;
+    snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name), "%s",
+             serialized.user_highlight_name);
+    entry->message_id = serialized.message_id;
+    if (serialized.attachment_type > CHAT_ATTACHMENT_FILE) {
+        entry->attachment_type = CHAT_ATTACHMENT_NONE;
+    } else {
+        entry->attachment_type = (chat_attachment_type_t)serialized.attachment_type;
+    }
+    entry->created_at = (time_t)serialized.created_at;
+    entry->preserve_whitespace = serialized.reserved[0] != 0U;
+    snprintf(entry->attachment_target, sizeof(entry->attachment_target), "%s",
+             serialized.attachment_target);
+    snprintf(entry->attachment_caption, sizeof(entry->attachment_caption), "%s",
+             serialized.attachment_caption);
+    host_state_assign_color_codes(entry, serialized.user_color_code,
+                                  serialized.user_highlight_code);
+    memcpy(entry->reaction_counts, serialized.reaction_counts,
+           sizeof(entry->reaction_counts));
+    if (entry->raw_username[0] == '\0') {
+        snprintf(entry->raw_username, sizeof(entry->raw_username), "%s",
+                 entry->username);
+    }
     return true;
 }
-
 static bool host_state_write_history_entry(FILE *fp,
                                            const chat_history_entry_t *entry)
 {
@@ -4707,27 +4744,32 @@ static bool host_state_write_history_entry(FILE *fp,
         return false;
     }
 
-    host_state_history_entry_v4_t serialized = {0};
-    serialized.base.is_user_message = entry->is_user_message ? 1U : 0U;
-    serialized.base.user_is_bold = entry->user_is_bold ? 1U : 0U;
-    snprintf(serialized.base.username, sizeof(serialized.base.username), "%s",
+    host_state_history_entry_t serialized = {0};
+    serialized.is_user_message = entry->is_user_message ? 1U : 0U;
+    serialized.user_is_bold = entry->user_is_bold ? 1U : 0U;
+    snprintf(serialized.username, sizeof(serialized.username), "%s",
              entry->username);
-    snprintf(serialized.base.message, sizeof(serialized.base.message), "%s",
+    snprintf(serialized.raw_username, sizeof(serialized.raw_username), "%s",
+             entry->raw_username);
+    snprintf(serialized.message, sizeof(serialized.message), "%s",
              entry->message);
-    snprintf(serialized.base.user_color_name,
-             sizeof(serialized.base.user_color_name), "%s",
+    snprintf(serialized.user_color_name, sizeof(serialized.user_color_name), "%s",
              entry->user_color_name);
-    snprintf(serialized.base.user_highlight_name,
-             sizeof(serialized.base.user_highlight_name), "%s",
+    snprintf(serialized.user_highlight_name,
+             sizeof(serialized.user_highlight_name), "%s",
              entry->user_highlight_name);
     serialized.message_id = entry->message_id;
     serialized.created_at = (int64_t)entry->created_at;
     serialized.attachment_type = (uint8_t)entry->attachment_type;
-    snprintf(serialized.attachment_target, sizeof(serialized.attachment_target),
-             "%s", entry->attachment_target);
-    snprintf(serialized.attachment_caption,
-             sizeof(serialized.attachment_caption), "%s",
+    snprintf(serialized.attachment_target, sizeof(serialized.attachment_target), "%s",
+             entry->attachment_target);
+    snprintf(serialized.attachment_caption, sizeof(serialized.attachment_caption), "%s",
              entry->attachment_caption);
+    snprintf(serialized.user_color_code, sizeof(serialized.user_color_code), "%s",
+             entry->user_color_code != nullptr ? entry->user_color_code : "");
+    snprintf(serialized.user_highlight_code,
+             sizeof(serialized.user_highlight_code), "%s",
+             entry->user_highlight_code != nullptr ? entry->user_highlight_code : "");
     memcpy(serialized.reaction_counts, entry->reaction_counts,
            sizeof(serialized.reaction_counts));
     memset(serialized.reserved, 0, sizeof(serialized.reserved));
@@ -4735,7 +4777,6 @@ static bool host_state_write_history_entry(FILE *fp,
 
     return fwrite(&serialized, sizeof(serialized), 1U, fp) == 1U;
 }
-
 static bool host_state_stream_open(const char *path, FILE **out_fp,
                                    uint32_t *version, uint32_t *history_count)
 {
@@ -4761,7 +4802,7 @@ static bool host_state_stream_open(const char *path, FILE **out_fp,
     }
 
     uint32_t file_version = base_header.version;
-    if (file_version == 0U || file_version > HOST_STATE_VERSION) {
+    if (file_version != HOST_STATE_VERSION) {
         fclose(fp);
         return false;
     }
@@ -4797,17 +4838,8 @@ static bool host_state_stream_open(const char *path, FILE **out_fp,
 
 static size_t host_state_history_entry_stride(uint32_t version)
 {
-    if (version >= 11U) {
-        return sizeof(host_state_history_entry_v4_t);
-    }
-    if (version >= 3U) {
-        return sizeof(host_state_history_entry_v3_t);
-    }
-    if (version == 2U) {
-        return sizeof(host_state_history_entry_v2_t);
-    }
-    if (version == 1U) {
-        return sizeof(host_state_history_entry_v1_t);
+    if (version == HOST_STATE_VERSION) {
+        return sizeof(host_state_history_entry_t);
     }
     return 0U;
 }
@@ -5035,55 +5067,6 @@ static bool host_history_find_entry_by_id(host_t *host, uint64_t message_id,
     }
 
     return found;
-}
-
-static bool host_history_remove_join_entry(host_t *host, const char *username)
-{
-    if (host == nullptr || username == nullptr || username[0] == '\0') {
-        return false;
-    }
-
-    char join_message[SSH_CHATTER_MESSAGE_LIMIT];
-    int written = snprintf(join_message, sizeof(join_message),
-                           "* [%s] has joined the chat", username);
-    if (written < 0 || (size_t)written >= sizeof(join_message)) {
-        return false;
-    }
-
-    bool removed = false;
-    pthread_mutex_lock(&host->lock);
-    if (host->history != nullptr && host->history_count > 0U) {
-        size_t index = SIZE_MAX;
-        for (size_t idx = 0U; idx < host->history_count; ++idx) {
-            chat_history_entry_t *entry = &host->history[idx];
-            if (entry->is_user_message) {
-                continue;
-            }
-            if (strncmp(entry->message, join_message, sizeof(entry->message)) ==
-                0) {
-                index = idx;
-                break;
-            }
-        }
-
-        if (index != SIZE_MAX) {
-            for (size_t shift = index; shift + 1U < host->history_count;
-                 ++shift) {
-                host->history[shift] = host->history[shift + 1U];
-            }
-            memset(&host->history[host->history_count - 1U], 0,
-                   sizeof(host->history[host->history_count - 1U]));
-            --host->history_count;
-            if (host->history_total > 0U) {
-                --host->history_total;
-            }
-            removed = true;
-            host_state_save_locked(host);
-        }
-    }
-    pthread_mutex_unlock(&host->lock);
-
-    return removed;
 }
 
 static size_t host_history_delete_range(host_t *host, uint64_t start_id,
@@ -5356,9 +5339,42 @@ static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
     if (message != nullptr) {
         snprintf(entry->message, sizeof(entry->message), "%s", message);
     }
-    snprintf(entry->username, sizeof(entry->username), "%s", from->user.name);
-    entry->user_color_code = from->user_color_code;
-    entry->user_highlight_code = from->user_highlight_code;
+    const char *username = session_display_name(from);
+    const char *raw_username =
+        (from->user_data_loaded && from->user_data.preferred_nickname[0] != '\0')
+            ? from->user_data.preferred_nickname
+            : from->user.name;
+    if (raw_username == nullptr || raw_username[0] == '\0') {
+        raw_username = username;
+    }
+
+    snprintf(entry->username, sizeof(entry->username), "%s", username);
+    snprintf(entry->raw_username, sizeof(entry->raw_username), "%s",
+             raw_username);
+    snprintf(entry->user_ip, sizeof(entry->user_ip), "%s", from->client_ip);
+    if (from->user_color_code != nullptr && from->user_color_code[0] != '\0') {
+        size_t color_len = strlen(from->user_color_code);
+        char *color_copy = GC_MALLOC(color_len + 1U);
+        if (color_copy != nullptr) {
+            memcpy(color_copy, from->user_color_code, color_len + 1U);
+            entry->user_color_code = color_copy;
+        }
+    } else {
+        entry->user_color_code = nullptr;
+    }
+
+    if (from->user_highlight_code != nullptr &&
+        from->user_highlight_code[0] != '\0') {
+        size_t highlight_len = strlen(from->user_highlight_code);
+        char *highlight_copy = GC_MALLOC(highlight_len + 1U);
+        if (highlight_copy != nullptr) {
+            memcpy(highlight_copy, from->user_highlight_code,
+                   highlight_len + 1U);
+            entry->user_highlight_code = highlight_copy;
+        }
+    } else {
+        entry->user_highlight_code = nullptr;
+    }
     entry->user_is_bold = from->user_is_bold;
     snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
              from->user_color_name);
@@ -5747,7 +5763,7 @@ static user_preference_t *host_ensure_preference_locked(host_t *host,
     return existing;
 }
 
-static void host_store_user_theme(host_t *host, const session_ctx_t *ctx)
+static void host_store_user_theme(host_t *host, session_ctx_t *ctx)
 {
     if (host == nullptr || ctx == nullptr) {
         return;
@@ -5758,11 +5774,35 @@ static void host_store_user_theme(host_t *host, const session_ctx_t *ctx)
         host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
         pref->has_user_theme = true;
+        snprintf(pref->user_color_code, sizeof(pref->user_color_code), "%s",
+                 ctx->user_color_code != nullptr ? ctx->user_color_code : "");
+        snprintf(pref->user_highlight_code, sizeof(pref->user_highlight_code),
+                 "%s",
+                 ctx->user_highlight_code != nullptr ? ctx->user_highlight_code
+                                                    : "");
         snprintf(pref->user_color_name, sizeof(pref->user_color_name), "%s",
                  ctx->user_color_name);
         snprintf(pref->user_highlight_name, sizeof(pref->user_highlight_name),
                  "%s", ctx->user_highlight_name);
         pref->user_is_bold = ctx->user_is_bold;
+    }
+    if (ctx->user_data_loaded) {
+        ctx->user_data.has_user_theme = 1U;
+        ctx->user_data.user_is_bold = ctx->user_is_bold ? 1U : 0U;
+        snprintf(ctx->user_data.user_color_code,
+                 sizeof(ctx->user_data.user_color_code), "%s",
+                 ctx->user_color_code != nullptr ? ctx->user_color_code : "");
+        snprintf(ctx->user_data.user_highlight_code,
+                 sizeof(ctx->user_data.user_highlight_code), "%s",
+                 ctx->user_highlight_code != nullptr ? ctx->user_highlight_code
+                                                     : "");
+        snprintf(ctx->user_data.user_color_name,
+                 sizeof(ctx->user_data.user_color_name), "%s",
+                 ctx->user_color_name);
+        snprintf(ctx->user_data.user_highlight_name,
+                 sizeof(ctx->user_data.user_highlight_name), "%s",
+                 ctx->user_highlight_name);
+        (void)session_user_data_commit(ctx);
     }
     host_state_save_locked(host);
     pthread_mutex_unlock(&host->lock);
@@ -6133,27 +6173,36 @@ static void host_history_normalize_entry(host_t *host,
         return;
     }
 
-    const char *color_code = lookup_color_code(
-        USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
-        entry->user_color_name);
-    if (color_code == nullptr) {
-        color_code = host->user_theme.userColor;
-        snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
-                 host->default_user_color_name);
+    const bool has_color_code =
+        entry->user_color_code != nullptr && entry->user_color_code[0] != '\0';
+    const bool has_highlight_code = entry->user_highlight_code != nullptr &&
+                                    entry->user_highlight_code[0] != '\0';
+
+    if (!has_color_code) {
+        const char *color_code = lookup_color_code(
+            USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
+            entry->user_color_name);
+        if (color_code == nullptr) {
+            color_code = host->user_theme.userColor;
+            snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
+                     host->default_user_color_name);
+        }
+        entry->user_color_code = color_code;
     }
 
-    const char *highlight_code = lookup_color_code(
-        HIGHLIGHT_COLOR_MAP,
-        sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
-        entry->user_highlight_name);
-    if (highlight_code == nullptr) {
-        highlight_code = host->user_theme.highlight;
-        snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name),
-                 "%s", host->default_user_highlight_name);
+    if (!has_highlight_code) {
+        const char *highlight_code = lookup_color_code(
+            HIGHLIGHT_COLOR_MAP,
+            sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
+            entry->user_highlight_name);
+        if (highlight_code == nullptr) {
+            highlight_code = host->user_theme.highlight;
+            snprintf(entry->user_highlight_name,
+                     sizeof(entry->user_highlight_name), "%s",
+                     host->default_user_highlight_name);
+        }
+        entry->user_highlight_code = highlight_code;
     }
-
-    entry->user_color_code = color_code;
-    entry->user_highlight_code = highlight_code;
 }
 
 static void host_security_configure(host_t *host)

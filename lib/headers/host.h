@@ -117,6 +117,7 @@ struct webssh_client;
 struct matrix_client;
 struct irc_client;
 struct fidonet_client;
+struct ddial_client;
 struct translation_job;
 struct translation_result;
 
@@ -912,6 +913,7 @@ typedef struct host {
     struct matrix_client *matrix_client;
     struct irc_client *irc_client;
     struct fidonet_client *fidonet_client;
+    struct ddial_client *ddial_client;
     security_layer_t security_layer;
     bool security_layer_initialized;
     _Atomic bool eliza_enabled;
@@ -990,6 +992,9 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 bool host_post_client_message(host_t *host, const char *username,
                               const char *message, const char *color_name,
                               const char *highlight_name, bool is_bold);
+bool host_post_ephemeral_message(host_t *host, const char *username,
+                                 const char *message, const char *color_name,
+                                 const char *highlight_name, bool is_bold);
 void host_shutdown(host_t *host);
 void host_shutdown_for_testing(host_t *host);
 bool host_snapshot_last_captcha(host_t *host, char *question,

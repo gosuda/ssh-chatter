@@ -4180,6 +4180,20 @@ static const session_help_entry_t kSessionHelpOperator[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "ddial <url> <port>",
+        .description =
+            {
+                "Connect the D-Dial relay to a target endpoint (operator only).",
+                "D-Dial 릴레이를 지정한 엔드포인트에 연결합니다 (운영자 전용).",
+                "D-Dial リレーを指定のエンドポイントに接続します（オペレーター専用）。",
+                "将 D-Dial 中继连接到指定端点（仅限管理员）。",
+                "Подключить ретранслятор D-Dial к указанной точке (только оператор).",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "fidonet <status|reconnect|disconnect>",
         .description =
             {

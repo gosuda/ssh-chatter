@@ -4920,6 +4920,78 @@ static void session_handle_getaddr(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, message);
 }
 
+static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(ctx,
+                                 "You are not allowed to run that command.");
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    if (host == nullptr) {
+        session_send_system_line(ctx, "Host unavailable.");
+        return;
+    }
+
+    if (host->ddial_client == nullptr) {
+        session_send_system_line(ctx, "D-Dial relay is not available.");
+        return;
+    }
+
+    static const char *kUsage = "Usage: /ddial <url> <port>";
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, "/ddial", kUsage, usage, sizeof(usage));
+
+    if (arguments == nullptr) {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    char endpoint[256];
+    char port_text[16];
+
+    const char *rest = session_consume_token(arguments, endpoint, sizeof(endpoint));
+    rest = session_consume_token(rest, port_text, sizeof(port_text));
+
+    if (endpoint[0] == '\0' || port_text[0] == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    char *endptr = nullptr;
+    long port_value = strtol(port_text, &endptr, 10);
+    if (endptr == port_text || *endptr != '\0' || port_value <= 0L ||
+        port_value > 65535L) {
+        session_send_system_line(ctx, "Provide a valid TCP port number.");
+        return;
+    }
+
+    char normalized_port[16];
+    snprintf(normalized_port, sizeof(normalized_port), "%ld", port_value);
+
+    if (!ddial_client_connect(host->ddial_client, endpoint, normalized_port)) {
+        session_send_system_line(ctx, "Failed to start D-Dial relay worker.");
+        return;
+    }
+
+    char message[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(message, sizeof(message), "Connecting to D-Dial at %s:%s...",
+             endpoint, normalized_port);
+    session_send_system_line(ctx, message);
+
+    char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(broadcast, sizeof(broadcast),
+             "* [%s] initiated D-Dial connection to %s:%s", ctx->user.name,
+             endpoint, normalized_port);
+    host_history_record_system(host, broadcast, nullptr);
+    chat_room_broadcast(&host->room, broadcast, nullptr);
+}
+
 static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr) {

@@ -4435,6 +4435,10 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             session_channel_write(member, clear_line, sizeof(clear_line) - 1U);
         }
 
+        bool previous_capture = member->capture_realtime_output;
+        member->capture_realtime_output =
+            (member->history_scroll_position == 0U) && !member->no_update;
+
         if (entry->is_user_message) {
             // Format user message directly, handling multi-line content to avoid
             // inserting unintended blank lines.
@@ -4528,6 +4532,8 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                 session_channel_flush(member);
             }
         }
+
+        member->capture_realtime_output = previous_capture;
     }
 
     GC_FREE(targets);

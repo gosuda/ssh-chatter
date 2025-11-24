@@ -5505,6 +5505,39 @@ static int session_transport_read(session_ctx_t *ctx, void *buffer,
     return ssh_channel_read(ctx->channel, buffer, chunk, 0);
 }
 
+static bool session_is_first_message_bot_probe(const session_ctx_t *ctx,
+                                               const char *message)
+{
+    if (ctx == nullptr || message == nullptr) {
+        return false;
+    }
+
+    if (ctx->chat_message_count > 0U) {
+        return false;
+    }
+
+    static const char *kTelnetBotFirstMessages[] = {"enable", "nconnect"};
+
+    char normalized[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(normalized, sizeof(normalized), "%s", message);
+    trim_whitespace_inplace(normalized);
+
+    if (normalized[0] == '\0') {
+        return false;
+    }
+
+    const size_t pattern_count =
+        sizeof(kTelnetBotFirstMessages) / sizeof(kTelnetBotFirstMessages[0]);
+
+    for (size_t idx = 0U; idx < pattern_count; ++idx) {
+        if (strcasecmp(normalized, kTelnetBotFirstMessages[idx]) == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static void session_deliver_outgoing_message(session_ctx_t *ctx,
                                              const char *message,
                                              bool clear_prompt_text)
@@ -5520,6 +5553,15 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
 
     if (trimmed[0] == '\0') {
         // Don't send empty messages
+        return;
+    }
+
+    if (session_is_first_message_bot_probe(ctx, trimmed)) {
+        session_send_system_line(
+            ctx,
+            "Connection closed: first message matched a telnet bot command.");
+        session_force_disconnect(
+            ctx, "Disconnected for suspected telnet bot command.");
         return;
     }
 

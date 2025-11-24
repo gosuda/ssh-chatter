@@ -4920,6 +4920,110 @@ static void session_handle_getaddr(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, message);
 }
 
+static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(ctx,
+                                 "You are not allowed to run that command.");
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    if (host == nullptr) {
+        session_send_system_line(ctx, "Host unavailable.");
+        return;
+    }
+
+    if (host->ddial_client == nullptr) {
+        session_send_system_line(ctx, "D-Dial relay is not available.");
+        return;
+    }
+
+    static const char *kUsage = "Usage: /ddial <url> <port>|logs|status";
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, "/ddial", kUsage, usage, sizeof(usage));
+
+    if (arguments == nullptr) {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    char endpoint[256];
+    char port_text[16];
+
+    const char *rest = session_consume_token(arguments, endpoint, sizeof(endpoint));
+
+    if (strcmp(endpoint, "logs") == 0) {
+        char logs[DDIAL_LOG_CAPACITY][DDIAL_LOG_ENTRY_LENGTH];
+        size_t count = 0U;
+        if (!ddial_client_snapshot_logs(host->ddial_client, logs,
+                                        DDIAL_LOG_CAPACITY, &count)) {
+            session_send_system_line(ctx, "Unable to read D-Dial logs.");
+            return;
+        }
+
+        if (count == 0U) {
+            session_send_system_line(ctx, "No D-Dial activity yet.");
+            return;
+        }
+
+        session_send_system_line(ctx, "Recent D-Dial logs:");
+        for (size_t i = 0; i < count; ++i) {
+            session_send_system_line(ctx, logs[i]);
+        }
+        return;
+    }
+
+    if (strcmp(endpoint, "status") == 0) {
+        const char *status = ddial_client_get_status(host->ddial_client);
+        bool connected = ddial_client_is_connected(host->ddial_client);
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message), "D-Dial relay status: %s (%s)", status,
+                 connected ? "connected" : "disconnected");
+        session_send_system_line(ctx, message);
+        return;
+    }
+
+    rest = session_consume_token(rest, port_text, sizeof(port_text));
+
+    if (endpoint[0] == '\0' || port_text[0] == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    char *endptr = nullptr;
+    long port_value = strtol(port_text, &endptr, 10);
+    if (endptr == port_text || *endptr != '\0' || port_value <= 0L ||
+        port_value > 65535L) {
+        session_send_system_line(ctx, "Provide a valid TCP port number.");
+        return;
+    }
+
+    char normalized_port[16];
+    snprintf(normalized_port, sizeof(normalized_port), "%ld", port_value);
+
+    if (!ddial_client_connect(host->ddial_client, endpoint, normalized_port)) {
+        session_send_system_line(ctx, "Failed to start D-Dial relay worker.");
+        return;
+    }
+
+    char message[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(message, sizeof(message), "Connecting to D-Dial at %s:%s...",
+             endpoint, normalized_port);
+    session_send_system_line(ctx, message);
+
+    char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(broadcast, sizeof(broadcast),
+             "* [%s] initiated D-Dial connection to %s:%s", ctx->user.name,
+             endpoint, normalized_port);
+    host_history_record_system(host, broadcast, nullptr);
+    chat_room_broadcast(&host->room, broadcast, nullptr);
+}
+
 static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr) {
@@ -5027,7 +5131,7 @@ static void session_handle_fidonet(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    static const char *kUsage = "Usage: /fidonet status|reconnect|disconnect";
+    static const char *kUsage = "Usage: /fidonet status|reconnect|disconnect|logs";
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/fidonet", kUsage, usage, sizeof(usage));
 
@@ -5054,6 +5158,24 @@ static void session_handle_fidonet(session_ctx_t *ctx, const char *arguments)
                  status, connected ? "connected" : "disconnected");
         host_history_record_system(host, broadcast, nullptr);
         chat_room_broadcast(&host->room, broadcast, nullptr);
+    } else if (strcmp(command, "logs") == 0) {
+        char logs[FIDONET_LOG_CAPACITY][FIDONET_LOG_ENTRY_LENGTH];
+        size_t count = 0U;
+        if (!fidonet_client_snapshot_logs(host->fidonet_client, logs,
+                                          FIDONET_LOG_CAPACITY, &count)) {
+            session_send_system_line(ctx, "Unable to read FidoNet logs.");
+            return;
+        }
+
+        if (count == 0U) {
+            session_send_system_line(ctx, "No FidoNet activity yet.");
+            return;
+        }
+
+        session_send_system_line(ctx, "Recent FidoNet logs:");
+        for (size_t i = 0; i < count; ++i) {
+            session_send_system_line(ctx, logs[i]);
+        }
     } else if (strcmp(command, "reconnect") == 0) {
         session_send_system_line(
             ctx, "Attempting to reconnect to FidoNet server...");

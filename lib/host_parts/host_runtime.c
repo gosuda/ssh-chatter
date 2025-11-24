@@ -82,6 +82,27 @@ host_provider_language_preference(host_t *host, const char *provider_label,
     return true;
 }
 
+static void host_sync_state_resolve_path(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    const char *sync_path = getenv("CHATTER_SYNC_STATE_FILE");
+    if (sync_path == nullptr || sync_path[0] == '\0') {
+        sync_path = "sync_chatter_state.dat";
+    }
+
+    int written = snprintf(host->sync_state_file_path,
+                           sizeof(host->sync_state_file_path), "%s",
+                           sync_path);
+    if (written < 0 || (size_t)written >= sizeof(host->sync_state_file_path)) {
+        humanized_log_error("host", "sync state file path is too long",
+                            ENAMETOOLONG);
+        host->sync_state_file_path[0] = '\0';
+    }
+}
+
 static void session_destroy(session_ctx_t *ctx);
 
 static size_t session_encode_utf8_codepoint(uint32_t codepoint, char *output,
@@ -1635,6 +1656,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     } else if (session_parse_command_any(ctx, "/getaddr", effective_line,
                                          &args)) {
         session_handle_getaddr(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/ddial", effective_line,
+                                         &args)) {
+        session_handle_ddial(ctx, args);
         return;
     } else if (session_parse_command_any(ctx, "/ircserver", effective_line,
                                          &args)) {
@@ -4343,6 +4368,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->preference_count = 0U;
     host->state_file_path[0] = '\0';
     host_state_resolve_path(host);
+    host->sync_state_file_path[0] = '\0';
+    host_sync_state_resolve_path(host);
     host->bbs_state_file_path[0] = '\0';
     host_bbs_resolve_path(host);
     host->vote_state_file_path[0] = '\0';
@@ -4510,6 +4537,13 @@ void host_init(host_t *host, auth_profile_t *auth)
                                     "FidoNet relay inactive; check "
                                     "CHATTER_FIDONET_* configuration",
                                     EINVAL);
+            }
+
+            host->ddial_client = ddial_client_create(host, host->clients);
+            if (host->ddial_client == nullptr) {
+                humanized_log_error("ddial",
+                                    "D-Dial relay unavailable; check memory",
+                                    ENOMEM);
             }
         }
     }
@@ -4828,41 +4862,37 @@ exit_host_set_motd:
     }
 }
 
-bool host_post_client_message(host_t *host, const char *username,
-                              const char *message, const char *color_name,
-                              const char *highlight_name, bool is_bold)
+static bool host_prepare_chat_entry(host_t *host, const char *username,
+                                    const char *message, const char *color_name,
+                                    const char *highlight_name, bool is_bold,
+                                    chat_history_entry_t *entry)
 {
-    bool success = false;
-    sshc_memory_context_t *memory_scope = nullptr;
-    if (host != nullptr) {
-        memory_scope = sshc_memory_context_push(host->memory_context);
-    }
     if (host == nullptr || username == nullptr || username[0] == '\0' ||
-        message == nullptr) {
-        goto exit_host_post_client_message;
+        message == nullptr || entry == nullptr) {
+        return false;
     }
 
-    chat_history_entry_t entry = {0};
-    entry.is_user_message = true;
-    snprintf(entry.username, sizeof(entry.username), "%s", username);
-    snprintf(entry.message, sizeof(entry.message), "%s", message);
-    entry.attachment_type = CHAT_ATTACHMENT_NONE;
-    entry.user_is_bold = is_bold;
+    memset(entry, 0, sizeof(*entry));
+    entry->is_user_message = true;
+    snprintf(entry->username, sizeof(entry->username), "%s", username);
+    snprintf(entry->message, sizeof(entry->message), "%s", message);
+    entry->attachment_type = CHAT_ATTACHMENT_NONE;
+    entry->user_is_bold = is_bold;
     time_t now = time(nullptr);
     if (now != (time_t)-1) {
-        entry.created_at = now;
+        entry->created_at = now;
     }
 
     const char *color_label = (color_name != nullptr && color_name[0] != '\0')
                                   ? color_name
                                   : host->default_user_color_name;
-    snprintf(entry.user_color_name, sizeof(entry.user_color_name), "%s",
+    snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
              color_label);
     const char *highlight_label =
         (highlight_name != nullptr && highlight_name[0] != '\0')
             ? highlight_name
             : host->default_user_highlight_name;
-    snprintf(entry.user_highlight_name, sizeof(entry.user_highlight_name), "%s",
+    snprintf(entry->user_highlight_name, sizeof(entry->user_highlight_name), "%s",
              highlight_label);
 
     const char *color_code = lookup_color_code(
@@ -4872,10 +4902,53 @@ bool host_post_client_message(host_t *host, const char *username,
         HIGHLIGHT_COLOR_MAP,
         sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
         highlight_label);
-    entry.user_color_code =
+    entry->user_color_code =
         color_code != nullptr ? color_code : host->user_theme.userColor;
-    entry.user_highlight_code =
+    entry->user_highlight_code =
         highlight_code != nullptr ? highlight_code : host->user_theme.highlight;
+
+    return true;
+}
+
+void host_append_sync_log(host_t *host, const char *source,
+                          const char *message)
+{
+    if (host == nullptr || source == nullptr || source[0] == '\0' ||
+        message == nullptr || message[0] == '\0') {
+        return;
+    }
+
+    if (host->sync_state_file_path[0] == '\0') {
+        return;
+    }
+
+    FILE *fp = fopen(host->sync_state_file_path, "a");
+    if (fp == nullptr) {
+        humanized_log_error("sync", "failed to open sync state file",
+                            errno != 0 ? errno : EIO);
+        return;
+    }
+
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    fprintf(fp, "%ld|%s|%s\n", (long)now.tv_sec, source, message);
+    fclose(fp);
+}
+
+bool host_post_client_message(host_t *host, const char *username,
+                              const char *message, const char *color_name,
+                              const char *highlight_name, bool is_bold)
+{
+    bool success = false;
+    sshc_memory_context_t *memory_scope = nullptr;
+    if (host != nullptr) {
+        memory_scope = sshc_memory_context_push(host->memory_context);
+    }
+    chat_history_entry_t entry = {0};
+    if (!host_prepare_chat_entry(host, username, message, color_name,
+                                 highlight_name, is_bold, &entry)) {
+        goto exit_host_post_client_message;
+    }
 
     chat_history_entry_t stored = {0};
     if (!host_history_commit_entry(host, &entry, &stored)) {
@@ -4884,6 +4957,32 @@ bool host_post_client_message(host_t *host, const char *username,
 
     chat_room_broadcast_entry(&host->room, &stored, nullptr);
     host_notify_external_clients(host, &stored);
+    success = true;
+
+exit_host_post_client_message:
+    if (memory_scope != nullptr) {
+        sshc_memory_context_pop(memory_scope);
+    }
+    return success;
+}
+
+bool host_post_ephemeral_message(host_t *host, const char *username,
+                                 const char *message, const char *color_name,
+                                 const char *highlight_name, bool is_bold)
+{
+    bool success = false;
+    sshc_memory_context_t *memory_scope = nullptr;
+    if (host != nullptr) {
+        memory_scope = sshc_memory_context_push(host->memory_context);
+    }
+    chat_history_entry_t entry = {0};
+    if (!host_prepare_chat_entry(host, username, message, color_name,
+                                 highlight_name, is_bold, &entry)) {
+        goto exit_host_post_client_message;
+    }
+
+    chat_room_broadcast_entry(&host->room, &entry, nullptr);
+    host_notify_external_clients(host, &entry);
     success = true;
 
 exit_host_post_client_message:
@@ -5031,6 +5130,10 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     if (host->fidonet_client != nullptr) {
         fidonet_client_destroy(host->fidonet_client);
         host->fidonet_client = nullptr;
+    }
+    if (host->ddial_client != nullptr) {
+        ddial_client_destroy(host->ddial_client);
+        host->ddial_client = nullptr;
     }
     if (host->web_client != nullptr) {
         webssh_client_destroy(host->web_client);

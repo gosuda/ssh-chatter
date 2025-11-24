@@ -519,6 +519,11 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
             ctx, "Toggle with /retro on [lang], /retro off, or /retro auto.");
         session_send_system_line(
             ctx, "Supported languages: ko, en, jp, zh, ru, de, fr, pl.");
+        if (ctx->cp437_override == SESSION_CP437_OVERRIDE_NONE) {
+            session_send_system_line(
+                ctx, "Hybrid retro/Unicode auto-conversion is active for all "
+                     "languages when automatic detection is enabled.");
+        }
         return;
     }
 
@@ -1456,13 +1461,6 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     }
 
     else if (session_parse_command_any(ctx, "/telnet-server", effective_line,
-                                       &args)) {
-        session_handle_telnetserver(ctx, args);
-        return;
-    }
-
-    /* Keep old command for backwards compatibility */
-    else if (session_parse_command_any(ctx, "/ssh-chat-server", effective_line,
                                        &args)) {
         session_handle_telnetserver(ctx, args);
         return;

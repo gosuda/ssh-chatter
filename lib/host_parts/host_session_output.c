@@ -2301,19 +2301,6 @@ void session_scrollback_reset_position(session_ctx_t *ctx)
     session_process_pending_sink(ctx);
 }
 
-static void session_scrollback_prepare_display(session_ctx_t *ctx)
-{
-    if (ctx == nullptr || !session_transport_active(ctx)) {
-        return;
-    }
-
-    // Avoid clearing the entire screen to reduce flicker when loading chat
-    // history. Clearing only the current line keeps the prompt tidy without
-    // forcing a full redraw.
-    static const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
-    session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
-}
-
 void session_process_pending_sink(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr || !ctx->pending_should_sink) {

@@ -2349,6 +2349,7 @@ static void session_handle_getos(session_ctx_t *ctx, const char *arguments);
 static void session_handle_getaddr(session_ctx_t *ctx, const char *arguments);
 static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments);
 static void session_handle_fidonet(session_ctx_t *ctx, const char *arguments);
+static void session_handle_ddial(session_ctx_t *ctx, const char *arguments);
 static void session_handle_telnetserver(session_ctx_t *ctx,
                                         const char *arguments);
 static void session_handle_pair(session_ctx_t *ctx);

@@ -82,6 +82,27 @@ host_provider_language_preference(host_t *host, const char *provider_label,
     return true;
 }
 
+static void host_sync_state_resolve_path(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    const char *sync_path = getenv("CHATTER_SYNC_STATE_FILE");
+    if (sync_path == nullptr || sync_path[0] == '\0') {
+        sync_path = "sync_chatter_state.dat";
+    }
+
+    int written = snprintf(host->sync_state_file_path,
+                           sizeof(host->sync_state_file_path), "%s",
+                           sync_path);
+    if (written < 0 || (size_t)written >= sizeof(host->sync_state_file_path)) {
+        humanized_log_error("host", "sync state file path is too long",
+                            ENAMETOOLONG);
+        host->sync_state_file_path[0] = '\0';
+    }
+}
+
 static void session_destroy(session_ctx_t *ctx);
 
 static size_t session_encode_utf8_codepoint(uint32_t codepoint, char *output,
@@ -4347,6 +4368,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->preference_count = 0U;
     host->state_file_path[0] = '\0';
     host_state_resolve_path(host);
+    host->sync_state_file_path[0] = '\0';
+    host_sync_state_resolve_path(host);
     host->bbs_state_file_path[0] = '\0';
     host_bbs_resolve_path(host);
     host->vote_state_file_path[0] = '\0';
@@ -4885,6 +4908,31 @@ static bool host_prepare_chat_entry(host_t *host, const char *username,
         highlight_code != nullptr ? highlight_code : host->user_theme.highlight;
 
     return true;
+}
+
+void host_append_sync_log(host_t *host, const char *source,
+                          const char *message)
+{
+    if (host == nullptr || source == nullptr || source[0] == '\0' ||
+        message == nullptr || message[0] == '\0') {
+        return;
+    }
+
+    if (host->sync_state_file_path[0] == '\0') {
+        return;
+    }
+
+    FILE *fp = fopen(host->sync_state_file_path, "a");
+    if (fp == nullptr) {
+        humanized_log_error("sync", "failed to open sync state file",
+                            errno != 0 ? errno : EIO);
+        return;
+    }
+
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    fprintf(fp, "%ld|%s|%s\n", (long)now.tv_sec, source, message);
+    fclose(fp);
 }
 
 bool host_post_client_message(host_t *host, const char *username,

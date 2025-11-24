@@ -2,6 +2,7 @@
 #define SSH_CHATTER_FIDONET_CLIENT_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 struct host;
 struct client_manager;
@@ -66,5 +67,11 @@ void fidonet_client_disconnect(fidonet_client_t *client);
  */
 bool fidonet_client_send_message(fidonet_client_t *client, const char *username,
                                  const char *message);
+
+#define FIDONET_LOG_ENTRY_LENGTH 256
+#define FIDONET_LOG_CAPACITY 128
+bool fidonet_client_snapshot_logs(fidonet_client_t *client,
+                                  char entries[][FIDONET_LOG_ENTRY_LENGTH],
+                                  size_t capacity, size_t *count);
 
 #endif /* SSH_CHATTER_FIDONET_CLIENT_H */

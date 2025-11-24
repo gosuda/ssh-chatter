@@ -2803,12 +2803,12 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
         session_send_system_line(ctx, line);
 
         snprintf(line, sizeof(line),
-                 "  /ddial <url> <port> - Connect to a D-Dial relay endpoint.");
+                 "  /ddial <url> <port>|logs|status - Manage D-Dial relay.");
         session_send_system_line(ctx, line);
 
         snprintf(
             line, sizeof(line),
-            "  /fidonet status|reconnect|disconnect - Manage FidoNet relay.");
+            "  /fidonet status|reconnect|disconnect|logs - Manage FidoNet relay.");
         session_send_system_line(ctx, line);
 
         snprintf(

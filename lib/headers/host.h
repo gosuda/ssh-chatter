@@ -865,6 +865,7 @@ typedef struct host {
     size_t preference_count;
     pthread_mutex_t lock;
     char state_file_path[PATH_MAX];
+    char sync_state_file_path[PATH_MAX];
     char bbs_state_file_path[PATH_MAX];
     char vote_state_file_path[PATH_MAX];
     char ban_state_file_path[PATH_MAX];
@@ -992,6 +993,8 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 bool host_post_client_message(host_t *host, const char *username,
                               const char *message, const char *color_name,
                               const char *highlight_name, bool is_bold);
+void host_append_sync_log(host_t *host, const char *source,
+                          const char *message);
 bool host_post_ephemeral_message(host_t *host, const char *username,
                                  const char *message, const char *color_name,
                                  const char *highlight_name, bool is_bold);

@@ -2,6 +2,7 @@
 #define SSH_CHATTER_DDIAL_CLIENT_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 struct host;
 typedef struct client_manager client_manager_t;
@@ -16,5 +17,11 @@ void ddial_client_disconnect(ddial_client_t *client);
 
 const char *ddial_client_get_status(ddial_client_t *client);
 bool ddial_client_is_connected(ddial_client_t *client);
+
+#define DDIAL_LOG_ENTRY_LENGTH 256
+#define DDIAL_LOG_CAPACITY 128
+bool ddial_client_snapshot_logs(ddial_client_t *client,
+                                char entries[][DDIAL_LOG_ENTRY_LENGTH],
+                                size_t capacity, size_t *count);
 
 #endif

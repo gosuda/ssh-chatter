@@ -1165,7 +1165,7 @@ static const color_entry_t HIGHLIGHT_COLOR_MAP[] = {
     {"ярко-белый", ANSI_BG_BRIGHT_WHITE},
 };
 
-#include "l10n.h"
+#include "ssh_chatter/l10n.h"
 
 typedef struct palette_descriptor {
     const char *id;
@@ -3621,7 +3621,7 @@ static const os_descriptor_t OS_CATALOG[] = {{"windows", "Windows"},
 static const os_descriptor_t *session_lookup_os_descriptor(const char *name);
 
 // random pool for daily functions
-static const char *DAILY_FUNCTIONS[] = {
+static const char *DAILY_FUNCTIONS[] __attribute__((unused)) = {
     "sin",     "cos",    "tan",    "sqrt",           "log",
     "exp",     "printf", "malloc", "free",           "memcpy",
     "strncpy", "qsort",  "fopen",  "close",          "select",

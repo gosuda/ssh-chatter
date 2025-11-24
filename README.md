@@ -10,18 +10,16 @@ SSH-Chatter has started from a C reimplementation of the Go [`ssh-chat`](https:/
 
 ## Recent enhancements
 
-- Named poll management via `/vote` for multiple-choice polls (vote with `/1 <label>` or `/elect <label> <choice>`) plus `/vote-single` for classic single-choice runs, including graceful shutdown with `/vote @close <label>`.
 - Terminal-friendly RSS reader accessible with `/rss list`, `/rss read <tag>`, plus `/rss add <url> <tag>` and `/rss del <tag>` (operators only) so the room can browse headlines together.
-- Talk with the eliza persona by sending `/pm eliza <message>`; the dedicated `/eliza-chat` command has been retired in favour of private messages.
 - Background BBS watchdog thread that uses the Gemini/Ollama moderation backends to remove posts that advertise crimes or harmful material, plus `/delete-msg` for targeted chat history cleanup.
-- Poll state persistence to `vote_state.dat` (overridable via `CHATTER_VOTE_FILE`) so active polls and their votes survive restarts.
 - `/bbs` command unlocking a retro bulletin board system with tags, comments, bumping, and a multi-line composer that ends on a locale-aware terminator (defaulting to `>/__BBS_END>`).
 - `/asciiart` live composer with a 640-line limit, a ten-minute per-IP cooldown, multi-line output, and keyboard shortcuts for cancelling with Ctrl+A and submitting with Ctrl+S or the locale-aware `>/__ARTWORK_END>` default.
-- `/birthday` to register birthdays, `/soulmate` to find matching dates, `/grant <ip>` so LAN operators can delegate privileges by address, and `/revoke <ip>` so top LAN admins can reclaim them.
+- `/birthday` to register birthdays, `/grant <ip>` so LAN operators can delegate privileges by address, and `/revoke <ip>` so top LAN admins can reclaim them.
 - Chat UI refresh with a clean divider between history and input, instant input clearing after send, and a friendly "Wait for a moment..." banner
 - Friendly multilingual captcha featuring easy comparisons and language-based name counts.
 - Expanded nickname support for non-Latin characters plus `/ban` upgrades that accept raw IP addresses alongside usernames.
-- Profile status updates via `/status <message|clear>` and `/showstatus <username>`, plus `/weather <region> <city>` for quick global forecasts.
+- `/weather <region> <city>` for quick global forecasts.
+- Simplified experience with polls, status messages, and the Eliza moderator removed.
 
 # Preview
 
@@ -35,9 +33,12 @@ The codebase is intentionally compact so new contributors can navigate it quickl
 
 | Path | Description |
 |------|-------------|
-| `main.c` | Command-line parsing and process bootstrap (bind address, port, MOTD, host key directory). |
-| `lib/host.c`, `lib/headers/host.h` | Chat host implementation – session lifecycle, MOTD handling, and hooks for future message broadcast logic. |
-| `lib/headers/contexts` | Definitions for `session_ctx_t` and related structures that encapsulate per-connection state. |
+| `src/main.c` | Command-line parsing and process bootstrap (bind address, port, MOTD, host key directory). |
+| `src/host.c`, `include/ssh_chatter/host.h` | Chat host implementation – session lifecycle, MOTD handling, and hooks for future message broadcast logic. |
+| `src/host_parts` | Modular host subsystems that compile into a single translation unit through `src/host.c`. |
+| `include/ssh_chatter` | Shared headers for the daemon, stress tools, and the translation backend. |
+| `include/ssh_chatter/contexts` | Definitions for `session_ctx_t` and related structures that encapsulate per-connection state. |
+| `data/banner/banner` | Sample welcome banner that can be pointed to with `CHATTER_WELCOME_BANNER`. |
 | `scripts/install_chatter_service.sh` | Convenience installer that builds the binary, installs it under `/usr/local/bin`, and wires up a `systemd` unit (`chatter.service`). |
 | `scripts/install_dependencies.sh` | Minimal package installer for build prerequisites on Debian/Ubuntu systems. |
 
@@ -56,7 +57,7 @@ git checkout work
 git merge --no-ff origin/main
 ```
 
-Resolve any conflicts in place (the `lib/host.c` helper routines already mirror the
+Resolve any conflicts in place (the `src/host.c` helper routines already mirror the
 layout used on `main`, so merges are typically straightforward) and run `make` to
 confirm the build still succeeds before pushing the result.
 
@@ -222,10 +223,10 @@ translation helpers for reuse in other applications.  Clean intermediate artifac
 
 The shared object reuses the server's C translation pipeline (including ANSI placeholder preservation) so other processes can
 obtain translations without spawning the full SSH host.  Link against `libssh_chatter_backend.so` and include
-`lib/headers/ssh_chatter_backend.h`:
+`include/ssh_chatter/ssh_chatter_backend.h`:
 
 ```c
-#include "lib/headers/ssh_chatter_backend.h"
+#include "ssh_chatter/ssh_chatter_backend.h"
 
 int main(void) {
   char translated[4096];

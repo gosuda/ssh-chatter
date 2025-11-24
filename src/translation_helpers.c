@@ -1,7 +1,7 @@
 #define _XOPEN_SOURCE 700
 #define _POSIX_C_SOURCE 200809L // Added for wcwidth
 
-#include "headers/translation_helpers.h"
+#include "ssh_chatter/translation_helpers.h"
 
 #include <ctype.h>
 #include <stdio.h>

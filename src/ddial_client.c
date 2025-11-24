@@ -1,4 +1,4 @@
-#include "headers/ddial_client.h"
+#include "ssh_chatter/ddial_client.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -15,10 +15,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "headers/client.h"
-#include "headers/codepage.h"
-#include "headers/memory_manager.h"
-#include "headers/host.h"
+#include "ssh_chatter/client.h"
+#include "ssh_chatter/codepage.h"
+#include "ssh_chatter/memory_manager.h"
+#include "ssh_chatter/host.h"
 
 #ifndef DDIAL_BUFFER_SIZE
 #define DDIAL_BUFFER_SIZE 2048U

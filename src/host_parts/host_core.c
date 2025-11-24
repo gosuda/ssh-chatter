@@ -119,7 +119,7 @@ static const char *const SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS[] = {
 typedef struct host_key_definition {
     const char *algorithm;
     const char *filename;
-    ssh_bind_options_e option;
+    enum ssh_bind_options_e option;
     bool requires_import;
 } host_key_definition_t;
 
@@ -2608,6 +2608,7 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
 static const size_t kSessionBbsSubcommandCount =
     sizeof(kSessionBbsSubcommands) / sizeof(kSessionBbsSubcommands[0]);
 
+
 static const session_help_entry_t kSessionHelpEssential[] = {
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
@@ -2635,170 +2636,6 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "exit",
-        .description =
-            {
-                "Leave the chat.",
-                "채팅방을 나갑니다.",
-                "チャットを退出します。",
-                "离开聊天。",
-                "Выйти из чата.",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "nick <name>",
-        .description =
-            {
-                "Change your display name.",
-                "표시 이름을 변경합니다.",
-                "表示名を変更します。",
-                "更改显示名称。",
-                "Изменить отображаемое имя.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "닉 <이름>",
-                [SESSION_UI_LANGUAGE_JP] = "/ニックネ <ネーム>",
-                [SESSION_UI_LANGUAGE_ZH] = "/昵称 <网名>",
-                [SESSION_UI_LANGUAGE_RU] = "/ник <имя>",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "setpw <password>",
-        .description =
-            {
-                "Set a password for your nickname.",
-                "닉네임에 비밀번호를 설정합니다.",
-                "ニックネームにパスワードを設定します。",
-                "为你的昵称设置密码。",
-                "Установить пароль для вашего ника.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "비밀번호설정 <비밀번호>",
-                [SESSION_UI_LANGUAGE_JP] = "パスワード設定 <パスワード>",
-                [SESSION_UI_LANGUAGE_ZH] = "设置密码 <密码>",
-                [SESSION_UI_LANGUAGE_RU] = "установить-пароль <пароль>",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "delpw [username]",
-        .description =
-            {
-                "Remove your nickname's password, or another user's (operator "
-                "only).",
-                "닉네임 비밀번호를 제거하거나, 다른 사용자의 비밀번호를 "
-                "제거합니다 (운영자 전용).",
-                "ニックネームのパスワードを削除、または他のユーザーのパスワード"
-                "を削除します（オペレーター専用）。",
-                "删除你的昵称密码，或删除其他用户的密码（仅限管理员）。",
-                "Удалить пароль вашего ника, или другого пользователя (только "
-                "оператор).",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "비밀번호삭제 [사용자이름]",
-                [SESSION_UI_LANGUAGE_JP] = "パスワード削除 [ユーザー名]",
-                [SESSION_UI_LANGUAGE_ZH] = "删除密码 [用户名]",
-                [SESSION_UI_LANGUAGE_RU] = "удалить-пароль [имяпользователя]",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "pm <username> <message>",
-        .description =
-            {
-                "Send a private message.",
-                "개인 메시지를 보냅니다.",
-                "プライベートメッセージを送信します。",
-                "发送私信。",
-                "Отправить личное сообщение.",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "motd",
-        .description =
-            {
-                "View the message of the day.",
-                "공지(MOTD)를 확인합니다.",
-                "MOTD（お知らせ）を表示します。",
-                "查看每日公告 (MOTD)。",
-                "Показать сообщение дня.",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "history [count]",
-        .description =
-            {
-                "Review your recent commands.",
-                "최근 실행한 명령을 확인합니다.",
-                "最近実行したコマンドを確認します。",
-                "查看最近执行的命令。",
-                "Просмотреть недавно выполненные команды.",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "status <message|clear>",
-        .description =
-            {
-                "Set your profile status.",
-                "프로필 상태를 설정합니다.",
-                "プロフィールステータスを設定します。",
-                "设置个人状态。",
-                "Установить статус профиля.",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "showstatus <username>",
-        .description =
-            {
-                "View someone else's status.",
-                "다른 사용자의 상태를 봅니다.",
-                "他のユーザーのステータスを確認します。",
-                "查看他人的状态。",
-                "Посмотреть статус другого пользователя.",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "users",
-        .description =
-            {
-                "Announce the number of connected users.",
-                "현재 접속자 수를 알려줍니다.",
-                "接続中のユーザー数を知らせます。",
-                "公布当前在线人数。",
-                "Сообщить количество подключённых пользователей.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "접속자수",
-                [SESSION_UI_LANGUAGE_JP] = "/ユーザー数",
-                [SESSION_UI_LANGUAGE_ZH] = "/用户数量",
-                [SESSION_UI_LANGUAGE_RU] = "/пользователи",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "chat <message-id>",
-        .description =
-            {
-                "Show a past message by ID.",
-                "ID로 이전 메시지를 보여줍니다.",
-                "ID を指定して過去のメッセージを表示します。",
-                "按编号查看历史消息。",
-                "Показать прошлое сообщение по идентификатору.",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "reply <message-id|r<reply-id>> <text>",
         .description =
             {
@@ -2817,6 +2654,53 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 [SESSION_UI_LANGUAGE_RU] =
                     "ответ <id сообщения|r<id ответа>> <текст>",
             },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "color (text;highlight[;bold])",
+        .description =
+            {
+                "Style your handle.",
+                "사용자 이름 색상을 꾸밉니다.",
+                "ハンドル名の配色を設定します。",
+                "设置昵称的配色。",
+                "Настроить оформление вашего ника.",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "색상 (텍스트;하이라이트[;굵게])",
+                [SESSION_UI_LANGUAGE_JP] = "色 (テキスト;ハイライト[;太字])",
+                [SESSION_UI_LANGUAGE_ZH] = "颜色 (文本;高亮[;粗体])",
+                [SESSION_UI_LANGUAGE_RU] = "цвет (текст;выделение[;жирный])",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "systemcolor (fg;background[;highlight][;bold])",
+        .description =
+            {
+                "Customize interface colors (reset with %ssystemcolor reset).",
+                "인터페이스 색상을 조정합니다 (%ssystemcolor reset으로 "
+                "초기화).",
+                "インターフェースの色を調整します（%ssystemcolor reset "
+                "で初期化）。",
+                "自定义界面颜色（用 %ssystemcolor reset 重置）。",
+                "Настроить цвета интерфейса (сброс — %ssystemcolor reset).",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] =
+                    "시스템색상 (전경;배경[;하이라이트][;굵게])",
+                [SESSION_UI_LANGUAGE_JP] =
+                    "システムカラー (前景色;背景色[;ハイライト][;太字])",
+                [SESSION_UI_LANGUAGE_ZH] = "系统颜色 (前景;背景[;高亮][;粗体])",
+                [SESSION_UI_LANGUAGE_RU] =
+                    "системныйцвет (передний;фон[;выделение][;жирный])",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
@@ -2864,78 +2748,20 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "game tetris",
+        .label = "delete-msg <id|start-end>",
         .description =
             {
-                "Start a game of Tetris.",
-                "테트리스 게임을 시작합니다.",
-                "テトリスゲームを開始します。",
-                "开始俄罗斯方块游戏。",
-                "Начать игру в Тетрис.",
-                "Ein Tetris-Spiel starten.",
-                "Commencer un jeu de Tetris.",
+                "Delete a message range.",
+                "메시지 범위를 삭제합니다.",
+                "メッセージの範囲を削除します。",
+                "删除一段消息。",
+                "Удалить диапазон сообщений.",
             },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "game othello",
-        .description =
-            {
-                "Start a game of Othello (Reversi). Place discs with row/col "
-                "(e.g., d4).",
-                "오셀로(리버시) 게임을 시작합니다. 행/열로 디스크를 배치합니다 "
-                "(예: d4).",
-                "オセロ（リバーシ）ゲームを開始します。行/"
-                "列でディスクを配置します（例：d4）。",
-                "开始黑白棋（翻转棋）游戏。用行/列放置棋子（例如：d4）。",
-                "Начать игру в Отелло (Реверси). Размещайте диски "
-                "строкой/столбцом (например, d4).",
-                "Ein Othello (Reversi)-Spiel starten. Platziere Scheiben mit "
-                "Zeile/Spalte (z.B. d4).",
-                "Commencer un jeu d'Othello (Reversi). Placer des disques avec "
-                "ligne/col (ex : d4).",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "mode <chat|command|toggle>",
-        .description =
-            {
-                "Switch between chat mode and command mode.",
-                "채팅 모드와 명령 모드를 전환합니다.",
-                "チャットモードとコマンドモードを切り替えます。",
-                "在聊天模式和命令模式之间切换。",
-                "Переключить режим чата и режим команд.",
-            },
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "set-ui-lang <ko|en|jp|zh|ru|de|fr|pl>",
-        .description =
-            {
-                "Change the interface language.",
-                "인터페이스 언어를 변경합니다.",
-                "インターフェース言語を変更します。",
-                "更改界面语言。",
-                "Изменить язык интерфейса.",
-                "Schnittstellensprache ändern.",
-                "Changer la langue de l'interface.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "UI언어설정 <ko|en|jp|zh|ru|de|fr|pl>",
-                [SESSION_UI_LANGUAGE_JP] = "UI言語設定 <ko|en|jp|zh|ru|de|fr|pl>",
-                [SESSION_UI_LANGUAGE_ZH] =
-                    "设置界面语言 <ko|en|jp|zh|ru|de|fr|pl>",
-                [SESSION_UI_LANGUAGE_RU] =
-                    "установить-язык-интерфейса <ko|en|jp|zh|ru|de|fr|pl>",
-                [SESSION_UI_LANGUAGE_DE] =
-                    "ui-sprache-setzen <ko|en|jp|zh|ru|de|fr|pl>",
-                [SESSION_UI_LANGUAGE_FR] =
-                    "définir-langue-interface <ko|en|jp|zh|ru|de|fr|pl>",
-            },
+        .description_arg_count = 1,
+        .description_args = {SESSION_HELP_TEMPLATE_ARG_COMMAND_GOOD},
     },
 };
+
 
 static const session_help_entry_t kSessionHelpExtended[] = {
     {
@@ -3070,27 +2896,7 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label_arg_count = 0U,
         .label_args = {},
     },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "profilepic",
-        .description =
-            {
-                "Open the ASCII art profile picture composer.",
-                "ASCII 아트 프로필 편집기를 엽니다.",
-                "ASCII アートのプロフィール作成ツールを開きます。",
-                "打开 ASCII 头像编辑器。",
-                "Открыть редактор ASCII-аватаров.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "프로필사진",
-                [SESSION_UI_LANGUAGE_JP] = "プロフィール写真",
-                [SESSION_UI_LANGUAGE_ZH] = "头像",
-                [SESSION_UI_LANGUAGE_RU] = "аватар",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
+
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "asciiart",
@@ -3261,27 +3067,7 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label_arg_count = 0U,
         .label_args = {},
     },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "eliza-chat <message>",
-        .description =
-            {
-                "Chat with the shared Eliza persona.",
-                "공유된 엘리자 페르소나와 대화합니다.",
-                "共有のエリザ人格と会話します。",
-                "与共享的 Eliza 人格聊天。",
-                "Пообщаться с общей персоной Элиза.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "엘리자채팅 <메시지>",
-                [SESSION_UI_LANGUAGE_JP] = "エリザチャット <メッセージ>",
-                [SESSION_UI_LANGUAGE_ZH] = "伊丽莎聊天 <消息>",
-                [SESSION_UI_LANGUAGE_RU] = "элиза-чат <сообщение>",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
+
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "chat-spacing <0-5>",
@@ -3324,27 +3110,7 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label_arg_count = 0U,
         .label_args = {},
     },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "today",
-        .description =
-            {
-                "Discover today's function (once per day).",
-                "오늘의 기능을 확인합니다 (하루 1회).",
-                "本日の機能を確認します（1日1回）。",
-                "查看今日功能（每天一次）。",
-                "Узнать сегодняшнюю функцию (раз в день).",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "오늘",
-                [SESSION_UI_LANGUAGE_JP] = "今日",
-                [SESSION_UI_LANGUAGE_ZH] = "今日",
-                [SESSION_UI_LANGUAGE_RU] = "сегодня",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
+
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "date <timezone>",
@@ -3429,48 +3195,8 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label_arg_count = 0U,
         .label_args = {},
     },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "soulmate",
-        .description =
-            {
-                "List users sharing your birthday.",
-                "생일이 같은 사용자를 나열합니다.",
-                "同じ誕生日のユーザーを一覧表示します。",
-                "列出与你同生日的用户。",
-                "Показать пользователей с той же датой рождения.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "영혼의단짝",
-                [SESSION_UI_LANGUAGE_JP] = "ソウルメイト",
-                [SESSION_UI_LANGUAGE_ZH] = "灵魂伴侣",
-                [SESSION_UI_LANGUAGE_RU] = "родственнаядуша",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "pair",
-        .description =
-            {
-                "List users sharing your recorded OS.",
-                "등록한 OS가 같은 사용자를 나열합니다.",
-                "同じOSを登録したユーザーを表示します。",
-                "列出记录的操作系统相同的用户。",
-                "Показать пользователей с той же записанной ОС.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "짝",
-                [SESSION_UI_LANGUAGE_JP] = "ペア",
-                [SESSION_UI_LANGUAGE_ZH] = "配对",
-                [SESSION_UI_LANGUAGE_RU] = "пара",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
+
+
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "connected",
@@ -3513,76 +3239,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label_arg_count = 0U,
         .label_args = {},
     },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "poll <question>|<option...>",
-        .description =
-            {
-                "Start or view a quick poll.",
-                "빠른 투표를 시작하거나 확인합니다.",
-                "簡易投票を開始または表示します。",
-                "发起或查看快速投票。",
-                "Создать или просмотреть быстрый опрос.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "전역투표 <질문>|<옵션...>",
-                [SESSION_UI_LANGUAGE_JP] = "投票 <質問>|<選択肢...>",
-                [SESSION_UI_LANGUAGE_ZH] = "投票 <问题>|<选项...>",
-                [SESSION_UI_LANGUAGE_RU] = "опрос <вопрос>|<вариант...>",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "vote <label> <question>|<option...>",
-        .description =
-            {
-                "Start or inspect a named multiple-choice poll (close with "
-                "%svote @close <label>).",
-                "이름 있는 다중 선택 투표를 시작하거나 확인합니다 (%svote "
-                "@close <label> 로 종료).",
-                "名前付きの複数選択投票を開始/確認します（終了は %svote @close "
-                "<label>）。",
-                "发起或查看命名的多选投票（用 %svote @close <label> 结束）。",
-                "Создать или просмотреть именованный многовариантный опрос "
-                "(закрытие — %svote @close <label>).",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "투표 <라벨> <질문>|<옵션...>",
-                [SESSION_UI_LANGUAGE_JP] = "投票 <ラベル> <質問>|<選択肢...>",
-                [SESSION_UI_LANGUAGE_ZH] = "投票 <标签> <问题>|<选项...>",
-                [SESSION_UI_LANGUAGE_RU] =
-                    "голосовать <метка> <вопрос>|<вариант...>",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "vote-single <label> <question>|<option...>",
-        .description =
-            {
-                "Start or inspect a named single-choice poll.",
-                "이름 있는 단일 선택 투표를 시작하거나 확인합니다.",
-                "名前付き単一選択投票を開始/確認します。",
-                "发起或查看命名的单选投票。",
-                "Создать или просмотреть именованный одно вариантный опрос.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "단일투표 <라벨> <질문>|<옵션...>",
-                [SESSION_UI_LANGUAGE_JP] =
-                    "単一投票 <ラベル> <質問>|<選択肢...>",
-                [SESSION_UI_LANGUAGE_ZH] = "单选投票 <标签> <问题>|<选项...>",
-                [SESSION_UI_LANGUAGE_RU] =
-                    "голосовать-один <метка> <вопрос>|<вариант...>",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
+
+
+
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "elect <label> <choice>",
@@ -3896,27 +3555,7 @@ static const session_help_entry_t kSessionHelpOperator[] = {
         .label_arg_count = 0U,
         .label_args = {},
     },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "eliza <on|off>",
-        .description =
-            {
-                "Toggle the Eliza moderator persona (operator only).",
-                "엘리자 모더레이터를 전환합니다 (운영자 전용).",
-                "Eliza モデレーターを切り替えます（オペレーター専用）。",
-                "切换 Eliza 管理员人格（仅限管理员）。",
-                "Включить/выключить модератора Элиза (оператор).",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "엘리자 <켜기|끄기>",
-                [SESSION_UI_LANGUAGE_JP] = "エリザ <オン|オフ>",
-                [SESSION_UI_LANGUAGE_ZH] = "伊丽莎 <开|关>",
-                [SESSION_UI_LANGUAGE_RU] = "элиза <вкл|выкл>",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
+
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "grant <ip>",

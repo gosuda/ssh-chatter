@@ -9,14 +9,14 @@
 #define _XOPEN_SOURCE 700
 #endif
 
-#include "../headers/host.h"
-#include "../headers/client.h"
-#include "../headers/webssh_client.h"
-#include "../headers/irc_client.h"
-#include "../headers/fidonet_client.h"
-#include "../headers/ddial_client.h"
-#include "../headers/translator.h"
-#include "../headers/translation_helpers.h"
+#include "ssh_chatter/host.h"
+#include "ssh_chatter/client.h"
+#include "ssh_chatter/webssh_client.h"
+#include "ssh_chatter/irc_client.h"
+#include "ssh_chatter/fidonet_client.h"
+#include "ssh_chatter/ddial_client.h"
+#include "ssh_chatter/translator.h"
+#include "ssh_chatter/translation_helpers.h"
 
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -72,9 +72,9 @@ bool session_detect_provider_ip(const char *ip, char *label, size_t length);
 
 #include <setjmp.h>
 
-#include "../headers/memory_manager.h"
-#include "../ssh_chatter_sync.h"
-#include "humanized/humanized.h"
+#include "ssh_chatter/memory_manager.h"
+#include "ssh_chatter/ssh_chatter_sync.h"
+#include "ssh_chatter/humanized/humanized.h"
 
 bool session_game_othello_handle_forced_exit(session_ctx_t *ctx);
 

@@ -15,15 +15,15 @@ The BBS system was experiencing crashes where both SSH and Telnet services would
 **Problem**: The main daemon loop would exit successfully (instead of restarting) when `host_serve` returned 0, even if the service crashed unexpectedly.
 
 **Solution**: 
-- Modified the main loop in `main.c` to check the `g_shutdown_flag` before exiting
+- Modified the main loop in `src/main.c` to check the `g_shutdown_flag` before exiting
 - Added a `shutdown_flag` pointer to the `host_t` structure
 - Updated all service loops (SSH listener, Telnet listener) to check the shutdown flag
 - Now the service only exits on explicit SIGINT/SIGTERM signals, otherwise it always restarts
 
 **Changed Files**:
-- `main.c`: Main restart loop now checks `g_shutdown_flag`
-- `lib/headers/host.h`: Added `shutdown_flag` field to `host_t` structure
-- `lib/host_parts/host_runtime.inc`: Updated SSH and Telnet loops to check shutdown flag
+- `src/main.c`: Main restart loop now checks `g_shutdown_flag`
+- `include/ssh_chatter/host.h`: Added `shutdown_flag` field to `host_t` structure
+- `src/host_parts/host_runtime.c`: Updated SSH and Telnet loops to check shutdown flag
 
 ### 2. Enhanced Systemd Service Configuration
 
@@ -157,7 +157,7 @@ echo "Memory leak check passed!"
 
 ### Restart Flow
 
-1. **Main Loop** (`main.c`):
+1. **Main Loop** (`src/main.c`):
    - Checks `g_shutdown_flag` before each iteration
    - Only exits on explicit shutdown signal
    - Clears restart backoff after 10 seconds of stable operation
@@ -258,9 +258,9 @@ Our suppression file handles these false positives while still detecting real le
 
 ## References
 
-- Main daemon loop: `main.c` lines 286-430
-- SSH listener: `lib/host_parts/host_runtime.inc` lines 4339-4868
-- Telnet listener: `lib/host_parts/host_runtime.inc` lines 2462-2712
+- Main daemon loop: `src/main.c` lines 286-430
+- SSH listener: `src/host_parts/host_runtime.c` lines 4339-4868
+- Telnet listener: `src/host_parts/host_runtime.c` lines 2462-2712
 - Systemd service: `example.service`
 - Valgrind suppression: `valgrind-libgc.supp`
 - Test script: `scripts/run_valgrind_check.sh`

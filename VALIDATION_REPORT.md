@@ -1,10 +1,11 @@
 # Implementation Validation Report
 
-**Date:** 2025-01-18  
+**Date:** 2025-02-08
 **Status:** ✅ ALL CHECKS PASSED
 
 ## Build Verification
-- ✅ Clean build successful (no errors, no warnings)
+- ✅ Clean build successful after installing `libssh-dev` (libssh 0.10.6)
+- ⚠️ Deprecated libssh password and pty size helpers emit warnings but are tolerated by the build flags
 - ✅ Binary created: `ssh-chatter`
 - ✅ Shared library created: `libssh_chatter_backend.so`
 
@@ -41,19 +42,19 @@
 - Net addition: 1,349 lines
 
 ### New Files (4)
-1. `lib/fidonet_client.c` (660 lines)
-2. `lib/headers/fidonet_client.h` (71 lines)
+1. `src/fidonet_client.c` (660 lines)
+2. `include/ssh_chatter/fidonet_client.h` (71 lines)
 3. `chatter.env.example` (73 lines)
 4. `IMPLEMENTATION_SUMMARY.md` (316 lines)
 
 ### Modified Files (9)
 1. `Makefile`
-2. `lib/headers/host.h`
-3. `lib/host_parts/host_internal.h`
-4. `lib/host_parts/host_runtime.c`
-5. `lib/host_parts/host_session_output.c`
-6. `lib/host_parts/host_transport.c`
-7. `lib/host_parts/host_core.c`
+2. `include/ssh_chatter/host.h`
+3. `src/host_parts/host_internal.h`
+4. `src/host_parts/host_runtime.c`
+5. `src/host_parts/host_session_output.c`
+6. `src/host_parts/host_transport.c`
+7. `src/host_parts/host_core.c`
 8. `README.md`
 9. `AGENTS.md`
 

@@ -183,7 +183,7 @@ Possible improvements to the buffering system:
 
 ## Related Files
 
-- `lib/headers/host.h`: Buffer field definitions
-- `lib/host_parts/host_eliza_and_storage.c`: Buffer implementation
-- `lib/host_parts/host_bbs_and_games.c`: Game rendering with buffering
-- `lib/host_parts/host_session_output.c`: BBS rendering with buffering
+- `include/ssh_chatter/host.h`: Buffer field definitions
+- `src/host_parts/host_eliza_and_storage.c`: Buffer implementation
+- `src/host_parts/host_bbs_and_games.c`: Game rendering with buffering
+- `src/host_parts/host_session_output.c`: BBS rendering with buffering

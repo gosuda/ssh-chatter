@@ -1240,8 +1240,9 @@ static void host_eliza_say(host_t *host, const char *message)
     }
 }
 
-static void host_eliza_prepare_private_reply(const char *message, char *reply,
-                                             size_t reply_length)
+static __attribute__((unused)) void
+host_eliza_prepare_private_reply(const char *message, char *reply,
+                                 size_t reply_length)
 {
     if (reply == nullptr || reply_length == 0U) {
         return;
@@ -1316,36 +1317,18 @@ static void host_eliza_prepare_private_reply(const char *message, char *reply,
              "I'm listening. Share anything that's on your mind.");
 }
 
-static void host_eliza_handle_private_message(session_ctx_t *ctx,
-                                              const char *message)
+static __attribute__((unused)) void host_eliza_handle_private_message(
+    session_ctx_t *ctx, const char *message)
 {
-    if (ctx == nullptr || ctx->owner == nullptr) {
+    (void)message;
+    if (ctx == nullptr) {
         return;
     }
 
-    host_t *host = ctx->owner;
-    if (!atomic_load(&host->eliza_enabled)) {
-        session_send_system_line(ctx, "eliza isn't around right now.");
-        return;
-    }
-
-    session_ctx_t palette = {0};
-    palette.user_color_code =
-        host->user_theme.userColor != nullptr ? host->user_theme.userColor : "";
-    palette.user_highlight_code =
-        host->user_theme.highlight != nullptr ? host->user_theme.highlight : "";
-    palette.user_is_bold = host->user_theme.isBold;
-
-    char reply[SSH_CHATTER_MESSAGE_LIMIT];
-    host_eliza_prepare_private_reply(message, reply, sizeof(reply));
-
-    session_send_private_message_line(ctx, &palette, "eliza -> you", reply);
-    printf("[pm] eliza -> %s: %s\n", ctx->user.name, reply);
-
-    clock_gettime(CLOCK_MONOTONIC, &host->eliza_last_action);
+    session_send_system_line(ctx, "eliza is no longer available.");
 }
 
-static bool host_eliza_content_is_severe(const char *text)
+static __attribute__((unused)) bool host_eliza_content_is_severe(const char *text)
 {
     if (text == nullptr || text[0] == '\0') {
         return false;
@@ -1495,8 +1478,8 @@ static void host_eliza_worker_shutdown(host_t *host)
     atomic_store(&worker->stop, false);
 }
 
-static bool host_eliza_worker_enqueue(host_t *host,
-                                      host_eliza_intervene_task_t *task)
+static __attribute__((unused)) bool host_eliza_worker_enqueue(
+    host_t *host, host_eliza_intervene_task_t *task)
 {
     if (host == nullptr || task == nullptr) {
         return false;
@@ -1579,56 +1562,11 @@ static void *host_eliza_worker_thread(void *arg)
 static bool host_eliza_intervene(session_ctx_t *ctx, const char *content,
                                  const char *reason, bool from_filter)
 {
-    if (ctx == nullptr || ctx->owner == nullptr) {
-        return false;
-    }
-
-    host_t *host = ctx->owner;
-    if (!atomic_load(&host->eliza_enabled)) {
-        return false;
-    }
-
-    if (ctx->should_exit) {
-        return false;
-    }
-
-    bool severe = host_eliza_content_is_severe(content);
-    if (!severe && reason != nullptr) {
-        severe = host_eliza_content_is_severe(reason);
-    }
-
-    if (!severe) {
-        return false;
-    }
-
-    host_eliza_worker_state_t *worker = &host->eliza_worker;
-    if (!worker->thread_started) {
-        if (!host_eliza_worker_init(host)) {
-            return false;
-        }
-    }
-
-    host_eliza_intervene_task_t *task =
-        (host_eliza_intervene_task_t *)GC_MALLOC(sizeof(*task));
-    if (task == nullptr) {
-        return false;
-    }
-    task->allocated_with_gc = true;
-
-    task->ctx = ctx;
-    task->from_filter = from_filter;
-    if (reason != nullptr) {
-        snprintf(task->reason, sizeof(task->reason), "%s", reason);
-    } else {
-        task->reason[0] = '\0';
-    }
-
-    if (!host_eliza_worker_enqueue(host, task)) {
-        host_eliza_task_free(task);
-        return false;
-    }
-
-    return true;
+    (void)ctx;
+    (void)content;
+    (void)reason;
+    (void)from_filter;
+    return false;
 }
 
 static void host_eliza_intervene_execute(session_ctx_t *ctx, const char *reason,
@@ -3009,7 +2947,7 @@ static void vote_state_import_poll_entry(const vote_state_poll_entry_t *source,
     }
 }
 
-static void host_vote_state_save_locked(host_t *host)
+static __attribute__((unused)) void host_vote_state_save_locked(host_t *host)
 {
     if (host == nullptr) {
         return;

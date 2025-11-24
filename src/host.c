@@ -1,9 +1,9 @@
 // This file stitches the host implementation together from modular C sources.
-// Each component lives in lib/host_parts/ and is included here so the compiler
+// Each component lives in src/host_parts/ and is included here so the compiler
 // still sees a single translation unit, preserving the existing static helper
 // relationships while keeping the source tree organized.
 
-#include "headers/translation_helpers.h"
+#include "ssh_chatter/translation_helpers.h"
 
 #include "host_parts/host_core.c"
 #include "host_parts/host_transport.c"

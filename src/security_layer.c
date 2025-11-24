@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "headers/security_layer.h"
+#include "ssh_chatter/security_layer.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "headers/memory_manager.h"
+#include "ssh_chatter/memory_manager.h"
 
 #define SECURITY_ONION_PREFIX "TorOnion/v1:"
 

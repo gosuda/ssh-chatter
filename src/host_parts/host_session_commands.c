@@ -1,5 +1,5 @@
 #include "host_internal.h"
-#include "../headers/security_layer.h"
+#include "ssh_chatter/security_layer.h"
 // Command handlers for chat interactions, media, and user utilities.
 
 static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
@@ -670,30 +670,13 @@ static void session_profile_picture_normalize(const char *input, char *output,
 static void session_handle_profile_picture(session_ctx_t *ctx,
                                            const char *arguments)
 {
-    if (ctx == nullptr || ctx->owner == nullptr) {
+    if (ctx == nullptr) {
         return;
     }
 
-    if (!session_user_data_available(ctx) && !ctx->owner->user_data_ready) {
-        session_send_system_line(ctx, "Profile storage is unavailable.");
-        return;
-    }
-
-    const char *cursor = arguments != nullptr ? arguments : "";
-    char mode[16];
-    cursor = session_consume_token(cursor, mode, sizeof(mode));
-
-    if (mode[0] != '\0' && strcasecmp(mode, "ascii") != 0) {
-        session_send_system_line(ctx, "Usage: /profilepic");
-        return;
-    }
-
-    if (cursor != nullptr && *cursor != '\0') {
-        session_send_system_line(ctx, "Usage: /profilepic");
-        return;
-    }
-
-    session_asciiart_begin(ctx, SESSION_ASCIIART_TARGET_PROFILE_PICTURE);
+    (void)arguments;
+    session_send_system_line(ctx,
+                             "Profile pictures are no longer supported.");
 }
 
 static void session_handle_reaction(session_ctx_t *ctx, size_t reaction_index,
@@ -782,26 +765,9 @@ static void session_handle_usercount(session_ctx_t *ctx)
     count = ctx->owner->room.member_count;
     pthread_mutex_unlock(&ctx->owner->room.lock);
 
-    const bool eliza_active = atomic_load(&ctx->owner->eliza_enabled);
-    size_t displayed = count;
-    if (eliza_active) {
-        if (SIZE_MAX - displayed > 0U) {
-            ++displayed;
-        }
-    }
-
     char message[SSH_CHATTER_MESSAGE_LIMIT];
-    if (eliza_active && displayed > count) {
-        snprintf(message, sizeof(message),
-                 "There %s currently %zu user%s connected (including eliza).",
-                 displayed == 1U ? "is" : "are", displayed,
-                 displayed == 1U ? "" : "s");
-    } else {
-        snprintf(message, sizeof(message),
-                 "There %s currently %zu user%s connected.",
-                 displayed == 1U ? "is" : "are", displayed,
-                 displayed == 1U ? "" : "s");
-    }
+    snprintf(message, sizeof(message), "There %s currently %zu user%s connected.",
+             count == 1U ? "is" : "are", count, count == 1U ? "" : "s");
 
     host_history_record_system(ctx->owner, message, nullptr);
     session_send_system_line(ctx, message);
@@ -809,84 +775,11 @@ static void session_handle_usercount(session_ctx_t *ctx)
 
 static void session_handle_today(session_ctx_t *ctx)
 {
-    if (ctx == nullptr || ctx->owner == nullptr) {
+    if (ctx == nullptr) {
         return;
     }
 
-    time_t now = time(nullptr);
-    struct tm tm_now;
-#if defined(_POSIX_THREAD_SAFE_FUNCTIONS)
-    if (localtime_r(&now, &tm_now) == nullptr) {
-        session_send_system_line(ctx, "Unable to determine local time.");
-        return;
-    }
-#else
-    struct tm *tmp = localtime(&now);
-    if (tmp == nullptr) {
-        session_send_system_line(ctx, "Unable to determine local time.");
-        return;
-    }
-    tm_now = *tmp;
-#endif
-
-    int year = tm_now.tm_year + 1900;
-    int yday = tm_now.tm_yday;
-
-    host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
-    user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name, "");
-    if (pref == nullptr) {
-        pthread_mutex_unlock(&host->lock);
-        session_send_system_line(ctx,
-                                 "Unable to track today's function right now.");
-        return;
-    }
-
-    if (!host->random_seeded) {
-        unsigned seed = (unsigned)(now ^ (time_t)getpid());
-        srand(seed);
-        host->random_seeded = true;
-    }
-
-    const char *chosen = nullptr;
-    bool already = false;
-    if (pref->daily_year == year && pref->daily_yday == yday &&
-        pref->daily_function[0] != '\0') {
-        chosen = pref->daily_function;
-        already = true;
-    } else {
-        const size_t function_count =
-            sizeof(DAILY_FUNCTIONS) / sizeof(DAILY_FUNCTIONS[0]);
-        if (function_count == 0U) {
-            pthread_mutex_unlock(&host->lock);
-            session_send_system_line(ctx, "No functions available today.");
-            return;
-        }
-        size_t index = (size_t)rand() % function_count;
-        chosen = DAILY_FUNCTIONS[index];
-        pref->daily_year = year;
-        pref->daily_yday = yday;
-        snprintf(pref->daily_function, sizeof(pref->daily_function), "%s",
-                 chosen);
-    }
-
-    ctx->daily_year = pref->daily_year;
-    ctx->daily_yday = pref->daily_yday;
-    snprintf(ctx->daily_function, sizeof(ctx->daily_function), "%s", chosen);
-
-    host_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
-
-    char message[SSH_CHATTER_MESSAGE_LIMIT];
-    if (already) {
-        snprintf(message, sizeof(message),
-                 "You've already discovered today's function: %s", chosen);
-    } else {
-        snprintf(message, sizeof(message), "Today's function for you is: %s",
-                 chosen);
-    }
-    session_send_system_line(ctx, message);
+    session_send_system_line(ctx, "Today's function has been retired.");
 }
 
 static void session_handle_date(session_ctx_t *ctx, const char *arguments)
@@ -1088,67 +981,11 @@ static void session_handle_getos(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_pair(session_ctx_t *ctx)
 {
-    if (ctx == nullptr || ctx->owner == nullptr) {
+    if (ctx == nullptr) {
         return;
     }
 
-    if (ctx->os_name[0] == '\0') {
-        session_send_system_line(
-            ctx, "Set your operating system first with /os <name>.");
-        return;
-    }
-
-    char matches[SSH_CHATTER_MESSAGE_LIMIT];
-    matches[0] = '\0';
-    size_t offset = 0U;
-    size_t match_count = 0U;
-
-    pthread_mutex_lock(&ctx->owner->room.lock);
-    for (size_t idx = 0U; idx < ctx->owner->room.member_count; ++idx) {
-        session_ctx_t *member = ctx->owner->room.members[idx];
-        if (member == nullptr || member == ctx) {
-            continue;
-        }
-        if (member->os_name[0] == '\0') {
-            continue;
-        }
-        if (strcasecmp(member->os_name, ctx->os_name) != 0) {
-            continue;
-        }
-
-        size_t name_len = strnlen(member->user.name, sizeof(member->user.name));
-        const size_t prefix = match_count == 0U ? 0U : 2U;
-        if (offset + prefix + name_len >= sizeof(matches)) {
-            break;
-        }
-        if (match_count > 0U) {
-            matches[offset++] = ',';
-            matches[offset++] = ' ';
-        }
-        memcpy(matches + offset, member->user.name, name_len);
-        offset += name_len;
-        matches[offset] = '\0';
-        ++match_count;
-    }
-    pthread_mutex_unlock(&ctx->owner->room.lock);
-
-    const os_descriptor_t *descriptor =
-        session_lookup_os_descriptor(ctx->os_name);
-    const char *display =
-        descriptor != nullptr ? descriptor->display : ctx->os_name;
-
-    if (match_count == 0U) {
-        char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message),
-                 "No connected users currently share your %s setup.", display);
-        session_send_system_line(ctx, message);
-        return;
-    }
-
-    char header[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(header, sizeof(header), "Users sharing your %s setup:", display);
-    session_send_system_line(ctx, header);
-    session_send_system_line(ctx, matches);
+    session_send_system_line(ctx, "Pair matches have been discontinued.");
 }
 
 static void session_handle_connected(session_ctx_t *ctx)
@@ -1338,57 +1175,11 @@ static void session_handle_birthday(session_ctx_t *ctx, const char *arguments)
 
 static void session_handle_soulmate(session_ctx_t *ctx)
 {
-    if (ctx == nullptr || ctx->owner == nullptr) {
+    if (ctx == nullptr) {
         return;
     }
 
-    if (!ctx->has_birthday) {
-        session_send_system_line(
-            ctx, "Set your birthday first with /birthday YYYY-MM-DD.");
-        return;
-    }
-
-    char matches[SSH_CHATTER_MESSAGE_LIMIT];
-    matches[0] = '\0';
-    size_t count = 0U;
-
-    pthread_mutex_lock(&ctx->owner->lock);
-    for (size_t idx = 0U; idx < SSH_CHATTER_MAX_PREFERENCES; ++idx) {
-        const user_preference_t *pref = &ctx->owner->preferences[idx];
-        if (!pref->in_use || !pref->has_birthday) {
-            continue;
-        }
-        if (strncmp(pref->birthday, ctx->birthday, sizeof(pref->birthday)) !=
-            0) {
-            continue;
-        }
-        if (strncmp(pref->username, ctx->user.name, SSH_CHATTER_USERNAME_LEN) ==
-            0) {
-            continue;
-        }
-        size_t current_len = strnlen(matches, sizeof(matches));
-        size_t name_len = strnlen(pref->username, sizeof(pref->username));
-        size_t prefix_len = count == 0U ? 0U : 2U;
-        if (current_len + prefix_len + name_len >= sizeof(matches)) {
-            continue;
-        }
-        if (count > 0U) {
-            matches[current_len++] = ',';
-            matches[current_len++] = ' ';
-        }
-        memcpy(matches + current_len, pref->username, name_len);
-        matches[current_len + name_len] = '\0';
-        ++count;
-    }
-    pthread_mutex_unlock(&ctx->owner->lock);
-
-    if (count == 0U) {
-        session_send_system_line(ctx, "No birthday matches found right now.");
-        return;
-    }
-
-    session_send_system_line(ctx, "Birthday soulmates:");
-    session_send_system_line(ctx, matches);
+    session_send_system_line(ctx, "Birthday soulmates are no longer supported.");
 }
 
 static void session_pw_auth_hex_encode(const uint8_t *input, size_t length,
@@ -2057,351 +1848,47 @@ static void session_handle_delete_message(session_ctx_t *ctx,
 
 static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
 {
-    static const char *kUsage =
-        "Usage: /poll "
-        "<question>|<option1>|<option2>[|option3][|option4][|option5] or /poll "
-        "to view current poll";
-    if (ctx == nullptr || ctx->owner == nullptr) {
+    (void)arguments;
+    if (ctx == nullptr) {
         return;
     }
 
-    char usage[SSH_CHATTER_MESSAGE_LIMIT];
-    session_command_format_usage(ctx, "/poll", kUsage, usage, sizeof(usage));
-
-    if (arguments == nullptr) {
-        session_send_poll_summary(ctx);
-        return;
-    }
-
-    char working[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(working, sizeof(working), "%s", arguments);
-    trim_whitespace_inplace(working);
-    if (working[0] == '\0') {
-        session_send_poll_summary(ctx);
-        return;
-    }
-
-    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
-        session_send_system_line(ctx,
-                                 "Only operators may modify the main poll.");
-        return;
-    }
-
-    char *tokens[1 + 5];
-    size_t token_count = 0U;
-    char *cursor = working;
-    while (cursor != nullptr &&
-           token_count < sizeof(tokens) / sizeof(tokens[0])) {
-        char *next = strchr(cursor, '|');
-        if (next != nullptr) {
-            *next = '\0';
-        }
-        trim_whitespace_inplace(cursor);
-        tokens[token_count++] = cursor;
-        cursor = next != nullptr ? next + 1 : nullptr;
-    }
-
-    if (token_count < 3U) {
-        session_send_system_line(ctx, usage);
-        return;
-    }
-
-    size_t option_count = token_count - 1U;
-    if (option_count > 5U) {
-        option_count = 5U;
-    }
-
-    for (size_t idx = 1U; idx <= option_count; ++idx) {
-        if (tokens[idx][0] == '\0') {
-            session_send_system_line(ctx, "Poll options cannot be empty.");
-            return;
-        }
-    }
-
-    host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
-    if (host->poll.id == UINT64_MAX) {
-        host->poll.id = 0U;
-    }
-    host->poll.id += 1U;
-    host->poll.active = true;
-    host->poll.option_count = option_count;
-    host->poll.allow_multiple = false;
-    snprintf(host->poll.question, sizeof(host->poll.question), "%s", tokens[0]);
-    for (size_t idx = 0U; idx < option_count; ++idx) {
-        snprintf(host->poll.options[idx].text,
-                 sizeof(host->poll.options[idx].text), "%s", tokens[idx + 1U]);
-        host->poll.options[idx].votes = 0U;
-    }
-    for (size_t idx = option_count;
-         idx < sizeof(host->poll.options) / sizeof(host->poll.options[0]);
-         ++idx) {
-        host->poll.options[idx].text[0] = '\0';
-        host->poll.options[idx].votes = 0U;
-    }
-    host_vote_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
-
-    char announce[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(announce, sizeof(announce), "* [%s] started poll #%" PRIu64 ": %s",
-             ctx->user.name, host->poll.id, tokens[0]);
-    chat_room_broadcast(&host->room, announce, nullptr);
-
-    for (size_t idx = 0U; idx < option_count; ++idx) {
-        char option_line[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(option_line, sizeof(option_line), "  /%zu - %s", idx + 1U,
-                 tokens[idx + 1U]);
-        chat_room_broadcast(&host->room, option_line, nullptr);
-    }
-
-    session_send_system_line(ctx, "Poll created successfully.");
-    session_send_poll_summary(ctx);
+    session_send_system_line(ctx, "Polls are no longer available.");
 }
 
 static void session_handle_vote(session_ctx_t *ctx, size_t option_index)
 {
-    if (ctx == nullptr || ctx->owner == nullptr) {
+    (void)option_index;
+    if (ctx == nullptr) {
         return;
     }
 
-    host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
-    if (!host->poll.active || option_index >= host->poll.option_count) {
-        pthread_mutex_unlock(&host->lock);
-        session_send_system_line(ctx,
-                                 "There is no active poll for that choice.");
-        return;
-    }
-
-    user_preference_t *pref =
-        host_ensure_preference_locked(host, ctx->user.name, "");
-    if (pref == nullptr) {
-        pthread_mutex_unlock(&host->lock);
-        session_send_system_line(ctx, "Unable to record your vote right now.");
-        return;
-    }
-
-    if (pref->last_poll_id == host->poll.id &&
-        pref->last_poll_choice == (int)option_index) {
-        pthread_mutex_unlock(&host->lock);
-        session_send_system_line(ctx,
-                                 "You have already voted for that option.");
-        return;
-    }
-
-    if (pref->last_poll_id == host->poll.id && pref->last_poll_choice >= 0 &&
-        (size_t)pref->last_poll_choice < host->poll.option_count) {
-        if (host->poll.options[pref->last_poll_choice].votes > 0U) {
-            host->poll.options[pref->last_poll_choice].votes -= 1U;
-        }
-    }
-
-    host->poll.options[option_index].votes += 1U;
-    pref->last_poll_id = host->poll.id;
-    pref->last_poll_choice = (int)option_index;
-    host_vote_state_save_locked(host);
-    host_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
-
-    char message[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(message, sizeof(message), "Vote recorded for option /%zu.",
-             option_index + 1U);
-    session_send_system_line(ctx, message);
-    session_send_poll_summary(ctx);
+    session_send_system_line(ctx, "Voting has been removed from this server.");
 }
 
 // Record a vote in a named poll, ensuring a user can move their vote between options.
 static void session_handle_named_vote(session_ctx_t *ctx, size_t option_index,
                                       const char *label)
 {
-    if (ctx == nullptr || ctx->owner == nullptr || label == nullptr ||
-        label[0] == '\0') {
+    (void)option_index;
+    (void)label;
+    if (ctx == nullptr) {
         return;
     }
 
-    host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
-    named_poll_state_t *poll = host_find_named_poll_locked(host, label);
-    if (poll == nullptr || !poll->poll.active ||
-        option_index >= poll->poll.option_count) {
-        pthread_mutex_unlock(&host->lock);
-        session_send_system_line(ctx,
-                                 "There is no active poll with that label.");
-        return;
-    }
-
-    const bool allow_multiple = poll->poll.allow_multiple;
-    const uint32_t option_bit =
-        (option_index < 32U) ? (1U << option_index) : 0U;
-
-    size_t voter_slot = SIZE_MAX;
-    for (size_t idx = 0U; idx < poll->voter_count; ++idx) {
-        if (poll->voters[idx].username[0] == '\0') {
-            continue;
-        }
-        if (strcasecmp(poll->voters[idx].username, ctx->user.name) == 0) {
-            voter_slot = idx;
-            break;
-        }
-    }
-
-    if (voter_slot == SIZE_MAX) {
-        if (poll->voter_count >= SSH_CHATTER_MAX_NAMED_VOTERS) {
-            pthread_mutex_unlock(&host->lock);
-            session_send_system_line(
-                ctx, "Vote tracking is full for this poll right now.");
-            return;
-        }
-        voter_slot = poll->voter_count++;
-        snprintf(poll->voters[voter_slot].username,
-                 sizeof(poll->voters[voter_slot].username), "%s",
-                 ctx->user.name);
-        poll->voters[voter_slot].choice = -1;
-        poll->voters[voter_slot].choices_mask = 0U;
-    }
-
-    uint32_t *mask = &poll->voters[voter_slot].choices_mask;
-    if (allow_multiple) {
-        if (option_bit != 0U && (*mask & option_bit) != 0U) {
-            pthread_mutex_unlock(&host->lock);
-            session_send_system_line(ctx,
-                                     "You have already voted for that option.");
-            return;
-        }
-    } else {
-        if (poll->voters[voter_slot].choice == (int)option_index) {
-            pthread_mutex_unlock(&host->lock);
-            session_send_system_line(ctx,
-                                     "You have already voted for that option.");
-            return;
-        }
-        if (poll->voters[voter_slot].choice >= 0) {
-            int previous = poll->voters[voter_slot].choice;
-            if (previous >= 0 && (size_t)previous < poll->poll.option_count &&
-                poll->poll.options[previous].votes > 0U) {
-                poll->poll.options[previous].votes -= 1U;
-            }
-        }
-    }
-
-    poll->poll.options[option_index].votes += 1U;
-    if (allow_multiple) {
-        if (option_bit != 0U) {
-            *mask |= option_bit;
-        }
-        poll->voters[voter_slot].choice = -1;
-    } else {
-        poll->voters[voter_slot].choice = (int)option_index;
-        poll->voters[voter_slot].choices_mask =
-            (option_bit != 0U) ? option_bit : 0U;
-    }
-
-    char resolved_label[SSH_CHATTER_POLL_LABEL_LEN];
-    snprintf(resolved_label, sizeof(resolved_label), "%s", poll->label);
-    host_vote_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
-
-    char message[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(message, sizeof(message), "Vote recorded for /%zu %s.",
-             option_index + 1U, resolved_label);
-    session_send_system_line(ctx, message);
-    session_send_poll_summary_generic(ctx, &poll->poll, resolved_label);
+    session_send_system_line(ctx, "Voting has been removed from this server.");
 }
 
 // Allow voting in a named poll by specifying the label and desired choice directly.
 static void session_handle_elect_command(session_ctx_t *ctx,
                                          const char *arguments)
 {
-    static const char *kUsage = "Usage: /elect <label> <choice>";
-    if (ctx == nullptr || ctx->owner == nullptr) {
+    (void)arguments;
+    if (ctx == nullptr) {
         return;
     }
 
-    char usage[SSH_CHATTER_MESSAGE_LIMIT];
-    session_command_format_usage(ctx, "/elect", kUsage, usage, sizeof(usage));
-
-    if (arguments == nullptr) {
-        session_send_system_line(ctx, usage);
-        return;
-    }
-
-    char working[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(working, sizeof(working), "%s", arguments);
-    trim_whitespace_inplace(working);
-    if (working[0] == '\0') {
-        session_send_system_line(ctx, usage);
-        return;
-    }
-
-    char *label = working;
-    char *choice = working;
-    while (*choice != '\0' && !isspace((unsigned char)*choice)) {
-        ++choice;
-    }
-    if (*choice != '\0') {
-        *choice++ = '\0';
-    }
-    while (*choice == ' ' || *choice == '\t') {
-        ++choice;
-    }
-
-    if (label[0] == '\0' || *choice == '\0') {
-        session_send_system_line(ctx, usage);
-        return;
-    }
-
-    trim_whitespace_inplace(choice);
-
-    host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
-    named_poll_state_t *poll = host_find_named_poll_locked(host, label);
-    if (poll == nullptr || !poll->poll.active) {
-        pthread_mutex_unlock(&host->lock);
-        session_send_system_line(ctx,
-                                 "There is no active poll with that label.");
-        return;
-    }
-
-    char canonical_label[SSH_CHATTER_POLL_LABEL_LEN];
-    snprintf(canonical_label, sizeof(canonical_label), "%s", poll->label);
-
-    size_t option_index = SIZE_MAX;
-    const size_t option_count = poll->poll.option_count;
-
-    const char *numeric_start = choice;
-    if (*numeric_start == '/') {
-        ++numeric_start;
-    }
-    if (*numeric_start != '\0') {
-        char *endptr = nullptr;
-        unsigned long parsed = strtoul(numeric_start, &endptr, 10);
-        if (endptr != nullptr && endptr != numeric_start && *endptr == '\0' &&
-            parsed >= 1UL && parsed <= option_count) {
-            option_index = (size_t)(parsed - 1UL);
-        }
-    }
-
-    if (option_index == SIZE_MAX) {
-        for (size_t idx = 0U; idx < option_count; ++idx) {
-            if (poll->poll.options[idx].text[0] == '\0') {
-                continue;
-            }
-            if (strcasecmp(poll->poll.options[idx].text, choice) == 0) {
-                option_index = idx;
-                break;
-            }
-        }
-    }
-
-    pthread_mutex_unlock(&host->lock);
-
-    if (option_index == SIZE_MAX) {
-        session_send_system_line(ctx,
-                                 "That choice is not available in this poll.");
-        return;
-    }
-
-    session_handle_named_vote(ctx, option_index, canonical_label);
+    session_send_system_line(ctx, "Polls are no longer available.");
 }
 
 // Parse the /vote command to manage named polls, including listing, creation, and closure.
@@ -2409,255 +1896,13 @@ static void session_handle_vote_command(session_ctx_t *ctx,
                                         const char *arguments,
                                         bool allow_multiple)
 {
-    const char *usage_template =
-        allow_multiple
-            ? "Usage: /vote <label> "
-              "<question>|<option1>|<option2>[|option3][|option4][|option5]"
-            : "Usage: /vote-single <label> "
-              "<question>|<option1>|<option2>[|option3][|option4][|option5]";
-    const char *canonical = allow_multiple ? "/vote" : "/vote-single";
-    char usage[SSH_CHATTER_MESSAGE_LIMIT];
-    session_command_format_usage(ctx, canonical, usage_template, usage,
-                                 sizeof(usage));
-    if (ctx == nullptr || ctx->owner == nullptr) {
+    (void)arguments;
+    (void)allow_multiple;
+    if (ctx == nullptr) {
         return;
     }
 
-    if (arguments == nullptr) {
-        session_list_named_polls(ctx);
-        return;
-    }
-
-    char working[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(working, sizeof(working), "%s", arguments);
-    trim_whitespace_inplace(working);
-    if (working[0] == '\0') {
-        session_list_named_polls(ctx);
-        return;
-    }
-
-    const char *close_command = nullptr;
-    if (strncmp(working, "@close", 6) == 0 &&
-        (working[6] == '\0' || isspace((unsigned char)working[6]))) {
-        close_command = "@close";
-    } else if (strncmp(working, "@종료", 7) == 0 &&
-               (working[7] == '\0' || isspace((unsigned char)working[7]))) {
-        close_command = "@종료";
-    }
-
-    if (close_command != nullptr) {
-        const char *label_start = working + strlen(close_command);
-        while (*label_start != '\0' && isspace((unsigned char)*label_start)) {
-            ++label_start;
-        }
-        if (*label_start == '\0') {
-            session_send_system_line(ctx, "Usage: /vote @close <label>");
-            return;
-        }
-
-        char label[SSH_CHATTER_POLL_LABEL_LEN];
-        size_t close_len = 0U;
-        while (label_start[close_len] != '\0' &&
-               !isspace((unsigned char)label_start[close_len])) {
-            if (close_len + 1U >= sizeof(label)) {
-                session_send_system_line(ctx, "Poll label is too long.");
-                return;
-            }
-            label[close_len] = label_start[close_len];
-            ++close_len;
-        }
-        label[close_len] = '\0';
-        if (!poll_label_is_valid(label)) {
-            session_send_system_line(ctx,
-                                     "Poll labels may contain only letters, "
-                                     "numbers, hyphens, or underscores.");
-            return;
-        }
-
-        host_t *host = ctx->owner;
-        pthread_mutex_lock(&host->lock);
-        named_poll_state_t *poll = host_find_named_poll_locked(host, label);
-        if (poll == nullptr || !poll->poll.active) {
-            pthread_mutex_unlock(&host->lock);
-            session_send_system_line(ctx, "That poll is not currently active.");
-            return;
-        }
-
-        bool has_privilege = ctx->user.is_operator ||
-                             ctx->user.is_lan_operator ||
-                             (poll->owner[0] != '\0' &&
-                              strcasecmp(poll->owner, ctx->user.name) == 0);
-        if (!has_privilege) {
-            pthread_mutex_unlock(&host->lock);
-            session_send_system_line(
-                ctx, "Only the poll owner or an operator may close this poll.");
-            return;
-        }
-
-        poll_state_reset(&poll->poll);
-        poll->voter_count = 0U;
-        host_recount_named_polls_locked(host);
-        host_vote_state_save_locked(host);
-        pthread_mutex_unlock(&host->lock);
-
-        char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "* [%s] closed poll [%s].",
-                 ctx->user.name, label);
-        chat_room_broadcast(&host->room, message, nullptr);
-        session_send_system_line(ctx, "Poll closed.");
-        return;
-    }
-
-    char label[SSH_CHATTER_POLL_LABEL_LEN];
-    size_t label_len = 0U;
-    const char *cursor = working;
-    while (*cursor != '\0' && !isspace((unsigned char)*cursor)) {
-        if (label_len + 1U >= sizeof(label)) {
-            session_send_system_line(ctx, "Poll label is too long.");
-            return;
-        }
-        label[label_len++] = *cursor++;
-    }
-    label[label_len] = '\0';
-    if (!poll_label_is_valid(label)) {
-        session_send_system_line(ctx, "Poll labels may contain only letters, "
-                                      "numbers, hyphens, or underscores.");
-        return;
-    }
-
-    while (*cursor != '\0' && isspace((unsigned char)*cursor)) {
-        ++cursor;
-    }
-
-    if (*cursor == '\0') {
-        host_t *host = ctx->owner;
-        pthread_mutex_lock(&host->lock);
-        named_poll_state_t *poll = host_find_named_poll_locked(host, label);
-        named_poll_state_t snapshot = {0};
-        if (poll != nullptr) {
-            snapshot = *poll;
-        }
-        pthread_mutex_unlock(&host->lock);
-
-        if (poll == nullptr) {
-            session_send_system_line(ctx, "No poll exists with that label.");
-            return;
-        }
-
-        session_send_poll_summary_generic(ctx, &snapshot.poll, snapshot.label);
-        return;
-    }
-
-    char definition[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(definition, sizeof(definition), "%s", cursor);
-    trim_whitespace_inplace(definition);
-    if (definition[0] == '\0') {
-        session_send_system_line(ctx, usage);
-        return;
-    }
-
-    char *tokens[1 + 5];
-    size_t token_count = 0U;
-    char *token_cursor = definition;
-    while (token_cursor != nullptr &&
-           token_count < sizeof(tokens) / sizeof(tokens[0])) {
-        char *next = strchr(token_cursor, '|');
-        if (next != nullptr) {
-            *next = '\0';
-        }
-        trim_whitespace_inplace(token_cursor);
-        tokens[token_count++] = token_cursor;
-        token_cursor = next != nullptr ? next + 1 : nullptr;
-    }
-
-    if (token_count < 3U) {
-        session_send_system_line(
-            ctx, "Provide at least a question and two options.");
-        return;
-    }
-
-    size_t option_count = token_count - 1U;
-    if (option_count > 5U) {
-        option_count = 5U;
-    }
-
-    for (size_t idx = 1U; idx <= option_count; ++idx) {
-        if (tokens[idx][0] == '\0') {
-            session_send_system_line(ctx, "Poll options cannot be empty.");
-            return;
-        }
-    }
-
-    host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
-    named_poll_state_t *poll = host_ensure_named_poll_locked(host, label);
-    if (poll == nullptr) {
-        pthread_mutex_unlock(&host->lock);
-        session_send_system_line(
-            ctx, "Too many named polls are already registered.");
-        return;
-    }
-
-    if (poll->poll.active && poll->owner[0] != '\0' &&
-        strcasecmp(poll->owner, ctx->user.name) != 0 &&
-        !ctx->user.is_operator && !ctx->user.is_lan_operator) {
-        pthread_mutex_unlock(&host->lock);
-        session_send_system_line(
-            ctx, "Only the poll owner or an operator may restart this poll.");
-        return;
-    }
-
-    if (poll->poll.id == UINT64_MAX) {
-        poll->poll.id = 0U;
-    }
-    poll->poll.id += 1U;
-    poll->poll.active = true;
-    poll->poll.option_count = option_count;
-    poll->poll.allow_multiple = allow_multiple;
-    snprintf(poll->poll.question, sizeof(poll->poll.question), "%s", tokens[0]);
-    for (size_t idx = 0U; idx < option_count; ++idx) {
-        snprintf(poll->poll.options[idx].text,
-                 sizeof(poll->poll.options[idx].text), "%s", tokens[idx + 1U]);
-        poll->poll.options[idx].votes = 0U;
-    }
-    for (size_t idx = option_count;
-         idx < sizeof(poll->poll.options) / sizeof(poll->poll.options[0]);
-         ++idx) {
-        poll->poll.options[idx].text[0] = '\0';
-        poll->poll.options[idx].votes = 0U;
-    }
-    snprintf(poll->owner, sizeof(poll->owner), "%s", ctx->user.name);
-    poll->voter_count = 0U;
-    for (size_t idx = 0U; idx < SSH_CHATTER_MAX_NAMED_VOTERS; ++idx) {
-        poll->voters[idx].username[0] = '\0';
-        poll->voters[idx].choice = -1;
-        poll->voters[idx].choices_mask = 0U;
-    }
-    host_recount_named_polls_locked(host);
-    named_poll_state_t snapshot = *poll;
-    host_vote_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
-
-    char announce[SSH_CHATTER_MESSAGE_LIMIT];
-    int question_preview =
-        (int)strnlen(snapshot.poll.question, sizeof(snapshot.poll.question));
-    if (question_preview > 120) {
-        question_preview = 120;
-    }
-    snprintf(announce, sizeof(announce),
-             "* [%s] started poll [%s] #%" PRIu64 ": %.*s", ctx->user.name,
-             label, snapshot.poll.id, question_preview, snapshot.poll.question);
-    chat_room_broadcast(&host->room, announce, nullptr);
-
-    for (size_t idx = 0U; idx < snapshot.poll.option_count; ++idx) {
-        char option_line[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(option_line, sizeof(option_line), "  /%zu %s - %s", idx + 1U,
-                 label, snapshot.poll.options[idx].text);
-        chat_room_broadcast(&host->room, option_line, nullptr);
-    }
-
-    session_send_system_line(ctx, "Named poll created successfully.");
-    session_send_poll_summary_generic(ctx, &snapshot.poll, snapshot.label);
+    session_send_system_line(ctx, "Polls are no longer available.");
 }
 
 static void __attribute__((unused))

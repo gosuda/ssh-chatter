@@ -1,10 +1,10 @@
-#include "headers/client.h"
+#include "ssh_chatter/client.h"
 
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "headers/host.h"
+#include "ssh_chatter/host.h"
 
 #ifndef CLIENT_MANAGER_MAX_CONNECTIONS
 #define CLIENT_MANAGER_MAX_CONNECTIONS 32U

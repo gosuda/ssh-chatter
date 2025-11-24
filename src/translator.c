@@ -2,7 +2,7 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 
-#include "headers/translator.h"
+#include "ssh_chatter/translator.h"
 
 #include <curl/curl.h>
 #include <errno.h>
@@ -17,7 +17,7 @@
 #include <ctype.h>
 #include <time.h>
 
-#include "headers/memory_manager.h"
+#include "ssh_chatter/memory_manager.h"
 
 #define TRANSLATOR_MAX_RESPONSE 1 << 20
 #define TRANSLATOR_DEFAULT_BASE_URL                                            \

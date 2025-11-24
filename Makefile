@@ -11,10 +11,15 @@ NPROC := $(shell nproc)
 # CFLAGS: EXTREME Low-Latency and LTO Optimization Flags
 # DANGER: Contains highly aggressive, potentially unsafe, and experimental flags.
 # ==============================================================================
+SRC_DIR := src
+INCLUDE_DIR := include
+BUILD_DIR := build
+EXCLUDED_SRC := $(SRC_DIR)/synchronet_door.c $(SRC_DIR)/stubs/libssh_stub.c
+
 CFLAGS = -std=c2x -Ofast \
               -Werror \
               -Wno-error=deprecated-declarations -DSSH_CHATTER_USE_GC=$(ENABLE_GC) \
-              -I lib/headers -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
+              -I $(INCLUDE_DIR) -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
               -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
               -Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
               -fno-omit-frame-pointer -fstack-protector-strong -fno-common \
@@ -77,20 +82,16 @@ LDFLAGS = $(COMMON_LDFLAGS) -lssh
 # Define targets and source files
 TARGET := ssh-chatter
 SHARED_TARGET := libssh_chatter_backend.so
-SRC := main.c lib/host.c lib/client.c lib/webssh_client.c lib/translator.c \
-       lib/translation_helpers.c lib/ssh_chatter_backend.c lib/user_data.c \
-       lib/irc_client.c lib/fidonet_client.c lib/ddial_client.c \
-       lib/security_layer.c lib/memory_manager.c lib/ssh_chatter_sync.c \
-       lib/codepage.c
-OBJ := $(SRC:.c=.o)
-SHARED_SRC := lib/translator.c lib/translation_helpers.c lib/ssh_chatter_backend.c lib/memory_manager.c
-SHARED_OBJ := $(SHARED_SRC:.c=.o)
-DEP := $(OBJ:.o=.d)
+SRC := $(filter-out $(EXCLUDED_SRC),\
+       $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/stubs/*.c))
+OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRC))
+SHARED_SRC := src/translator.c src/translation_helpers.c src/ssh_chatter_backend.c src/memory_manager.c
+SHARED_OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SHARED_SRC))
+DEP := $(OBJ:.o=.d) $(SHARED_OBJ:.o=.d)
 
 STRESS_TARGET := stress-test
 STRESS_SRC := tests/stress_main.c
-STRESS_OBJ := $(STRESS_SRC:.c=.o)
-
+STRESS_OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(STRESS_SRC))
 
 .PHONY: all clean run stress-test
 
@@ -109,11 +110,12 @@ $(TARGET): $(OBJ)
 $(SHARED_TARGET): $(SHARED_OBJ)
 	$(CC) $(CFLAGS) -shared -o $@ $^ $(COMMON_LDFLAGS)
 
-$(STRESS_TARGET): $(filter-out main.o,$(OBJ)) $(STRESS_OBJ)
+$(STRESS_TARGET): $(filter-out $(BUILD_DIR)/src/main.o,$(OBJ)) $(STRESS_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Rule for compiling object files
-%.o: %.c
+$(BUILD_DIR)/%.o: %.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 run: $(TARGET)
@@ -121,7 +123,7 @@ run: $(TARGET)
 
 clean:
 # Cleanup only for LTO/standard build files
-	rm -f $(OBJ) $(TARGET) $(SHARED_TARGET) $(DEP) $(STRESS_OBJ) $(STRESS_TARGET)
+	rm -rf $(BUILD_DIR) $(TARGET) $(SHARED_TARGET) $(DEP) $(STRESS_OBJ) $(STRESS_TARGET)
 
 # Include dependency files
 -include $(DEP)

@@ -1,11 +1,16 @@
 #include "host_internal.h"
-#include "../headers/user_data.h"
-#include "../headers/security_layer.h"
+#include "ssh_chatter/user_data.h"
+#include "ssh_chatter/security_layer.h"
 
 // Session output, history delivery, and client-facing helpers.
 
 void session_process_pending_sink(session_ctx_t *ctx);
 void session_flag_should_sink(session_ctx_t *ctx);
+
+static void session_scrollback_prepare_display(session_ctx_t *ctx)
+{
+    (void)ctx;
+}
 
 static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
 {
@@ -3364,7 +3369,7 @@ static void session_send_poll_summary_generic(session_ctx_t *ctx,
 }
 
 // Gather the main poll and any named polls and present summaries to the caller.
-static void session_send_poll_summary(session_ctx_t *ctx)
+static __attribute__((unused)) void session_send_poll_summary(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
         return;
@@ -3412,7 +3417,7 @@ static void session_send_poll_summary(session_ctx_t *ctx)
 }
 
 // Provide a lightweight overview of every named poll regardless of status.
-static void session_list_named_polls(session_ctx_t *ctx)
+static __attribute__((unused)) void session_list_named_polls(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
         return;
@@ -3746,10 +3751,14 @@ static int session_prepare_shell(session_ctx_t *ctx)
             if (subtype == SSH_CHANNEL_REQUEST_PTY ||
                 subtype == SSH_CHANNEL_REQUEST_SHELL) {
                 if (subtype == SSH_CHANNEL_REQUEST_PTY) {
-                    unsigned int width =
+                    const int raw_width =
                         ssh_message_channel_request_pty_width(message);
-                    unsigned int height =
+                    const int raw_height =
                         ssh_message_channel_request_pty_height(message);
+                    unsigned int width =
+                        raw_width > 0 ? (unsigned int)raw_width : 0U;
+                    unsigned int height =
+                        raw_height > 0 ? (unsigned int)raw_height : 0U;
                     if (width > 0U) {
                         if (width > SSH_CHATTER_MESSAGE_LIMIT) {
                             width = SSH_CHATTER_MESSAGE_LIMIT;
@@ -5656,23 +5665,18 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
 
     session_ctx_t *target = chat_room_find_user(&ctx->owner->room, target_name);
     const bool target_is_eliza = strcasecmp(target_name, "eliza") == 0;
-    const bool eliza_active =
-        target_is_eliza && atomic_load(&ctx->owner->eliza_enabled);
+
+    if (target_is_eliza) {
+        session_send_system_line(ctx, "eliza is no longer available.");
+        return;
+    }
 
     if (target == nullptr) {
-        if (target_is_eliza) {
-            if (!eliza_active) {
-                session_send_system_line(ctx, "eliza isn't around right now.");
-                return;
-            }
-            session_send_system_line(ctx, "Connecting you with eliza...");
-        } else {
-            char not_found[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(not_found, sizeof(not_found),
-                     "User '%s' is not connected.", target_name);
-            session_send_system_line(ctx, not_found);
-            return;
-        }
+        char not_found[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(not_found, sizeof(not_found), "User '%s' is not connected.",
+                 target_name);
+        session_send_system_line(ctx, not_found);
+        return;
     }
 
     char prepared[SSH_CHATTER_MESSAGE_LIMIT];
@@ -5683,8 +5687,7 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
         prepared, stripped, sizeof(stripped));
     const char *deliver_body = translation_bypass ? stripped : prepared;
 
-    const char *target_display =
-        target != nullptr ? target->user.name : target_name;
+    const char *target_display = target->user.name;
     printf("[pm] %s -> %s: %s\n", ctx->user.name, target_display, deliver_body);
 
     char to_target_label[SSH_CHATTER_MESSAGE_LIMIT];
@@ -5709,16 +5712,9 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
             ctx, "Translation unavailable; sending your original message.");
     }
 
-    if (target != nullptr) {
-        session_send_private_message_line(target, ctx, to_target_label,
-                                          deliver_body);
-        session_send_private_message_line(ctx, ctx, to_sender_label,
-                                          deliver_body);
-        return;
-    }
-
+    session_send_private_message_line(target, ctx, to_target_label,
+                                      deliver_body);
     session_send_private_message_line(ctx, ctx, to_sender_label, deliver_body);
-    host_eliza_handle_private_message(ctx, deliver_body);
 }
 
 static bool username_contains(const char *username, const char *needle)

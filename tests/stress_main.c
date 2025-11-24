@@ -1,5 +1,5 @@
-#include "lib/headers/host.h"
-#include "lib/headers/memory_manager.h"
+#include "ssh_chatter/host.h"
+#include "ssh_chatter/memory_manager.h"
 
 #include <pthread.h>
 #include <signal.h>

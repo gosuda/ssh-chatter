@@ -1,8 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "headers/irc_client.h"
-#include "headers/host.h"
-#include "headers/humanized/humanized.h"
+#include "ssh_chatter/irc_client.h"
+#include "ssh_chatter/host.h"
+#include "ssh_chatter/humanized/humanized.h"
 
 #include <arpa/inet.h>
 #include <ctype.h>

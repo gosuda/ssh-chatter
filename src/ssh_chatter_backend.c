@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "headers/ssh_chatter_backend.h"
-#include "headers/translation_helpers.h"
-#include "headers/translator.h"
+#include "ssh_chatter/ssh_chatter_backend.h"
+#include "ssh_chatter/translation_helpers.h"
+#include "ssh_chatter/translator.h"
 
 void ssh_chatter_backend_init(void)
 {

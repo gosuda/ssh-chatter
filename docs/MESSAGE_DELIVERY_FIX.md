@@ -21,7 +21,7 @@ The fix adds explicit flushing of SSH channels after broadcasting messages:
 
 ### 1. New Function: `session_channel_flush()`
 
-Located in `lib/host_parts/host_eliza_and_storage.c`:
+Located in `src/host_parts/host_eliza_and_storage.c`:
 
 ```c
 static void session_channel_flush(session_ctx_t *ctx)

@@ -1,4 +1,4 @@
-#include "headers/memory_manager.h"
+#include "ssh_chatter/memory_manager.h"
 
 #if !(defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC)
 

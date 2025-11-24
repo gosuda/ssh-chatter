@@ -1,5 +1,5 @@
-#include "headers/codepage.h"
-#include "headers/host.h"
+#include "ssh_chatter/codepage.h"
+#include "ssh_chatter/host.h"
 #include <string.h>
 #include <iconv.h>
 #include <errno.h>

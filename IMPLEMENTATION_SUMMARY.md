@@ -18,7 +18,7 @@ The original requirement (in Korean) was to:
 **Status:** Complete and functional
 
 **What was done:**
-- Analyzed existing Matrix client implementation in `lib/matrix_client.c`
+- Analyzed existing Matrix client implementation in `src/matrix_client.c`
 - Confirmed it uses official Matrix Client-Server API (r0 endpoints)
 - Verified bidirectional message synchronization via `/sync` endpoint
 - Confirmed AES-256-GCM encryption (TorOnion/v1 envelope format)
@@ -46,7 +46,7 @@ CHATTER_MATRIX_DEVICE_NAME=ssh-chatter
 **Status:** Complete and functional
 
 **What was done:**
-- Reviewed existing IRC client in `lib/irc_client.c`
+- Reviewed existing IRC client in `src/irc_client.c`
 - Confirmed full IRC protocol support (RFC 1459)
 - Verified bidirectional message flow
 - Added CTCP VERSION support
@@ -122,19 +122,19 @@ CHATTER_FIDONET_PASSWORD=your_session_password
 ## Files Changed
 
 ### New Files:
-- `lib/fidonet_client.c` (660 lines) - Complete Binkp implementation
-- `lib/headers/fidonet_client.h` (71 lines) - FidoNet client API
+- `src/fidonet_client.c` (660 lines) - Complete Binkp implementation
+- `include/ssh_chatter/fidonet_client.h` (71 lines) - FidoNet client API
 - `chatter.env.example` (73 lines) - Configuration example
 - `IMPLEMENTATION_SUMMARY.md` (this file)
 
 ### Modified Files:
 - `Makefile` - Added fidonet_client.c to build
-- `lib/headers/host.h` - Added fidonet_client declarations
-- `lib/host_parts/host_internal.h` - Added include
-- `lib/host_parts/host_runtime.c` - Client initialization/cleanup
-- `lib/host_parts/host_session_output.c` - Command handler (64 lines)
-- `lib/host_parts/host_transport.c` - Command declaration
-- `lib/host_parts/host_core.c` - Help system entries (14 lines)
+- `include/ssh_chatter/host.h` - Added fidonet_client declarations
+- `src/host_parts/host_internal.h` - Added include
+- `src/host_parts/host_runtime.c` - Client initialization/cleanup
+- `src/host_parts/host_session_output.c` - Command handler (64 lines)
+- `src/host_parts/host_transport.c` - Command declaration
+- `src/host_parts/host_core.c` - Help system entries (14 lines)
 - `README.md` - Added FidoNet section (45 lines)
 - `AGENTS.md` - Implementation documentation (168 lines)
 

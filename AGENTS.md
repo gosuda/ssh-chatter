@@ -4,7 +4,7 @@
 The project, named `ssh-chatter`, is a C reimplementation of the Go `ssh-chat` server. Evidence for this integration is abundant throughout the codebase:
 - The `README.md` explicitly states: "SSH-Chatter has started from a C reimplementation of the Go [`ssh-chat`](https://github.com/gosuda/ssh-chat) server."
 - File paths and service configurations (e.g., `example.ssh-chat-server.service`, `install_chatbot.sh`) refer to `ssh-chat-server`.
-- Source code files (e.g., `lib/host_parts/host_core.c`, `lib/host_parts/host_runtime.c`) contain strings like "ssh-chatter", "ssh-chat-server", and "Welcome to ssh-chat!".
+- Source code files (e.g., `src/host_parts/host_core.c`, `src/host_parts/host_runtime.c`) contain strings like "ssh-chatter", "ssh-chat-server", and "Welcome to ssh-chat!".
 - There is no indication or mention of `synchronet` integration within the scanned files.
 
 ## Telnet Support
@@ -19,7 +19,7 @@ The goal is to integrate `ssh-chatter` with multiple messaging protocols for sea
 ## Phase 1: Matrix Integration (Completed)
 
 1.  **Matrix API Analysis:**
-    *   The existing Matrix client in `lib/matrix_client.c` uses the official Matrix Client-Server API (r0 endpoints).
+    *   The existing Matrix client in `src/matrix_client.c` uses the official Matrix Client-Server API (r0 endpoints).
     *   Implements proper bidirectional message synchronization via `/sync` endpoint.
     *   Uses AES-256-GCM encryption for message security (TorOnion/v1 envelope format).
     *   Has automatic reconnection logic with backoff (5 seconds).
@@ -36,7 +36,7 @@ The goal is to integrate `ssh-chatter` with multiple messaging protocols for sea
 ## Phase 2: IRC Integration (Completed)
 
 1.  **IRC Protocol Implementation:**
-    *   Full IRC client implementation in `lib/irc_client.c`
+    *   Full IRC client implementation in `src/irc_client.c`
     *   Supports standard IRC protocol (NICK, USER, JOIN, PRIVMSG, PING/PONG)
     *   CTCP VERSION response support
     *   Filters CTCP messages from chat display
@@ -52,7 +52,7 @@ The goal is to integrate `ssh-chatter` with multiple messaging protocols for sea
 ## Phase 3: FidoNet/Binkp Integration (Completed)
 
 1.  **FidoNet/Binkp Protocol Implementation:**
-    *   New implementation in `lib/fidonet_client.c` and `lib/headers/fidonet_client.h`
+    *   New implementation in `src/fidonet_client.c` and `include/ssh_chatter/fidonet_client.h`
     *   Implements standard Binkp protocol (port 24554)
     *   Frame-based protocol with 2-byte headers
     *   Standard Binkp commands: NUL, ADR, PWD, OK, EOB, ERR, BSY
@@ -68,7 +68,7 @@ The goal is to integrate `ssh-chatter` with multiple messaging protocols for sea
 
 3.  **Integration:**
     *   ✅ Added to Makefile build system
-    *   ✅ Integrated into host runtime (`lib/host_parts/host_runtime.c`)
+    *   ✅ Integrated into host runtime (`src/host_parts/host_runtime.c`)
     *   ✅ Added to help system with multilingual descriptions
     *   ✅ Proper cleanup in host destruction
     *   ✅ Registered as bot client for message broadcasting

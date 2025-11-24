@@ -1,11 +1,11 @@
-#include "headers/webssh_client.h"
+#include "ssh_chatter/webssh_client.h"
 
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "headers/client.h"
-#include "headers/host.h"
+#include "ssh_chatter/client.h"
+#include "ssh_chatter/host.h"
 
 struct webssh_client {
     struct host *host;

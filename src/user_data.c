@@ -2,9 +2,9 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 
-#include "headers/host.h"
-#include "headers/user_data.h"
-#include "headers/security_layer.h"
+#include "ssh_chatter/host.h"
+#include "ssh_chatter/user_data.h"
+#include "ssh_chatter/security_layer.h"
 
 #include <ctype.h>
 #include <errno.h>

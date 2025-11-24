@@ -2407,8 +2407,8 @@ static named_poll_state_t *host_find_named_poll_locked(host_t *host,
 }
 
 // Either fetch an existing named poll or initialise a new slot for the provided label.
-static named_poll_state_t *host_ensure_named_poll_locked(host_t *host,
-                                                         const char *label)
+static __attribute__((unused)) named_poll_state_t *
+host_ensure_named_poll_locked(host_t *host, const char *label)
 {
     if (host == nullptr || label == nullptr || label[0] == '\0') {
         return nullptr;
@@ -2450,7 +2450,7 @@ static void host_recount_named_polls_locked(host_t *host)
 }
 
 // Ensure poll labels remain short and shell-friendly.
-static bool poll_label_is_valid(const char *label)
+static __attribute__((unused)) bool poll_label_is_valid(const char *label)
 {
     if (label == nullptr || label[0] == '\0') {
         return false;
@@ -5547,10 +5547,12 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                              SSH_CHATTER_STRONG_MACS);
         ssh_bind_options_set(bind_handle, SSH_BIND_OPTIONS_HMAC_S_C,
                              SSH_CHATTER_STRONG_MACS);
+#ifdef SSH_BIND_OPTIONS_COMPRESSION_C_S
         ssh_bind_options_set(bind_handle, SSH_BIND_OPTIONS_COMPRESSION_C_S,
                              SSH_CHATTER_SECURE_COMPRESSION);
         ssh_bind_options_set(bind_handle, SSH_BIND_OPTIONS_COMPRESSION_S_C,
                              SSH_CHATTER_SECURE_COMPRESSION);
+#endif
 
         if (ssh_bind_listen(bind_handle) < 0) {
             humanized_log_error("host", ssh_get_error(bind_handle), EIO);

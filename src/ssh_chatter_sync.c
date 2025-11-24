@@ -1,6 +1,6 @@
 #define LIBSSH_STATIC
-#include "ssh_chatter_sync.h"
-#include "memory_manager.h"
+#include "ssh_chatter/ssh_chatter_sync.h"
+#include "ssh_chatter/memory_manager.h"
 #include <libssh/libssh.h>
 #include <stdio.h>
 #include <stdlib.h>

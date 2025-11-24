@@ -1,11 +1,11 @@
 #define _POSIX_C_SOURCE 200809L
-#include "lib/headers/host.h"
-#include "lib/headers/humanized/humanized.h"
-#include "lib/ssh_chatter_sync.h"
-#include "lib/headers/user_data.h"
-#include "lib/headers/memory_manager.h"
-#include "lib/headers/translator.h"
-#include "lib/headers/ssh_chatter_backend.h" // backend functions that is external should be located here
+#include "ssh_chatter/host.h"
+#include "ssh_chatter/humanized/humanized.h"
+#include "ssh_chatter/ssh_chatter_sync.h"
+#include "ssh_chatter/user_data.h"
+#include "ssh_chatter/memory_manager.h"
+#include "ssh_chatter/translator.h"
+#include "ssh_chatter/ssh_chatter_backend.h" // backend functions that is external should be located here
 
 #include <libssh/libssh.h>
 

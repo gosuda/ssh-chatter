@@ -1,11 +1,11 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "headers/matrix_client.h"
+#include "ssh_chatter/matrix_client.h"
 
-#include "headers/client.h"
-#include "headers/host.h"
-#include "headers/humanized/humanized.h"
-#include "headers/security_layer.h"
+#include "ssh_chatter/client.h"
+#include "ssh_chatter/host.h"
+#include "ssh_chatter/humanized/humanized.h"
+#include "ssh_chatter/security_layer.h"
 
 #include <ctype.h>
 #include <errno.h>

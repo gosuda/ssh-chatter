@@ -31,7 +31,7 @@
 
 #include <libgen.h>
 #include <libssh/libssh.h>
-#include <libssh/server.h>
+#include "ssh_chatter/shim_libssh/server.h"
 
 #include <limits.h>
 #include <math.h>

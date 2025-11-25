@@ -1,5 +1,5 @@
 #include "libssh/libssh.h"
-#include "libssh/server.h"
+#include "ssh_chatter/shim_libssh/server.h"
 
 #include <stdlib.h>
 #include <string.h>

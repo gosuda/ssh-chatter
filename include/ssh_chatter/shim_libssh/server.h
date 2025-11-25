@@ -22,7 +22,7 @@ typedef struct ssh_key_struct {
 extern "C" {
 #endif
 
-typedef enum {
+typedef enum ssh_bind_options_e {
     SSH_BIND_OPTIONS_BINDADDR,
     SSH_BIND_OPTIONS_BINDPORT,
     SSH_BIND_OPTIONS_BINDPORT_STR,

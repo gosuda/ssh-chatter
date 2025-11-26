@@ -55,7 +55,7 @@ webssh_client_t *webssh_client_create(struct host *host,
     }
 
     webssh_client_t *client =
-        (webssh_client_t *)calloc(1U, sizeof(webssh_client_t));
+        (webssh_client_t *)GC_CALLOC(1U, sizeof(webssh_client_t));
     if (client == nullptr) {
         return nullptr;
     }

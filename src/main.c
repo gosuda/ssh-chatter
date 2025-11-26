@@ -303,7 +303,7 @@ int main(int argc, char **argv)
     unsigned int restart_attempts = 0U;
 
     while (!g_shutdown_flag) {
-        host_t *host = calloc(1, sizeof(*host));
+        host_t *host = GC_CALLOC(1U, sizeof(*host));
 
         if (host == nullptr) {
             ++restart_attempts;

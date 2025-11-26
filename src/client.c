@@ -21,7 +21,7 @@ struct client_manager {
 client_manager_t *client_manager_create(struct host *host)
 {
     client_manager_t *manager =
-        (client_manager_t *)calloc(1U, sizeof(client_manager_t));
+        (client_manager_t *)GC_CALLOC(1U, sizeof(client_manager_t));
     if (manager == nullptr) {
         return nullptr;
     }

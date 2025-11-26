@@ -626,7 +626,7 @@ fidonet_client_t *fidonet_client_create(host_t *host, client_manager_t *manager)
     }
 
     fidonet_client_t *client =
-        (fidonet_client_t *)calloc(1, sizeof(fidonet_client_t));
+        (fidonet_client_t *)GC_CALLOC(1U, sizeof(fidonet_client_t));
     if (client == nullptr) {
         return nullptr;
     }

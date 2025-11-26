@@ -417,7 +417,7 @@ ddial_client_t *ddial_client_create(struct host *host,
     }
 
     ddial_client_t *client =
-        (ddial_client_t *)calloc(1U, sizeof(ddial_client_t));
+        (ddial_client_t *)GC_CALLOC(1U, sizeof(ddial_client_t));
     if (client == nullptr) {
         return nullptr;
     }

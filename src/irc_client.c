@@ -501,7 +501,7 @@ irc_client_t *irc_client_create(host_t *host)
         return nullptr;
     }
 
-    irc_client_t *client = (irc_client_t *)calloc(1, sizeof(irc_client_t));
+    irc_client_t *client = (irc_client_t *)GC_CALLOC(1U, sizeof(irc_client_t));
     if (client == nullptr) {
         return nullptr;
     }

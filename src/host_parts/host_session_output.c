@@ -9,7 +9,34 @@ void session_flag_should_sink(session_ctx_t *ctx);
 
 static void session_scrollback_prepare_display(session_ctx_t *ctx)
 {
-    (void)ctx;
+    if (ctx == nullptr || !session_transport_active(ctx)) {
+        return;
+    }
+
+    const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
+    session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
+
+    size_t rendered = ctx->scrollback_rendered_lines;
+    if (rendered == 0U) {
+        return;
+    }
+
+    char move_up[32];
+    int move_up_len = snprintf(move_up, sizeof(move_up), "\033[%zuA", rendered);
+    if (move_up_len > 0) {
+        session_channel_write(ctx, move_up, (size_t)move_up_len);
+    }
+
+    for (size_t idx = 0U; idx < rendered; ++idx) {
+        session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
+        if (idx + 1U < rendered) {
+            static const char move_down[] = "\033[B";
+            session_channel_write(ctx, move_down, sizeof(move_down) - 1U);
+        }
+    }
+
+    static const char move_to_prompt[] = "\033[B";
+    session_channel_write(ctx, move_to_prompt, sizeof(move_to_prompt) - 1U);
 }
 
 static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
@@ -2363,6 +2390,7 @@ void session_scrollback_reset_position(session_ctx_t *ctx)
     ctx->history_scroll_position = 0U;
     ctx->history_latest_notified = false;
     ctx->history_oldest_notified = false;
+    ctx->scrollback_rendered_lines = 0U;
     // Clear no_update flag when returning to latest messages
     ctx->no_update = false;
 
@@ -2684,6 +2712,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
         }
         session_render_prompt(ctx, false);
         session_process_pending_sink(ctx);
+        ctx->scrollback_rendered_lines = 0U;
         goto cleanup;
     }
 
@@ -2723,6 +2752,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
         ctx->history_scroll_position = (total > 0U) ? max_position : 0U;
         ctx->history_latest_notified = false;
         ctx->history_oldest_notified = false;
+        ctx->scrollback_rendered_lines = 0U;
         session_render_prompt(ctx, false);
         goto cleanup;
     }
@@ -2730,6 +2760,8 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
     for (size_t idx = 0; idx < copied; ++idx) {
         session_send_history_entry(ctx, &buffer[idx]);
     }
+
+    ctx->scrollback_rendered_lines = copied + 1U;
 
     if (direction < 0 && new_position == 0U) {
         if (!ctx->history_latest_notified) {
@@ -2823,6 +2855,7 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     if (direction < 0 && at_boundary && new_position == 0U) {
         session_render_prompt(ctx, false);
         session_process_pending_sink(ctx);
+        ctx->scrollback_rendered_lines = 0U;
         goto cleanup;
     }
 
@@ -2849,6 +2882,7 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     if (copied == 0U) {
         ctx->history_scroll_position = (total > 0U) ? max_position : 0U;
         ctx->history_latest_notified = false;
+        ctx->scrollback_rendered_lines = 0U;
         session_render_prompt(ctx, false);
         goto cleanup;
     }
@@ -2862,6 +2896,8 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     for (size_t idx = 0; idx < copied; ++idx) {
         session_send_history_entry(ctx, &buffer[idx]);
     }
+
+    ctx->scrollback_rendered_lines = copied + 1U;
 
     session_render_prompt(ctx, false);
     session_process_pending_sink(ctx);
@@ -3818,14 +3854,12 @@ static int session_prepare_shell(session_ctx_t *ctx)
             if (subtype == SSH_CHANNEL_REQUEST_PTY ||
                 subtype == SSH_CHANNEL_REQUEST_SHELL) {
                 if (subtype == SSH_CHANNEL_REQUEST_PTY) {
-                    const int raw_width =
+                    const unsigned int raw_width =
                         ssh_message_channel_request_pty_width(message);
-                    const int raw_height =
+                    const unsigned int raw_height =
                         ssh_message_channel_request_pty_height(message);
-                    unsigned int width =
-                        raw_width > 0 ? (unsigned int)raw_width : 0U;
-                    unsigned int height =
-                        raw_height > 0 ? (unsigned int)raw_height : 0U;
+                    unsigned int width = raw_width;
+                    unsigned int height = raw_height;
                     if (width > 0U) {
                         if (width > SSH_CHATTER_MESSAGE_LIMIT) {
                             width = SSH_CHATTER_MESSAGE_LIMIT;

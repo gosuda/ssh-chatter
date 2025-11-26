@@ -5683,6 +5683,13 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
         return;
     }
 
+    const bool was_scrolled_back = ctx->history_scroll_position > 0U;
+    if (was_scrolled_back) {
+        session_clear_screen(ctx);
+        session_scrollback_reset_position(ctx);
+        session_flag_should_sink(ctx);
+    }
+
     // Trim whitespace and check if message is empty
     char trimmed[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(trimmed, sizeof(trimmed), "%s", message);

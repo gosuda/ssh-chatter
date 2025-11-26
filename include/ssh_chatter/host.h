@@ -20,7 +20,7 @@
 #endif
 
 #include <libssh/libssh.h>
-#include <libssh/server.h>
+#include "ssh_chatter/shim_libssh/server.h"
 
 #include "theme.h"
 #include "security_layer.h"
@@ -729,6 +729,7 @@ typedef struct session_ctx {
     const session_ops_t *ops;
     bool history_oldest_notified;
     bool history_latest_notified;
+    size_t scrollback_rendered_lines;
     bool
         no_update; // Flag to prevent automatic message updates when scrolling history
     bool pending_should_sink;

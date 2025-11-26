@@ -1,6 +1,7 @@
 #include "libssh/libssh.h"
 #include "ssh_chatter/shim_libssh/server.h"
 
+#undef   free
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,7 +18,8 @@ ssh_session ssh_new(void)
 
 void ssh_free(ssh_session session)
 {
-    GC_FREE(session);
+    free(session);
+    session = nullptr;
 }
 
 int ssh_handle_key_exchange(ssh_session session)
@@ -90,7 +92,8 @@ int ssh_message_service_reply_success(ssh_message message)
 
 void ssh_message_free(ssh_message message)
 {
-    GC_FREE(message);
+    free(message);
+    message = nullptr;
 }
 
 void ssh_message_reply_default(ssh_message message)
@@ -159,7 +162,8 @@ int ssh_channel_close(ssh_channel channel)
 
 void ssh_channel_free(ssh_channel channel)
 {
-    GC_FREE(channel);
+    free(channel);
+    channel = nullptr;
 }
 
 unsigned int ssh_message_channel_request_pty_width(ssh_message message)
@@ -200,12 +204,15 @@ int ssh_disconnect(ssh_session session)
 
 ssh_bind ssh_bind_new(void)
 {
-    return calloc(1, sizeof(struct ssh_bind_struct));
+    struct ssh_bind_strut *ptr = GC_MALLOC_UNCOLLECTABLE(sizeof(struct ssh_bind_struct));
+    memset(ptr, 0, sizeof(strut ssh_bind_struct));
+    return ptr;
 }
 
 void ssh_bind_free(ssh_bind bind)
 {
-    GC_FREE(bind);
+    free(bind);
+    bind = nullptr;
 }
 
 int ssh_bind_options_set(ssh_bind bind, ssh_bind_options_e type,
@@ -249,5 +256,6 @@ int ssh_pki_import_privkey_file(const char *filename, const char *passphrase,
 
 void ssh_key_free(ssh_key key)
 {
-    GC_FREE(key);
+    free(key);
+    key = nullptr;
 }

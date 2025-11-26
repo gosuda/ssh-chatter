@@ -4000,9 +4000,11 @@ session_probe_client_hostkey_algorithms(ssh_session session,
             }
         }
 
+        GC_FREE(buffer);
         return result;
     }
 
+    GC_FREE(buffer);
     return result;
 }
 

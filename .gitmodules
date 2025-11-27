@@ -1,6 +1,0 @@
-[submodule "reference/ssh-chat"]
-	path = reference/ssh-chat
-	url = https://github.com/gg582/ssh-chat
-[submodule "ssh-chat"]
-	path = ssh-chat
-	url = https://github.com/gosuda/ssh-chat

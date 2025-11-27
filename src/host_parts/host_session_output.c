@@ -2597,6 +2597,7 @@ static void session_history_navigate(session_ctx_t *ctx, int direction)
 
 void session_scrollback_navigate(session_ctx_t *ctx, int direction)
 {
+    if(ctx->history_latest_notified | ctx->history_oldest_notified) return;
     if (ctx == nullptr || ctx->owner == nullptr ||
         !session_transport_active(ctx) || direction == 0) {
         return;

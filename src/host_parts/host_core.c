@@ -3366,31 +3366,6 @@ static const session_help_entry_t kSessionHelpExtended[] = {
             },
     },
     {
-        .kind = SESSION_HELP_ENTRY_FORMATTED,
-        .label = "%s1 .. %s5",
-        .description =
-            {
-                "Vote for an option in the active poll.",
-                "진행 중인 투표에서 항목에 투표합니다.",
-                "実施中の投票で候補に投票します。",
-                "为当前投票的选项投票。",
-                "Проголосовать за вариант в активном опросе.",
-            },
-        .label_translations =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "/1 .. /5",
-                [SESSION_UI_LANGUAGE_JP] = "/1 .. /5",
-                [SESSION_UI_LANGUAGE_ZH] = "/1 .. /5",
-                [SESSION_UI_LANGUAGE_RU] = "/1 .. /5",
-            },
-        .label_arg_count = 2U,
-        .label_args =
-            {
-                SESSION_HELP_TEMPLATE_ARG_PREFIX,
-                SESSION_HELP_TEMPLATE_ARG_PREFIX,
-            },
-    },
-    {
         .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "rss list",
         .description =

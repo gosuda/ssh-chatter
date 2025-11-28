@@ -2220,7 +2220,7 @@ static void session_game_othello_render(session_ctx_t *ctx)
     }
 
     char score_line[128];
-    snprintf(score_line, sizeof(score_line), "Score — %s %u : %s %u", red_label,
+    snprintf(score_line, sizeof(score_line), "Score - %s %u : %s %u", red_label,
              state->red_score, green_label, state->green_score);
     session_send_system_line(ctx, score_line);
 

@@ -4456,7 +4456,10 @@ static void session_fill_line_with_theme(session_ctx_t *ctx)
     const char *bg = ctx->system_bg_code != nullptr ? ctx->system_bg_code : "";
     const size_t bg_len = strlen(bg);
 
-    static const char ERASE_ENTIRE_LINE[] = "\033[2K";
+    unsigned int width = ctx->terminal_width > 0U ? ctx->terminal_width : 80U;
+    if (width > SSH_CHATTER_MESSAGE_LIMIT) {
+        width = SSH_CHATTER_MESSAGE_LIMIT;
+    }
 
     session_channel_write(ctx, SESSION_COLUMN_RESET,
                           sizeof(SESSION_COLUMN_RESET) - 1U);
@@ -4465,8 +4468,17 @@ static void session_fill_line_with_theme(session_ctx_t *ctx)
         session_channel_write(ctx, bg, bg_len);
     }
 
-    session_channel_write(ctx, ERASE_ENTIRE_LINE,
-                          sizeof(ERASE_ENTIRE_LINE) - 1U);
+    if (width > 0U) {
+        char spaces[64];
+        memset(spaces, ' ', sizeof(spaces));
+        unsigned int remaining = width;
+        while (remaining > 0U) {
+            size_t chunk =
+                remaining < sizeof(spaces) ? remaining : sizeof(spaces);
+            session_channel_write(ctx, spaces, chunk);
+            remaining -= (unsigned int)chunk;
+        }
+    }
 
     session_channel_write(ctx, SESSION_COLUMN_RESET,
                           sizeof(SESSION_COLUMN_RESET) - 1U);
@@ -5406,8 +5418,7 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
     memset(id_buffer, 0, sizeof(id_buffer));
 
     while (!ctx->should_exit) {
-        session_send_system_line(ctx,
-                                 "Enter ID (leave empty to stay as Guest):");
+        session_send_system_line(ctx, "Enter ID (nickname required):");
         session_channel_write(ctx, "> ", 2U);
 
         char input_line[SSH_CHATTER_MESSAGE_LIMIT];
@@ -5416,13 +5427,6 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
         }
 
         trim_whitespace_inplace(input_line);
-
-        if (input_line[0] == '\0') {
-            session_send_system_line(
-                ctx,
-                "Continuing without an ID. Use /register to claim one later.");
-            return true;
-        }
 
         const char separators[] = " ,;.";
         char *password_inline = nullptr;
@@ -5437,8 +5441,7 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
         snprintf(id_buffer, sizeof(id_buffer), "%s", input_line);
         trim_whitespace_inplace(id_buffer);
         if (id_buffer[0] == '\0') {
-            session_send_system_line(ctx,
-                                     "ID must include at least one character.");
+            session_send_system_line(ctx, "A nickname is required to proceed.");
             continue;
         }
 
@@ -5498,6 +5501,35 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
 
         if (lan_credential != nullptr) {
             requires_password = true;
+        }
+
+        char confirmation_prompt[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(confirmation_prompt, sizeof(confirmation_prompt),
+                 "Are you sure with a name <%s>? <Y/N>", id_buffer);
+        session_send_system_line(ctx, confirmation_prompt);
+        session_channel_write(ctx, "> ", 2U);
+
+        char confirmation_response[8];
+        if (!session_telnet_collect_line(ctx, confirmation_response,
+                                         sizeof(confirmation_response))) {
+            return false;
+        }
+
+        trim_whitespace_inplace(confirmation_response);
+        if (confirmation_response[0] == '\0') {
+            session_send_system_line(ctx, "Nickname confirmation is required.");
+            continue;
+        }
+
+        if (!is_pure_ascii(confirmation_response)) {
+            session_send_system_line(ctx, "Please answer Y or N.");
+            continue;
+        }
+
+        to_lowercase(confirmation_response);
+        if (confirmation_response[0] != 'y') {
+            session_send_system_line(ctx, "Let's pick a nickname again.");
+            continue;
         }
 
         const char *password_to_check = nullptr;

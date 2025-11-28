@@ -1075,10 +1075,7 @@ static void session_send_system_line(session_ctx_t *ctx, const char *message)
         return;
     }
 
-    char prefixed_message[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(prefixed_message, sizeof(prefixed_message), "+ %s", message);
-
-    session_send_plain_line(ctx, prefixed_message);
+    session_send_plain_line(ctx, message);
 
     session_output_restore_kind(ctx, previous_kind);
 }

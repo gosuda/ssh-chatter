@@ -1239,7 +1239,7 @@ static void session_game_start_tetris(session_ctx_t *ctx)
            sizeof(ctx->tetris_prev_screen_buffer));
 
     session_send_system_line(ctx,
-                             "Tetris started. Pieces fall on their own — use "
+                             "Tetris started. Pieces fall on their own - use "
                              "WASD or arrow keys to move, Ctrl+R or Up to "
                              "rotate, Down to soft drop, Space to hard "
                              "drop. Blank line = soft drop.");
@@ -1354,7 +1354,7 @@ static void session_game_liar_present_round(session_ctx_t *ctx)
 
     session_render_separator(ctx, "Liar Game");
     char header[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(header, sizeof(header), "Round %u — which statement is the lie?",
+    snprintf(header, sizeof(header), "Round %u - which statement is the lie?",
              ctx->game.liar.round_number);
     session_send_system_line(ctx, header);
 
@@ -2237,10 +2237,10 @@ static void session_game_othello_render(session_ctx_t *ctx)
         char last_line[128];
         if (state->multiplayer) {
             snprintf(last_line, sizeof(last_line),
-                     "Last moves — 1P: %s  2P: %s", red_coord, green_coord);
+                     "Last moves - 1P: %s  2P: %s", red_coord, green_coord);
         } else {
             snprintf(last_line, sizeof(last_line),
-                     "Last moves — Red: %s  Green: %s", red_coord, green_coord);
+                     "Last moves - Red: %s  Green: %s", red_coord, green_coord);
         }
         session_send_system_line(ctx, last_line);
     }
@@ -2816,10 +2816,10 @@ static void session_othello_list_games(session_ctx_t *ctx)
     for (size_t idx = 0U; idx < count; ++idx) {
         char line[SSH_CHATTER_MESSAGE_LIMIT];
         if (owners[idx][0] != '\0') {
-            snprintf(line, sizeof(line), "  #%d — host: %s", ids[idx],
+            snprintf(line, sizeof(line), "  #%d - host: %s", ids[idx],
                      owners[idx]);
         } else {
-            snprintf(line, sizeof(line), "  #%d — host: unknown", ids[idx]);
+            snprintf(line, sizeof(line), "  #%d - host: unknown", ids[idx]);
         }
         session_send_system_line(ctx, line);
     }
@@ -3620,7 +3620,7 @@ static void session_game_alpha_render_navigation(session_ctx_t *ctx)
     const char *status =
         contact ? "beacon contact achieved" : "tracking beacon";
     snprintf(header, sizeof(header),
-             "Guidance: %s (%s — reach '+' to advance automatically)",
+             "Guidance: %s (%s - reach '+' to advance automatically)",
              phase_label, status);
 
     char border[ALPHA_NAV_WIDTH + 3];
@@ -3849,7 +3849,7 @@ static void session_game_alpha_present_waypoints(session_ctx_t *ctx)
     if (!state->eva_ready) {
         if (state->waypoint_count == 0U) {
             session_send_system_line(ctx,
-                                     "Waystation manifest pending — reroll if "
+                                     "Waystation manifest pending - reroll if "
                                      "the corridor looks blocked.");
             return;
         }
@@ -3859,7 +3859,7 @@ static void session_game_alpha_present_waypoints(session_ctx_t *ctx)
             const alpha_waypoint_t *waypoint = &state->waypoints[idx];
             char line[SSH_CHATTER_MESSAGE_LIMIT];
             snprintf(
-                line, sizeof(line), "  [%c] %c — %s%s",
+                line, sizeof(line), "  [%c] %c - %s%s",
                 waypoint->visited ? 'x' : ' ', waypoint->symbol, waypoint->name,
                 idx == state->waypoint_index ? " ← current objective" : "");
             session_send_system_line(ctx, line);
@@ -3868,7 +3868,7 @@ static void session_game_alpha_present_waypoints(session_ctx_t *ctx)
         char landing[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(
             landing, sizeof(landing),
-            "Final descent: P — %s unlocks after the last waystation. Touch "
+            "Final descent: P - %s unlocks after the last waystation. Touch "
             "down to finish or press Alt+L if you"
             " prefer a manual confirmation.",
             state->final_waypoint.name[0] != '\0' ? state->final_waypoint.name
@@ -3880,7 +3880,7 @@ static void session_game_alpha_present_waypoints(session_ctx_t *ctx)
     if (state->awaiting_flag) {
         char landing[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(landing, sizeof(landing),
-                 "Final target: P — %s. Touch down to plant automatically, or "
+                 "Final target: P - %s. Touch down to plant automatically, or "
                  "press Alt+L/type 'plant flag' to finish.",
                  state->final_waypoint.name[0] != '\0'
                      ? state->final_waypoint.name
@@ -3930,7 +3930,7 @@ static void session_game_alpha_complete_waypoint(session_ctx_t *ctx)
     session_game_alpha_configure_gravity(ctx);
 
     char message[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(message, sizeof(message), "Next stop %u/%u — marker %c (%s).",
+    snprintf(message, sizeof(message), "Next stop %u/%u - marker %c (%s).",
              state->waypoint_index + 1U, state->waypoint_count, next->symbol,
              next->name);
     session_send_system_line(ctx, message);
@@ -3956,26 +3956,26 @@ static void session_game_alpha_present_stage(session_ctx_t *ctx)
     case 0:
         snprintf(
             stage_line, sizeof(stage_line),
-            "Stage 0 — Launch stack ready. Ride the ascent beacon; contact "
+            "Stage 0 - Launch stack ready. Ride the ascent beacon; contact "
             "ignites the antimatter booster automatically.");
         session_send_system_line(ctx, stage_line);
         break;
     case 1:
         snprintf(
             stage_line, sizeof(stage_line),
-            "Stage 1 — Mid-course trim. Touch the barycenter beacon to bank "
+            "Stage 1 - Mid-course trim. Touch the barycenter beacon to bank "
             "the correction burn; manual lock is optional.");
         session_send_system_line(ctx, stage_line);
         break;
     case 2:
         snprintf(stage_line, sizeof(stage_line),
-                 "Stage 2 — Turnover. Settle on the retrograde marker to flip "
+                 "Stage 2 - Turnover. Settle on the retrograde marker to flip "
                  "into braking attitude automatically.");
         session_send_system_line(ctx, stage_line);
         break;
     case 3:
         snprintf(stage_line, sizeof(stage_line),
-                 "Stage 3 — Braking burn. Drop onto the braking beacon and the "
+                 "Stage 3 - Braking burn. Drop onto the braking beacon and the "
                  "burn locks the moment you make contact.");
         session_send_system_line(ctx, stage_line);
         break;
@@ -3986,14 +3986,14 @@ static void session_game_alpha_present_stage(session_ctx_t *ctx)
                 remaining = state->waypoint_count - state->waypoint_index;
             }
             snprintf(stage_line, sizeof(stage_line),
-                     "Stage 4 — High orbit over Proxima b. Visit the numbered "
+                     "Stage 4 - High orbit over Proxima b. Visit the numbered "
                      "waystations; each beacon contact auto-logs"
                      " the stop. %u stop(s) remain before descent.",
                      remaining);
             session_send_system_line(ctx, stage_line);
         } else if (state->awaiting_flag) {
             snprintf(stage_line, sizeof(stage_line),
-                     "Stage 4 — Surface EVA. Touch marker %c (%s) to plant "
+                     "Stage 4 - Surface EVA. Touch marker %c (%s) to plant "
                      "\"Immigrants' "
                      "Flag\" automatically, or press"
                      " Alt+L/type 'plant flag' for manual confirmation.",
@@ -4007,7 +4007,7 @@ static void session_game_alpha_present_stage(session_ctx_t *ctx)
         } else {
             session_send_system_line(
                 ctx,
-                "Stage 4 — Mission reset. Realign with the beacons for another "
+                "Stage 4 - Mission reset. Realign with the beacons for another "
                 "run or exit with /suspend!.");
         }
         session_game_alpha_present_waypoints(ctx);
@@ -4023,11 +4023,11 @@ static void session_game_alpha_present_stage(session_ctx_t *ctx)
                  "marks the Proxima landing zone.");
         session_send_system_line(ctx,
                                  "Gravitational pulls: B=black hole, S=star, "
-                                 "D=debris — each mass tugs with its own μ.");
+                                 "D=debris - each mass tugs with its own μ.");
     } else {
         session_send_system_line(
             ctx,
-            "Gravitational pulls: B=black hole, S=star, P=planet, D=debris — "
+            "Gravitational pulls: B=black hole, S=star, P=planet, D=debris - "
             "each mass tugs with its own μ.");
     }
     if (state->stage == 4U) {
@@ -4523,7 +4523,7 @@ static void session_game_alpha_handle_line(session_ctx_t *ctx, const char *line)
                 char message[SSH_CHATTER_MESSAGE_LIMIT];
                 snprintf(
                     message, sizeof(message),
-                    "Route checkpoint %u/%u — touch marker %c (%s) to proceed "
+                    "Route checkpoint %u/%u - touch marker %c (%s) to proceed "
                     "automatically. Alt+L remains available for"
                     " manual control.",
                     state->waypoint_index + 1U, state->waypoint_count,
@@ -5875,7 +5875,7 @@ static void session_game_suspend(session_ctx_t *ctx, const char *reason)
 
         char summary[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(summary, sizeof(summary),
-                 "Othello final score: Red %u vs Green %u — %s", red, green,
+                 "Othello final score: Red %u vs Green %u - %s", red, green,
                  outcome);
         session_send_system_line(ctx, summary);
         session_game_othello_reset_state(&ctx->game.othello);

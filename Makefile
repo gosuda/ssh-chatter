@@ -75,7 +75,7 @@ COMMON_LDFLAGS = \
     -Wl,--no-undefined \
     -Wl,--warn-execstack -Wl,-z,noexecstack \
     -Wl,-z,separate-code \
-    -Wl,-z,stack-size=1572864
+    -Wl,-z,stack-size=786432
 
 LDFLAGS = $(COMMON_LDFLAGS) -lssh
 

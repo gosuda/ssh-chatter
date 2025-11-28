@@ -6205,7 +6205,7 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
         if (ctx->owner != nullptr && ctx->owner->user_data_root[0] != '\0' &&
             ctx->user_data.username[0] != '\0') {
             user_data_save(ctx->owner->user_data_root, &ctx->user_data,
-                           ctx->user_data.username);
+                           ctx->client_ip);
         }
 
         ctx->user_color_code = "";

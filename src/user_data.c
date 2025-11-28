@@ -364,9 +364,32 @@ bool user_data_path_for(const char *restrict root,
         return false;
     }
 
+    // Attempt to find a user data file matching just the username first.
+    // This prioritizes users with passwords, allowing them to retain their
+    // preferred nickname even if they roam across different IP addresses.
+    char username_only_path[PATH_MAX];
+    int written = snprintf(username_only_path, sizeof(username_only_path),
+                           "%s/%s.dat", root, sanitized);
+    if (written >= 0 && (size_t)written < length) {
+        if (user_data_file_exists(username_only_path)) {
+            user_data_record_t existing;
+            if (user_data_load_raw(username_only_path, &existing, nullptr)) {
+                // If there's a password hash, prioritize this record.
+                if (!security_layer_is_zero_hash(existing.password_hash,
+                                                 sizeof(existing.password_hash))) {
+                    memcpy(path, username_only_path, (size_t)written + 1U);
+                    return true;
+                }
+            }
+        }
+    }
+
+    // If no password-protected username-only record was found, proceed with
+    // IP-based matching or creation for non-password users.
+    // This is essentially the original logic.
     if (ip == nullptr || ip[0] == '\0') {
-        int written = snprintf(path, length, "%s/%s.dat", root, sanitized);
-        return written >= 0 && (size_t)written < length;
+        int final_written = snprintf(path, length, "%s/%s.dat", root, sanitized);
+        return final_written >= 0 && (size_t)final_written < length;
     }
 
     size_t available_index = USER_DATA_VARIANT_LIMIT;
@@ -378,7 +401,7 @@ bool user_data_path_for(const char *restrict root,
             continue;
         }
 
-        int written = snprintf(candidate_path, sizeof(candidate_path),
+        written = snprintf(candidate_path, sizeof(candidate_path),
                                "%s/%s.dat", root, candidate_name);
         if (written < 0 || (size_t)written >= sizeof(candidate_path)) {
             continue;
@@ -416,7 +439,7 @@ bool user_data_path_for(const char *restrict root,
         return false;
     }
 
-    int written = snprintf(path, length, "%s/%s.dat", root, candidate_name);
+    written = snprintf(path, length, "%s/%s.dat", root, candidate_name);
     return written >= 0 && (size_t)written < length;
 }
 

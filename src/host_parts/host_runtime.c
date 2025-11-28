@@ -818,7 +818,7 @@ static void session_handle_nick(session_ctx_t *ctx, const char *arguments)
                  sizeof(ctx->user_data.preferred_nickname), "%s", new_name);
         if (ctx->owner != NULL && ctx->owner->user_data_root[0] != '\0') {
             user_data_save(ctx->owner->user_data_root, &ctx->user_data,
-                           ctx->user_data.username);
+                           ctx->client_ip);
         }
     }
 

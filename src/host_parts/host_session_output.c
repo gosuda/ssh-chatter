@@ -63,7 +63,6 @@ static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
         if (length > 0U) {
             session_channel_write(ctx, cursor, length);
         }
-        session_channel_write(ctx, ANSI_RESET, sizeof(ANSI_RESET) - 1U);
         session_channel_write(ctx, "\r\n", 2U);
 
         if (newline == nullptr) {
@@ -834,7 +833,7 @@ static void session_bbs_format_breaking_notice_wrapped(
     *line_count = 0U;
 
     // Maximum visible characters per line (accounting for terminal width)
-    const size_t kMaxVisibleWidth = 76U;
+    const size_t kMaxVisibleWidth = 48U;
 
     // ANSI codes to apply
     const char *kPrefix = ANSI_BG_BRIGHT_BLUE ANSI_BRIGHT_MAGENTA ANSI_BOLD;

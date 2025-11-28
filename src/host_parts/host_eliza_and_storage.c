@@ -4672,7 +4672,6 @@ static void session_write_rendered_line(session_ctx_t *ctx,
         session_channel_write(ctx, buffer, offset);
     }
 
-    session_channel_write(ctx, ANSI_RESET, sizeof(ANSI_RESET) - 1U);
     session_channel_write(ctx, "\r\n", 2U);
 
     if (locked) {

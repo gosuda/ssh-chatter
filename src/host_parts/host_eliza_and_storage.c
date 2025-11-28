@@ -4120,6 +4120,16 @@ static void session_channel_write(session_ctx_t *ctx, const void *data,
         return;
     }
 
+    // Telnet clients expect immediate delivery; don't leave writes pending in
+    // the output buffer or they won't appear until a later flush. Keep using
+    // the buffer for batching, but force a flush right away.
+    if (ctx->transport_kind == SESSION_TRANSPORT_TELNET &&
+        ctx->output_buffering_enabled) {
+        session_output_buffer_append(ctx, data, length);
+        session_output_buffer_flush(ctx);
+        return;
+    }
+
     // If output buffering is enabled, append to buffer instead of writing directly
     if (ctx->output_buffering_enabled) {
         session_output_buffer_append(ctx, data, length);

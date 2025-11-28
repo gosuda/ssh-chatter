@@ -3680,19 +3680,28 @@ static int session_authenticate(session_ctx_t *ctx)
             }
 
             // Load user data
+            bool loaded_by_username = false;
             pthread_mutex_lock(&ctx->owner->user_data_lock);
-            user_data_ensure_exists(ctx->owner->user_data_root, ctx->user.name,
-                                    ctx->client_ip, &ctx->user_data);
+            if (user_data_load(ctx->owner->user_data_root, ctx->user.name, NULL,
+                               &ctx->user_data)) {
+                if (!security_layer_is_zero_hash(
+                        ctx->user_data.password_hash,
+                        sizeof(ctx->user_data.password_hash))) {
+                    loaded_by_username = true;
+                }
+            }
+
+            if (!loaded_by_username) {
+                user_data_ensure_exists(ctx->owner->user_data_root,
+                                        ctx->user.name, ctx->client_ip,
+                                        &ctx->user_data);
+            }
             pthread_mutex_unlock(&ctx->owner->user_data_lock);
 
             // Check if a password is set for this user
             bool password_is_set = !security_layer_is_zero_hash(
                 ctx->user_data.password_hash,
                 sizeof(ctx->user_data.password_hash));
-            password_is_set =
-                is_nullarray((uint8_t *)ctx->user_data.password_hash, 32)
-                    ? false
-                    : true;
 
             // Handle LAN operator authentication
             bool reserved_name = false;

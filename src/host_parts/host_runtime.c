@@ -3353,8 +3353,6 @@ static void *host_telnet_thread(void *arg)
 
         pthread_mutex_lock(&host->lock);
         ++host->connection_count;
-        snprintf(ctx->user.name, sizeof(ctx->user.name), "Guest%zu",
-                 host->connection_count);
         ctx->user.is_operator = false;
         ctx->user.is_lan_operator = false;
         pthread_mutex_unlock(&host->lock);
@@ -5581,6 +5579,8 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 const int accept_error = errno;
                 const char *bind_error = ssh_get_error(bind_handle);
 
+                ssh_free(session);
+
                 printf("[listener] accept failed, error=%d, shutdown_flag=%p "
                        "value=%d\n",
                        accept_error, (void *)host->shutdown_flag,
@@ -5889,8 +5889,6 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
             pthread_mutex_lock(&host->lock);
             ++host->connection_count;
-            snprintf(ctx->user.name, sizeof(ctx->user.name), "Guest%zu",
-                     host->connection_count);
             ctx->user.is_operator = false;
             ctx->user.is_lan_operator = false;
             pthread_mutex_unlock(&host->lock);

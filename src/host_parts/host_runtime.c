@@ -1840,6 +1840,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
                                          &args)) {
         session_handle_ircserver(ctx, args);
         return;
+    } else if (session_parse_command_any(ctx, "/discord", effective_line,
+                                         &args)) {
+        session_handle_discord(ctx, args);
+        return;
     } else if (session_parse_command_any(ctx, "/fidonet", effective_line,
                                          &args)) {
         session_handle_fidonet(ctx, args);
@@ -4720,6 +4724,15 @@ void host_init(host_t *host, auth_profile_t *auth)
                 humanized_log_error(
                     "ddial", "D-Dial relay unavailable; check memory", ENOMEM);
             }
+
+            host->discord_client =
+                discord_client_create(host, host->clients);
+            if (host->discord_client == nullptr) {
+                humanized_log_error(
+                    "discord",
+                    "Discord relay inactive; set CHATTER_DISCORD_WEBHOOK_URL",
+                    EINVAL);
+            }
         }
     }
     host_security_start_clamav_backend(host);
@@ -5308,6 +5321,10 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     if (host->ddial_client != nullptr) {
         ddial_client_destroy(host->ddial_client);
         host->ddial_client = nullptr;
+    }
+    if (host->discord_client != nullptr) {
+        discord_client_destroy(host->discord_client);
+        host->discord_client = nullptr;
     }
     if (host->web_client != nullptr) {
         webssh_client_destroy(host->web_client);

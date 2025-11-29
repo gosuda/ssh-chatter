@@ -3799,6 +3799,20 @@ static const session_help_entry_t kSessionHelpOperator[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "discord status",
+        .description =
+            {
+                "Show Discord relay status (operator only).",
+                "Discord 릴레이 상태를 확인합니다 (운영자 전용).",
+                "Discord リレーの状態を表示します（オペレーター専用）。",
+                "查看 Discord 中继状态（仅限管理员）。",
+                "Показать статус ретрансляции Discord (только оператор).",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "fidonet <status|reconnect|disconnect|logs>",
         .description =
             {

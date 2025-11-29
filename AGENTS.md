@@ -12,26 +12,9 @@ The `README.md` indicates that the `ssh-chatter` server is designed to listen fo
 `Usage: ./ssh-chatter [-a address] [-p port] [-m motd_file] [-k host_key_dir] [-T telnet_port|off]`
 This suggests that basic telnet functionality is already present and designed into the application.
 
-# Multi-Protocol Integration: Matrix, IRC, and FidoNet
+# Multi-Protocol Integration: IRC and FidoNet
 
 The goal is to integrate `ssh-chatter` with multiple messaging protocols for seamless cross-platform communication.
-
-## Phase 1: Matrix Integration (Completed)
-
-1.  **Matrix API Analysis:**
-    *   The existing Matrix client in `src/matrix_client.c` uses the official Matrix Client-Server API (r0 endpoints).
-    *   Implements proper bidirectional message synchronization via `/sync` endpoint.
-    *   Uses AES-256-GCM encryption for message security (TorOnion/v1 envelope format).
-    *   Has automatic reconnection logic with backoff (5 seconds).
-    *   Proper error handling and authentication flow (password accepted/rejected).
-
-2.  **Status:**
-    *   ✅ Matrix client fully implemented with official API
-    *   ✅ Bidirectional message flow (SSH-Chatter ↔ Matrix)
-    *   ✅ End-to-end encryption support
-    *   ✅ Event deduplication to prevent message loops
-    *   ⚠️  Marked as "WIP" in README but implementation appears complete
-    *   📝 Requires real-world testing to remove "WIP" status
 
 ## Phase 2: IRC Integration (Completed)
 
@@ -87,7 +70,6 @@ The goal is to integrate `ssh-chatter` with multiple messaging protocols for sea
     *   ✅ Configuration examples
     *   ✅ Command documentation
     *   ✅ Protocol details
-    *   ✅ Cleaned up Matrix section title (removed "WIP, Unusable")
 
 2.  **Code Documentation:**
     *   ✅ Function comments in fidonet_client.h
@@ -95,12 +77,6 @@ The goal is to integrate `ssh-chatter` with multiple messaging protocols for sea
     *   ✅ Inline implementation comments
 
 ## Testing Recommendations
-
-### Matrix
-- Test with official Matrix homeserver (matrix.org)
-- Verify end-to-end message flow
-- Test encryption/decryption
-- Verify event deduplication works correctly
 
 ### IRC
 - Test with magviz.ca IRC network
@@ -128,15 +104,13 @@ All three clients follow a similar pattern:
 
 ## Security Considerations
 
-- Matrix: Uses AES-256-GCM encryption with triple-layer onion encryption
 - IRC: Plain text protocol, should use SSL/TLS at network layer
 - FidoNet: Session password authentication, should use VPN/secure network
 
 ## Future Enhancements
 
-1. Add Matrix command for operator control (/matrix status|reconnect|disconnect)
-2. Add SSL/TLS support for IRC connections
-3. Add more Binkp commands (FILE, GET, SKIP for file transfer)
-4. Add configurable message prefixes
-5. Add per-protocol message filtering options
-6. Add statistics/metrics for each protocol
+1. Add SSL/TLS support for IRC connections
+2. Add more Binkp commands (FILE, GET, SKIP for file transfer)
+3. Add configurable message prefixes
+4. Add per-protocol message filtering options
+5. Add statistics/metrics for each protocol

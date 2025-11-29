@@ -118,6 +118,7 @@ struct matrix_client;
 struct irc_client;
 struct fidonet_client;
 struct ddial_client;
+struct discord_client;
 struct translation_job;
 struct translation_result;
 
@@ -937,6 +938,7 @@ typedef struct host {
     struct irc_client *irc_client;
     struct fidonet_client *fidonet_client;
     struct ddial_client *ddial_client;
+    struct discord_client *discord_client;
     security_layer_t security_layer;
     bool security_layer_initialized;
     _Atomic bool eliza_enabled;

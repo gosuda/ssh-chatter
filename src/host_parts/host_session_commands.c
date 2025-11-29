@@ -3800,6 +3800,90 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, usage);
 }
 
+static void session_handle_morse(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    static const char *kUsage = "Usage: /morse <on|off|status>";
+
+    char working[SSH_CHATTER_MAX_INPUT_LEN];
+    if (arguments == nullptr) {
+        working[0] = '\0';
+    } else {
+        snprintf(working, sizeof(working), "%s", arguments);
+        trim_whitespace_inplace(working);
+    }
+
+    if (working[0] == '\0' || strcasecmp(working, "status") == 0) {
+        char status[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(status, sizeof(status),
+                 "Morse feed is %s. /morse off to mute, /morse on to resume."
+                 " Use /morse-chat <text> to transmit.",
+                 ctx->morse_feed_enabled ? "ON" : "OFF");
+        session_send_system_line(ctx, status);
+        return;
+    }
+
+    if (strcasecmp(working, "on") == 0) {
+        ctx->morse_feed_enabled = true;
+        session_send_system_line(
+            ctx,
+            "Morse relay enabled. [MORSE] updates will appear here. Use /morse "
+            "off to silence.");
+        return;
+    }
+
+    if (strcasecmp(working, "off") == 0) {
+        ctx->morse_feed_enabled = false;
+        session_send_system_line(ctx,
+                                 "Morse relay disabled for this session.");
+        return;
+    }
+
+    session_send_system_line(ctx, kUsage);
+}
+
+static void session_handle_morse_chat(session_ctx_t *ctx,
+                                      const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    static const char *kUsage = "Usage: /morse-chat <text>";
+
+    if (arguments == nullptr || arguments[0] == '\0') {
+        session_send_system_line(ctx, kUsage);
+        return;
+    }
+
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(working, sizeof(working), "%s", arguments);
+    trim_whitespace_inplace(working);
+
+    if (working[0] == '\0') {
+        session_send_system_line(ctx, kUsage);
+        return;
+    }
+
+    morse_client_t *client = ctx->owner->morse_client;
+    if (client == nullptr || !morse_client_connected(client)) {
+        session_send_system_line(ctx,
+                                 "Morse relay is not connected. Please try "
+                                 "again shortly.");
+        return;
+    }
+
+    if (!morse_client_send(client, working)) {
+        session_send_system_line(ctx, "Unable to send Morse chat right now.");
+        return;
+    }
+
+    session_send_system_line(ctx, "[MORSE] message transmitted.");
+}
+
 static bool host_asciiart_cooldown_active(host_t *host, const char *ip,
                                           const struct timespec *now,
                                           long *remaining_seconds)

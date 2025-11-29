@@ -119,6 +119,7 @@ struct irc_client;
 struct fidonet_client;
 struct ddial_client;
 struct discord_client;
+struct morse_client;
 struct translation_job;
 struct translation_result;
 
@@ -667,6 +668,7 @@ typedef struct session_ctx {
                               [SSH_CHATTER_MESSAGE_LIMIT];
     size_t bbs_breaking_count;
     bool breaking_alerts_enabled;
+    bool morse_feed_enabled;
     bool prefer_utf16_output;
     bool prefer_cp437_output;
     session_cp437_scope_t cp437_output_scope;
@@ -939,6 +941,7 @@ typedef struct host {
     struct fidonet_client *fidonet_client;
     struct ddial_client *ddial_client;
     struct discord_client *discord_client;
+    struct morse_client *morse_client;
     security_layer_t security_layer;
     bool security_layer_initialized;
     _Atomic bool eliza_enabled;
@@ -986,6 +989,11 @@ typedef struct host {
     _Atomic bool rss_thread_running;
     _Atomic bool rss_thread_stop;
     struct timespec rss_last_run;
+    pthread_t archive_thread;
+    bool archive_thread_initialized;
+    _Atomic bool archive_thread_running;
+    _Atomic bool archive_thread_stop;
+    struct timespec archive_last_run;
 
     // Add members for managing reserved nicknames
     char reserved_nicknames[SSH_CHATTER_MAX_RESERVED_NAMES]
@@ -1014,6 +1022,7 @@ void host_set_welcome_banner(host_t *host, const char *banner);
 int host_serve(host_t *host, const char *bind_addr, const char *port,
                const char *key_directory, const char *telnet_bind_addr,
                const char *telnet_port);
+void host_archive_start_backend(host_t *host);
 bool host_post_client_message(host_t *host, const char *username,
                               const char *message, const char *color_name,
                               const char *highlight_name, bool is_bold);

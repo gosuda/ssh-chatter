@@ -3979,14 +3979,13 @@ static void *session_thread(void *arg)
 
         char bbs_hint[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(bbs_hint, sizeof(bbs_hint),
-                 "이 방은 살아있는 방입니다. %sbbs list 로 게시물을 볼 수 있어요.",
-                 prefix);
+                 "This room is live. Use %sbbs list to browse posts.", prefix);
         session_send_system_line(ctx, bbs_hint);
 
         char slow_contact[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(slow_contact, sizeof(slow_contact),
-                 "연락이 느릴 수 있지만 [MORSE] 알림은 기본 ON 입니다. %smorse off로 "
-                 "끄고, %smorse-chat <text> 로 모스 메시지를 보낼 수 있어요.",
+                 "Replies may be slow. [MORSE] feed is ON by default; %smorse off to "
+                 "mute and %smorse-chat <text> to send Morse.",
                  prefix, prefix);
         session_send_system_line(ctx, slow_contact);
 

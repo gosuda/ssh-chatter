@@ -15,6 +15,7 @@
 #include "ssh_chatter/irc_client.h"
 #include "ssh_chatter/fidonet_client.h"
 #include "ssh_chatter/ddial_client.h"
+#include "ssh_chatter/discord_client.h"
 #include "ssh_chatter/translator.h"
 #include "ssh_chatter/translation_helpers.h"
 

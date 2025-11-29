@@ -459,6 +459,42 @@ const char *session_codepage_iconv_name(session_codepage_t codepage)
     }
 }
 
+static bool session_iconv_strip_options(const char *name, char *output,
+                                        size_t length)
+{
+    if (name == NULL || output == NULL || length == 0U) {
+        return false;
+    }
+
+    size_t copy_len = strcspn(name, "/");
+    if (copy_len == 0U) {
+        return false;
+    }
+    if (copy_len >= length) {
+        copy_len = length - 1U;
+    }
+
+    memcpy(output, name, copy_len);
+    output[copy_len] = '\0';
+    return true;
+}
+
+static iconv_t session_iconv_open_with_fallback(const char *to,
+                                                const char *from)
+{
+    iconv_t descriptor = iconv_open(to, from);
+    if (descriptor != (iconv_t)(-1)) {
+        return descriptor;
+    }
+
+    char base[64];
+    if (session_iconv_strip_options(from, base, sizeof(base))) {
+        descriptor = iconv_open(to, base);
+    }
+
+    return descriptor;
+}
+
 size_t session_codepage_to_utf8(session_codepage_t codepage,
 
                                 const unsigned char *input,
@@ -501,7 +537,7 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
         return 0U;
     }
 
-    iconv_t descriptor = iconv_open("UTF-8", iconv_name);
+    iconv_t descriptor = session_iconv_open_with_fallback("UTF-8", iconv_name);
     if (descriptor == (iconv_t)(-1)) {
         if (is_multibyte_codepage) {
             return 0U; /* iconv_open failed for multi-byte, conversion impossible */
@@ -565,7 +601,7 @@ size_t session_utf8_to_codepage(session_codepage_t codepage, const char *input,
         return 0U;
     }
 
-    iconv_t descriptor = iconv_open(iconv_name, "UTF-8");
+    iconv_t descriptor = session_iconv_open_with_fallback(iconv_name, "UTF-8");
     if (descriptor == (iconv_t)(-1)) {
         /* iconv_open failed, conversion impossible */
         return 0U;

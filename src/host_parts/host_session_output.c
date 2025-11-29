@@ -4439,19 +4439,23 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
     snprintf(normalized, sizeof(normalized), "%s", line);
     session_normalize_newlines(normalized);
 
-    switch ((int)normalized[0]) {
-    // SLASH_COMPATIBLE: slash compatible chars.
-    case (int)'.':
-    case (int)'_':
-    case (int)'@':
-    case (int)'$':
-    case (int)'*':
-    case (int)'-':
-    case (int)'#':
-    case (int)'>':
-        normalized[0] = '/';
-        break;
-    default:
+    const bool composing_draft = ctx->bbs_post_pending || ctx->asciiart_pending;
+
+    if (!composing_draft) {
+        switch ((int)normalized[0]) {
+        // SLASH_COMPATIBLE: slash compatible chars.
+        case (int)'.':
+        case (int)'_':
+        case (int)'@':
+        case (int)'$':
+        case (int)'*':
+        case (int)'-':
+        case (int)'#':
+        case (int)'>':
+            normalized[0] = '/';
+            break;
+        default:
+        }
     }
 
     if (ctx->bbs_post_pending) {
@@ -5315,6 +5319,51 @@ static void session_handle_fidonet(session_ctx_t *ctx, const char *arguments)
                  "* [%s] disconnected FidoNet relay", ctx->user.name);
         host_history_record_system(host, broadcast, nullptr);
         chat_room_broadcast(&host->room, broadcast, nullptr);
+    } else {
+        session_send_system_line(ctx, usage);
+    }
+}
+
+static void session_handle_discord(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(ctx,
+                                 "You are not allowed to run that command.");
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    if (host == nullptr) {
+        session_send_system_line(ctx, "Host unavailable.");
+        return;
+    }
+
+    static const char *kUsage = "Usage: /discord status";
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, "/discord", kUsage, usage, sizeof(usage));
+
+    if (arguments == nullptr || *arguments == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    char command[32];
+    snprintf(command, sizeof(command), "%s", arguments);
+    trim_whitespace_inplace(command);
+
+    if (strcmp(command, "status") == 0) {
+        char status[SSH_CHATTER_MESSAGE_LIMIT];
+        discord_client_status(host->discord_client, status, sizeof(status));
+        const bool running = discord_client_is_running(host->discord_client);
+
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(line, sizeof(line), "Discord relay: %s (%s)", status,
+                 running ? "running" : "idle");
+        session_send_system_line(ctx, line);
     } else {
         session_send_system_line(ctx, usage);
     }

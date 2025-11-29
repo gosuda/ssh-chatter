@@ -2152,11 +2152,13 @@ static void session_translation_clear_queue(session_ctx_t *ctx)
 
     while (pending != nullptr) {
         translation_job_t *next = pending->next;
+        GC_FREE(pending);
         pending = next;
     }
 
     while (ready != nullptr) {
         translation_result_t *next = ready->next;
+        GC_FREE(ready);
         ready = next;
     }
 

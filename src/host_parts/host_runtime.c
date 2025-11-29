@@ -13,6 +13,7 @@ static session_ctx_t *session_create(void)
     if (ctx != nullptr) {
         ctx->user.is_authenticated = false;
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
+        ctx->morse_feed_enabled = true;
     }
     return ctx;
 }
@@ -1771,6 +1772,14 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     } else if (session_parse_command_any(ctx, "/breaking", effective_line,
                                          &args)) {
         session_handle_breaking_alerts(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/morse", effective_line,
+                                         &args)) {
+        session_handle_morse(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/morse-chat", effective_line,
+                                         &args)) {
+        session_handle_morse_chat(ctx, args);
         return;
     } else if (session_parse_command_any(ctx, "/chat-spacing", effective_line,
                                          &args)) {
@@ -3968,6 +3977,19 @@ static void *session_thread(void *arg)
             session_send_system_line(ctx, message);
         }
 
+        char bbs_hint[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(bbs_hint, sizeof(bbs_hint),
+                 "이 방은 살아있는 방입니다. %sbbs list 로 게시물을 볼 수 있어요.",
+                 prefix);
+        session_send_system_line(ctx, bbs_hint);
+
+        char slow_contact[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(slow_contact, sizeof(slow_contact),
+                 "연락이 느릴 수 있지만 [MORSE] 알림은 기본 ON 입니다. %smorse off로 "
+                 "끄고, %smorse-chat <text> 로 모스 메시지를 보낼 수 있어요.",
+                 prefix, prefix);
+        session_send_system_line(ctx, slow_contact);
+
         // Add retro command hint
         {
             char retro_hint[SSH_CHATTER_MESSAGE_LIMIT];
@@ -4464,6 +4486,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->clients = nullptr;
     host->web_client = nullptr;
     host->matrix_client = nullptr;
+    host->morse_client = nullptr;
     host->security_layer_initialized =
         security_layer_init(&host->security_layer);
     if (!host->security_layer_initialized) {
@@ -4603,6 +4626,11 @@ void host_init(host_t *host, auth_profile_t *auth)
     atomic_store(&host->rss_thread_stop, false);
     host->rss_last_run.tv_sec = 0;
     host->rss_last_run.tv_nsec = 0L;
+    host->archive_thread_initialized = false;
+    atomic_store(&host->archive_thread_running, false);
+    atomic_store(&host->archive_thread_stop, false);
+    host->archive_last_run.tv_sec = 0;
+    host->archive_last_run.tv_nsec = 0L;
     host_security_configure(host);
     host_version_ip_rules_init(host);
     memset(host->protected_ips, 0, sizeof(host->protected_ips));
@@ -4735,9 +4763,16 @@ void host_init(host_t *host, auth_profile_t *auth)
             }
         }
     }
+    if (host->morse_client == nullptr) {
+        host->morse_client = morse_client_create(host);
+        if (host->morse_client == nullptr) {
+            printf("[morse] relay inactive; connection will not start.\n");
+        }
+    }
     host_security_start_clamav_backend(host);
     host_bbs_start_watchdog(host);
     host_rss_start_backend(host);
+    host_archive_start_backend(host);
     sshc_memory_context_pop(memory_scope);
 }
 
@@ -5293,6 +5328,13 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         atomic_store(&host->rss_thread_running, false);
     }
 
+    if (host->archive_thread_initialized) {
+        atomic_store(&host->archive_thread_stop, true);
+        pthread_join(host->archive_thread, nullptr);
+        host->archive_thread_initialized = false;
+        atomic_store(&host->archive_thread_running, false);
+    }
+
     if (host->security_clamav_thread_initialized) {
         atomic_store(&host->security_clamav_thread_stop, true);
         pthread_join(host->security_clamav_thread, nullptr);
@@ -5321,6 +5363,10 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     if (host->ddial_client != nullptr) {
         ddial_client_destroy(host->ddial_client);
         host->ddial_client = nullptr;
+    }
+    if (host->morse_client != nullptr) {
+        morse_client_destroy(host->morse_client);
+        host->morse_client = nullptr;
     }
     if (host->discord_client != nullptr) {
         discord_client_destroy(host->discord_client);

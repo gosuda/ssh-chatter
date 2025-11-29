@@ -7,6 +7,32 @@
 void session_process_pending_sink(session_ctx_t *ctx);
 void session_flag_should_sink(session_ctx_t *ctx);
 
+static size_t session_scrollback_line_capacity(const session_ctx_t *ctx)
+{
+    size_t target = SSH_CHATTER_SCROLLBACK_CHUNK;
+
+    if (ctx != nullptr) {
+        unsigned int height = ctx->terminal_height;
+        if (height > 0U) {
+            const unsigned int reserved_lines = 2U;
+            if (height > reserved_lines) {
+                target = (size_t)(height - reserved_lines);
+            } else {
+                target = 1U;
+            }
+        }
+    }
+
+    if (target > SSH_CHATTER_SCROLLBACK_MAX_CHUNK) {
+        target = SSH_CHATTER_SCROLLBACK_MAX_CHUNK;
+    }
+    if (target == 0U) {
+        target = 1U;
+    }
+
+    return target;
+}
+
 static void session_scrollback_prepare_display(session_ctx_t *ctx)
 {
     if (ctx == nullptr || !session_transport_active(ctx)) {
@@ -2410,16 +2436,21 @@ void session_process_pending_sink(session_ctx_t *ctx)
         return;
     }
 
-    size_t chunk = SSH_CHATTER_SCROLLBACK_CHUNK;
+    size_t chunk = session_scrollback_line_capacity(ctx);
     if (chunk > total) {
         chunk = total;
     }
 
     size_t start_index = (total > 0U && total > chunk) ? (total - chunk) : 0U;
-    chat_history_entry_t buffer[SSH_CHATTER_SCROLLBACK_CHUNK];
+    chat_history_entry_t *buffer =
+        (chat_history_entry_t *)calloc(chunk, sizeof(chat_history_entry_t));
+    if (buffer == nullptr) {
+        return;
+    }
     size_t copied =
         host_history_copy_range(ctx->owner, start_index, buffer, chunk);
     if (copied == 0U) {
+        free(buffer);
         return;
     }
 
@@ -2433,6 +2464,8 @@ void session_process_pending_sink(session_ctx_t *ctx)
     for (size_t idx = 0; idx < copied; ++idx) {
         session_send_history_entry(ctx, &buffer[idx]);
     }
+
+    free(buffer);
 
     if (buffering_started) {
         session_output_buffer_stop(ctx);
@@ -2453,32 +2486,7 @@ void session_flag_should_sink(session_ctx_t *ctx)
 
 static size_t session_visible_history_lines(const session_ctx_t *ctx)
 {
-    if (ctx == nullptr) {
-        return SSH_CHATTER_SCROLLBACK_CHUNK;
-    }
-
-    unsigned int height = ctx->terminal_height;
-    if (height == 0U) {
-        return SSH_CHATTER_SCROLLBACK_CHUNK;
-    }
-
-    // Reserve lines for the scrollback header and prompt to keep output stable
-    const unsigned int reserved_lines = 2U;
-    if (height > reserved_lines) {
-        height -= reserved_lines;
-    } else {
-        height = 1U;
-    }
-
-    size_t visible = height;
-    if (visible == 0U) {
-        visible = 1U;
-    }
-    if (visible > SSH_CHATTER_SCROLLBACK_CHUNK) {
-        visible = SSH_CHATTER_SCROLLBACK_CHUNK;
-    }
-
-    return visible;
+    return session_scrollback_line_capacity(ctx);
 }
 
 static void session_history_record(session_ctx_t *ctx, const char *line)
@@ -2632,6 +2640,8 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
     }
     size_t position = ctx->history_scroll_position;
     size_t new_position = position;
+    size_t buffer_capacity = 0U;
+    chat_history_entry_t *buffer = nullptr;
     bool reached_oldest = false;
 
     if (direction > 0) {
@@ -2737,10 +2747,16 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
              oldest_visible + 1U, newest_visible + 1U, total);
     session_send_system_line(ctx, header);
 
-    chat_history_entry_t buffer[SSH_CHATTER_SCROLLBACK_CHUNK];
+    buffer_capacity = session_scrollback_line_capacity(ctx);
+    buffer = (chat_history_entry_t *)calloc(buffer_capacity,
+                                            sizeof(chat_history_entry_t));
+    if (buffer == nullptr) {
+        goto cleanup;
+    }
+
     size_t request = chunk;
-    if (request > SSH_CHATTER_SCROLLBACK_CHUNK) {
-        request = SSH_CHATTER_SCROLLBACK_CHUNK;
+    if (request > buffer_capacity) {
+        request = buffer_capacity;
     }
     size_t copied =
         host_history_copy_range(ctx->owner, oldest_visible, buffer, request);
@@ -2771,6 +2787,9 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
     session_process_pending_sink(ctx);
 
 cleanup:
+    if (buffer != nullptr) {
+        free(buffer);
+    }
     if (buffering_started) {
         session_output_buffer_stop(ctx);
     }
@@ -2818,6 +2837,8 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     }
     size_t position = ctx->history_scroll_position;
     size_t new_position = position;
+    size_t buffer_capacity = 0U;
+    chat_history_entry_t *buffer = nullptr;
 
     // Scroll by exactly 1 line
     if (direction > 0) {
@@ -2869,10 +2890,16 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     const size_t oldest_visible =
         (newest_visible + 1U > chunk) ? (newest_visible + 1U - chunk) : 0U;
 
-    chat_history_entry_t buffer[SSH_CHATTER_SCROLLBACK_CHUNK];
+    buffer_capacity = session_scrollback_line_capacity(ctx);
+    buffer = (chat_history_entry_t *)calloc(buffer_capacity,
+                                            sizeof(chat_history_entry_t));
+    if (buffer == nullptr) {
+        goto cleanup;
+    }
+
     size_t request = chunk;
-    if (request > SSH_CHATTER_SCROLLBACK_CHUNK) {
-        request = SSH_CHATTER_SCROLLBACK_CHUNK;
+    if (request > buffer_capacity) {
+        request = buffer_capacity;
     }
     size_t copied =
         host_history_copy_range(ctx->owner, oldest_visible, buffer, request);
@@ -2900,6 +2927,9 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     session_process_pending_sink(ctx);
 
 cleanup:
+    if (buffer != nullptr) {
+        free(buffer);
+    }
     if (buffering_started) {
         session_output_buffer_stop(ctx);
     }

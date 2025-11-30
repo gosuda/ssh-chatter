@@ -3801,7 +3801,7 @@ static void *session_thread(void *arg)
 
     if (banned_username || system_reserved_username ||
         (lan_operator_reserved_username && !ctx->user.is_lan_operator) ||
-        existing != nullptr) {
+        existing != nullptr || strnlen(ctx->user.name, 64) < 2) {
         ctx->username_conflict = true;
 
         if (banned_username) {

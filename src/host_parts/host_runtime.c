@@ -13,7 +13,7 @@ static session_ctx_t *session_create(void)
     if (ctx != nullptr) {
         ctx->user.is_authenticated = false;
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
-        ctx->morse_feed_enabled = true;
+        ctx->morse_feed_enabled = false;
     }
     return ctx;
 }
@@ -3984,8 +3984,8 @@ static void *session_thread(void *arg)
 
         char slow_contact[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(slow_contact, sizeof(slow_contact),
-                 "Replies may be slow. [MORSE] feed is ON by default; %smorse off to "
-                 "mute and %smorse-chat <text> to send Morse.",
+                 "Replies may be slow. [MORSE] feed is OFF by default; %smorse on to "
+                 "enable and %smorse-chat <text> to send Morse.",
                  prefix, prefix);
         session_send_system_line(ctx, slow_contact);
 

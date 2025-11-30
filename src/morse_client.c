@@ -127,6 +127,69 @@ static bool morse_client_connect(morse_client_t *client)
     return true;
 }
 
+static void morse_client_preview_handshake_output(morse_client_t *client)
+{
+    if (client == nullptr || client->socket_fd < 0) {
+        return;
+    }
+
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(client->socket_fd, &readfds);
+    struct timeval tv = {
+        .tv_sec = 2,
+        .tv_usec = 0,
+    };
+
+    int ready = select(client->socket_fd + 1, &readfds, nullptr, nullptr, &tv);
+    if (ready <= 0) {
+        return;
+    }
+
+    char buffer[SSH_CHATTER_MESSAGE_LIMIT];
+    ssize_t received = recv(client->socket_fd, buffer, sizeof(buffer) - 1U, 0);
+    if (received <= 0) {
+        return;
+    }
+
+    buffer[received] = '\0';
+    char *line_start = buffer;
+    char *newline = nullptr;
+    while ((newline = strchr(line_start, '\n')) != nullptr) {
+        *newline = '\0';
+        if (newline > line_start && newline[-1] == '\r') {
+            newline[-1] = '\0';
+        }
+        if (line_start[0] != '\0') {
+            morse_client_broadcast(client, line_start);
+        }
+        line_start = newline + 1;
+    }
+
+    if (line_start[0] != '\0') {
+        morse_client_broadcast(client, line_start);
+    }
+}
+
+static void morse_client_send_handshake(morse_client_t *client)
+{
+    if (client == nullptr) {
+        return;
+    }
+
+    if (!morse_client_send(client, "HLGUEST")) {
+        printf("[morse] failed to send handshake.\n");
+        return;
+    }
+
+    if (!morse_client_send(client, "CQ CQ CQ DE HLGUEST")) {
+        printf("[morse] failed to send initial probe line.\n");
+        return;
+    }
+
+    morse_client_preview_handshake_output(client);
+}
+
 static void morse_client_sleep_seconds(unsigned int seconds)
 {
     struct timespec pause = {
@@ -215,6 +278,8 @@ static void *morse_client_thread(void *arg)
                 morse_client_sleep_seconds(MORSE_RECONNECT_SECONDS);
                 continue;
             }
+
+            morse_client_send_handshake(client);
         }
 
         morse_client_handle_stream(client);

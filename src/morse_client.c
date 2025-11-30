@@ -147,11 +147,11 @@ static void morse_client_broadcast(morse_client_t *client, const char *line)
 
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *target = targets[idx];
+        char *country_flag = GC_MALLOC(sizeof(char) * 8);
+        strncpy(country_flag, line + 6, 7);
         if (target->morse_filter[0] != '\0') {
-            if (strcasestr(line, target->morse_filter) == NULL &&
-                strcasestr(translated, target->morse_filter) == NULL) {
+            if (strcasestr(country_flag, target->morse_filter) == NULL)
                 continue;
-            }
         }
 
         char formatted[SSH_CHATTER_MESSAGE_LIMIT];

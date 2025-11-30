@@ -3061,6 +3061,57 @@ static const session_help_entry_t kSessionHelpExtended[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "morse <on <filter>|off|status>",
+        .description =
+            {
+                "Toggle the Morse relay feed and optionally filter messages. Commands stay in English.",
+                "모스 릴레이 피드를 켜거나 끄고, 문자열로 선택적으로 필터링합니다. 명령어는 영어로만 제공됩니다.",
+                "モールス中継フィードをオン/オフし、文字列で任意にフィルターします。コマンドは英語のみです。",
+                "莫尔斯中继提要的开关，并可选按字符串过滤。命令仅提供英文。",
+                "Включить или отключить канал Морзе и при желании фильтровать строки. Команды доступны только на английском.",
+                "Morse-Relais ein-/ausschalten und optional nach Zeichenfolgen filtern. Befehle sind nur auf Englisch verfügbar.",
+                "Activer ou désactiver le flux Morse et filtrer éventuellement par chaîne. Les commandes restent en anglais.",
+                "Włącz/wyłącz kanał Morse i opcjonalnie filtruj wiadomości po tekście. Polecenia są dostępne wyłącznie po angielsku.",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "morse-chat <text>",
+        .description =
+            {
+                "Send a line to the Morse relay (ASCII/English only).",
+                "모스 릴레이로 한 줄을 보냅니다 (ASCII/영문 전용).",
+                "モールス中継に1行送信します（ASCII/英語のみ）。",
+                "向莫尔斯中继发送一行（仅限 ASCII/英语）。",
+                "Отправить строку в ретранслятор Морзе (только ASCII/английский).",
+                "Sende eine Zeile an das Morse-Relais (nur ASCII/Englisch).",
+                "Envoyer une ligne vers le relais Morse (ASCII/anglais uniquement).",
+                "Wyślij wiersz do przekaźnika Morse'a (tylko ASCII/angielski).",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "morse-reply <text>",
+        .description =
+            {
+                "Reply back over the Morse relay (ASCII/English only).",
+                "모스 릴레이로 답신을 보냅니다 (ASCII/영문 전용).",
+                "モールス中継に返信します（ASCII/英語のみ）。",
+                "通过莫尔斯中继回复（仅限 ASCII/英语）。",
+                "Ответить через ретранслятор Морзе (только ASCII/английский).",
+                "Über das Morse-Relais antworten (nur ASCII/Englisch).",
+                "Répondre via le relais Morse (ASCII/anglais uniquement).",
+                "Odpowiedz przez przekaźnik Morse'a (tylko ASCII/angielski).",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "breaking <on|off>",
         .description =
             {

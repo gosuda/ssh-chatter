@@ -1781,6 +1781,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
                                          &args)) {
         session_handle_morse_chat(ctx, args);
         return;
+    } else if (session_parse_command_any(ctx, "/morse-reply", effective_line,
+                                         &args)) {
+        session_handle_morse_chat(ctx, args);
+        return;
     } else if (session_parse_command_any(ctx, "/chat-spacing", effective_line,
                                          &args)) {
         session_handle_chat_spacing(ctx, args);

@@ -3979,7 +3979,7 @@ static void *session_thread(void *arg)
 
         char bbs_hint[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(bbs_hint, sizeof(bbs_hint),
-                 "This room is live. Use %sbbs list to browse posts.", prefix);
+                 "This room is alive. Use %sbbs list to browse posts.", prefix);
         session_send_system_line(ctx, bbs_hint);
 
         char slow_contact[SSH_CHATTER_MESSAGE_LIMIT];

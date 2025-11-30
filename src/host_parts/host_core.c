@@ -1465,6 +1465,7 @@ typedef struct session_ui_locale {
     const char *mode_enabled_command;
     const char *mode_usage;
     const char *unknown_command;
+    const char *help_morse;
 } session_ui_locale_t;
 
 static const char *const kSessionUiLanguageCodes[SESSION_UI_LANGUAGE_COUNT] = {

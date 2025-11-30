@@ -60,14 +60,79 @@ static void morse_client_collect_targets(host_t *host, session_ctx_t ***out,
     pthread_mutex_unlock(&host->room.lock);
 }
 
+static void morse_to_text(const char *morse, char *text, size_t text_len) {
+    if (!morse || !text || text_len == 0) return;
+
+    static const char *morse_map[128][2] = {
+        ['A'] = {".-", "A"}, ['B'] = {"-...", "B"}, ['C'] = {"-.-.", "C"},
+        ['D'] = {"-..", "D"}, ['E'] = {".", "E"}, ['F'] = {"..-.", "F"},
+        ['G'] = {"--.", "G"}, ['H'] = {"....", "H"}, ['I'] = {"..", "I"},
+        ['J'] = {".---", "J"}, ['K'] = {"-.-", "K"}, ['L'] = {".-..", "L"},
+        ['M'] = {"--", "M"}, ['N'] = {"-.", "N"}, ['O'] = {"---", "O"},
+        ['P'] = {".--.", "P"}, ['Q'] = {"--.-", "Q"}, ['R'] = {".-.", "R"},
+        ['S'] = {"...", "S"}, ['T'] = {"-", "T"}, ['U'] = {"..-", "U"},
+        ['V'] = {"...-", "V"}, ['W'] = {".--", "W"}, ['X'] = {"-..-", "X"},
+        ['Y'] = {"-.--", "Y"}, ['Z'] = {"--..", "Z"},
+        ['1'] = {".----", "1"}, ['2'] = {"..---", "2"}, ['3'] = {"...--", "3"},
+        ['4'] = {"....-", "4"}, ['5'] = {".....", "5"}, ['6'] = {"-....", "6"},
+        ['7'] = {"--...", "7"}, ['8'] = {"---..", "8"}, ['9'] = {"----.", "9"},
+        ['0'] = {"-----", "0"},
+    };
+
+    text[0] = '\0';
+    size_t text_idx = 0;
+    const char *p = morse;
+    char current_char[16];
+    int char_idx = 0;
+
+    while (*p && text_idx < text_len - 1) {
+        if (*p == ' ' || *p == '/') {
+            if (char_idx > 0) {
+                current_char[char_idx] = '\0';
+                bool found = false;
+                for (int i = 0; i < 128; ++i) {
+                    if (morse_map[i][0] && strcmp(morse_map[i][0], current_char) == 0) {
+                        text[text_idx++] = morse_map[i][1][0];
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    // text[text_idx++] = '?';
+                }
+                char_idx = 0;
+            }
+            if (*p == '/') {
+                if (text_idx < text_len - 1) {
+                    text[text_idx++] = ' ';
+                }
+            }
+        } else if (*p == '.' || *p == '-') {
+            if ((size_t)char_idx < sizeof(current_char) - 1) {
+                current_char[char_idx++] = *p;
+            }
+        }
+        p++;
+    }
+
+    if (char_idx > 0 && text_idx < text_len - 1) {
+        current_char[char_idx] = '\0';
+        for (int i = 0; i < 128; ++i) {
+            if (morse_map[i][0] && strcmp(morse_map[i][0], current_char) == 0) {
+                text[text_idx++] = morse_map[i][1][0];
+                break;
+            }
+        }
+    }
+
+    text[text_idx] = '\0';
+}
+
 static void morse_client_broadcast(morse_client_t *client, const char *line)
 {
     if (client == nullptr || client->host == nullptr || line == nullptr) {
         return;
     }
-
-    char formatted[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(formatted, sizeof(formatted), "[MORSE] %s", line);
 
     session_ctx_t **targets = nullptr;
     size_t target_count = 0U;
@@ -77,8 +142,26 @@ static void morse_client_broadcast(morse_client_t *client, const char *line)
         return;
     }
 
+    char translated[SSH_CHATTER_MESSAGE_LIMIT];
+    morse_to_text(line, translated, sizeof(translated));
+
     for (size_t idx = 0; idx < target_count; ++idx) {
-        session_send_raw_text(targets[idx], formatted);
+        session_ctx_t *target = targets[idx];
+        char *country_flag = GC_MALLOC(sizeof(char) * 8);
+        strncpy(country_flag, line + 6, 7);
+        if (target->morse_filter[0] != '\0') {
+            if (strcasestr(country_flag, target->morse_filter) == NULL)
+                continue;
+        }
+
+        char formatted[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(formatted, sizeof(formatted), "[MORSE] %s", line);
+        session_send_raw_text(target, formatted);
+
+        if (translated[0] != '\0') {
+            snprintf(formatted, sizeof(formatted), "-> %s", translated);
+            session_send_raw_text(target, formatted);
+        }
     }
 
     GC_FREE(targets);
@@ -125,6 +208,69 @@ static bool morse_client_connect(morse_client_t *client)
     atomic_store(&client->connected, true);
     printf("[morse] connected to %s:%s\n", MORSE_HOST, MORSE_PORT);
     return true;
+}
+
+static void morse_client_preview_handshake_output(morse_client_t *client)
+{
+    if (client == nullptr || client->socket_fd < 0) {
+        return;
+    }
+
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(client->socket_fd, &readfds);
+    struct timeval tv = {
+        .tv_sec = 2,
+        .tv_usec = 0,
+    };
+
+    int ready = select(client->socket_fd + 1, &readfds, nullptr, nullptr, &tv);
+    if (ready <= 0) {
+        return;
+    }
+
+    char buffer[SSH_CHATTER_MESSAGE_LIMIT];
+    ssize_t received = recv(client->socket_fd, buffer, sizeof(buffer) - 1U, 0);
+    if (received <= 0) {
+        return;
+    }
+
+    buffer[received] = '\0';
+    char *line_start = buffer;
+    char *newline = nullptr;
+    while ((newline = strchr(line_start, '\n')) != nullptr) {
+        *newline = '\0';
+        if (newline > line_start && newline[-1] == '\r') {
+            newline[-1] = '\0';
+        }
+        if (line_start[0] != '\0') {
+            morse_client_broadcast(client, line_start);
+        }
+        line_start = newline + 1;
+    }
+
+    if (line_start[0] != '\0') {
+        morse_client_broadcast(client, line_start);
+    }
+}
+
+static void morse_client_send_handshake(morse_client_t *client)
+{
+    if (client == nullptr) {
+        return;
+    }
+
+    if (!morse_client_send(client, "HLGUEST")) {
+        printf("[morse] failed to send handshake.\n");
+        return;
+    }
+
+    if (!morse_client_send(client, "CQ CQ CQ DE HLGUEST")) {
+        printf("[morse] failed to send initial probe line.\n");
+        return;
+    }
+
+    morse_client_preview_handshake_output(client);
 }
 
 static void morse_client_sleep_seconds(unsigned int seconds)
@@ -215,6 +361,8 @@ static void *morse_client_thread(void *arg)
                 morse_client_sleep_seconds(MORSE_RECONNECT_SECONDS);
                 continue;
             }
+
+            morse_client_send_handshake(client);
         }
 
         morse_client_handle_stream(client);

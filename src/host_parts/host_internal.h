@@ -130,7 +130,8 @@ bool host_compact_id_encode(uint64_t id, char *buffer, size_t length);
 bool host_compact_id_decode(const char *text, uint64_t *id_out);
 
 void session_scrollback_reset_position(session_ctx_t *ctx);
-void session_scrollback_navigate(session_ctx_t *ctx, int direction);
+void session_scrollback_navigate(session_ctx_t *ctx, int direction,
+                                 size_t step);
 void session_process_pending_sink(session_ctx_t *ctx);
 void session_flag_should_sink(session_ctx_t *ctx);
 

@@ -13,7 +13,7 @@ static session_ctx_t *session_create(void)
     if (ctx != nullptr) {
         ctx->user.is_authenticated = false;
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
-        ctx->morse_feed_enabled = true;
+        ctx->morse_feed_enabled = false;
     }
     return ctx;
 }
@@ -1778,6 +1778,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         session_handle_morse(ctx, args);
         return;
     } else if (session_parse_command_any(ctx, "/morse-chat", effective_line,
+                                         &args)) {
+        session_handle_morse_chat(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/morse-reply", effective_line,
                                          &args)) {
         session_handle_morse_chat(ctx, args);
         return;
@@ -3801,7 +3805,7 @@ static void *session_thread(void *arg)
 
     if (banned_username || system_reserved_username ||
         (lan_operator_reserved_username && !ctx->user.is_lan_operator) ||
-        existing != nullptr) {
+        existing != nullptr || strnlen(ctx->user.name, 64) < 2) {
         ctx->username_conflict = true;
 
         if (banned_username) {
@@ -3979,13 +3983,13 @@ static void *session_thread(void *arg)
 
         char bbs_hint[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(bbs_hint, sizeof(bbs_hint),
-                 "This room is live. Use %sbbs list to browse posts.", prefix);
+                 "This room is alive. Use %sbbs list to browse posts.", prefix);
         session_send_system_line(ctx, bbs_hint);
 
         char slow_contact[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(slow_contact, sizeof(slow_contact),
-                 "Replies may be slow. [MORSE] feed is ON by default; %smorse off to "
-                 "mute and %smorse-chat <text> to send Morse.",
+                 "Replies may be slow. [MORSE] feed is OFF by default; %smorse on to "
+                 "enable and %smorse-chat <text> to send Morse.",
                  prefix, prefix);
         session_send_system_line(ctx, slow_contact);
 

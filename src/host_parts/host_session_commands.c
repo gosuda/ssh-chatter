@@ -3806,7 +3806,7 @@ static void session_handle_morse(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    static const char *kUsage = "Usage: /morse <on|off|status>";
+    static const char *kUsage = "Usage: /morse <on <filter>|off|status>";
 
     char working[SSH_CHATTER_MAX_INPUT_LEN];
     if (arguments == nullptr) {
@@ -3816,27 +3816,46 @@ static void session_handle_morse(session_ctx_t *ctx, const char *arguments)
         trim_whitespace_inplace(working);
     }
 
-    if (working[0] == '\0' || strcasecmp(working, "status") == 0) {
+    char *command = strtok(working, " \t");
+    if (command == nullptr || strcasecmp(command, "status") == 0) {
         char status[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(status, sizeof(status),
-                 "Morse feed is %s. /morse off to mute, /morse on to resume."
-                 " Use /morse-chat <text> to transmit.",
-                 ctx->morse_feed_enabled ? "ON" : "OFF");
+        if (ctx->morse_feed_enabled) {
+            snprintf(status, sizeof(status),
+                     "Morse feed is ON. Filter: '%s'. /morse off to mute.",
+                     ctx->morse_filter);
+        } else {
+            snprintf(status, sizeof(status),
+                     "Morse feed is OFF. /morse on <filter> to resume.");
+        }
         session_send_system_line(ctx, status);
         return;
     }
 
-    if (strcasecmp(working, "on") == 0) {
+    if (strcasecmp(command, "on") == 0) {
+        char *filter = strtok(NULL, "");
+        if (filter == NULL || filter[0] == '\0') {
+            session_send_system_line(ctx, kUsage);
+            return;
+        }
+        trim_whitespace_inplace(filter);
+        if (strlen(filter) >= sizeof(ctx->morse_filter)) {
+            session_send_system_line(ctx, "Filter is too long.");
+            return;
+        }
+        strncpy(ctx->morse_filter, filter, sizeof(ctx->morse_filter) - 1);
+        ctx->morse_filter[sizeof(ctx->morse_filter) - 1] = '\0';
         ctx->morse_feed_enabled = true;
-        session_send_system_line(
-            ctx,
-            "Morse relay enabled. [MORSE] updates will appear here. Use /morse "
-            "off to silence.");
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message),
+                 "Morse relay enabled with filter '%s'. Use /morse off to silence.",
+                 ctx->morse_filter);
+        session_send_system_line(ctx, message);
         return;
     }
 
-    if (strcasecmp(working, "off") == 0) {
+    if (strcasecmp(command, "off") == 0) {
         ctx->morse_feed_enabled = false;
+        ctx->morse_filter[0] = '\0';
         session_send_system_line(ctx,
                                  "Morse relay disabled for this session.");
         return;

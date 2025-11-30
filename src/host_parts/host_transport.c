@@ -2134,7 +2134,8 @@ static void session_telnet_capture_startup_metadata(session_ctx_t *ctx);
 static void session_history_record(session_ctx_t *ctx, const char *line);
 static void session_history_navigate(session_ctx_t *ctx, int direction);
 void session_scrollback_reset_position(session_ctx_t *ctx);
-void session_scrollback_navigate(session_ctx_t *ctx, int direction);
+void session_scrollback_navigate(session_ctx_t *ctx, int direction,
+                                 size_t step);
 static bool session_try_localized_command_forward(session_ctx_t *ctx,
                                                   const char *line);
 static const char *session_display_name(const session_ctx_t *ctx);

@@ -670,6 +670,7 @@ typedef struct session_ctx {
     size_t bbs_breaking_count;
     bool breaking_alerts_enabled;
     bool morse_feed_enabled;
+    char morse_filter[128];
     bool prefer_utf16_output;
     bool prefer_cp437_output;
     session_cp437_scope_t cp437_output_scope;

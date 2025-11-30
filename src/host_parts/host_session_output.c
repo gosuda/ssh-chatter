@@ -2599,7 +2599,8 @@ static void session_history_navigate(session_ctx_t *ctx, int direction)
     }
 }
 
-void session_scrollback_navigate(session_ctx_t *ctx, int direction)
+void session_scrollback_navigate(session_ctx_t *ctx, int direction,
+                                 size_t step)
 {
     if(ctx->history_latest_notified | ctx->history_oldest_notified) return;
     if (ctx == nullptr || ctx->owner == nullptr ||
@@ -2626,13 +2627,13 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
 
     session_scrollback_prepare_display(ctx);
 
-    size_t step = session_visible_history_lines(ctx);
-    if (step == 0U) {
-        step = 1U;
+    size_t scroll_step = (step == 0) ? session_visible_history_lines(ctx) : step;
+    if (scroll_step == 0U) {
+        scroll_step = 1U;
     }
 
     size_t max_position = 0U;
-    if (total > step) {
+    if (total > scroll_step) {
         max_position = total - step;
     }
     if (ctx->history_scroll_position > max_position) {
@@ -2650,7 +2651,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
             current_newest_visible = total - 1U - position;
         }
 
-        size_t current_chunk = step;
+        size_t current_chunk = scroll_step;
         if (current_chunk > current_newest_visible + 1U) {
             current_chunk = current_newest_visible + 1U;
         }
@@ -2666,7 +2667,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
         if (current_oldest_visible == 0U) {
             reached_oldest = true;
         } else if (new_position < max_position) {
-            size_t advance = step;
+            size_t advance = scroll_step;
             if (advance > max_position - new_position) {
                 advance = max_position - new_position;
             }
@@ -2683,7 +2684,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
         }
     } else if (direction < 0) {
         if (new_position > 0U) {
-            size_t retreat = step;
+            size_t retreat = scroll_step;
             if (retreat > new_position) {
                 retreat = new_position;
             }
@@ -2724,7 +2725,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction)
     }
 
     const size_t newest_visible = total - 1U - new_position;
-    size_t chunk = step;
+    size_t chunk = scroll_step;
     if (chunk > newest_visible + 1U) {
         chunk = newest_visible + 1U;
     }
@@ -3183,7 +3184,7 @@ static bool session_consume_escape_sequence(session_ctx_t *ctx, char ch)
                 ctx->input_escape_length = 0U;
                 return true;
             }
-            session_scrollback_navigate(ctx, 1);
+            session_scrollback_navigate(ctx, 1, 100);
             ctx->input_escape_active = false;
             ctx->input_escape_length = 0U;
             return true;
@@ -3194,7 +3195,7 @@ static bool session_consume_escape_sequence(session_ctx_t *ctx, char ch)
                 ctx->input_escape_length = 0U;
                 return true;
             }
-            session_scrollback_navigate(ctx, -1);
+            session_scrollback_navigate(ctx, -1, 100);
             ctx->input_escape_active = false;
             ctx->input_escape_length = 0U;
             return true;

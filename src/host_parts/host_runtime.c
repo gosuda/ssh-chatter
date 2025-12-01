@@ -14,6 +14,7 @@ static session_ctx_t *session_create(void)
         ctx->user.is_authenticated = false;
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
         ctx->morse_feed_enabled = false;
+        ctx->exit_notice_sent = false;
     }
     return ctx;
 }
@@ -838,8 +839,9 @@ static void session_force_disconnect(session_ctx_t *ctx, const char *reason)
         return;
     }
 
-    if (reason != nullptr && reason[0] != '\0') {
+    if (!ctx->exit_notice_sent && reason != nullptr && reason[0] != '\0') {
         session_send_system_line(ctx, reason);
+        ctx->exit_notice_sent = true;
     }
 
     ctx->should_exit = true;
@@ -3001,6 +3003,7 @@ static void session_reset_for_retry(session_ctx_t *ctx)
 
     session_close_channel(ctx);
     ctx->should_exit = false;
+    ctx->exit_notice_sent = false;
     ctx->username_conflict = false;
     ctx->has_joined_room = false;
     ctx->prelogin_banner_rendered = false;
@@ -5644,8 +5647,6 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             if (ssh_bind_accept(bind_handle, session) == SSH_ERROR) {
                 const int accept_error = errno;
                 const char *bind_error = ssh_get_error(bind_handle);
-
-                ssh_free(session);
 
                 printf("[listener] accept failed, error=%d, shutdown_flag=%p "
                        "value=%d\n",

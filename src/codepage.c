@@ -490,6 +490,21 @@ static iconv_t session_iconv_open_with_fallback(const char *to,
     char base[64];
     if (session_iconv_strip_options(from, base, sizeof(base))) {
         descriptor = iconv_open(to, base);
+        if (descriptor != (iconv_t)(-1)) {
+            return descriptor;
+        }
+
+        if (strcasecmp(base, "CP949") == 0) {
+            static const char *const kCp949Fallbacks[] = {"MS949", "EUC-KR"};
+            for (size_t idx = 0;
+                 idx < (sizeof(kCp949Fallbacks) / sizeof(kCp949Fallbacks[0]));
+                 ++idx) {
+                descriptor = iconv_open(to, kCp949Fallbacks[idx]);
+                if (descriptor != (iconv_t)(-1)) {
+                    return descriptor;
+                }
+            }
+        }
     }
 
     return descriptor;

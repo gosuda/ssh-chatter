@@ -632,6 +632,7 @@ typedef struct session_ctx {
     unsigned int terminal_height;
     int exit_status;
     bool should_exit;
+    bool exit_notice_sent;
     bool username_conflict;
     bool has_joined_room;
     bool prelogin_banner_rendered;

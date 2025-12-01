@@ -14,6 +14,9 @@ static session_ctx_t *session_create(void)
         ctx->user.is_authenticated = false;
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
         ctx->morse_feed_enabled = false;
+        ctx->exit_notice_sent = false;
+        ctx->has_last_output_line = false;
+        ctx->disable_output_dedup = false;
     }
     return ctx;
 }
@@ -838,8 +841,9 @@ static void session_force_disconnect(session_ctx_t *ctx, const char *reason)
         return;
     }
 
-    if (reason != nullptr && reason[0] != '\0') {
+    if (!ctx->exit_notice_sent && reason != nullptr && reason[0] != '\0') {
         session_send_system_line(ctx, reason);
+        ctx->exit_notice_sent = true;
     }
 
     ctx->should_exit = true;
@@ -3001,6 +3005,7 @@ static void session_reset_for_retry(session_ctx_t *ctx)
 
     session_close_channel(ctx);
     ctx->should_exit = false;
+    ctx->exit_notice_sent = false;
     ctx->username_conflict = false;
     ctx->has_joined_room = false;
     ctx->prelogin_banner_rendered = false;
@@ -4040,8 +4045,13 @@ static void *session_thread(void *arg)
         }
 
         char join_message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(join_message, sizeof(join_message),
-                 "* [%s] has joined the chat", ctx->user.name);
+        if(strnlen(ctx->user_data.preferred_nickname, 256) != 0) {
+            snprintf(join_message, sizeof(join_message),
+                     "%s%s*%s [%s] has joined the chat", ANSI_RESET, ANSI_BRIGHT_RED, ANSI_RESET, ctx->user_data.preferred_nickname);
+        } else {
+            snprintf(join_message, sizeof(join_message),
+                     "%s%s*%s [%s] has joined the chat", ANSI_RESET, ANSI_BRIGHT_RED, ANSI_RESET, ctx->user.name);
+        }
         host_history_record_system(ctx->owner, join_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, join_message, nullptr);
     }
@@ -4054,12 +4064,13 @@ static void *session_thread(void *arg)
     while (!ctx->should_exit) {
         session_translation_flush_ready(ctx);
 
+        if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {
+            session_game_tetris_process_timeout(ctx);
+        }
+
         int read_result =
             session_transport_read(ctx, buffer, sizeof(buffer) - 1U, 200);
         if (read_result == SSH_AGAIN) {
-            if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {
-                session_game_tetris_process_timeout(ctx);
-            }
             continue;
         }
         if (read_result == SSH_ERROR) {
@@ -4070,9 +4081,6 @@ static void *session_thread(void *arg)
                 ctx, buffer, sizeof(buffer) - 1U, poll_timeout_ms);
             if (read_result == SESSION_CHANNEL_TIMEOUT) {
                 ctx->channel_error_retries = 0U;
-                if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {
-                    session_game_tetris_process_timeout(ctx);
-                }
                 continue;
             }
 
@@ -4433,8 +4441,13 @@ static void *session_thread(void *arg)
     if (ctx->has_joined_room) {
         printf("[part] %s\n", ctx->user.name);
         char part_message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(part_message, sizeof(part_message), "* [%s] has left the chat",
-                 ctx->user.name);
+        if(strnlen(ctx->user_data.preferred_nickname, 256) != 0) {
+            snprintf(part_message, sizeof(part_message), "%s%s*%s [%s] has left the chat",
+                     ANSI_RESET, ANSI_BRIGHT_BLUE, ANSI_RESET, ctx->user_data.preferred_nickname);
+        } else {
+            snprintf(part_message, sizeof(part_message), "%s%s*%s [%s] has left the chat",
+                     ANSI_RESET, ANSI_BRIGHT_BLUE, ANSI_RESET, ctx->user.name);
+        }
         host_history_record_system(ctx->owner, part_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
         chat_room_remove(&ctx->owner->room, ctx);
@@ -5644,8 +5657,6 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             if (ssh_bind_accept(bind_handle, session) == SSH_ERROR) {
                 const int accept_error = errno;
                 const char *bind_error = ssh_get_error(bind_handle);
-
-                ssh_free(session);
 
                 printf("[listener] accept failed, error=%d, shutdown_flag=%p "
                        "value=%d\n",

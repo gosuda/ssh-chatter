@@ -4475,13 +4475,14 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             char name_block[SSH_CHATTER_MESSAGE_LIMIT];
             const char *display_name = chat_history_entry_display_name(entry);
             if (has_custom_codes) {
-                snprintf(name_block, sizeof(name_block), "[%s] <%s%s%s%s%s>",
-                         id_label, highlight, color, bold, display_name,
-                         ANSI_RESET);
-            } else {
-                snprintf(name_block, sizeof(name_block), "%s%s [%s] <%s>%s",
-                         color, bold, id_label, display_name, ANSI_RESET);
-            }
+                                snprintf(name_block, sizeof(name_block), "%s[%s]%s <%s%s%s%s%s>",
+                                         ANSI_BRIGHT_CYAN, id_label, ANSI_RESET,
+                                         highlight, color, bold, display_name,
+                                         ANSI_RESET);
+                            } else {
+                                snprintf(name_block, sizeof(name_block), "[%s%s%s] <%s%s%s>",
+                                         ANSI_BRIGHT_CYAN, id_label, ANSI_RESET,
+                                         color, bold, display_name);            }
 
             if (entry->message[0] != '\0') {
                 const bool multiline = strchr(entry->message, '\n') != nullptr;

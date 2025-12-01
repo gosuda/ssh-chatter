@@ -92,7 +92,7 @@ int ssh_message_service_reply_success(ssh_message message)
 
 void ssh_message_free(ssh_message message)
 {
-    free(message);
+    GC_FREE(message);
     message = nullptr;
 }
 
@@ -162,7 +162,7 @@ int ssh_channel_close(ssh_channel channel)
 
 void ssh_channel_free(ssh_channel channel)
 {
-    free(channel);
+    GC_FREE(channel);
     channel = nullptr;
 }
 
@@ -204,14 +204,14 @@ int ssh_disconnect(ssh_session session)
 
 ssh_bind ssh_bind_new(void)
 {
-    struct ssh_bind_strut *ptr = GC_MALLOC_UNCOLLECTABLE(sizeof(struct ssh_bind_struct));
+    struct ssh_bind_strut *ptr = GC_MALLOC(sizeof(struct ssh_bind_struct));
     memset(ptr, 0, sizeof(strut ssh_bind_struct));
     return ptr;
 }
 
 void ssh_bind_free(ssh_bind bind)
 {
-    free(bind);
+    GC_FREE(bind);
     bind = nullptr;
 }
 
@@ -256,6 +256,6 @@ int ssh_pki_import_privkey_file(const char *filename, const char *passphrase,
 
 void ssh_key_free(ssh_key key)
 {
-    free(key);
+    GC_FREE(key);
     key = nullptr;
 }

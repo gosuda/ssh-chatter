@@ -632,6 +632,7 @@ typedef struct session_ctx {
     unsigned int terminal_height;
     int exit_status;
     bool should_exit;
+    bool exit_notice_sent;
     bool username_conflict;
     bool has_joined_room;
     bool prelogin_banner_rendered;
@@ -748,6 +749,9 @@ typedef struct session_ctx {
     size_t realtime_recent_start;
     char realtime_recent_lines[5][SSH_CHATTER_MESSAGE_LIMIT];
     bool capture_realtime_output;
+    char last_output_line[SSH_CHATTER_MESSAGE_LIMIT];
+    bool has_last_output_line;
+    bool disable_output_dedup;
 } session_ctx_t;
 
 typedef struct user_preference {

@@ -749,6 +749,8 @@ typedef struct session_ctx {
     size_t realtime_recent_start;
     char realtime_recent_lines[5][SSH_CHATTER_MESSAGE_LIMIT];
     bool capture_realtime_output;
+    char last_output_line[SSH_CHATTER_MESSAGE_LIMIT];
+    bool has_last_output_line;
 } session_ctx_t;
 
 typedef struct user_preference {

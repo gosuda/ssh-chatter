@@ -15,6 +15,7 @@ static session_ctx_t *session_create(void)
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
         ctx->morse_feed_enabled = false;
         ctx->exit_notice_sent = false;
+        ctx->has_last_output_line = false;
     }
     return ctx;
 }

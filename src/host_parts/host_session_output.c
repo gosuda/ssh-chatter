@@ -195,14 +195,27 @@ static void session_send_plain_line(session_ctx_t *ctx, const char *message)
         return;
     }
 
+    // Prevent re-output of the last processed line
+    if (ctx->has_last_output_line &&
+        strncmp(ctx->last_output_line, message, SSH_CHATTER_MESSAGE_LIMIT) == 0) {
+        return;
+    }
+
     static const char kCaptionPrefix[] = "    ->";
     if (strncmp(message, kCaptionPrefix, sizeof(kCaptionPrefix) - 1U) == 0) {
         session_send_caption_line(ctx, message);
+        // Update last output line after sending
+        snprintf(ctx->last_output_line, sizeof(ctx->last_output_line), "%s", message);
+        ctx->has_last_output_line = true;
         return;
     }
 
     session_write_rendered_line(ctx, message);
     session_realtime_record_line(ctx, message);
+
+    // Update last output line after sending
+    snprintf(ctx->last_output_line, sizeof(ctx->last_output_line), "%s", message);
+    ctx->has_last_output_line = true;
 }
 
 static void session_send_reply_tree(session_ctx_t *ctx,
@@ -2625,6 +2638,10 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
         session_output_buffer_start(ctx);
     }
 
+    size_t buffer_capacity = 0U;
+    chat_history_entry_t *buffer = nullptr;
+    bool reached_oldest = false;
+
     session_scrollback_prepare_display(ctx);
 
     size_t scroll_step = (step == 0) ? session_visible_history_lines(ctx) : step;
@@ -2641,10 +2658,6 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
     }
     size_t position = ctx->history_scroll_position;
     size_t new_position = position;
-    size_t buffer_capacity = 0U;
-    chat_history_entry_t *buffer = nullptr;
-    bool reached_oldest = false;
-
     if (direction > 0) {
         size_t current_newest_visible = 0U;
         if (position < total) {

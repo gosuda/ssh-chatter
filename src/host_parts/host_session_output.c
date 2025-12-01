@@ -1,6 +1,7 @@
 #include "host_internal.h"
 #include "ssh_chatter/user_data.h"
 #include "ssh_chatter/security_layer.h"
+#include "ssh_chatter/palettes.h"
 
 // Session output, history delivery, and client-facing helpers.
 
@@ -196,7 +197,7 @@ static void session_send_plain_line(session_ctx_t *ctx, const char *message)
     }
 
     // Prevent re-output of the last processed line
-    if (ctx->has_last_output_line &&
+    if (!ctx->disable_output_dedup && ctx->has_last_output_line &&
         strncmp(ctx->last_output_line, message, SSH_CHATTER_MESSAGE_LIMIT) == 0) {
         return;
     }
@@ -3378,11 +3379,11 @@ static void session_send_history_entry(session_ctx_t *ctx,
         }
         const char *display_name = chat_history_entry_display_name(entry);
         if (has_custom_codes) {
-            snprintf(name_block, sizeof(name_block), "[%s] <%s%s%s%s%s>",
+            snprintf(name_block, sizeof(name_block), ANSI_CYAN "[%s]" ANSI_RESET " <%s%s%s%s%s>",
                      id_display, highlight, color, bold, display_name,
                      ANSI_RESET);
         } else {
-            snprintf(name_block, sizeof(name_block), "%s%s%s [%s] <%s>%s",
+            snprintf(name_block, sizeof(name_block), "%s%s%s " ANSI_CYAN "[%s]" ANSI_RESET " <%s>%s",
                      highlight, bold, color, id_display, display_name,
                      ANSI_RESET);
         }

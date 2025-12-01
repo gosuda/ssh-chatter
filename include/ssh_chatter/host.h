@@ -751,6 +751,7 @@ typedef struct session_ctx {
     bool capture_realtime_output;
     char last_output_line[SSH_CHATTER_MESSAGE_LIMIT];
     bool has_last_output_line;
+    bool disable_output_dedup;
 } session_ctx_t;
 
 typedef struct user_preference {

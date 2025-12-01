@@ -16,6 +16,7 @@ static session_ctx_t *session_create(void)
         ctx->morse_feed_enabled = false;
         ctx->exit_notice_sent = false;
         ctx->has_last_output_line = false;
+        ctx->disable_output_dedup = false;
     }
     return ctx;
 }
@@ -4044,8 +4045,13 @@ static void *session_thread(void *arg)
         }
 
         char join_message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(join_message, sizeof(join_message),
-                 "* [%s] has joined the chat", ctx->user.name);
+        if(strnlen(ctx->user_data.preferred_nickname, 256) != 0) {
+            snprintf(join_message, sizeof(join_message),
+                     "%s%s*%s [%s] has joined the chat", ANSI_RESET, ANSI_BRIGHT_RED, ANSI_RESET, ctx->user_data.preferred_nickname);
+        } else {
+            snprintf(join_message, sizeof(join_message),
+                     "%s%s*%s [%s] has joined the chat", ANSI_RESET, ANSI_BRIGHT_RED, ANSI_RESET, ctx->user.name);
+        }
         host_history_record_system(ctx->owner, join_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, join_message, nullptr);
     }
@@ -4058,12 +4064,13 @@ static void *session_thread(void *arg)
     while (!ctx->should_exit) {
         session_translation_flush_ready(ctx);
 
+        if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {
+            session_game_tetris_process_timeout(ctx);
+        }
+
         int read_result =
             session_transport_read(ctx, buffer, sizeof(buffer) - 1U, 200);
         if (read_result == SSH_AGAIN) {
-            if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {
-                session_game_tetris_process_timeout(ctx);
-            }
             continue;
         }
         if (read_result == SSH_ERROR) {
@@ -4074,9 +4081,6 @@ static void *session_thread(void *arg)
                 ctx, buffer, sizeof(buffer) - 1U, poll_timeout_ms);
             if (read_result == SESSION_CHANNEL_TIMEOUT) {
                 ctx->channel_error_retries = 0U;
-                if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {
-                    session_game_tetris_process_timeout(ctx);
-                }
                 continue;
             }
 
@@ -4437,8 +4441,13 @@ static void *session_thread(void *arg)
     if (ctx->has_joined_room) {
         printf("[part] %s\n", ctx->user.name);
         char part_message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(part_message, sizeof(part_message), "* [%s] has left the chat",
-                 ctx->user.name);
+        if(strnlen(ctx->user_data.preferred_nickname, 256) != 0) {
+            snprintf(part_message, sizeof(part_message), "%s%s*%s [%s] has left the chat",
+                     ANSI_RESET, ANSI_BRIGHT_BLUE, ANSI_RESET, ctx->user_data.preferred_nickname);
+        } else {
+            snprintf(part_message, sizeof(part_message), "%s%s*%s [%s] has left the chat",
+                     ANSI_RESET, ANSI_BRIGHT_BLUE, ANSI_RESET, ctx->user.name);
+        }
         host_history_record_system(ctx->owner, part_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
         chat_room_remove(&ctx->owner->room, ctx);

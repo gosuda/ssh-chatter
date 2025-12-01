@@ -984,6 +984,11 @@ static void session_game_show_camouflage(session_ctx_t *ctx)
     session_render_prompt(ctx, false);
 }
 
+static const char *TETROMINO_COLOR_CODES[7] = {
+    ANSI_BRIGHT_CYAN,  ANSI_BLUE,          ANSI_BRIGHT_YELLOW,
+    ANSI_YELLOW,       ANSI_BRIGHT_GREEN,  ANSI_BRIGHT_MAGENTA,
+    ANSI_BRIGHT_RED};
+
 static void session_game_tetris_render(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS) {
@@ -992,6 +997,8 @@ static void session_game_tetris_render(session_ctx_t *ctx)
 
     bool previous_translation_suppress = ctx->translation_suppress_output;
     ctx->translation_suppress_output = true;
+    bool previous_dedup_state = ctx->disable_output_dedup;
+    ctx->disable_output_dedup = true;
 
     tetris_game_state_t *state = &ctx->game.tetris;
 
@@ -1007,7 +1014,8 @@ static void session_game_tetris_render(session_ctx_t *ctx)
         buffer + offset, SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset, "\n");
     offset += (size_t)snprintf(buffer + offset,
                                SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
-                               "--- Tetris ---\n");
+                               "%s--- Tetris ---%s\n", ANSI_BRIGHT_CYAN,
+                               ANSI_RESET);
 
     char header[SSH_CHATTER_MESSAGE_LIMIT];
     char next_char = TETROMINO_DISPLAY_CHARS[state->next_piece % 7];
@@ -1018,14 +1026,21 @@ static void session_game_tetris_render(session_ctx_t *ctx)
                 state->next_round_line_goal - state->lines_cleared;
         }
         snprintf(header, sizeof(header),
-                 "Score: %u   Lines: %u   Round: %u/%u (next in %u)   Next: %c",
-                 state->score, state->lines_cleared, state->round,
-                 SSH_CHATTER_TETRIS_MAX_ROUNDS, lines_remaining, next_char);
+                 "%sScore: %u%s   %sLines: %u%s   %sRound: %u/%u (next in %u)%s   "
+                 "%sNext: %c%s",
+                 ANSI_BRIGHT_YELLOW, state->score, ANSI_RESET,
+                 ANSI_BRIGHT_GREEN, state->lines_cleared, ANSI_RESET,
+                 ANSI_BRIGHT_CYAN, state->round, SSH_CHATTER_TETRIS_MAX_ROUNDS,
+                 lines_remaining, ANSI_RESET, ANSI_BRIGHT_MAGENTA, next_char,
+                 ANSI_RESET);
     } else {
         snprintf(header, sizeof(header),
-                 "Score: %u   Lines: %u   Round: %u/%u (max speed)   Next: %c",
-                 state->score, state->lines_cleared, state->round,
-                 SSH_CHATTER_TETRIS_MAX_ROUNDS, next_char);
+                 "%sScore: %u%s   %sLines: %u%s   %sRound: %u/%u (max speed)%s   "
+                 "%sNext: %c%s",
+                 ANSI_BRIGHT_YELLOW, state->score, ANSI_RESET,
+                 ANSI_BRIGHT_GREEN, state->lines_cleared, ANSI_RESET,
+                 ANSI_BRIGHT_CYAN, state->round, SSH_CHATTER_TETRIS_MAX_ROUNDS,
+                 ANSI_RESET, ANSI_BRIGHT_MAGENTA, next_char, ANSI_RESET);
     }
 
     char border[SSH_CHATTER_TETRIS_WIDTH + 3];
@@ -1037,19 +1052,26 @@ static void session_game_tetris_render(session_ctx_t *ctx)
     border[SSH_CHATTER_TETRIS_WIDTH + 2] = '\0';
     offset += (size_t)snprintf(buffer + offset,
                                SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
-                               "%s\n", border);
+                               "%s%s%s\n", ANSI_BRIGHT_BLACK, border,
+                               ANSI_RESET);
 
     for (int row = 0; row < SSH_CHATTER_TETRIS_HEIGHT; ++row) {
-        char line_buffer[SSH_CHATTER_TETRIS_WIDTH + 3];
-        line_buffer[0] = '|';
+        char line_buffer[SSH_CHATTER_TETRIS_WIDTH * 8 + 32];
+        size_t line_offset = 0U;
+        line_offset += (size_t)snprintf(line_buffer + line_offset,
+                                        sizeof(line_buffer) - line_offset,
+                                        "%s|%s", ANSI_BRIGHT_BLACK,
+                                        ANSI_RESET);
         for (int col = 0; col < SSH_CHATTER_TETRIS_WIDTH; ++col) {
             char cell = ' ';
+            const char *color = "";
             if (state->board[row][col] != 0) {
                 int index = state->board[row][col] - 1;
                 if (index < 0 || index >= 7) {
                     index = 0;
                 }
                 cell = TETROMINO_DISPLAY_CHARS[index];
+                color = TETROMINO_COLOR_CODES[index];
             } else if (!state->game_over && state->current_piece >= 0) {
                 int local_row = row - state->row;
                 int local_col = col - state->column;
@@ -1059,12 +1081,23 @@ static void session_game_tetris_render(session_ctx_t *ctx)
                                                       state->rotation,
                                                       local_row, local_col)) {
                     cell = TETROMINO_DISPLAY_CHARS[state->current_piece];
+                    color =
+                        TETROMINO_COLOR_CODES[state->current_piece % 7];
                 }
             }
-            line_buffer[col + 1] = cell;
+            if (color[0] != '\0') {
+                line_offset += (size_t)snprintf(
+                    line_buffer + line_offset, sizeof(line_buffer) - line_offset,
+                    "%s%c%s", color, cell, ANSI_RESET);
+            } else {
+                line_buffer[line_offset++] = cell;
+                line_buffer[line_offset] = '\0';
+            }
         }
-        line_buffer[SSH_CHATTER_TETRIS_WIDTH + 1] = '|';
-        line_buffer[SSH_CHATTER_TETRIS_WIDTH + 2] = '\0';
+        line_offset += (size_t)snprintf(line_buffer + line_offset,
+                                        sizeof(line_buffer) - line_offset,
+                                        "%s|%s", ANSI_BRIGHT_BLACK,
+                                        ANSI_RESET);
         offset += (size_t)snprintf(
             buffer + offset, SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
             "%s\n", line_buffer);
@@ -1072,14 +1105,16 @@ static void session_game_tetris_render(session_ctx_t *ctx)
 
     offset += (size_t)snprintf(buffer + offset,
                                SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
-                               "%s\n", border);
+                               "%s%s%s\n", ANSI_BRIGHT_BLACK, border,
+                               ANSI_RESET);
     offset += (size_t)snprintf(buffer + offset,
                                SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
                                "%s\n", header);
     offset += (size_t)snprintf(buffer + offset,
                                SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
-                               "Controls: left, right, down, Ctrl+R or up: "
-                               "rotate, drop. Blank line = down.\n");
+                               "%sControls:%s left, right, down, Ctrl+R or up: "
+                               "rotate, drop. Blank line = down.\n",
+                               ANSI_BRIGHT_CYAN, ANSI_RESET);
 
     // Only send if the buffer has changed
     if (strcmp(ctx->tetris_screen_buffer, ctx->tetris_prev_screen_buffer) !=
@@ -1096,6 +1131,7 @@ static void session_game_tetris_render(session_ctx_t *ctx)
     }
 
     ctx->translation_suppress_output = previous_translation_suppress;
+    ctx->disable_output_dedup = previous_dedup_state;
 }
 
 static void session_game_tetris_handle_line(session_ctx_t *ctx,

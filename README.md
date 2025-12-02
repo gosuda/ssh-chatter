@@ -74,7 +74,7 @@ confirm the build still succeeds before pushing the result.
 - Suspicious submissions that trip the layered filter are now tracked per-IP; repeated hits trigger an automatic kick and ban when enabled, while the rapid reconnect detector allows longer recovery windows so unstable network sessions can rejoin without being penalized. Automatic ban entries are **off by default**; set `CHATTER_AUTO_BAN=on` (or `true`/`1`) to enable them, or leave the variable unset to keep warnings and throttling without writing automatic ban entries.
 - Operators can mark trusted ingress points (VPN exits, reverse proxies, localhost) with `CHATTER_PROTECTED_IPS` (comma-separated, defaults to `127.0.0.1,::1,192.168.0.1`) so emergency bans never lock the daemon out of its own control plane.
 
-## IRC Server relay
+## IRC Server relay (WIP)
 
 SSH-Chatter supports connecting to IRC servers, allowing integration with external IRC relay networks such as magviz.ca. The IRC relay automatically forwards messages between the SSH chat room and the configured relay server.
 
@@ -92,7 +92,7 @@ Set these environment variables to enable the IRC relay:
 Example configuration in `chatter.env`:
 
 ```bash
-CHATTER_IRC_SERVER=irc.magviz.ca
+CHATTER_IRC_SERVER=irc.example.com
 CHATTER_IRC_PORT=6667
 CHATTER_IRC_CHANNEL=#general
 CHATTER_IRC_NICKNAME=chatbot
@@ -112,9 +112,14 @@ Operators can manage the IRC relay connection using the `/ircserver` command:
 
 Messages received from the IRC relay appear in the chat with a `[IRC]` prefix and the sender's nickname. The relay automatically handles reconnections if the connection drops, with a 30-second delay between attempts.
 
-## FidoNet/Binkp relay
+## FidoNet/Binkp relay (WIP)
 
-SSH-Chatter now supports FidoNet integration via the Binkp protocol, allowing message synchronization with FidoNet networks such as magviz.ca. The FidoNet relay uses the standard Binkp protocol on port 24554 to exchange messages between the SSH chat room and FidoNet nodes.
+SSH-Chatter supports FidoNet integration via the Binkp protocol, allowing message synchronization with FidoNet networks such as magviz.ca. The FidoNet relay uses the standard Binkp protocol on port 24554 to exchange messages between the SSH chat room and FidoNet nodes.
+
+## Morse Relay
+SSH-Chatter supports amateur ham radio relay.
+This shows global morse signals.
+`/morse on` to see, `/morse-reply` to send. 
 
 ### Configuration
 

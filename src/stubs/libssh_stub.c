@@ -1,8 +1,7 @@
 #include "libssh/libssh.h"
 #include "ssh_chatter/shim_libssh/server.h"
+#include "ssh_chatter/memory_manager.h"
 
-#undef   free
-#include <stdlib.h>
 #include <string.h>
 
 int ssh_get_fd(ssh_session session)
@@ -13,12 +12,12 @@ int ssh_get_fd(ssh_session session)
 
 ssh_session ssh_new(void)
 {
-    return calloc(1, sizeof(struct ssh_session_struct));
+    return GC_CALLOC(1, sizeof(struct ssh_session_struct));
 }
 
 void ssh_free(ssh_session session)
 {
-    free(session);
+    GC_FREE(session);
     session = nullptr;
 }
 
@@ -104,7 +103,7 @@ void ssh_message_reply_default(ssh_message message)
 ssh_channel ssh_message_channel_request_open_reply_accept(ssh_message message)
 {
     (void)message;
-    return calloc(1, sizeof(struct ssh_channel_struct));
+    return GC_CALLOC(1, sizeof(struct ssh_channel_struct));
 }
 
 int ssh_message_channel_request_open_reply_accept_channel(ssh_message message,
@@ -122,7 +121,7 @@ void ssh_message_channel_request_reply_success(ssh_message message)
 ssh_channel ssh_channel_new(ssh_session session)
 {
     (void)session;
-    return calloc(1, sizeof(struct ssh_channel_struct));
+    return GC_CALLOC(1, sizeof(struct ssh_channel_struct));
 }
 
 int ssh_channel_write(ssh_channel channel, const void *data, size_t len)
@@ -198,14 +197,14 @@ ssh_message_channel_request_window_change_height(ssh_message message)
 
 int ssh_disconnect(ssh_session session)
 {
-    (void)session;
+    GC_FREE(session);
     return SSH_OK;
 }
 
 ssh_bind ssh_bind_new(void)
 {
     struct ssh_bind_strut *ptr = GC_MALLOC(sizeof(struct ssh_bind_struct));
-    memset(ptr, 0, sizeof(strut ssh_bind_struct));
+    memset(ptr, 0, sizeof(struct ssh_bind_struct));
     return ptr;
 }
 
@@ -247,7 +246,7 @@ int ssh_pki_import_privkey_file(const char *filename, const char *passphrase,
     if (pkey == nullptr) {
         return SSH_ERROR;
     }
-    *pkey = calloc(1, sizeof(struct ssh_key_struct));
+    *pkey = GC_CALLOC(1, sizeof(struct ssh_key_struct));
     if (*pkey == nullptr) {
         return SSH_ERROR;
     }

@@ -4455,48 +4455,10 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         if (entry->is_user_message) {
             // Format user message directly, handling multi-line content to avoid
             // inserting unintended blank lines.
-            char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-            const char *color =
-                entry->user_color_code != nullptr ? entry->user_color_code : "";
-            const char *highlight = entry->user_highlight_code != nullptr
-                                        ? entry->user_highlight_code
-                                        : "";
-            const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
-
             char id_label[32] = "-";
             if (entry->message_id > 0U) {
                 host_compact_id_encode(entry->message_id, id_label,
                                        sizeof(id_label));
-            }
-
-            const bool has_custom_codes =
-                (color[0] != '\0') || (highlight[0] != '\0');
-
-            char name_block[SSH_CHATTER_MESSAGE_LIMIT];
-            const char *display_name = chat_history_entry_display_name(entry);
-            if (has_custom_codes) {
-                                snprintf(name_block, sizeof(name_block), "%s[%s]%s <%s%s%s%s%s>",
-                                         ANSI_BRIGHT_CYAN, id_label, ANSI_RESET,
-                                         highlight, color, bold, display_name,
-                                         ANSI_RESET);
-                            } else {
-                                snprintf(name_block, sizeof(name_block), "[%s%s%s] <%s%s%s>",
-                                         ANSI_BRIGHT_CYAN, id_label, ANSI_RESET,
-                                         color, bold, display_name);            }
-
-            if (entry->message[0] != '\0') {
-                const bool multiline = strchr(entry->message, '\n') != nullptr;
-                if (multiline) {
-                    snprintf(formatted, sizeof(formatted), "%s ", name_block);
-                    session_send_plain_line(member, formatted);
-                    session_send_multiline_message(member, entry->message);
-                } else {
-                    snprintf(formatted, sizeof(formatted), "%s %s", name_block,
-                             entry->message);
-                    session_send_plain_line(member, formatted);
-                }
-            } else {
-                session_send_plain_line(member, name_block);
             }
 
             // Send attachment if present

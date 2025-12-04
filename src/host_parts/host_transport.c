@@ -2043,7 +2043,7 @@ static const char *lookup_color_code(const color_entry_t *entries,
 static bool parse_bool_token(const char *token, bool *value);
 static bool session_transport_active(const session_ctx_t *ctx);
 static void session_transport_request_close(session_ctx_t *ctx);
-static void session_channel_write(session_ctx_t *ctx, const void *data,
+void session_channel_write(session_ctx_t *ctx, const void *data,
                                   size_t length);
 static bool session_channel_write_cp437(session_ctx_t *ctx, const char *data,
                                         size_t length);

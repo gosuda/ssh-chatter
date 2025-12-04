@@ -1318,6 +1318,28 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
     // Send body line by line
     session_send_raw_text(ctx, post->body);
 
+    // Send comments if any
+    if (post->comment_count > 0U) {
+        session_send_plain_line(ctx, ""); // Empty line for spacing
+        session_render_separator(ctx, "Comments");
+        for (size_t idx = 0U; idx < post->comment_count; ++idx) {
+            const bbs_comment_t *comment = &post->comments[idx];
+            char comment_author_line[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(comment_author_line, sizeof(comment_author_line), "Comment by: %s", comment->author);
+
+            char comment_created_line[SSH_CHATTER_MESSAGE_LIMIT];
+            time_t comment_created = (time_t)comment->created_at;
+            struct tm comment_created_tm;
+            localtime_r(&comment_created, &comment_created_tm);
+            strftime(comment_created_line, sizeof(comment_created_line), "At: %Y-%m-%d %H:%M:%S", &comment_created_tm);
+
+            session_send_system_line(ctx, comment_author_line);
+            session_send_system_line(ctx, comment_created_line);
+            session_send_raw_text(ctx, comment->text);
+            session_send_plain_line(ctx, ""); // Empty line for spacing between comments
+        }
+    }
+
     if (notice != nullptr && notice[0] != '\0') {
         session_send_system_line(ctx, notice);
     }
@@ -6027,6 +6049,70 @@ static void session_handle_search(session_ctx_t *ctx, const char *arguments)
     snprintf(header, sizeof(header), "Matching users (%zu):", match_count);
     session_send_system_line(ctx, header);
     session_send_system_line(ctx, listing);
+}
+
+void session_channel_write(session_ctx_t *ctx, const void *data,
+                                  size_t length)
+{
+    if (ctx == nullptr || data == nullptr || length == 0U || ctx->should_exit ||
+        !session_transport_active(ctx)) {
+        return;
+    }
+
+    // If output buffering is enabled, append to buffer instead of writing directly
+    if (ctx->output_buffering_enabled) {
+        session_output_buffer_append(ctx, data, length);
+        return;
+    }
+
+    bool locked = session_output_lock(ctx);
+
+    bool success = true;
+    if (ctx->channel_mutex_initialized) {
+        int lock_result = pthread_mutex_lock(&ctx->channel_mutex);
+        if (lock_result == 0) {
+            // locked = true; // This line was causing a double lock issue.
+        } else {
+            humanized_log_error("session", "failed to lock channel mutex",
+                                lock_result);
+        }
+    }
+
+    const bool use_cp437_output =
+        session_output_should_use_cp437(ctx, ctx->output_kind);
+
+    bool prefer_utf8_for_hybrid = false;
+    if (ctx->hybrid_output_mode && use_cp437_output &&
+        ctx->output_kind != SESSION_OUTPUT_KIND_SYSTEM) {
+        prefer_utf8_for_hybrid =
+            session_output_requires_utf8((const char *)data, length);
+    }
+
+    if (use_cp437_output && !prefer_utf8_for_hybrid) {
+        /* Use the generic codepage conversion with the active codepage */
+        success = session_channel_write_codepage(ctx, (const char *)data,
+                                                 length, ctx->active_codepage);
+    } else if (ctx->prefer_utf16_output) {
+        success = session_channel_write_utf16(ctx, (const char *)data, length);
+    } else {
+        success = session_channel_write_all(ctx, data, length);
+    }
+
+    if (ctx->channel_mutex_initialized && locked) { // Only unlock if it was successfully locked
+        int unlock_result = pthread_mutex_unlock(&ctx->channel_mutex);
+        if (unlock_result != 0) {
+            humanized_log_error("session", "failed to unlock channel mutex",
+                                unlock_result);
+        }
+    }
+
+    if (!success) {
+        ctx->should_exit = true;
+    }
+
+    if (locked) {
+        session_output_unlock(ctx);
+    }
 }
 
 static void session_handle_chat_lookup(session_ctx_t *ctx,

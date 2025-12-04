@@ -4114,69 +4114,7 @@ static bool session_output_requires_utf8(const char *data, size_t length)
     return false;
 }
 
-static void session_channel_write(session_ctx_t *ctx, const void *data,
-                                  size_t length)
-{
-    if (ctx == nullptr || data == nullptr || length == 0U || ctx->should_exit ||
-        !session_transport_active(ctx)) {
-        return;
-    }
 
-    // If output buffering is enabled, append to buffer instead of writing directly
-    if (ctx->output_buffering_enabled) {
-        session_output_buffer_append(ctx, data, length);
-        return;
-    }
-
-    bool locked = session_output_lock(ctx);
-
-    bool success = true;
-    if (ctx->channel_mutex_initialized) {
-        int lock_result = pthread_mutex_lock(&ctx->channel_mutex);
-        if (lock_result == 0) {
-            locked = true;
-        } else {
-            humanized_log_error("session", "failed to lock channel mutex",
-                                lock_result);
-        }
-    }
-
-    const bool use_cp437_output =
-        session_output_should_use_cp437(ctx, ctx->output_kind);
-
-    bool prefer_utf8_for_hybrid = false;
-    if (ctx->hybrid_output_mode && use_cp437_output &&
-        ctx->output_kind != SESSION_OUTPUT_KIND_SYSTEM) {
-        prefer_utf8_for_hybrid =
-            session_output_requires_utf8((const char *)data, length);
-    }
-
-    if (use_cp437_output && !prefer_utf8_for_hybrid) {
-        /* Use the generic codepage conversion with the active codepage */
-        success = session_channel_write_codepage(ctx, (const char *)data,
-                                                 length, ctx->active_codepage);
-    } else if (ctx->prefer_utf16_output) {
-        success = session_channel_write_utf16(ctx, (const char *)data, length);
-    } else {
-        success = session_channel_write_all(ctx, data, length);
-    }
-
-    if (locked) {
-        int unlock_result = pthread_mutex_unlock(&ctx->channel_mutex);
-        if (unlock_result != 0) {
-            humanized_log_error("session", "failed to unlock channel mutex",
-                                unlock_result);
-        }
-    }
-
-    if (!success) {
-        ctx->should_exit = true;
-    }
-
-    if (locked) {
-        session_output_unlock(ctx);
-    }
-}
 
 static void session_channel_flush(session_ctx_t *ctx)
 {

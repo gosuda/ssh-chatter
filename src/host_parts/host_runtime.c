@@ -62,6 +62,20 @@ static bool session_cp437_scope_parse(const char *token,
     return false;
 }
 
+static void host_release_imported_keys(ssh_key *keys, size_t count)
+{
+    if (keys == nullptr) {
+        return;
+    }
+
+    for (size_t idx = 0; idx < count; ++idx) {
+        if (keys[idx] != nullptr) {
+            ssh_key_free(keys[idx]);
+            keys[idx] = nullptr;
+        }
+    }
+}
+
 void session_handle_hybrid(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage = "Usage: /hybrid <on|off|status>";
@@ -5512,6 +5526,9 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             continue;
         }
 
+        ssh_key imported_keys[host_key_count];
+        memset(imported_keys, 0, sizeof(imported_keys));
+
         ssh_bind_options_set(bind_handle, SSH_BIND_OPTIONS_BINDADDR, address);
         ssh_bind_options_set(bind_handle, SSH_BIND_OPTIONS_BINDPORT_STR,
                              bind_port);
@@ -5579,7 +5596,8 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 continue;
             }
 
-            if (!host_bind_load_key(bind_handle, definition, key_path)) {
+            if (!host_bind_load_key(bind_handle, definition, key_path,
+                                    &imported_keys[idx])) {
                 continue;
             }
 
@@ -5596,6 +5614,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
         if (fatal_key_error) {
             ssh_bind_free(bind_handle);
+            host_release_imported_keys(imported_keys, host_key_count);
             host_sleep_after_error(host);
             continue;
         }
@@ -5603,6 +5622,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         if (algorithm_length == 0U) {
             humanized_log_error("host", "no host keys configured", 0);
             ssh_bind_free(bind_handle);
+            host_release_imported_keys(imported_keys, host_key_count);
             host_sleep_after_error(host);
             continue;
         }
@@ -5634,6 +5654,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         if (ssh_bind_listen(bind_handle) < 0) {
             humanized_log_error("host", ssh_get_error(bind_handle), EIO);
             ssh_bind_free(bind_handle);
+            host_release_imported_keys(imported_keys, host_key_count);
             host_sleep_after_error(host);
             continue;
         }
@@ -5983,6 +6004,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         }
 
         ssh_bind_free(bind_handle);
+        host_release_imported_keys(imported_keys, host_key_count);
         host->listener.handle = nullptr;
 
         // Check for shutdown signal before deciding to restart

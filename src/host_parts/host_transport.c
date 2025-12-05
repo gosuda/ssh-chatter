@@ -320,7 +320,7 @@ static void host_bind_append_algorithm(char *buffer, size_t buffer_len,
 }
 
 static bool host_bind_import_key(ssh_bind bind_handle, const char *algorithm,
-                                 const char *key_path)
+                                 const char *key_path, ssh_key *retained_key)
 {
     if (bind_handle == nullptr || algorithm == nullptr || key_path == nullptr) {
         return false;
@@ -343,7 +343,6 @@ static bool host_bind_import_key(ssh_bind bind_handle, const char *algorithm,
     errno = 0;
     const int import_result = ssh_bind_options_set(
         bind_handle, SSH_BIND_OPTIONS_IMPORT_KEY, imported_key);
-    ssh_key_free(imported_key);
     if (import_result != SSH_OK) {
         const char *error_message = ssh_get_error(bind_handle);
         char message[256];
@@ -352,7 +351,12 @@ static bool host_bind_import_key(ssh_bind bind_handle, const char *algorithm,
         humanized_log_error("host",
                             error_message != nullptr ? error_message : message,
                             errno != 0 ? errno : EIO);
+        ssh_key_free(imported_key);
         return false;
+    }
+
+    if (retained_key != nullptr) {
+        *retained_key = imported_key;
     }
 
     return true;
@@ -360,7 +364,7 @@ static bool host_bind_import_key(ssh_bind bind_handle, const char *algorithm,
 
 static bool host_bind_load_key(ssh_bind bind_handle,
                                const host_key_definition_t *definition,
-                               const char *key_path)
+                               const char *key_path, ssh_key *retained_key)
 {
     if (bind_handle == nullptr || definition == nullptr ||
         key_path == nullptr) {
@@ -399,7 +403,8 @@ static bool host_bind_load_key(ssh_bind bind_handle,
             definition->algorithm);
     }
 
-    return host_bind_import_key(bind_handle, definition->algorithm, key_path);
+    return host_bind_import_key(bind_handle, definition->algorithm, key_path,
+                                retained_key);
 }
 
 static struct timespec timespec_add_ns(const struct timespec *start,

@@ -243,6 +243,14 @@ typedef struct chat_history_entry {
     uint32_t reaction_counts[SSH_CHATTER_REACTION_KIND_COUNT];
 } chat_history_entry_t;
 
+static inline bool chat_history_entry_is_empty(const chat_history_entry_t *entry)
+{
+    if (entry == nullptr) {
+        return true;
+    }
+    return entry->message[0] == '\0' && entry->attachment_type == CHAT_ATTACHMENT_NONE;
+}
+
 typedef struct chat_reply_entry {
     bool in_use;
     uint64_t reply_id;

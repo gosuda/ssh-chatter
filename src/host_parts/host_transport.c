@@ -2503,7 +2503,7 @@ static void host_build_birthday_notice_locked(host_t *host, char *line,
                                               size_t length);
 static bool host_is_leap_year(int year);
 static void host_revoke_grant_from_ip(host_t *host, const char *ip);
-static void host_history_normalize_entry(host_t *host,
+static bool host_history_normalize_entry(host_t *host,
                                          chat_history_entry_t *entry);
 static const char *chat_attachment_type_label(chat_attachment_type_t type);
 static void host_state_resolve_path(host_t *host);
@@ -5390,7 +5390,9 @@ static bool host_history_commit_entry(host_t *host, chat_history_entry_t *entry,
         }
     }
 
-    host_history_normalize_entry(host, entry);
+    if (!host_history_normalize_entry(host, entry)) {
+        return false;
+    }
 
     pthread_mutex_lock(&host->lock);
     if (entry->is_user_message) {
@@ -6149,12 +6151,84 @@ static bool host_lookup_user_os(host_t *host, const char *username,
     return false;
 }
 
-static void host_history_normalize_entry(host_t *host,
+static void host_history_strip_empty_lines(chat_history_entry_t *entry)
+{
+    if (entry == nullptr) {
+        return;
+    }
+
+    char cleaned[sizeof(entry->message)] = {0};
+    size_t write_idx = 0U;
+    const char *cursor = entry->message;
+
+    while (*cursor != '\0') {
+        const char *line_end = strchr(cursor, '\n');
+        size_t line_len =
+            (line_end != nullptr) ? (size_t)(line_end - cursor) : strlen(cursor);
+
+        bool has_content = false;
+        for (size_t idx = 0U; idx < line_len; ++idx) {
+            if (!isspace((unsigned char)cursor[idx])) {
+                has_content = true;
+                break;
+            }
+        }
+
+        if (has_content) {
+            size_t copy_len = line_len;
+            if (write_idx + copy_len >= sizeof(cleaned)) {
+                copy_len = sizeof(cleaned) - 1U - write_idx;
+            }
+
+            memcpy(cleaned + write_idx, cursor, copy_len);
+            write_idx += copy_len;
+
+            if (line_end != nullptr && write_idx + 1U < sizeof(cleaned)) {
+                cleaned[write_idx++] = '\n';
+            }
+        }
+
+        if (line_end == nullptr) {
+            break;
+        }
+        cursor = line_end + 1;
+    }
+
+    cleaned[write_idx] = '\0';
+    snprintf(entry->message, sizeof(entry->message), "%s", cleaned);
+}
+
+static bool host_history_has_content(const chat_history_entry_t *entry)
+{
+    if (entry == nullptr) {
+        return false;
+    }
+
+    if (entry->message[0] != '\0') {
+        return true;
+    }
+
+    if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&
+        entry->attachment_target[0] != '\0') {
+        return true;
+    }
+
+    return false;
+}
+
+static bool host_history_normalize_entry(host_t *host,
                                          chat_history_entry_t *entry)
 {
     if (host == nullptr || entry == nullptr) {
-        return;
+        return false;
     }
+
+    host_history_strip_empty_lines(entry);
+
+    if (!host_history_has_content(entry)) {
+        return false;
+    }
+
 
     if (!entry->is_user_message) {
         entry->user_color_code = nullptr;
@@ -6162,7 +6236,7 @@ static void host_history_normalize_entry(host_t *host,
         entry->user_is_bold = false;
         entry->user_color_name[0] = '\0';
         entry->user_highlight_name[0] = '\0';
-        return;
+        return true;
     }
 
     const bool has_color_code =
@@ -6195,6 +6269,8 @@ static void host_history_normalize_entry(host_t *host,
         }
         entry->user_highlight_code = highlight_code;
     }
+
+    return true;
 }
 
 static void host_security_configure(host_t *host)

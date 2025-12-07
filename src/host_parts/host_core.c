@@ -60,8 +60,6 @@ static const session_ops_t telnet_session_ops = {
 #define SSH_CHATTER_BBS_DEFAULT_TAG "general"
 #define SSH_CHATTER_ASCIIART_TERMINATOR_EN ">/__ARTWORK_END>"
 #define SSH_CHATTER_BBS_TERMINATOR_EN ">/__BBS_END>"
-#define SSH_CHATTER_BBS_EDITOR_BODY_DIVIDER "----------Body---------------"
-#define SSH_CHATTER_BBS_EDITOR_END_DIVIDER "----------End-----------------"
 #define SSH_CHATTER_RSS_REFRESH_SECONDS 180U
 #define SSH_CHATTER_RSS_SLEEP_CHUNK_SECONDS 5U
 #define SSH_CHATTER_RSS_USER_AGENT "ssh-chatter/rss"

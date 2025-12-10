@@ -314,6 +314,7 @@ typedef struct ssh_listener {
     ssh_bind handle;
     unsigned int inplace_recoveries;
     unsigned int restart_attempts;
+    unsigned int accept_error_streak;
     struct timespec last_error_time;
 } ssh_listener_t;
 

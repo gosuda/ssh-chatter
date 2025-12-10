@@ -12,7 +12,7 @@ readonly SSH_HOST="127.0.0.1"
 readonly SSH_PORT="2222"
 readonly USERNAME="health-check"
 readonly KEY_PATH="/etc/ssh-chatter/keys/ssh_host_rsa_key"
-readonly SERVICE_NAME="ssh-chatter"
+readonly SERVICE_NAME="chatter"
 
 # Logging function
 log() {

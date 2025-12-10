@@ -4,3 +4,7 @@ Description=Health Check for SSH Chatter Service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/health-check.sh
+
+
+[Install]
+WantedBy=multi-user.target

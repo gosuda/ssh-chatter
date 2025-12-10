@@ -62,6 +62,20 @@ static bool session_cp437_scope_parse(const char *token,
     return false;
 }
 
+static void host_release_imported_keys(ssh_key *keys, size_t count)
+{
+    if (keys == nullptr) {
+        return;
+    }
+
+    for (size_t idx = 0; idx < count; ++idx) {
+        if (keys[idx] != nullptr) {
+            ssh_key_free(keys[idx]);
+            keys[idx] = nullptr;
+        }
+    }
+}
+
 void session_handle_hybrid(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage = "Usage: /hybrid <on|off|status>";
@@ -4486,6 +4500,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->listener.handle = nullptr;
     host->listener.inplace_recoveries = 0U;
     host->listener.restart_attempts = 0U;
+    host->listener.accept_error_streak = 0U;
     host->listener.last_error_time.tv_sec = 0;
     host->listener.last_error_time.tv_nsec = 0L;
     host->telnet.enabled = false;
@@ -5107,7 +5122,7 @@ static bool host_prepare_chat_entry(host_t *host, const char *username,
                                     chat_history_entry_t *entry)
 {
     if (host == nullptr || username == nullptr || username[0] == '\0' ||
-        message == nullptr || entry == nullptr) {
+        message == nullptr || message[0] == '\0' || entry == nullptr) {
         return false;
     }
 
@@ -5418,6 +5433,7 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     host->connection_guard = nullptr;
     host->connection_guard_capacity = 0U;
     host->connection_guard_count = 0U;
+    host->listener.accept_error_streak = 0U;
     host->health_guard.consecutive_errors = 0U;
     host->health_guard.last_error_time.tv_sec = 0;
     host->health_guard.last_error_time.tv_nsec = 0L;
@@ -5512,6 +5528,9 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             continue;
         }
 
+        ssh_key imported_keys[host_key_count];
+        memset(imported_keys, 0, sizeof(imported_keys));
+
         ssh_bind_options_set(bind_handle, SSH_BIND_OPTIONS_BINDADDR, address);
         ssh_bind_options_set(bind_handle, SSH_BIND_OPTIONS_BINDPORT_STR,
                              bind_port);
@@ -5579,7 +5598,8 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 continue;
             }
 
-            if (!host_bind_load_key(bind_handle, definition, key_path)) {
+            if (!host_bind_load_key(bind_handle, definition, key_path,
+                                    &imported_keys[idx])) {
                 continue;
             }
 
@@ -5596,6 +5616,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
         if (fatal_key_error) {
             ssh_bind_free(bind_handle);
+            host_release_imported_keys(imported_keys, host_key_count);
             host_sleep_after_error(host);
             continue;
         }
@@ -5603,6 +5624,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         if (algorithm_length == 0U) {
             humanized_log_error("host", "no host keys configured", 0);
             ssh_bind_free(bind_handle);
+            host_release_imported_keys(imported_keys, host_key_count);
             host_sleep_after_error(host);
             continue;
         }
@@ -5634,11 +5656,13 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         if (ssh_bind_listen(bind_handle) < 0) {
             humanized_log_error("host", ssh_get_error(bind_handle), EIO);
             ssh_bind_free(bind_handle);
+            host_release_imported_keys(imported_keys, host_key_count);
             host_sleep_after_error(host);
             continue;
         }
 
         host->listener.handle = bind_handle;
+        host->listener.accept_error_streak = 0U;
         host->listener.last_error_time.tv_sec = 0;
         host->listener.last_error_time.tv_nsec = 0L;
         printf("[listener] listening on %s:%s\n", address, bind_port);
@@ -5657,6 +5681,16 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             if (ssh_bind_accept(bind_handle, session) == SSH_ERROR) {
                 const int accept_error = errno;
                 const char *bind_error = ssh_get_error(bind_handle);
+                const bool bind_error_present =
+                    bind_error != nullptr && bind_error[0] != '\0';
+
+                if (accept_error == 0) {
+                    if (host->listener.accept_error_streak < UINT_MAX) {
+                        host->listener.accept_error_streak += 1U;
+                    }
+                } else {
+                    host->listener.accept_error_streak = 0U;
+                }
 
                 printf("[listener] accept failed, error=%d, shutdown_flag=%p "
                        "value=%d\n",
@@ -5671,7 +5705,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
                     if (system_message != nullptr &&
                         system_message[0] != '\0') {
-                        if (bind_error != nullptr && bind_error[0] != '\0' &&
+                        if (bind_error_present &&
                             !string_contains_case_insensitive(bind_error,
                                                               system_message)) {
                             snprintf(log_message, sizeof(log_message),
@@ -5681,7 +5715,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                             snprintf(log_message, sizeof(log_message),
                                      "Socket error: %s", system_message);
                         }
-                    } else if (bind_error != nullptr && bind_error[0] != '\0') {
+                    } else if (bind_error_present) {
                         snprintf(log_message, sizeof(log_message),
                                  "Socket error (code %d): %s", accept_error,
                                  bind_error);
@@ -5699,6 +5733,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
                 bool fatal_socket_error = false;
                 bool should_backoff_after_socket_error = false;
+                bool force_restart_after_empty_errno = false;
 
                 if (accept_error != 0) {
                     should_backoff_after_socket_error = true;
@@ -5740,15 +5775,31 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     default:
                         break;
                     }
+                } else {
+                    should_backoff_after_socket_error = true;
+                    if (host->listener.accept_error_streak >= 3U) {
+                        fatal_socket_error = true;
+                        force_restart_after_empty_errno = true;
+                    }
                 }
 
                 ssh_free(session);
-                if ((fatal_socket_error && bind_error != nullptr) ||
-                    string_contains_case_insensitive(bind_error, "kex")) {
-                    fatal_socket_error = false;
+                if (fatal_socket_error && !force_restart_after_empty_errno) {
+                    if (bind_error_present &&
+                        string_contains_case_insensitive(bind_error, "kex")) {
+                        fatal_socket_error = false;
+                    } else if (bind_error_present) {
+                        fatal_socket_error = false;
+                    }
                 }
 
                 if (fatal_socket_error) {
+                    if (force_restart_after_empty_errno) {
+                        printf("[listener] forcing restart after %u consecutive "
+                               "accept failures without errno\n",
+                               host->listener.accept_error_streak);
+                    }
+                    host->listener.accept_error_streak = 0U;
                     clock_gettime(CLOCK_MONOTONIC,
                                   &host->listener.last_error_time);
                     if (host_listener_attempt_recover(host, bind_handle,
@@ -5853,6 +5904,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             }
 
             printf("[connect] accepted client from %s\n", peer_address);
+            host->listener.accept_error_streak = 0U;
 
             const char *client_banner = ssh_get_clientbanner(session);
             const version_ip_ban_rule_t *matched_rule = nullptr;
@@ -5983,6 +6035,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         }
 
         ssh_bind_free(bind_handle);
+        host_release_imported_keys(imported_keys, host_key_count);
         host->listener.handle = nullptr;
 
         // Check for shutdown signal before deciding to restart

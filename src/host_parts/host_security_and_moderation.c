@@ -3218,6 +3218,9 @@ static bool host_state_load_history_entries(FILE *fp, host_t *host,
     }
 
     host->history_count = 0U;
+    host->history_start_index = 0U;
+
+    size_t total_kept = 0U;
 
     for (uint32_t idx = 0; idx < history_count; ++idx) {
         chat_history_entry_t entry_value = {0};
@@ -3226,7 +3229,20 @@ static bool host_state_load_history_entries(FILE *fp, host_t *host,
             return false;
         }
 
-        host_history_normalize_entry(host, &entry_value);
+        if (!host_history_normalize_entry(host, &entry_value)) {
+            continue;
+        }
+
+        ++total_kept;
+
+        if (cache_limit > 0U && host->history_count == cache_limit) {
+            memmove(host->history, host->history + 1,
+                    (cache_limit - 1U) * sizeof(host->history[0]));
+            host->history[cache_limit - 1U] = entry_value;
+            host->history_start_index += 1U;
+            continue;
+        }
+
         if ((uint32_t)idx >= keep_start) {
             size_t target_index = host->history_count;
             if (target_index < host->history_capacity) {
@@ -3236,8 +3252,14 @@ static bool host_state_load_history_entries(FILE *fp, host_t *host,
         }
     }
 
-    host->history_start_index = keep_start;
-    host->history_total = history_count;
+    if (cache_limit > 0U) {
+        size_t expected_start =
+            (total_kept > host->history_count) ? (total_kept - host->history_count)
+                                               : 0U;
+        host->history_start_index = expected_start;
+    }
+
+    host->history_total = total_kept;
     return true;
 }
 

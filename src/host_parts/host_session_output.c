@@ -1313,7 +1313,7 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
     session_send_plain_line(ctx, author_line);
     session_send_plain_line(ctx, created_line);
     session_send_plain_line(ctx, bumped_line);
-    session_send_plain_line(ctx, SSH_CHATTER_BBS_EDITOR_BODY_DIVIDER);
+    session_render_separator(ctx, "{Body}");
 
     // Send body line by line
     session_send_raw_text(ctx, post->body);
@@ -1726,7 +1726,7 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
     }
 
     // Send divider
-    session_send_plain_line(ctx, SSH_CHATTER_BBS_EDITOR_BODY_DIVIDER);
+    session_render_separator(ctx, "{Body}");
 
     // Send body lines individually
     if (line_count == 0U) {
@@ -1753,7 +1753,7 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
     }
 
     // Send end divider
-    session_send_plain_line(ctx, SSH_CHATTER_BBS_EDITOR_END_DIVIDER);
+    session_render_separator(ctx, "{End}");
 
     // Send remaining bytes info
     size_t capacity = session_editor_body_capacity(ctx);
@@ -3367,6 +3367,10 @@ static void session_send_history_entry(session_ctx_t *ctx,
                                        const chat_history_entry_t *entry)
 {
     if (ctx == nullptr || !session_transport_active(ctx) || entry == nullptr) {
+        return;
+    }
+
+    if (chat_history_entry_is_empty(entry)) {
         return;
     }
 

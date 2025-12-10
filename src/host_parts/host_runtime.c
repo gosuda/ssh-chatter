@@ -5122,7 +5122,7 @@ static bool host_prepare_chat_entry(host_t *host, const char *username,
                                     chat_history_entry_t *entry)
 {
     if (host == nullptr || username == nullptr || username[0] == '\0' ||
-        message == nullptr || entry == nullptr) {
+        message == nullptr || message[0] == '\0' || entry == nullptr) {
         return false;
     }
 

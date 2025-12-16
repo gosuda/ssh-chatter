@@ -1,5 +1,5 @@
 # Default setting: Disable Garbage Collector (GC)
-ENABLE_GC ?= 1
+ENABLE_GC ?= 0
 
 # The C compiler to use
 CC := gcc
@@ -75,7 +75,7 @@ COMMON_LDFLAGS = \
     -Wl,--no-undefined \
     -Wl,--warn-execstack -Wl,-z,noexecstack \
     -Wl,-z,separate-code \
-    -Wl,-z,stack-size=786432
+    -Wl,-z,stack-size=4194304
 
 LDFLAGS = $(COMMON_LDFLAGS) -lssh
 

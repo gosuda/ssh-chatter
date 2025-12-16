@@ -2765,7 +2765,7 @@ static void session_bbs_announce_post(host_t *host, const bbs_post_t *post)
 
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     if (preview[0] != '\0') {
-        snprintf(notice, sizeof(notice), "* [bbs] #%llu %s posted \"%s\" — %s",
+        snprintf(notice, sizeof(notice), "* [bbs] #%llu %s posted \"%s\" --%s",
                  (unsigned long long)post->id,
                  author[0] != '\0' ? author : "unknown",
                  title[0] != '\0' ? title : "(untitled)", preview);

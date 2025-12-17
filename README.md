@@ -112,44 +112,10 @@ Operators can manage the IRC relay connection using the `/ircserver` command:
 
 Messages received from the IRC relay appear in the chat with a `[IRC]` prefix and the sender's nickname. The relay automatically handles reconnections if the connection drops, with a 30-second delay between attempts.
 
-## FidoNet/Binkp relay (WIP)
-
-SSH-Chatter supports FidoNet integration via the Binkp protocol, allowing message synchronization with FidoNet networks such as magviz.ca. The FidoNet relay uses the standard Binkp protocol on port 24554 to exchange messages between the SSH chat room and FidoNet nodes.
-
 ## Morse Relay
 SSH-Chatter supports amateur ham radio relay.
 This shows global morse signals.
 `/morse on` to see, `/morse-reply` to send. 
-
-### Configuration
-
-Set these environment variables to enable the FidoNet relay:
-
-- `CHATTER_FIDONET_SERVER` – hostname or IP address of the FidoNet/Binkp server (e.g., `magviz.ca`)
-- `CHATTER_FIDONET_PORT` – port number (defaults to `24554` if not specified)
-- `CHATTER_FIDONET_ADDRESS` – your FidoNet node address (e.g., `2:5030/1997`)
-- `CHATTER_FIDONET_PASSWORD` – optional session password for Binkp authentication
-
-Example configuration in `chatter.env`:
-
-```bash
-CHATTER_FIDONET_SERVER=magviz.ca
-CHATTER_FIDONET_PORT=24554
-CHATTER_FIDONET_ADDRESS=2:5030/1997
-CHATTER_FIDONET_PASSWORD=your_password_here
-```
-
-### Managing the connection
-
-Operators can manage the FidoNet relay connection using the `/fidonet` command:
-
-```bash
-/fidonet status        # Check connection status
-/fidonet reconnect     # Reconnect to the FidoNet server
-/fidonet disconnect    # Disconnect from the FidoNet server
-```
-
-Messages received from the FidoNet relay appear in the chat with a `[FidoNet]` prefix and the sender's username. The relay implements the standard Binkp handshake protocol and uses a custom CHAT command for message exchange. The relay automatically handles reconnections if the connection drops, with a 30-second delay between attempts.
 
 ### Protocol Details
 

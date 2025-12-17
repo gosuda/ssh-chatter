@@ -191,7 +191,7 @@ void ssh_chatter_sync_start()
     ssh_options_set(session, SSH_OPTIONS_HOST, current_settings.go_chat_host);
     ssh_options_set(session, SSH_OPTIONS_PORT, &current_settings.go_chat_port);
 
-    fprintf(stderr, "[SSH_SYNC] Connecting...\n");
+    fprintf(stderr, "[SSH_SYNC] Connecting.\n");
     int rc = ssh_connect(session);
     if (rc != SSH_OK) {
         ssh_free(session);

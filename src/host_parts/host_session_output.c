@@ -3930,20 +3930,20 @@ static int session_prepare_shell(session_ctx_t *ctx)
             if (subtype == SSH_CHANNEL_REQUEST_PTY ||
                 subtype == SSH_CHANNEL_REQUEST_SHELL) {
                 if (subtype == SSH_CHANNEL_REQUEST_PTY) {
-                    const unsigned int raw_width =
+                    const int raw_width =
                         ssh_message_channel_request_pty_width(message);
-                    const unsigned int raw_height =
+                    const int raw_height =
                         ssh_message_channel_request_pty_height(message);
-                    unsigned int width = raw_width;
-                    unsigned int height = raw_height;
-                    if (width > 0U) {
+                    int width = raw_width;
+                    int height = raw_height;
+                    if (width > 0) {
                         if (width > SSH_CHATTER_MESSAGE_LIMIT) {
                             width = SSH_CHATTER_MESSAGE_LIMIT;
                         }
-                        ctx->terminal_width = width;
+                        ctx->terminal_width = width > 0 ? (unsigned)width: 0;
                     }
-                    if (height > 0U) {
-                        ctx->terminal_height = height;
+                    if (height > 0) {
+                        ctx->terminal_height = height > 0 ? (unsigned)height: 0;
                     }
                 }
                 ssh_message_channel_request_reply_success(message);

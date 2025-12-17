@@ -3705,6 +3705,11 @@ static void session_describe_peer(ssh_session session, char *buffer, size_t len)
         return;
     }
 
+    int val = 1;
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) < 0) {
+        fprintf(stderr, "[session] setsockopt SO_KEEPALIVE failed");
+    }
+
     struct sockaddr_storage addr;
     socklen_t addr_len = sizeof(addr);
     if (getpeername(socket_fd, (struct sockaddr *)&addr, &addr_len) != 0) {
@@ -3808,6 +3813,11 @@ session_probe_client_hostkey_algorithms(ssh_session session,
     const int socket_fd = ssh_get_fd(session);
     if (socket_fd < 0) {
         return result;
+    }
+
+    int val = 1;
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) < 0) {
+        fprintf(stderr, "[session] setsockopt SO_KEEPALIVE failed");
     }
 
     const size_t max_buffer_size = 65536U;

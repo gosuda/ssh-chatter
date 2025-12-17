@@ -20,7 +20,7 @@
 #endif
 
 #include <libssh/libssh.h>
-#include "ssh_chatter/shim_libssh/server.h"
+#include <libssh/server.h>
 
 #include "theme.h"
 #include "security_layer.h"

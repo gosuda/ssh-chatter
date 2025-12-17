@@ -5942,6 +5942,11 @@ static int session_channel_read_poll(session_ctx_t *ctx, char *buffer,
         return session_transport_read(ctx, buffer, length, -1);
     }
 
+    int val = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) < 0) {
+        fprintf(stderr, "[session] setsockopt SO_KEEPALIVE failed");
+    }
+
     struct pollfd pfd;
     pfd.fd = fd;
     pfd.events = POLLIN;

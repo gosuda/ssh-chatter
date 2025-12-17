@@ -3488,6 +3488,11 @@ static bool session_channel_wait_writable(session_ctx_t *ctx, int timeout_ms)
         return true;
     }
 
+    int val = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) < 0) {
+        fprintf(stderr, "[session] setsockopt SO_KEEPALIVE failed");
+    }
+
     struct pollfd pfd = {
         .fd = fd,
         .events = POLLOUT,

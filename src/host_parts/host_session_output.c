@@ -3859,6 +3859,12 @@ static int session_authenticate(session_ctx_t *ctx)
                 }
             }
         }
+        case SSH_CHANNEL_REQUEST_WINDOW_CHANGE:
+            ssh_message_channel_request_reply_success(message);
+            break;
+        case SSH_CHANNEL_REQUEST_SHELL:
+            ssh_message_channel_request_reply_success(message);
+            break;
         default:
             ssh_message_reply_default(message);
             break;

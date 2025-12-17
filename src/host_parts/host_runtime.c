@@ -5683,7 +5683,6 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                                                        : -1));
                 fflush(stdout);
 
-                if(accept_error == 71) accept_error ^= accept_error; // ignore not implemented actions
                 if (accept_error != 0) {
                     char log_message[512];
                     const char *system_message = strerror(accept_error);

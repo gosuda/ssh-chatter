@@ -13,7 +13,6 @@
 #include "ssh_chatter/client.h"
 #include "ssh_chatter/webssh_client.h"
 #include "ssh_chatter/irc_client.h"
-#include "ssh_chatter/fidonet_client.h"
 #include "ssh_chatter/ddial_client.h"
 #include "ssh_chatter/discord_client.h"
 #include "ssh_chatter/morse_client.h"

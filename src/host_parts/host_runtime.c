@@ -1875,10 +1875,6 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
                                          &args)) {
         session_handle_discord(ctx, args);
         return;
-    } else if (session_parse_command_any(ctx, "/fidonet", effective_line,
-                                         &args)) {
-        session_handle_fidonet(ctx, args);
-        return;
     } else if (session_parse_command_any(ctx, "/birthday", effective_line,
                                          &args)) {
         session_handle_birthday(ctx, args);
@@ -4770,14 +4766,6 @@ void host_init(host_t *host, auth_profile_t *auth)
                                     EINVAL);
             }
 
-            host->fidonet_client = fidonet_client_create(host, host->clients);
-            if (host->fidonet_client == nullptr) {
-                humanized_log_error("fidonet",
-                                    "FidoNet relay inactive; check "
-                                    "CHATTER_FIDONET_* configuration",
-                                    EINVAL);
-            }
-
             host->ddial_client = ddial_client_create(host, host->clients);
             if (host->ddial_client == nullptr) {
                 humanized_log_error(
@@ -5387,10 +5375,6 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         irc_client_destroy(host->irc_client);
         host->irc_client = nullptr;
     }
-    if (host->fidonet_client != nullptr) {
-        fidonet_client_destroy(host->fidonet_client);
-        host->fidonet_client = nullptr;
-    }
     if (host->ddial_client != nullptr) {
         ddial_client_destroy(host->ddial_client);
         host->ddial_client = nullptr;
@@ -5679,7 +5663,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             }
 
             if (ssh_bind_accept(bind_handle, session) == SSH_ERROR) {
-                const int accept_error = errno;
+                int accept_error = errno;
                 const char *bind_error = ssh_get_error(bind_handle);
                 const bool bind_error_present =
                     bind_error != nullptr && bind_error[0] != '\0';
@@ -5699,6 +5683,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                                                        : -1));
                 fflush(stdout);
 
+                if(accept_error == 71) accept_error ^= accept_error; // ignore not implemented actions
                 if (accept_error != 0) {
                     char log_message[512];
                     const char *system_message = strerror(accept_error);

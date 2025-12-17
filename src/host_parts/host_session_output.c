@@ -5295,106 +5295,6 @@ static void session_handle_ircserver(session_ctx_t *ctx, const char *arguments)
     }
 }
 
-static void session_handle_fidonet(session_ctx_t *ctx, const char *arguments)
-{
-    if (ctx == nullptr) {
-        return;
-    }
-
-    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
-        session_send_system_line(ctx,
-                                 "You are not allowed to run that command.");
-        return;
-    }
-
-    host_t *host = ctx->owner;
-    if (host == nullptr) {
-        session_send_system_line(ctx, "Host unavailable.");
-        return;
-    }
-
-    if (host->fidonet_client == nullptr) {
-        session_send_system_line(
-            ctx, "FidoNet relay is not configured. Set CHATTER_FIDONET_SERVER, "
-                 "CHATTER_FIDONET_ADDRESS environment variables.");
-        return;
-    }
-
-    static const char *kUsage =
-        "Usage: /fidonet status|reconnect|disconnect|logs";
-    char usage[SSH_CHATTER_MESSAGE_LIMIT];
-    session_command_format_usage(ctx, "/fidonet", kUsage, usage, sizeof(usage));
-
-    if (arguments == nullptr || *arguments == '\0') {
-        session_send_system_line(ctx, usage);
-        return;
-    }
-
-    char command[64];
-    snprintf(command, sizeof(command), "%s", arguments);
-    trim_whitespace_inplace(command);
-
-    if (strcmp(command, "status") == 0) {
-        const char *status = fidonet_client_get_status(host->fidonet_client);
-        bool connected = fidonet_client_is_connected(host->fidonet_client);
-        char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "FidoNet Relay Status: %s (%s)",
-                 status, connected ? "connected" : "disconnected");
-        session_send_system_line(ctx, message);
-        /* Broadcast to chat room */
-        char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(broadcast, sizeof(broadcast),
-                 "* [%s] checked FidoNet status: %s (%s)", ctx->user.name,
-                 status, connected ? "connected" : "disconnected");
-        host_history_record_system(host, broadcast, nullptr);
-        chat_room_broadcast(&host->room, broadcast, nullptr);
-    } else if (strcmp(command, "logs") == 0) {
-        char logs[FIDONET_LOG_CAPACITY][FIDONET_LOG_ENTRY_LENGTH];
-        size_t count = 0U;
-        if (!fidonet_client_snapshot_logs(host->fidonet_client, logs,
-                                          FIDONET_LOG_CAPACITY, &count)) {
-            session_send_system_line(ctx, "Unable to read FidoNet logs.");
-            return;
-        }
-
-        if (count == 0U) {
-            session_send_system_line(ctx, "No FidoNet activity yet.");
-            return;
-        }
-
-        session_send_system_line(ctx, "Recent FidoNet logs:");
-        for (size_t i = 0; i < count; ++i) {
-            session_send_system_line(ctx, logs[i]);
-        }
-    } else if (strcmp(command, "reconnect") == 0) {
-        session_send_system_line(
-            ctx, "Attempting to reconnect to FidoNet server...");
-        if (fidonet_client_reconnect(host->fidonet_client)) {
-            session_send_system_line(ctx, "FidoNet reconnection initiated.");
-            /* Broadcast to chat room */
-            char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(broadcast, sizeof(broadcast),
-                     "* [%s] initiated FidoNet reconnection", ctx->user.name);
-            host_history_record_system(host, broadcast, nullptr);
-            chat_room_broadcast(&host->room, broadcast, nullptr);
-        } else {
-            session_send_system_line(ctx,
-                                     "Failed to reconnect to FidoNet server.");
-        }
-    } else if (strcmp(command, "disconnect") == 0) {
-        fidonet_client_disconnect(host->fidonet_client);
-        session_send_system_line(ctx, "Disconnected from FidoNet server.");
-        /* Broadcast to chat room */
-        char broadcast[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(broadcast, sizeof(broadcast),
-                 "* [%s] disconnected FidoNet relay", ctx->user.name);
-        host_history_record_system(host, broadcast, nullptr);
-        chat_room_broadcast(&host->room, broadcast, nullptr);
-    } else {
-        session_send_system_line(ctx, usage);
-    }
-}
-
 static void session_handle_discord(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr) {
@@ -5476,20 +5376,6 @@ static void session_handle_telnetserver(session_ctx_t *ctx,
     if (strcmp(command, "status") == 0) {
         char message[SSH_CHATTER_MESSAGE_LIMIT * 2];
         message[0] = '\0';
-
-        /* Check FidoNet status */
-        if (host->fidonet_client != nullptr) {
-            const char *status =
-                fidonet_client_get_status(host->fidonet_client);
-            bool connected = fidonet_client_is_connected(host->fidonet_client);
-            char line[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(line, sizeof(line), "FidoNet/Binkp: %s (%s)\n", status,
-                     connected ? "connected" : "disconnected");
-            strncat(message, line, sizeof(message) - strlen(message) - 1);
-        } else {
-            strncat(message, "FidoNet/Binkp: Not configured\n",
-                    sizeof(message) - strlen(message) - 1);
-        }
 
         /* Check IRC status */
         if (host->irc_client != nullptr) {

@@ -4052,6 +4052,7 @@ static void *session_thread(void *arg)
                                     sizeof(args) / sizeof(args[0]), retro_hint,
                                     sizeof(retro_hint));
             session_send_system_line(ctx, retro_hint);
+            session_send_system_line(ctx, "NOTE: UTF-8 is recommended to see Korean RSS without dirty broken letters");
         }
 
         char join_message[SSH_CHATTER_MESSAGE_LIMIT];

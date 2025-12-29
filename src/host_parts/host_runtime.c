@@ -2,6 +2,9 @@
 #include "host_internal.h"
 
 #define TELNET_STABLE_RESET_SECONDS 10.0
+#define SSH_CHATTER_TCP_KEEPALIVE_IDLE 60
+#define SSH_CHATTER_TCP_KEEPALIVE_INTERVAL 10
+#define SSH_CHATTER_TCP_KEEPALIVE_COUNT 3
 
 static session_ctx_t *session_create(void)
 {
@@ -19,6 +22,60 @@ static session_ctx_t *session_create(void)
         ctx->disable_output_dedup = false;
     }
     return ctx;
+}
+
+static void session_configure_tcp_keepalive(ssh_session session)
+{
+    if (session == nullptr) {
+        return;
+    }
+
+    const int socket_fd = ssh_get_fd(session);
+    if (socket_fd < 0) {
+        return;
+    }
+
+    int enabled = 1;
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_KEEPALIVE, &enabled,
+                   sizeof(enabled)) < 0) {
+        fprintf(stderr, "[session] setsockopt SO_KEEPALIVE failed");
+    }
+
+#ifdef TCP_KEEPIDLE
+    {
+        int idle_seconds = SSH_CHATTER_TCP_KEEPALIVE_IDLE;
+        if (setsockopt(socket_fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle_seconds,
+                       sizeof(idle_seconds)) < 0) {
+            fprintf(stderr, "[session] setsockopt TCP_KEEPIDLE failed");
+        }
+    }
+#endif
+
+#ifdef TCP_KEEPALIVE
+    {
+        int idle_seconds = SSH_CHATTER_TCP_KEEPALIVE_IDLE;
+        if (setsockopt(socket_fd, IPPROTO_TCP, TCP_KEEPALIVE, &idle_seconds,
+                       sizeof(idle_seconds)) < 0) {
+            fprintf(stderr, "[session] setsockopt TCP_KEEPALIVE failed");
+        }
+    }
+#endif
+
+#ifdef TCP_KEEPINTVL
+    int interval_seconds = SSH_CHATTER_TCP_KEEPALIVE_INTERVAL;
+    if (setsockopt(socket_fd, IPPROTO_TCP, TCP_KEEPINTVL, &interval_seconds,
+                   sizeof(interval_seconds)) < 0) {
+        fprintf(stderr, "[session] setsockopt TCP_KEEPINTVL failed");
+    }
+#endif
+
+#ifdef TCP_KEEPCNT
+    int keepalive_probes = SSH_CHATTER_TCP_KEEPALIVE_COUNT;
+    if (setsockopt(socket_fd, IPPROTO_TCP, TCP_KEEPCNT, &keepalive_probes,
+                   sizeof(keepalive_probes)) < 0) {
+        fprintf(stderr, "[session] setsockopt TCP_KEEPCNT failed");
+    }
+#endif
 }
 
 static const char *session_cp437_scope_label(session_cp437_scope_t cp437_scope)
@@ -5820,6 +5877,8 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
                 continue;
             }
+
+            session_configure_tcp_keepalive(session);
 
             hostkey_probe_result_t hostkey_probe =
                 session_probe_client_hostkey_algorithms(

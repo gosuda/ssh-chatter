@@ -1,17 +1,14 @@
 #!/bin/bash
 # health-check.sh
 #
-# This script performs a health check on the ssh-chatter service.
-# It attempts to connect to the SSH server using a key-based authentication.
-# If the connection fails, it restarts the ssh-chatter service.
+# This script checks if the specific port of the ssh-chatter service is open.
+# If the port is unreachable, it restarts the service.
 
 set -euo pipefail
 
 # Constants
 readonly SSH_HOST="127.0.0.1"
 readonly SSH_PORT="2222"
-readonly USERNAME="health-check"
-readonly KEY_PATH="/etc/ssh-chatter/keys/ssh_host_rsa_key"
 readonly SERVICE_NAME="chatter"
 
 # Logging function
@@ -19,15 +16,18 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
-# Perform the health check
-log "Performing health check for ${SERVICE_NAME} on ${SSH_HOST}:${SSH_PORT}..."
+# Perform the health check by testing TCP connection
+log "Checking if port ${SSH_PORT} is open on ${SSH_HOST}..."
 
-if ssh -p "${SSH_PORT}" -i "${KEY_PATH}" -o "PasswordAuthentication=no" -o "ConnectTimeout=10" "${USERNAME}@${SSH_HOST}" 'exit' &>/dev/null; then
-    log "Health check PASSED. Service is running."
+# nc -z: scan mode (check connection without sending data)
+# -w 5: timeout in seconds
+if nc -z -w 5 "${SSH_HOST}" "${SSH_PORT}" &>/dev/null; then
+    log "Health check PASSED. Port ${SSH_PORT} is reachable."
     exit 0
 else
-    log "Health check FAILED. Service seems to be down."
+    log "Health check FAILED. Port ${SSH_PORT} is unreachable."
     log "Attempting to restart ${SERVICE_NAME} service..."
+    
     if sudo systemctl restart "${SERVICE_NAME}"; then
         log "Service ${SERVICE_NAME} restarted successfully."
     else

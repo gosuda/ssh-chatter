@@ -2830,6 +2830,7 @@ static void session_bbs_reset_pending_post(session_ctx_t *ctx)
     ctx->pending_bbs_line_count = 0U;
     ctx->pending_bbs_cursor_line = 0U;
     ctx->pending_bbs_editing_line = false;
+    ctx->bbs_editor_scroll_offset = 0U;
     for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_TAGS; ++idx) {
         ctx->pending_bbs_tags[idx][0] = '\0';
     }

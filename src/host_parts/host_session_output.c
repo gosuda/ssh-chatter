@@ -1469,6 +1469,81 @@ static size_t session_editor_max_lines(const session_ctx_t *ctx)
     return SIZE_MAX;
 }
 
+static size_t session_bbs_editor_window(const session_ctx_t *ctx,
+                                        bool ascii_mode)
+{
+    size_t window = SSH_CHATTER_BBS_VIEW_WINDOW;
+    if (window == 0U) {
+        window = 1U;
+    }
+
+    if (ctx == nullptr || ctx->terminal_height == 0U) {
+        return window;
+    }
+
+    size_t reserved = ascii_mode ? 7U : 8U;
+    if (!ascii_mode && ctx->breaking_alerts_enabled &&
+        ctx->bbs_breaking_count > 0U) {
+        reserved += 2U + ctx->bbs_breaking_count;
+    }
+    reserved += 1U; // Prompt line.
+
+    if (ctx->terminal_height <= reserved) {
+        return 1U;
+    }
+
+    size_t available = ctx->terminal_height - reserved;
+    if (available == 0U) {
+        available = 1U;
+    }
+
+    if (available < window) {
+        window = available;
+    }
+
+    return window > 0U ? window : 1U;
+}
+
+static void session_bbs_adjust_editor_scroll(session_ctx_t *ctx,
+                                             size_t line_count, size_t window)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (window == 0U) {
+        window = 1U;
+    }
+
+    if (line_count <= window) {
+        ctx->bbs_editor_scroll_offset = 0U;
+        return;
+    }
+
+    size_t max_offset = line_count - window;
+    size_t offset = ctx->bbs_editor_scroll_offset;
+
+    if (!ctx->pending_bbs_editing_line) {
+        offset = max_offset;
+    } else {
+        size_t cursor = ctx->pending_bbs_cursor_line;
+        if (cursor > line_count) {
+            cursor = line_count;
+        }
+        if (cursor < offset) {
+            offset = cursor;
+        } else if (cursor >= offset + window) {
+            offset = cursor - window + 1U;
+        }
+    }
+
+    if (offset > max_offset) {
+        offset = max_offset;
+    }
+
+    ctx->bbs_editor_scroll_offset = offset;
+}
+
 static bool session_bbs_append_line(session_ctx_t *ctx, const char *line,
                                     char *status, size_t status_length)
 {
@@ -1667,6 +1742,8 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
     session_bbs_prepare_canvas(ctx);
     session_bbs_recalculate_line_count(ctx);
     size_t line_count = ctx->pending_bbs_line_count;
+    size_t window = session_bbs_editor_window(ctx, ascii_mode);
+    session_bbs_adjust_editor_scroll(ctx, line_count, window);
 
     // Send title line
     if (ascii_mode) {
@@ -1733,7 +1810,13 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
         const char *prefix = ctx->pending_bbs_editing_line ? "> " : "> ";
         session_send_plain_line(ctx, prefix);
     } else {
-        for (size_t idx = 0U; idx < line_count; ++idx) {
+        size_t start = ctx->bbs_editor_scroll_offset;
+        size_t end = start + window;
+        if (end > line_count) {
+            end = line_count;
+        }
+
+        for (size_t idx = start; idx < end; ++idx) {
             char line_buffer[SSH_CHATTER_MESSAGE_LIMIT];
             session_bbs_copy_line(ctx, idx, line_buffer, sizeof(line_buffer));
             bool selected = ctx->pending_bbs_editing_line &&

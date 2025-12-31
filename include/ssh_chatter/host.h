@@ -668,6 +668,7 @@ typedef struct session_ctx {
     size_t pending_bbs_line_count;
     size_t pending_bbs_cursor_line;
     bool pending_bbs_editing_line;
+    size_t bbs_editor_scroll_offset;
     bool bbs_view_active;
     uint64_t bbs_view_post_id;
     size_t bbs_view_scroll_offset;

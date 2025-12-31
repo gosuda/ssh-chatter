@@ -1481,7 +1481,7 @@ static size_t session_bbs_editor_window(const session_ctx_t *ctx,
         return window;
     }
 
-    size_t reserved = ascii_mode ? 7U : 8U;
+    size_t reserved = ascii_mode ? 10U : 11U;
     if (!ascii_mode && ctx->breaking_alerts_enabled &&
         ctx->bbs_breaking_count > 0U) {
         reserved += 2U + ctx->bbs_breaking_count;
@@ -1504,6 +1504,38 @@ static size_t session_bbs_editor_window(const session_ctx_t *ctx,
     return window > 0U ? window : 1U;
 }
 
+static void session_bbs_set_cursor(session_ctx_t *ctx, size_t target,
+                                   bool editing)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    session_bbs_recalculate_line_count(ctx);
+    size_t line_count = ctx->pending_bbs_line_count;
+
+    if (target > line_count) {
+        target = line_count;
+    }
+
+    if (editing && target >= line_count) {
+        editing = false;
+        target = line_count;
+    }
+
+    ctx->pending_bbs_cursor_line = target;
+    ctx->pending_bbs_editing_line = editing;
+
+    if (editing && target < line_count) {
+        char line_buffer[SSH_CHATTER_MAX_INPUT_LEN];
+        session_bbs_copy_line(ctx, target, line_buffer, sizeof(line_buffer));
+        session_set_input_text(ctx, line_buffer);
+        return;
+    }
+
+    session_set_input_text(ctx, "");
+}
+
 static void session_bbs_adjust_editor_scroll(session_ctx_t *ctx,
                                              size_t line_count, size_t window)
 {
@@ -1522,19 +1554,20 @@ static void session_bbs_adjust_editor_scroll(session_ctx_t *ctx,
 
     size_t max_offset = line_count - window;
     size_t offset = ctx->bbs_editor_scroll_offset;
+    size_t cursor = ctx->pending_bbs_cursor_line;
 
-    if (!ctx->pending_bbs_editing_line) {
-        offset = max_offset;
-    } else {
-        size_t cursor = ctx->pending_bbs_cursor_line;
-        if (cursor > line_count) {
-            cursor = line_count;
-        }
-        if (cursor < offset) {
-            offset = cursor;
-        } else if (cursor >= offset + window) {
-            offset = cursor - window + 1U;
-        }
+    if (cursor > line_count) {
+        cursor = line_count;
+    }
+
+    if (cursor >= line_count && line_count > 0U) {
+        cursor = line_count - 1U;
+    }
+
+    if (cursor < offset) {
+        offset = cursor;
+    } else if (cursor >= offset + window) {
+        offset = cursor - window + 1U;
     }
 
     if (offset > max_offset) {
@@ -1630,8 +1663,127 @@ static bool session_bbs_append_line(session_ctx_t *ctx, const char *line,
 
     ctx->pending_bbs_body[ctx->pending_bbs_body_length] = '\0';
     session_bbs_recalculate_line_count(ctx);
-    ctx->pending_bbs_cursor_line = ctx->pending_bbs_line_count;
-    ctx->pending_bbs_editing_line = false;
+    session_bbs_set_cursor(ctx, ctx->pending_bbs_line_count, false);
+    return true;
+}
+
+static bool session_bbs_insert_line(session_ctx_t *ctx, size_t line_index,
+                                    const char *line, char *status,
+                                    size_t status_length)
+{
+    if (ctx == nullptr) {
+        return false;
+    }
+
+    const bool ascii_mode = ctx->editor_mode == SESSION_EDITOR_MODE_ASCIIART;
+    if (status != nullptr && status_length > 0U) {
+        status[0] = '\0';
+    }
+
+    if (line == nullptr) {
+        line = "";
+    }
+
+    const char *length_limit_message =
+        ascii_mode ? "ASCII art buffer is full. Additional text ignored."
+                   : "Post body length limit reached. Additional text ignored.";
+    const char *line_limit_message =
+        ascii_mode ? "ASCII art line limit reached. Additional text ignored."
+                   : "Post line limit reached. Additional text ignored.";
+    const char *line_truncated_message =
+        ascii_mode ? "Line truncated to fit within the ASCII art size limit."
+                   : "Line truncated to fit within the post size limit.";
+
+    session_bbs_recalculate_line_count(ctx);
+    size_t line_count = ctx->pending_bbs_line_count;
+    size_t max_lines = session_editor_max_lines(ctx);
+    if (line_count >= max_lines) {
+        if (status != nullptr && status_length > 0U) {
+            snprintf(status, status_length, "%s", line_limit_message);
+        }
+        return false;
+    }
+
+    if (line_index > line_count) {
+        line_index = line_count;
+    }
+
+    size_t capacity = session_editor_body_capacity(ctx);
+    if (capacity == 0U) {
+        if (status != nullptr && status_length > 0U) {
+            snprintf(status, status_length, "%s", length_limit_message);
+        }
+        return false;
+    }
+
+    size_t current_length = ctx->pending_bbs_body_length;
+    size_t available = capacity - current_length - 1U;
+    if (available == 0U) {
+        if (status != nullptr && status_length > 0U) {
+            snprintf(status, status_length, "%s", length_limit_message);
+        }
+        return false;
+    }
+
+    size_t insert_offset = current_length;
+    if (line_index < line_count) {
+        size_t start = 0U;
+        size_t length = 0U;
+        if (!session_bbs_get_line_range(ctx, line_index, &start, &length)) {
+            if (status != nullptr && status_length > 0U) {
+                snprintf(status, status_length,
+                         "Unable to locate the selected line.");
+            }
+            return false;
+        }
+        insert_offset = start;
+    }
+
+    bool insert_before_existing = line_index < line_count;
+    bool insert_needs_prefix = (line_index == line_count && current_length > 0U);
+    bool insert_needs_suffix = insert_before_existing;
+
+    size_t line_length = strlen(line);
+    size_t required = line_length +
+                      (insert_needs_prefix ? 1U : 0U) +
+                      (insert_needs_suffix ? 1U : 0U);
+    if (required > available) {
+        size_t overhead =
+            (insert_needs_prefix ? 1U : 0U) + (insert_needs_suffix ? 1U : 0U);
+        if (available <= overhead) {
+            if (status != nullptr && status_length > 0U) {
+                snprintf(status, status_length, "%s", length_limit_message);
+            }
+            return false;
+        }
+        line_length = available - overhead;
+        if (status != nullptr && status_length > 0U) {
+            snprintf(status, status_length, "%s", line_truncated_message);
+        }
+    }
+
+    size_t insert_length = line_length +
+                           (insert_needs_prefix ? 1U : 0U) +
+                           (insert_needs_suffix ? 1U : 0U);
+    size_t tail_bytes = current_length - insert_offset + 1U;
+    memmove(ctx->pending_bbs_body + insert_offset + insert_length,
+            ctx->pending_bbs_body + insert_offset, tail_bytes);
+
+    size_t write_offset = insert_offset;
+    if (insert_needs_prefix) {
+        ctx->pending_bbs_body[write_offset++] = '\n';
+    }
+    if (line_length > 0U) {
+        memcpy(ctx->pending_bbs_body + write_offset, line, line_length);
+        write_offset += line_length;
+    }
+    if (insert_needs_suffix) {
+        ctx->pending_bbs_body[write_offset++] = '\n';
+    }
+
+    ctx->pending_bbs_body_length = current_length + insert_length;
+    ctx->pending_bbs_body[ctx->pending_bbs_body_length] = '\0';
+    session_bbs_recalculate_line_count(ctx);
     return true;
 }
 
@@ -1715,12 +1867,234 @@ static bool session_bbs_replace_line(session_ctx_t *ctx, size_t line_index,
     session_bbs_recalculate_line_count(ctx);
     size_t updated_count = ctx->pending_bbs_line_count;
     if (line_index + 1U <= updated_count) {
-        ctx->pending_bbs_cursor_line = line_index + 1U;
+        session_bbs_set_cursor(ctx, line_index + 1U, false);
     } else {
-        ctx->pending_bbs_cursor_line = updated_count;
+        session_bbs_set_cursor(ctx, updated_count, false);
     }
-    ctx->pending_bbs_editing_line = false;
     return true;
+}
+
+static bool session_bbs_copy_line_range(const session_ctx_t *ctx, size_t start,
+                                        size_t end, char *buffer,
+                                        size_t length, size_t *lines_out)
+{
+    if (buffer == nullptr || length == 0U || ctx == nullptr) {
+        return false;
+    }
+
+    buffer[0] = '\0';
+    if (lines_out != nullptr) {
+        *lines_out = 0U;
+    }
+
+    session_ctx_t *mutable_ctx = (session_ctx_t *)ctx;
+    session_bbs_recalculate_line_count(mutable_ctx);
+    size_t line_count = ctx->pending_bbs_line_count;
+    if (line_count == 0U || start >= line_count || end >= line_count) {
+        return false;
+    }
+
+    if (start > end) {
+        size_t tmp = start;
+        start = end;
+        end = tmp;
+    }
+
+    size_t write_offset = 0U;
+    size_t copied_lines = 0U;
+    for (size_t idx = start; idx <= end; ++idx) {
+        char line_buffer[SSH_CHATTER_MESSAGE_LIMIT];
+        session_bbs_copy_line(ctx, idx, line_buffer, sizeof(line_buffer));
+        size_t line_len = strlen(line_buffer);
+        size_t needed = line_len + (copied_lines > 0U ? 1U : 0U);
+        if (write_offset + needed >= length) {
+            break;
+        }
+        if (copied_lines > 0U) {
+            buffer[write_offset++] = '\n';
+        }
+        if (line_len > 0U) {
+            memcpy(buffer + write_offset, line_buffer, line_len);
+            write_offset += line_len;
+        }
+        ++copied_lines;
+    }
+    buffer[write_offset] = '\0';
+    if (lines_out != nullptr) {
+        *lines_out = copied_lines;
+    }
+    return copied_lines > 0U;
+}
+
+static bool session_bbs_remove_line_range(session_ctx_t *ctx, size_t start,
+                                          size_t end, char *status,
+                                          size_t status_length)
+{
+    if (ctx == nullptr) {
+        return false;
+    }
+
+    if (status != nullptr && status_length > 0U) {
+        status[0] = '\0';
+    }
+
+    session_bbs_recalculate_line_count(ctx);
+    size_t line_count = ctx->pending_bbs_line_count;
+    if (line_count == 0U || start >= line_count || end >= line_count) {
+        if (status != nullptr && status_length > 0U) {
+            snprintf(status, status_length, "No lines selected.");
+        }
+        return false;
+    }
+
+    if (start > end) {
+        size_t tmp = start;
+        start = end;
+        end = tmp;
+    }
+
+    size_t start_offset = 0U;
+    size_t start_length = 0U;
+    if (!session_bbs_get_line_range(ctx, start, &start_offset, &start_length)) {
+        return false;
+    }
+    size_t end_offset = 0U;
+    size_t end_length = 0U;
+    if (!session_bbs_get_line_range(ctx, end, &end_offset, &end_length)) {
+        return false;
+    }
+
+    size_t remove_start = start_offset;
+    size_t remove_end = end_offset + end_length;
+    if (end < line_count - 1U) {
+        remove_end += 1U;
+    } else if (start > 0U) {
+        remove_start -= 1U;
+    }
+
+    size_t current_length = ctx->pending_bbs_body_length;
+    if (remove_end > current_length) {
+        remove_end = current_length;
+    }
+
+    size_t tail_bytes = current_length - remove_end + 1U;
+    memmove(ctx->pending_bbs_body + remove_start,
+            ctx->pending_bbs_body + remove_end, tail_bytes);
+
+    ctx->pending_bbs_body_length =
+        current_length - (remove_end - remove_start);
+    ctx->pending_bbs_body[ctx->pending_bbs_body_length] = '\0';
+    session_bbs_recalculate_line_count(ctx);
+    return true;
+}
+
+static bool session_bbs_insert_clipboard(session_ctx_t *ctx, char *status,
+                                         size_t status_length)
+{
+    if (ctx == nullptr || ctx->bbs_editor_clipboard_length == 0U) {
+        if (status != nullptr && status_length > 0U) {
+            snprintf(status, status_length, "Clipboard is empty.");
+        }
+        return false;
+    }
+
+    session_bbs_recalculate_line_count(ctx);
+    size_t line_count = ctx->pending_bbs_line_count;
+    size_t insert_index = ctx->pending_bbs_cursor_line;
+    if (insert_index > line_count) {
+        insert_index = line_count;
+    }
+
+    char clipboard_copy[SSH_CHATTER_BBS_BODY_LEN];
+    snprintf(clipboard_copy, sizeof(clipboard_copy), "%s",
+             ctx->bbs_editor_clipboard);
+
+    char *cursor = clipboard_copy;
+    bool inserted_any = false;
+    while (cursor != nullptr && *cursor != '\0') {
+        char *newline = strchr(cursor, '\n');
+        if (newline != nullptr) {
+            *newline = '\0';
+        }
+        if (!session_bbs_insert_line(ctx, insert_index, cursor, status,
+                                     status_length)) {
+            return inserted_any;
+        }
+        inserted_any = true;
+        ++insert_index;
+        if (newline == nullptr) {
+            break;
+        }
+        cursor = newline + 1;
+    }
+
+    session_bbs_set_cursor(ctx, insert_index, false);
+    return inserted_any;
+}
+
+static bool session_bbs_search_keyword(session_ctx_t *ctx, const char *keyword,
+                                       char *status, size_t status_length)
+{
+    if (ctx == nullptr) {
+        return false;
+    }
+
+    if (status != nullptr && status_length > 0U) {
+        status[0] = '\0';
+    }
+
+    if (keyword == nullptr || keyword[0] == '\0') {
+        if (status != nullptr && status_length > 0U) {
+            snprintf(status, status_length, "Search canceled.");
+        }
+        session_bbs_set_cursor(ctx, ctx->bbs_search_restore_line,
+                               ctx->bbs_search_restore_editing);
+        ctx->bbs_editor_scroll_offset = ctx->bbs_search_restore_scroll;
+        return false;
+    }
+
+    session_bbs_recalculate_line_count(ctx);
+    size_t line_count = ctx->pending_bbs_line_count;
+    if (line_count == 0U) {
+        if (status != nullptr && status_length > 0U) {
+            snprintf(status, status_length, "No lines to search.");
+        }
+        session_bbs_set_cursor(ctx, ctx->bbs_search_restore_line,
+                               ctx->bbs_search_restore_editing);
+        ctx->bbs_editor_scroll_offset = ctx->bbs_search_restore_scroll;
+        return false;
+    }
+
+    size_t start_line = ctx->pending_bbs_cursor_line;
+    if (start_line >= line_count) {
+        start_line = 0U;
+    }
+
+    for (size_t pass = 0U; pass < 2U; ++pass) {
+        size_t idx = (pass == 0U) ? start_line : 0U;
+        size_t limit = (pass == 0U) ? line_count : start_line;
+        for (; idx < limit; ++idx) {
+            char line_buffer[SSH_CHATTER_MESSAGE_LIMIT];
+            session_bbs_copy_line(ctx, idx, line_buffer,
+                                  sizeof(line_buffer));
+            if (strstr(line_buffer, keyword) != nullptr) {
+                session_bbs_set_cursor(ctx, idx, true);
+                if (status != nullptr && status_length > 0U) {
+                    snprintf(status, status_length,
+                             "Found \"%s\" on line %zu.", keyword, idx + 1U);
+                }
+                return true;
+            }
+        }
+    }
+
+    session_bbs_set_cursor(ctx, ctx->bbs_search_restore_line,
+                           ctx->bbs_search_restore_editing);
+    ctx->bbs_editor_scroll_offset = ctx->bbs_search_restore_scroll;
+    if (status != nullptr && status_length > 0U) {
+        snprintf(status, status_length, "No match for \"%s\".", keyword);
+    }
+    return false;
 }
 
 static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
@@ -1807,21 +2181,42 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
 
     // Send body lines individually
     if (line_count == 0U) {
-        const char *prefix = ctx->pending_bbs_editing_line ? "> " : "> ";
-        session_send_plain_line(ctx, prefix);
+        session_send_plain_line(ctx, "> ");
     } else {
         size_t start = ctx->bbs_editor_scroll_offset;
         size_t end = start + window;
         if (end > line_count) {
             end = line_count;
         }
+        size_t insertion_index = ctx->pending_bbs_cursor_line;
+        if (insertion_index > line_count) {
+            insertion_index = line_count;
+        }
+        size_t selection_start = ctx->bbs_editor_selection_start;
+        size_t selection_end = ctx->bbs_editor_selection_end;
+        if (selection_start > selection_end) {
+            size_t tmp = selection_start;
+            selection_start = selection_end;
+            selection_end = tmp;
+        }
+        bool selection_active = ctx->bbs_editor_selection_start_set &&
+                                ctx->bbs_editor_selection_end_set;
 
         for (size_t idx = start; idx < end; ++idx) {
+            if (!ctx->pending_bbs_editing_line &&
+                insertion_index == idx) {
+                session_send_plain_line(ctx, "> ");
+            }
             char line_buffer[SSH_CHATTER_MESSAGE_LIMIT];
             session_bbs_copy_line(ctx, idx, line_buffer, sizeof(line_buffer));
-            bool selected = ctx->pending_bbs_editing_line &&
-                            ctx->pending_bbs_cursor_line == idx;
-            const char *prefix = selected ? "> " : "  ";
+            bool cursor_selected = ctx->pending_bbs_editing_line &&
+                                   ctx->pending_bbs_cursor_line == idx;
+            bool range_selected =
+                selection_active && idx >= selection_start &&
+                idx <= selection_end;
+            const char *prefix = cursor_selected ? "> "
+                                  : range_selected ? "* "
+                                                   : "  ";
             char display[SSH_CHATTER_MESSAGE_LIMIT];
             if (line_buffer[0] == '\0') {
                 snprintf(display, sizeof(display), "%s", prefix);
@@ -1830,7 +2225,8 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
             }
             session_send_plain_line(ctx, display);
         }
-        if (!ctx->pending_bbs_editing_line) {
+        if (!ctx->pending_bbs_editing_line &&
+            insertion_index >= end && insertion_index == line_count) {
             session_send_plain_line(ctx, "> ");
         }
     }
@@ -1856,6 +2252,14 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
              "Ctrl+S(or Save) inserts %s. Ctrl+A(or Abort) cancels the draft.",
              terminator);
     session_send_plain_line(ctx, shortcut_hint);
+    session_send_plain_line(ctx, "Ctrl+O inserts the current input at the "
+                                 "cursor. Ctrl+F searches within the draft.");
+    session_send_plain_line(ctx, "Ctrl+M starts line edit mode; Ctrl+L applies "
+                                 "the edited line.");
+    session_send_plain_line(ctx, "Ctrl+1 marks a selection start, Ctrl+2 cuts "
+                                 "to a selection end, Ctrl+3 pastes.");
+    session_send_plain_line(ctx, "Searching returns to the editor and moves the "
+                                 "cursor to the first match.");
     session_send_plain_line(ctx, "Use Up/Down arrows to revisit a saved line "
                                  "and press Enter to store changes.");
 
@@ -1917,14 +2321,13 @@ static void session_bbs_move_cursor(session_ctx_t *ctx, int direction)
     if (ctx == nullptr || direction == 0) {
         return;
     }
+    ctx->bbs_line_edit_mode = false;
 
     session_bbs_recalculate_line_count(ctx);
     size_t line_count = ctx->pending_bbs_line_count;
 
     if (line_count == 0U) {
-        ctx->pending_bbs_cursor_line = 0U;
-        ctx->pending_bbs_editing_line = false;
-        session_set_input_text(ctx, "");
+        session_bbs_set_cursor(ctx, 0U, false);
         session_bbs_render_editor(ctx, nullptr);
         return;
     }
@@ -1955,20 +2358,14 @@ static void session_bbs_move_cursor(session_ctx_t *ctx, int direction)
         }
     }
 
-    ctx->pending_bbs_cursor_line = target;
-    ctx->pending_bbs_editing_line = editing;
-
     char status[64];
     status[0] = '\0';
 
+    session_bbs_set_cursor(ctx, target, editing);
     if (editing && target < line_count) {
-        char line_buffer[SSH_CHATTER_MAX_INPUT_LEN];
-        session_bbs_copy_line(ctx, target, line_buffer, sizeof(line_buffer));
-        session_set_input_text(ctx, line_buffer);
         snprintf(status, sizeof(status), "Editing line %zu of %zu.",
                  target + 1U, line_count);
     } else {
-        session_set_input_text(ctx, "");
         snprintf(status, sizeof(status), "Editing new line %zu.",
                  line_count + 1U);
     }

@@ -4361,6 +4361,178 @@ static void *session_thread(void *arg)
                 continue;
             }
 
+            if (ch == 0x06) {
+                if (ctx->bbs_post_pending) {
+                    ctx->bbs_search_active = true;
+                    ctx->bbs_search_restore_line = ctx->pending_bbs_cursor_line;
+                    ctx->bbs_search_restore_editing =
+                        ctx->pending_bbs_editing_line;
+                    ctx->bbs_search_restore_scroll =
+                        ctx->bbs_editor_scroll_offset;
+                    session_clear_input_without_prompt(ctx);
+                    session_bbs_render_editor(
+                        ctx, "Search keyword: type text and press Enter.");
+                }
+                continue;
+            }
+
+            if (ch == 0x0f) {
+                if (ctx->bbs_post_pending) {
+                    ctx->input_buffer[ctx->input_length] = '\0';
+                    char status[SSH_CHATTER_MESSAGE_LIMIT];
+                    status[0] = '\0';
+                    size_t insert_index = ctx->pending_bbs_cursor_line;
+                    if (ctx->pending_bbs_editing_line) {
+                        insert_index = ctx->pending_bbs_cursor_line;
+                    }
+                    if (!session_bbs_insert_line(ctx, insert_index,
+                                                 ctx->input_buffer, status,
+                                                 sizeof(status))) {
+                        if (status[0] == '\0') {
+                            snprintf(status, sizeof(status),
+                                     "Unable to insert the line.");
+                        }
+                    } else {
+                        session_bbs_set_cursor(ctx, insert_index + 1U, false);
+                        if (status[0] == '\0') {
+                            snprintf(status, sizeof(status),
+                                     "Inserted line at %zu.", insert_index + 1U);
+                        }
+                    }
+                    ctx->bbs_line_edit_mode = false;
+                    session_clear_input_without_prompt(ctx);
+                    session_bbs_render_editor(ctx, status);
+                }
+                continue;
+            }
+
+            if (ch == 0x11) {
+                if (ctx->bbs_post_pending) {
+                    session_bbs_recalculate_line_count(ctx);
+                    size_t line_count = ctx->pending_bbs_line_count;
+                    char status[SSH_CHATTER_MESSAGE_LIMIT];
+                    status[0] = '\0';
+                    if (line_count == 0U) {
+                        snprintf(status, sizeof(status),
+                                 "No lines available to select.");
+                    } else {
+                        size_t anchor = ctx->pending_bbs_cursor_line;
+                        if (anchor >= line_count) {
+                            anchor = line_count - 1U;
+                        }
+                        ctx->bbs_editor_selection_start = anchor;
+                        ctx->bbs_editor_selection_start_set = true;
+                        ctx->bbs_editor_selection_end_set = false;
+                        snprintf(status, sizeof(status),
+                                 "Selection start set to line %zu.",
+                                 anchor + 1U);
+                    }
+                    ctx->bbs_line_edit_mode = false;
+                    session_bbs_render_editor(ctx, status);
+                }
+                continue;
+            }
+
+            if (ch == 0x12) {
+                if (ctx->bbs_post_pending) {
+                    session_bbs_recalculate_line_count(ctx);
+                    size_t line_count = ctx->pending_bbs_line_count;
+                    char status[SSH_CHATTER_MESSAGE_LIMIT];
+                    status[0] = '\0';
+                    if (!ctx->bbs_editor_selection_start_set || line_count == 0U) {
+                        snprintf(status, sizeof(status),
+                                 "Selection start not set.");
+                    } else {
+                        size_t end = ctx->pending_bbs_cursor_line;
+                        if (end >= line_count) {
+                            end = line_count - 1U;
+                        }
+                        ctx->bbs_editor_selection_end = end;
+                        ctx->bbs_editor_selection_end_set = true;
+                        if (session_bbs_copy_line_range(
+                                ctx, ctx->bbs_editor_selection_start,
+                                ctx->bbs_editor_selection_end,
+                                ctx->bbs_editor_clipboard,
+                                sizeof(ctx->bbs_editor_clipboard),
+                                &ctx->bbs_editor_clipboard_lines)) {
+                            ctx->bbs_editor_clipboard_length =
+                                strlen(ctx->bbs_editor_clipboard);
+                            if (session_bbs_remove_line_range(
+                                    ctx, ctx->bbs_editor_selection_start,
+                                    ctx->bbs_editor_selection_end, status,
+                                    sizeof(status))) {
+                                session_bbs_recalculate_line_count(ctx);
+                                size_t new_count =
+                                    ctx->pending_bbs_line_count;
+                                size_t target =
+                                    ctx->bbs_editor_selection_start;
+                                if (target > new_count) {
+                                    target = new_count;
+                                }
+                                session_bbs_set_cursor(ctx, target, false);
+                                snprintf(status, sizeof(status),
+                                         "Cut lines %zu-%zu.",
+                                         ctx->bbs_editor_selection_start + 1U,
+                                         ctx->bbs_editor_selection_end + 1U);
+                            }
+                        } else {
+                            snprintf(status, sizeof(status),
+                                     "Failed to copy selected lines.");
+                        }
+                        ctx->bbs_editor_selection_start_set = false;
+                        ctx->bbs_editor_selection_end_set = false;
+                    }
+                    ctx->bbs_line_edit_mode = false;
+                    session_clear_input_without_prompt(ctx);
+                    session_bbs_render_editor(ctx, status);
+                }
+                continue;
+            }
+
+            if (ch == 0x14) {
+                if (ctx->bbs_post_pending) {
+                    char status[SSH_CHATTER_MESSAGE_LIMIT];
+                    status[0] = '\0';
+                    if (!session_bbs_insert_clipboard(ctx, status,
+                                                      sizeof(status))) {
+                        if (status[0] == '\0') {
+                            snprintf(status, sizeof(status),
+                                     "Unable to paste clipboard.");
+                        }
+                    } else if (status[0] == '\0') {
+                        snprintf(status, sizeof(status), "Pasted clipboard.");
+                    }
+                    ctx->bbs_line_edit_mode = false;
+                    session_clear_input_without_prompt(ctx);
+                    session_bbs_render_editor(ctx, status);
+                }
+                continue;
+            }
+
+            if (ch == 0x0c) {
+                if (ctx->bbs_post_pending && ctx->bbs_line_edit_mode) {
+                    ctx->input_buffer[ctx->input_length] = '\0';
+                    char status[SSH_CHATTER_MESSAGE_LIMIT];
+                    status[0] = '\0';
+                    size_t target = ctx->bbs_line_edit_target;
+                    if (ctx->pending_bbs_editing_line) {
+                        target = ctx->pending_bbs_cursor_line;
+                    }
+                    if (!session_bbs_replace_line(ctx, target,
+                                                  ctx->input_buffer, status,
+                                                  sizeof(status))) {
+                        if (status[0] == '\0') {
+                            snprintf(status, sizeof(status),
+                                     "Unable to update that line.");
+                        }
+                    }
+                    ctx->bbs_line_edit_mode = false;
+                    session_clear_input_without_prompt(ctx);
+                    session_bbs_render_editor(ctx, status);
+                }
+                continue;
+            }
+
             if (ch == 0x13) {
                 if (ctx->bbs_post_pending || ctx->asciiart_pending) {
                     ctx->input_buffer[ctx->input_length] = '\0';
@@ -4406,10 +4578,46 @@ static void *session_thread(void *arg)
                 continue;
             }
 
+            if (ch == '\r' && ctx->bbs_post_pending &&
+                ctx->pending_bbs_editing_line && ctx->input_length == 0U &&
+                !ctx->bbs_line_edit_mode && !ctx->bracket_paste_active) {
+                session_bbs_recalculate_line_count(ctx);
+                char status[SSH_CHATTER_MESSAGE_LIMIT];
+                status[0] = '\0';
+                if (ctx->pending_bbs_line_count == 0U) {
+                    snprintf(status, sizeof(status),
+                             "No lines available to edit.");
+                } else {
+                    size_t target = ctx->pending_bbs_cursor_line;
+                    if (target >= ctx->pending_bbs_line_count) {
+                        target = ctx->pending_bbs_line_count - 1U;
+                    }
+                    session_bbs_set_cursor(ctx, target, true);
+                    ctx->bbs_line_edit_mode = true;
+                    ctx->bbs_line_edit_target = target;
+                    snprintf(status, sizeof(status),
+                             "Line edit mode for line %zu. Ctrl+L to apply.",
+                             target + 1U);
+                }
+                session_bbs_render_editor(ctx, status);
+                continue;
+            }
+
             if (ch == '\r' || ch == '\n') {
                 session_apply_background_fill(ctx);
                 const bool composing_draft =
                     ctx->bbs_post_pending || ctx->asciiart_pending;
+                if (ctx->bbs_search_active) {
+                    ctx->input_buffer[ctx->input_length] = '\0';
+                    char status[SSH_CHATTER_MESSAGE_LIMIT];
+                    status[0] = '\0';
+                    session_bbs_search_keyword(ctx, ctx->input_buffer, status,
+                                               sizeof(status));
+                    ctx->bbs_search_active = false;
+                    session_clear_input_without_prompt(ctx);
+                    session_bbs_render_editor(ctx, status);
+                    continue;
+                }
                 if (ctx->input_length > 0U) {
                     ctx->input_buffer[ctx->input_length] = '\0';
                     session_history_record(ctx, ctx->input_buffer);

@@ -2831,6 +2831,19 @@ static void session_bbs_reset_pending_post(session_ctx_t *ctx)
     ctx->pending_bbs_cursor_line = 0U;
     ctx->pending_bbs_editing_line = false;
     ctx->bbs_editor_scroll_offset = 0U;
+    ctx->bbs_editor_selection_start = 0U;
+    ctx->bbs_editor_selection_start_set = false;
+    ctx->bbs_editor_selection_end = 0U;
+    ctx->bbs_editor_selection_end_set = false;
+    ctx->bbs_editor_clipboard[0] = '\0';
+    ctx->bbs_editor_clipboard_length = 0U;
+    ctx->bbs_editor_clipboard_lines = 0U;
+    ctx->bbs_line_edit_mode = false;
+    ctx->bbs_line_edit_target = 0U;
+    ctx->bbs_search_active = false;
+    ctx->bbs_search_restore_line = 0U;
+    ctx->bbs_search_restore_editing = false;
+    ctx->bbs_search_restore_scroll = 0U;
     for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_TAGS; ++idx) {
         ctx->pending_bbs_tags[idx][0] = '\0';
     }
@@ -3185,11 +3198,22 @@ static void session_bbs_capture_body_line(session_ctx_t *ctx, const char *line)
     bool editing_line =
         ctx->pending_bbs_editing_line &&
         ctx->pending_bbs_cursor_line < ctx->pending_bbs_line_count;
+    bool inserting_line =
+        !editing_line &&
+        ctx->pending_bbs_cursor_line < ctx->pending_bbs_line_count;
 
     bool updated = false;
     if (editing_line) {
         updated = session_bbs_replace_line(ctx, ctx->pending_bbs_cursor_line,
                                            line, status, sizeof(status));
+        ctx->bbs_line_edit_mode = false;
+    } else if (inserting_line) {
+        updated = session_bbs_insert_line(ctx, ctx->pending_bbs_cursor_line,
+                                          line, status, sizeof(status));
+        if (updated) {
+            session_bbs_set_cursor(ctx, ctx->pending_bbs_cursor_line + 1U,
+                                   false);
+        }
     } else {
         updated = session_bbs_append_line(ctx, line, status, sizeof(status));
     }
@@ -3197,6 +3221,9 @@ static void session_bbs_capture_body_line(session_ctx_t *ctx, const char *line)
     if (!updated && status[0] == '\0') {
         snprintf(status, sizeof(status),
                  "Unable to update the draft right now.");
+    }
+    if (updated) {
+        ctx->bbs_line_edit_mode = false;
     }
 
     session_bbs_render_editor(ctx, status[0] != '\0' ? status : nullptr);
@@ -4283,39 +4310,6 @@ static void session_capture_multiline_text(
     const char *cursor = text;
     while (*cursor != '\0') {
         char ch = *cursor++;
-        if (ch == '\\') {
-            char next = *cursor;
-            if (next == 'r') {
-                ++cursor;
-                if (*cursor == '\\' && cursor[1] == 'n') {
-                    cursor += 2;
-                }
-                line[line_length] = '\0';
-                consumer(ctx, line);
-                emitted = true;
-                line_length = 0U;
-                if (!should_continue(ctx)) {
-                    return;
-                }
-                continue;
-            }
-            if (next == 'n') {
-                ++cursor;
-                line[line_length] = '\0';
-                consumer(ctx, line);
-                emitted = true;
-                line_length = 0U;
-                if (!should_continue(ctx)) {
-                    return;
-                }
-                continue;
-            }
-            if (next == '\\') {
-                ++cursor;
-                ch = '\\';
-            }
-        }
-
         if (ch == '\r') {
             if (*cursor == '\n') {
                 ++cursor;

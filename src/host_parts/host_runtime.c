@@ -4775,6 +4775,16 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->telnet.last_error_time.tv_nsec = 0L;
     host->telnet.bind_address[0] = '\0';
     host->telnet.port[0] = '\0';
+    host->json_api.enabled = false;
+    host->json_api.fd = -1;
+    host->json_api.thread_initialized = false;
+    atomic_store(&host->json_api.running, false);
+    atomic_store(&host->json_api.stop, false);
+    host->json_api.restart_attempts = 0U;
+    host->json_api.last_error_time.tv_sec = 0;
+    host->json_api.last_error_time.tv_nsec = 0L;
+    host->json_api.bind_address[0] = '\0';
+    host->json_api.port[0] = '\0';
     host->auth = auth;
     host->clients = nullptr;
     host->web_client = nullptr;
@@ -5605,6 +5615,7 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     host_moderation_shutdown(host);
 
     host_telnet_listener_stop(host);
+    host_json_api_listener_stop(host);
 
     if (host->rss_thread_initialized) {
         atomic_store(&host->rss_thread_stop, true);
@@ -5727,7 +5738,8 @@ void host_shutdown_for_testing(host_t *host)
 
 int host_serve(host_t *host, const char *bind_addr, const char *port,
                const char *key_directory, const char *telnet_bind_addr,
-               const char *telnet_port)
+               const char *telnet_port, const char *json_bind_addr,
+               const char *json_port)
 {
     if (host == nullptr) {
         return -1;
@@ -5756,8 +5768,27 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
     } else {
         host_telnet_listener_stop(host);
     }
+    const char *json_bind = nullptr;
+    if (json_bind_addr != nullptr) {
+        json_bind = json_bind_addr;
+    } else if (bind_addr != nullptr && bind_addr[0] != '\0') {
+        json_bind = bind_addr;
+    } else {
+        json_bind = address;
+    }
+    if (json_port != nullptr && json_port[0] != '\0') {
+        if (!host_json_api_listener_start(host, json_bind, json_port)) {
+            const char *display_addr =
+                (json_bind != nullptr && json_bind[0] != '\0') ? json_bind : "*";
+            printf("[json-api] listener unavailable on %s:%s\n", display_addr,
+                   json_port);
+        }
+    } else {
+        host_json_api_listener_stop(host);
+    }
     host_register_protected_bind_address(host, address);
     host_register_protected_bind_address(host, telnet_bind);
+    host_register_protected_bind_address(host, json_bind);
     const bool key_dir_specified =
         key_directory != nullptr && key_directory[0] != '\0';
     const host_key_definition_t host_key_definitions[] = {

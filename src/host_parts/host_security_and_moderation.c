@@ -4855,11 +4855,24 @@ static void *host_rss_backend(void *arg)
 
                     char notice[SSH_CHATTER_MESSAGE_LIMIT];
                     if (item->link[0] != '\0') {
-                        snprintf(notice, sizeof(notice), "* %s [%s]\n%s\n%s",
+                        char clean_link[SSH_CHATTER_RSS_LINK_LEN];
+                        snprintf(clean_link, sizeof(clean_link), "%s",
+                                 item->link);
+                        rss_trim_whitespace(clean_link);
+                        for (size_t pos = 0U; clean_link[pos] != '\0'; ++pos) {
+                            if (clean_link[pos] == '\r' ||
+                                clean_link[pos] == '\n' ||
+                                clean_link[pos] == '\t') {
+                                clean_link[pos] = ' ';
+                            }
+                        }
+                        rss_trim_whitespace(clean_link);
+                        snprintf(notice, sizeof(notice),
+                                 "* %s [%s] %s - %s",
                                  SSH_CHATTER_RSS_BREAKING_PREFIX,
-                                 feed_snapshot.tag, headline, item->link);
+                                 feed_snapshot.tag, headline, clean_link);
                     } else {
-                        snprintf(notice, sizeof(notice), "* %s [%s]\n%s",
+                        snprintf(notice, sizeof(notice), "* %s [%s] %s",
                                  SSH_CHATTER_RSS_BREAKING_PREFIX,
                                  feed_snapshot.tag, headline);
                     }

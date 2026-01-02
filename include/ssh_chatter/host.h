@@ -881,6 +881,18 @@ typedef struct host {
         char bind_address[64];
         char port[16];
     } telnet;
+    struct {
+        bool enabled;
+        int fd;
+        pthread_t thread;
+        bool thread_initialized;
+        _Atomic bool running;
+        _Atomic bool stop;
+        unsigned int restart_attempts;
+        struct timespec last_error_time;
+        char bind_address[64];
+        char port[16];
+    } json_api;
     auth_profile_t *auth;
     UserTheme user_theme;
     SystemTheme system_theme;
@@ -1051,7 +1063,8 @@ void host_set_motd(host_t *host, const char *motd);
 void host_set_welcome_banner(host_t *host, const char *banner);
 int host_serve(host_t *host, const char *bind_addr, const char *port,
                const char *key_directory, const char *telnet_bind_addr,
-               const char *telnet_port);
+               const char *telnet_port, const char *json_bind_addr,
+               const char *json_port);
 void host_archive_start_backend(host_t *host);
 bool host_post_client_message(host_t *host, const char *username,
                               const char *message, const char *color_name,

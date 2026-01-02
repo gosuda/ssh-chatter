@@ -216,7 +216,7 @@ Set `GEMINI_API_KEY` (and optionally `GEMINI_API_BASE` or `GEMINI_MODEL`) in the
 The server defaults to listening on `0.0.0.0:2222`.  You can adjust runtime parameters with the available flags:
 
 ```
-Usage: ./ssh-chatter [-a address] [-p port] [-m motd_file] [-k host_key_dir] [-T telnet_port|off]
+Usage: ./ssh-chatter [-a address] [-p port] [-m motd_file] [-k host_key_dir] [-T telnet_port|off] [-J json_port|off]
        ./ssh-chatter [-h]
        ./ssh-chatter [-V]
 ```
@@ -262,6 +262,50 @@ telnet server-address 2323
 ```
 
 Pass `-T off` (or `-T disable`) to turn the telnet listener off entirely.
+
+### JSON line API
+
+The server also exposes a JSON line protocol over TCP for automation and external integrations. It listens on port `34567` by default and can be disabled or reconfigured with `-J`:
+
+```bash
+# Disable the JSON API
+./ssh-chatter -J off
+
+# Bind JSON API on a custom port
+./ssh-chatter -J 0.0.0.0:45678
+```
+
+Each request is a single JSON object terminated by `\n`. Responses and chat events are JSON objects, also newline delimited. The API supports general chat and the `/poll`, `/vote`, `/image`, `/video`, `/audio`, `/files`, and `/asciiart` flows.
+
+**Event payloads (server → client)**
+
+```json
+{"type":"event","event":"message","payload":{"id":123,"username":"alice","message":"hello","created_at":1710000000,"system":false,"preserve_whitespace":false,"attachment":{"type":"none","target":"","caption":""}}}
+```
+
+**Request examples (client → server)**
+
+```json
+{"type":"chat","id":1,"username":"alice","message":"안녕하세요"}
+{"type":"image","id":2,"username":"alice","url":"https://example.com/cat.png","caption":"cat"}
+{"type":"asciiart","id":3,"username":"alice","message":" /\\_/\\\\n( o.o )\\\\n > ^ <"}
+{"type":"poll","id":4,"username":"op","is_operator":true,"question":"Favorite color?","options":["red","blue","green"]}
+{"type":"poll","id":5,"username":"bob","action":"vote","choice":2}
+{"type":"vote","id":6,"username":"op","label":"weekend","question":"Plan?","options":["hike","rest"],"allow_multiple":true}
+{"type":"vote","id":7,"username":"bob","label":"weekend","action":"vote","choice":1}
+```
+
+Responses echo the `id` and include `status`, `message`, and optional `result` objects:
+
+```json
+{"type":"response","id":4,"status":"ok","message":"poll started","result":{"poll":{"active":true,"allow_multiple":false,"id":10,"question":"Favorite color?","options":[{"index":1,"text":"red","votes":0},{"index":2,"text":"blue","votes":0}]}}}
+```
+
+For a runnable example, see `scripts/json_api_example.py`:
+
+```bash
+python3 scripts/json_api_example.py --url tcp://127.0.0.1:34567 --save /tmp/json_api_output.txt
+```
 
 ## Installing as a systemd service
 

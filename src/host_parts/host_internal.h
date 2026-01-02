@@ -78,6 +78,9 @@ bool session_detect_provider_ip(const char *ip, char *label, size_t length);
 #include "ssh_chatter/humanized/humanized.h"
 
 bool session_game_othello_handle_forced_exit(session_ctx_t *ctx);
+bool host_json_api_listener_start(host_t *host, const char *bind_addr,
+                                  const char *port);
+void host_json_api_listener_stop(host_t *host);
 
 static inline session_output_kind_t
 session_output_set_kind(session_ctx_t *ctx, session_output_kind_t new_kind)

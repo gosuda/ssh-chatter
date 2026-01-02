@@ -12,4 +12,5 @@
 #include "host_parts/host_session_output.c"
 #include "host_parts/host_session_commands.c"
 #include "host_parts/host_bbs_and_games.c"
+#include "host_parts/host_json_api.c"
 #include "host_parts/host_runtime.c"

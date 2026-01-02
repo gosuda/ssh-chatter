@@ -42,7 +42,7 @@ static void print_usage(const char *prog_name)
     fprintf(stderr,
 
             "Usage: %s [-a address] [-p port] [-m motd_file] [-k host_key_dir] "
-            "[-T telnet_port|off]\n",
+            "[-T telnet_port|off] [-J json_port|off]\n",
 
             prog_name);
 }
@@ -120,8 +120,10 @@ int main(int argc, char **argv)
     const char *host_key_dir = nullptr;
 
     const char *telnet_port = "2323";
+    const char *json_port = "34567";
 
     bool telnet_enabled = true;
+    bool json_enabled = true;
 
     char telnet_bind_storage[64];
 
@@ -133,12 +135,18 @@ int main(int argc, char **argv)
 
     telnet_port_storage[0] = '\0';
 
+    bool json_bind_overridden = false;
+    char json_bind_storage[64];
+    json_bind_storage[0] = '\0';
+    char json_port_storage[16];
+    json_port_storage[0] = '\0';
+
     int opt = 0;
 
     bool show_usage = false;
     bool show_version = false;
 
-    while ((opt = getopt(argc, argv, "a:p:m:k:T:hV")) != -1) {
+    while ((opt = getopt(argc, argv, "a:p:m:k:T:J:hV")) != -1) {
         switch (opt) {
         case 'a':
 
@@ -255,6 +263,97 @@ int main(int argc, char **argv)
             }
 
             break;
+        case 'J':
+
+            if (optarg != nullptr &&
+
+                (strcmp(optarg, "off") == 0 || strcmp(optarg, "disable") == 0 ||
+                 strcmp(optarg, "none") == 0)) {
+                json_enabled = false;
+
+                json_port = nullptr;
+
+                json_bind_overridden = false;
+
+            } else if (optarg != nullptr) {
+                const char *value = optarg;
+
+                const char *colon = strchr(value, ':');
+
+                if (colon != nullptr) {
+                    size_t host_len = (size_t)(colon - value);
+
+                    if (host_len >= sizeof(json_bind_storage)) {
+                        fprintf(stderr,
+
+                                "json bind address is too long; ignoring "
+                                "override and using default listener "
+                                "address\n");
+
+                        json_bind_storage[0] = '\0';
+
+                        json_bind_overridden = false;
+
+                    } else if (host_len > 0U) {
+                        memcpy(json_bind_storage, value, host_len);
+
+                        json_bind_storage[host_len] = '\0';
+
+                        json_bind_overridden = true;
+
+                    } else {
+                        json_bind_overridden = false;
+                    }
+
+                    const char *port_part = colon + 1;
+
+                    if (port_part[0] == '\0') {
+                        json_port = "34567";
+
+                    } else {
+                        size_t port_len = strlen(port_part);
+
+                        if (port_len >= sizeof(json_port_storage)) {
+                            fprintf(stderr,
+                                    "json port is too long; using default "
+                                    "port 34567\n");
+
+                            json_port = "34567";
+
+                        } else {
+                            memcpy(json_port_storage, port_part,
+                                   port_len + 1);
+
+                            json_port = json_port_storage;
+                        }
+                    }
+
+                } else {
+                    json_bind_overridden = false;
+
+                    if (value[0] == '\0') {
+                        json_port = "34567";
+
+                    } else {
+                        size_t port_len = strlen(value);
+
+                        if (port_len >= sizeof(json_port_storage)) {
+                            fprintf(stderr,
+                                    "json port is too long; using default "
+                                    "port 34567\n");
+
+                            json_port = "34567";
+
+                        } else {
+                            memcpy(json_port_storage, value, port_len + 1);
+
+                            json_port = json_port_storage;
+                        }
+                    }
+                }
+            }
+
+            break;
 
         case 'h':
             show_usage = true;
@@ -297,6 +396,18 @@ int main(int argc, char **argv)
 
     const char *telnet_bind_address =
         telnet_bind_overridden ? telnet_bind_storage : nullptr;
+
+    if (!json_enabled) {
+        json_port = nullptr;
+
+        json_bind_overridden = false;
+
+    } else if (json_port != nullptr && json_port[0] == '\0') {
+        json_port = "34567";
+    }
+
+    const char *json_bind_address =
+        json_bind_overridden ? json_bind_storage : nullptr;
 
     auth_profile_t default_profile = {0};
 
@@ -388,7 +499,8 @@ int main(int argc, char **argv)
 
         const int serve_result =
             host_serve(host, bind_address, bind_port, host_key_dir,
-                       telnet_bind_address, telnet_port);
+                       telnet_bind_address, telnet_port, json_bind_address,
+                       json_port);
 
         const int serve_errno = errno;
 

@@ -3285,6 +3285,54 @@ static const session_help_entry_t kSessionHelpExtended[] = {
 
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "poll <question>|<option1>|<option2>|...",
+        .description =
+            {
+                "Start or close the global poll (operators can start).",
+                "전역 투표를 시작하거나 종료합니다 (시작은 운영자만 가능).",
+                "グローバル投票を開始または終了します（開始は運営のみ）。",
+                "开始或结束全局投票（仅管理员可开始）。",
+                "Запустить или завершить общий опрос (запуск только для оператора).",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] =
+                    "전역투표 <질문>|<옵션1>|<옵션2>|...",
+                [SESSION_UI_LANGUAGE_JP] =
+                    "グローバル投票 <質問>|<選択肢1>|<選択肢2>|...",
+                [SESSION_UI_LANGUAGE_ZH] = "全局投票 <问题>|<选项1>|<选项2>|...",
+                [SESSION_UI_LANGUAGE_RU] =
+                    "опрос <вопрос>|<вариант1>|<вариант2>|...",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "vote <label> <question>|<option1>|<option2>|...",
+        .description =
+            {
+                "Start or manage a named poll.",
+                "라벨 투표를 시작하거나 관리합니다.",
+                "ラベル付き投票を開始または管理します。",
+                "开始或管理命名投票。",
+                "Запустить или управлять именованным опросом.",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] =
+                    "투표 <라벨> <질문>|<옵션1>|<옵션2>|...",
+                [SESSION_UI_LANGUAGE_JP] =
+                    "投票 <ラベル> <質問>|<選択肢1>|<選択肢2>|...",
+                [SESSION_UI_LANGUAGE_ZH] = "投票 <标签> <问题>|<选项1>|<选项2>|...",
+                [SESSION_UI_LANGUAGE_RU] =
+                    "голосование <метка> <вопрос>|<вариант1>|<вариант2>|...",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "elect <label> <choice>",
         .description =
             {

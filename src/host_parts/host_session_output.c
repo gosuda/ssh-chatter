@@ -876,7 +876,8 @@ static void session_bbs_format_breaking_notice_wrapped(
     const size_t kMaxVisibleWidth = 48U;
 
     // ANSI codes to apply
-    const char *kPrefix = ANSI_BG_BRIGHT_BLUE ANSI_BRIGHT_MAGENTA ANSI_BOLD;
+    const char *kPrefix =
+        "\r\033[2G" ANSI_BG_BRIGHT_BLUE ANSI_BRIGHT_MAGENTA ANSI_BOLD;
     const char *kSuffix = ANSI_RESET;
 
     size_t pos = 0U;
@@ -937,6 +938,7 @@ static void session_bbs_format_breaking_notice(const char *message, char *out,
     }
 
     size_t offset = 0U;
+    offset = session_append_fragment(out, length, offset, "\r\033[2G");
     offset = session_append_fragment(out, length, offset, ANSI_BG_BRIGHT_BLUE);
     offset = session_append_fragment(out, length, offset, ANSI_BRIGHT_MAGENTA);
     offset = session_append_fragment(out, length, offset, ANSI_BOLD);
@@ -977,17 +979,18 @@ static void session_bbs_buffer_breaking_notice(session_ctx_t *ctx,
                 snprintf(
                     ctx->bbs_breaking_messages[ctx->bbs_breaking_count],
                     sizeof(ctx->bbs_breaking_messages[ctx->bbs_breaking_count]),
-                    "\r%s", wrapped_lines[i]);
+                    "%s", wrapped_lines[i]);
                 ctx->bbs_breaking_count += 1U;
             } else {
                 // Shift messages up and add new one at the end
                 for (size_t idx = 1U; idx < limit; ++idx) {
-                    snprintf(ctx->bbs_breaking_messages[idx - 1U],
-                             sizeof(ctx->bbs_breaking_messages[idx - 1U]), "\r%s",
-                             ctx->bbs_breaking_messages[idx]);
+                    snprintf(
+                        ctx->bbs_breaking_messages[idx - 1U],
+                        sizeof(ctx->bbs_breaking_messages[idx - 1U]), "%s",
+                        ctx->bbs_breaking_messages[idx]);
                 }
                 snprintf(ctx->bbs_breaking_messages[limit - 1U],
-                         sizeof(ctx->bbs_breaking_messages[limit - 1U]), "\r%s",
+                         sizeof(ctx->bbs_breaking_messages[limit - 1U]), "%s",
                          wrapped_lines[i]);
             }
         }

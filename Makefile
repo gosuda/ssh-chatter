@@ -1,5 +1,5 @@
 # Default setting: Disable Garbage Collector (GC)
-ENABLE_GC ?= 0
+ENABLE_GC ?= 1
 
 # The C compiler to use
 CC := gcc

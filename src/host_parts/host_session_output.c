@@ -977,17 +977,17 @@ static void session_bbs_buffer_breaking_notice(session_ctx_t *ctx,
                 snprintf(
                     ctx->bbs_breaking_messages[ctx->bbs_breaking_count],
                     sizeof(ctx->bbs_breaking_messages[ctx->bbs_breaking_count]),
-                    "%s", wrapped_lines[i]);
+                    "\r%s", wrapped_lines[i]);
                 ctx->bbs_breaking_count += 1U;
             } else {
                 // Shift messages up and add new one at the end
                 for (size_t idx = 1U; idx < limit; ++idx) {
                     snprintf(ctx->bbs_breaking_messages[idx - 1U],
-                             sizeof(ctx->bbs_breaking_messages[idx - 1U]), "%s",
+                             sizeof(ctx->bbs_breaking_messages[idx - 1U]), "\r%s",
                              ctx->bbs_breaking_messages[idx]);
                 }
                 snprintf(ctx->bbs_breaking_messages[limit - 1U],
-                         sizeof(ctx->bbs_breaking_messages[limit - 1U]), "%s",
+                         sizeof(ctx->bbs_breaking_messages[limit - 1U]), "\r%s",
                          wrapped_lines[i]);
             }
         }

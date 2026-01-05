@@ -627,57 +627,6 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
         ctx, "Usage: /mail [inbox|send <user> <message>|clear]");
 }
 
-static void session_profile_picture_normalize(const char *input, char *output,
-                                              size_t length)
-{
-    if (output == nullptr || length == 0U) {
-        return;
-    }
-
-    output[0] = '\0';
-    if (input == nullptr) {
-        return;
-    }
-
-    size_t out_idx = 0U;
-    size_t idx = 0U;
-    while (input[idx] != '\0') {
-        size_t skip = host_column_reset_sequence_length(&input[idx]);
-        if (skip > 0U) {
-            idx += skip;
-            continue;
-        }
-
-        unsigned char ch = (unsigned char)input[idx];
-        ++idx;
-        if (ch == '\r') {
-            continue;
-        }
-        if (ch >= 32U || ch == '\n' || ch == '\t') {
-            if (out_idx + 1U < length) {
-                output[out_idx++] = (char)ch;
-            }
-        }
-    }
-
-    if (out_idx < length) {
-        output[out_idx] = '\0';
-    } else {
-        output[length - 1U] = '\0';
-    }
-}
-
-static void session_handle_profile_picture(session_ctx_t *ctx,
-                                           const char *arguments)
-{
-    if (ctx == nullptr) {
-        return;
-    }
-
-    (void)arguments;
-    session_send_system_line(ctx, "Profile pictures are no longer supported.");
-}
-
 static void session_handle_reaction(session_ctx_t *ctx, size_t reaction_index,
                                     const char *arguments)
 {
@@ -1171,16 +1120,6 @@ static void session_handle_birthday(session_ctx_t *ctx, const char *arguments)
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(message, sizeof(message), "Birthday recorded as %s.", normalized);
     session_send_system_line(ctx, message);
-}
-
-static void session_handle_soulmate(session_ctx_t *ctx)
-{
-    if (ctx == nullptr) {
-        return;
-    }
-
-    session_send_system_line(ctx,
-                             "Birthday soulmates are no longer supported.");
 }
 
 static void session_pw_auth_hex_encode(const uint8_t *input, size_t length,
@@ -3451,12 +3390,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
     if (ctx->editor_mode == SESSION_EDITOR_MODE_ASCIIART) {
         session_asciiart_import_from_editor(ctx);
         if (ctx->asciiart_length == 0U) {
-            const char *discard_message =
-                (ctx->asciiart_target ==
-                 SESSION_ASCIIART_TARGET_PROFILE_PICTURE)
-                    ? "Profile picture draft discarded."
-                    : "ASCII art draft discarded.";
-            session_asciiart_cancel(ctx, discard_message);
+            session_asciiart_cancel(ctx, "ASCII art draft discarded.");
             session_bbs_reset_pending_post(ctx);
             return;
         }
@@ -4703,11 +4637,6 @@ static void session_asciiart_begin(session_ctx_t *ctx,
             session_send_system_line(ctx, message);
             return;
         }
-    } else if (target == SESSION_ASCIIART_TARGET_PROFILE_PICTURE) {
-        if (!session_user_data_available(ctx) || !session_user_data_load(ctx)) {
-            session_send_system_line(ctx, "Profile storage is unavailable.");
-            return;
-        }
     }
 
     session_asciiart_reset(ctx);
@@ -4720,18 +4649,10 @@ static void session_asciiart_begin(session_ctx_t *ctx,
 
     size_t ascii_bytes = (size_t)SSH_CHATTER_ASCIIART_BUFFER_LEN;
     char status[SSH_CHATTER_MESSAGE_LIMIT];
-    if (target == SESSION_ASCIIART_TARGET_CHAT) {
-        snprintf(status, sizeof(status),
-                 "ASCII art composer ready (max %u lines, up to %zu bytes, "
-                 "10-minute cooldown per IP).",
-                 SSH_CHATTER_ASCIIART_MAX_LINES, ascii_bytes);
-    } else {
-        snprintf(
-            status, sizeof(status),
-            "Profile picture composer ready (max %u lines, up to %zu bytes, "
-            "stored privately).",
-            SSH_CHATTER_ASCIIART_MAX_LINES, ascii_bytes);
-    }
+    snprintf(status, sizeof(status),
+             "ASCII art composer ready (max %u lines, up to %zu bytes, "
+             "10-minute cooldown per IP).",
+             SSH_CHATTER_ASCIIART_MAX_LINES, ascii_bytes);
 
     session_bbs_render_editor(ctx, status);
 }
@@ -4766,14 +4687,8 @@ static void session_asciiart_commit(session_ctx_t *ctx)
         return;
     }
 
-    const session_asciiart_target_t target = ctx->asciiart_target;
-
     if (ctx->asciiart_length == 0U) {
-        const char *discard_message =
-            (target == SESSION_ASCIIART_TARGET_PROFILE_PICTURE)
-                ? "Profile picture draft discarded."
-                : "ASCII art draft discarded.";
-        session_asciiart_cancel(ctx, discard_message);
+        session_asciiart_cancel(ctx, "ASCII art draft discarded.");
         return;
     }
 
@@ -4782,47 +4697,9 @@ static void session_asciiart_commit(session_ctx_t *ctx)
         return;
     }
 
-    const char *security_label =
-        target == SESSION_ASCIIART_TARGET_PROFILE_PICTURE ? "Profile picture"
-                                                          : "ASCII art";
-    if (session_security_check_text(ctx, security_label, ctx->asciiart_buffer,
+    if (session_security_check_text(ctx, "ASCII art", ctx->asciiart_buffer,
                                     ctx->asciiart_length,
                                     false) != HOST_SECURITY_SCAN_CLEAN) {
-        session_asciiart_reset(ctx);
-        return;
-    }
-
-    if (target == SESSION_ASCIIART_TARGET_PROFILE_PICTURE) {
-        if (!session_user_data_available(ctx) || !session_user_data_load(ctx)) {
-            session_send_system_line(ctx, "Profile storage is unavailable.");
-            session_asciiart_reset(ctx);
-            return;
-        }
-
-        if ((size_t)ctx->asciiart_length >= USER_DATA_PROFILE_PICTURE_LEN) {
-            session_send_system_line(
-                ctx, "Profile picture exceeds the storage limit.");
-            session_asciiart_reset(ctx);
-            return;
-        }
-
-        char normalized[USER_DATA_PROFILE_PICTURE_LEN];
-        session_profile_picture_normalize(ctx->asciiart_buffer, normalized,
-                                          sizeof(normalized));
-        if (normalized[0] == '\0') {
-            session_send_system_line(ctx, "Profile picture cannot be empty.");
-            session_asciiart_reset(ctx);
-            return;
-        }
-
-        snprintf(ctx->user_data.profile_picture,
-                 sizeof(ctx->user_data.profile_picture), "%s", normalized);
-        if (session_user_data_commit(ctx)) {
-            session_send_system_line(ctx, "Profile picture updated.");
-        } else {
-            session_send_system_line(ctx, "Failed to save profile picture.");
-        }
-
         session_asciiart_reset(ctx);
         return;
     }
@@ -4966,21 +4843,12 @@ static void session_asciiart_capture_line(session_ctx_t *ctx, const char *line)
         line = "";
     }
 
-    const bool profile_target =
-        ctx->asciiart_target == SESSION_ASCIIART_TARGET_PROFILE_PICTURE;
     const char *full_message =
-        profile_target
-            ? "Profile picture buffer is full. Additional text ignored."
-            : "ASCII art buffer is full. Additional text ignored.";
+        "ASCII art buffer is full. Additional text ignored.";
     const char *truncate_message =
-        profile_target
-            ? "Line truncated to fit within the profile picture size limit."
-            : "Line truncated to fit within the ASCII art size limit.";
+        "Line truncated to fit within the ASCII art size limit.";
 
     size_t buffer_capacity = sizeof(ctx->asciiart_buffer);
-    if (profile_target && buffer_capacity > USER_DATA_PROFILE_PICTURE_LEN) {
-        buffer_capacity = USER_DATA_PROFILE_PICTURE_LEN;
-    }
 
     if (ctx->asciiart_length >= buffer_capacity - 1U) {
         session_send_system_line(ctx, full_message);

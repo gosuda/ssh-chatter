@@ -2357,8 +2357,6 @@ static void session_handle_gameopt(session_ctx_t *ctx, const char *arguments);
 static void session_handle_othello_command(session_ctx_t *ctx,
                                            const char *arguments);
 static void session_handle_mail(session_ctx_t *ctx, const char *arguments);
-static void session_handle_profile_picture(session_ctx_t *ctx,
-                                           const char *arguments);
 static void session_handle_today(session_ctx_t *ctx);
 static void session_handle_date(session_ctx_t *ctx, const char *arguments);
 static void session_handle_os(session_ctx_t *ctx, const char *arguments);
@@ -2369,7 +2367,6 @@ static void session_handle_connected(session_ctx_t *ctx);
 static bool session_parse_birthday(const char *input, char *normalized,
                                    size_t length);
 static void session_handle_birthday(session_ctx_t *ctx, const char *arguments);
-static void session_handle_soulmate(session_ctx_t *ctx);
 static void session_handle_setpw(session_ctx_t *ctx, const char *arguments);
 static void session_handle_delpw(session_ctx_t *ctx, const char *arguments);
 static void session_handle_revoke(session_ctx_t *ctx, const char *arguments);
@@ -2587,8 +2584,6 @@ static bool host_eliza_disable(host_t *host);
 static void host_eliza_announce_join(host_t *host);
 static void host_eliza_announce_depart(host_t *host);
 static void host_eliza_say(host_t *host, const char *message);
-static void host_eliza_handle_private_message(session_ctx_t *ctx,
-                                              const char *message);
 static void host_eliza_prepare_private_reply(const char *message, char *reply,
                                              size_t reply_length);
 static bool host_eliza_content_is_severe(const char *text);

@@ -1447,10 +1447,6 @@ static size_t session_editor_body_capacity(const session_ctx_t *ctx)
     }
 
     if (ctx->editor_mode == SESSION_EDITOR_MODE_ASCIIART) {
-        if (ctx->asciiart_target == SESSION_ASCIIART_TARGET_PROFILE_PICTURE &&
-            USER_DATA_PROFILE_PICTURE_LEN < SSH_CHATTER_ASCIIART_BUFFER_LEN) {
-            return USER_DATA_PROFILE_PICTURE_LEN;
-        }
         return SSH_CHATTER_ASCIIART_BUFFER_LEN;
     }
 
@@ -2124,13 +2120,9 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
 
     // Send title line
     if (ascii_mode) {
-        const char *target_label =
-            (ctx->asciiart_target == SESSION_ASCIIART_TARGET_PROFILE_PICTURE)
-                ? "profile picture"
-                : "chat";
         char title_line[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(title_line, sizeof(title_line),
-                 "ASCII art %s draft (%zu/%u lines)", target_label, line_count,
+                 "ASCII art draft (%zu/%u lines)", line_count,
                  (unsigned int)SSH_CHATTER_ASCIIART_MAX_LINES);
         session_send_plain_line(ctx, title_line);
     } else {
@@ -5193,8 +5185,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
     bool ascii_profile_command = asciiart_active;
     if (!ascii_profile_command && normalized[0] == '/') {
         const char *command_args = nullptr;
-        if (session_parse_command(normalized, "/asciiart", &command_args) ||
-            session_parse_command(normalized, "/profilepic", &command_args)) {
+        if (session_parse_command(normalized, "/asciiart", &command_args)) {
             ascii_profile_command = true;
         }
     }
@@ -5969,13 +5960,6 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
              (int)sizeof(target_name) - 1, working);
 
     session_ctx_t *target = chat_room_find_user(&ctx->owner->room, target_name);
-    const bool target_is_eliza = strcasecmp(target_name, "eliza") == 0;
-
-    if (target_is_eliza) {
-        session_send_system_line(ctx, "eliza is no longer available.");
-        return;
-    }
-
     if (target == nullptr) {
         char not_found[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(not_found, sizeof(not_found), "User '%s' is not connected.",

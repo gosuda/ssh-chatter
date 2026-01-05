@@ -530,7 +530,6 @@ typedef enum session_ui_language {
 typedef enum session_asciiart_target {
     SESSION_ASCIIART_TARGET_NONE = 0,
     SESSION_ASCIIART_TARGET_CHAT,
-    SESSION_ASCIIART_TARGET_PROFILE_PICTURE,
 } session_asciiart_target_t;
 
 typedef enum session_editor_mode {

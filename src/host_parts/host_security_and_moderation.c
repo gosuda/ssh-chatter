@@ -1317,17 +1317,6 @@ host_eliza_prepare_private_reply(const char *message, char *reply,
              "I'm listening. Share anything that's on your mind.");
 }
 
-static __attribute__((unused)) void
-host_eliza_handle_private_message(session_ctx_t *ctx, const char *message)
-{
-    (void)message;
-    if (ctx == nullptr) {
-        return;
-    }
-
-    session_send_system_line(ctx, "eliza is no longer available.");
-}
-
 static __attribute__((unused)) bool
 host_eliza_content_is_severe(const char *text)
 {

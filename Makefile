@@ -27,7 +27,7 @@ CFLAGS = -std=c2x -Ofast \
               -D_FORTIFY_SOURCE=2 \
               -march=native -mtune=native \
               -fwhole-program \
-              -flto=$(NPROC) -fuse-linker-plugin \
+              -flto=auto -fuse-linker-plugin \
               -fomit-frame-pointer \
               -fno-signed-zeros \
               -funroll-loops \
@@ -59,7 +59,7 @@ CFLAGS = -std=c2x -Ofast \
 # ==============================================================================
 COMMON_LDFLAGS = \
     -lpthread -ldl -lcurl -lm -lcrypto -lc \
-    -flto=$(NPROC) -fuse-linker-plugin \
+    -flto=auto -fuse-linker-plugin \
     -fwhole-program \
     -Wl,-Ofast \
     -Wl,--hash-style=gnu \

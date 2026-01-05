@@ -8104,8 +8104,7 @@ static void session_handle_eliza(session_ctx_t *ctx, const char *arguments)
     }
 
     if (host_eliza_disable(ctx->owner)) {
-        session_send_system_line(
-            ctx, "eliza disabled. She will no longer intervene.");
+        session_send_system_line(ctx, "eliza disabled.");
     } else {
         session_send_system_line(ctx, "eliza is already inactive.");
     }

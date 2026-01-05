@@ -1730,12 +1730,6 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         return;
     }
 
-    else if (session_parse_command_any(ctx, "/profilepic", effective_line,
-                                       &args)) {
-        session_handle_profile_picture(ctx, args);
-        return;
-    }
-
     else if (session_parse_command_any(ctx, "/game", effective_line, &args)) {
         session_handle_game(ctx, args);
         return;
@@ -1917,14 +1911,6 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     } else if (session_parse_command_any(ctx, "/birthday", effective_line,
                                          &args)) {
         session_handle_birthday(ctx, args);
-        return;
-    } else if (session_parse_command_any(ctx, "/soulmate", effective_line,
-                                         &args)) {
-        if (*args != '\0') {
-            session_send_system_line(ctx, "Usage: /soulmate");
-        } else {
-            session_handle_soulmate(ctx);
-        }
         return;
     } else if (session_parse_command_any(ctx, "/setpw", effective_line,
                                          &args)) {
@@ -4258,12 +4244,8 @@ static void *session_thread(void *arg)
                     session_apply_background_fill(ctx);
                     if (ctx->bbs_post_pending) {
                         if (ctx->editor_mode == SESSION_EDITOR_MODE_ASCIIART) {
-                            const char *cancel_message =
-                                (ctx->asciiart_target ==
-                                 SESSION_ASCIIART_TARGET_PROFILE_PICTURE)
-                                    ? "Profile picture draft canceled."
-                                    : "ASCII art draft canceled.";
-                            session_asciiart_cancel(ctx, cancel_message);
+                            session_asciiart_cancel(ctx,
+                                                    "ASCII art draft canceled.");
                         } else {
                             const char *cancel_notice =
                                 (ctx->editor_mode ==
@@ -4274,12 +4256,8 @@ static void *session_thread(void *arg)
                             session_send_system_line(ctx, cancel_notice);
                         }
                     } else {
-                        const char *cancel_message =
-                            (ctx->asciiart_target ==
-                             SESSION_ASCIIART_TARGET_PROFILE_PICTURE)
-                                ? "Profile picture draft canceled."
-                                : "ASCII art draft canceled.";
-                        session_asciiart_cancel(ctx, cancel_message);
+                        session_asciiart_cancel(ctx,
+                                                "ASCII art draft canceled.");
                     }
                     session_clear_input_without_prompt(ctx);
                     if (ctx->should_exit) {

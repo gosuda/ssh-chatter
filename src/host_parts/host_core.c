@@ -1361,7 +1361,6 @@ static const char *const kSessionCommandNames[] = {
     "set-trans-lang",
     "set-ui-lang",
     "showstatus",
-    "soulmate",
     "status",
     "suspend!",
     "sync-trigger",
@@ -2149,16 +2148,6 @@ static const session_command_alias_t kSessionCommandAliases[] = {
             },
     },
     {
-        .canonical = "/profilepic",
-        .localized =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "/프로필사진",
-                [SESSION_UI_LANGUAGE_JP] = "/プロフィール写真",
-                [SESSION_UI_LANGUAGE_ZH] = "/头像",
-                [SESSION_UI_LANGUAGE_RU] = "/аватар",
-            },
-    },
-    {
         .canonical = "/asciiart",
         .localized =
             {
@@ -2390,16 +2379,6 @@ static const session_command_alias_t kSessionCommandAliases[] = {
                 [SESSION_UI_LANGUAGE_JP] = "/誕生日",
                 [SESSION_UI_LANGUAGE_ZH] = "/生日",
                 [SESSION_UI_LANGUAGE_RU] = "/деньрождения",
-            },
-    },
-    {
-        .canonical = "/soulmate",
-        .localized =
-            {
-                [SESSION_UI_LANGUAGE_KO] = "/영혼의단짝",
-                [SESSION_UI_LANGUAGE_JP] = "/ソウルメイト",
-                [SESSION_UI_LANGUAGE_ZH] = "/灵魂伴侣",
-                [SESSION_UI_LANGUAGE_RU] = "/родственнаядуша",
             },
     },
     {

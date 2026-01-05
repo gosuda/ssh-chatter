@@ -2,6 +2,8 @@
 #include "host_internal.h"
 
 static int session_game_random_range(session_ctx_t *ctx, int max);
+static session_ctx_t *chat_room_find_user(chat_room_t *room,
+                                          const char *username);
 
 // Handle the /bbs command entry point.
 static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
@@ -7207,9 +7209,60 @@ static void session_handle_status(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    (void)arguments;
-    session_send_system_line(ctx,
-                             "Custom status messages are no longer available.");
+    static const char *kUsage = "Usage: /status <message|off>";
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, "/status", kUsage, usage, sizeof(usage));
+
+    if (arguments == nullptr || *arguments == '\0') {
+        if (ctx->status_message[0] == '\0') {
+            session_send_system_line(ctx, "You do not have a status message.");
+        } else {
+            char message[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(message, sizeof(message), "Your status: %s",
+                     ctx->status_message);
+            session_send_system_line(ctx, message);
+        }
+        return;
+    }
+
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(working, sizeof(working), "%s", arguments);
+    trim_whitespace_inplace(working);
+
+    if (working[0] == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    if (strcasecmp(working, "off") == 0 || strcasecmp(working, "clear") == 0) {
+        ctx->status_message[0] = '\0';
+        session_send_system_line(ctx, "Status message cleared.");
+        return;
+    }
+
+    char cleaned[SSH_CHATTER_STATUS_LEN];
+    if (!user_data_strip_ansi_sequences(working, cleaned, sizeof(cleaned)) ||
+        cleaned[0] == '\0') {
+        snprintf(cleaned, sizeof(cleaned), "%.*s", SSH_CHATTER_STATUS_LEN - 1,
+                 working);
+    }
+    trim_whitespace_inplace(cleaned);
+
+    if (cleaned[0] == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    bool truncated = strnlen(working, sizeof(working)) >=
+                     (SSH_CHATTER_STATUS_LEN - 1U);
+    snprintf(ctx->status_message, sizeof(ctx->status_message), "%s", cleaned);
+
+    if (truncated) {
+        session_send_system_line(ctx,
+                                 "Status message set (truncated to fit).");
+    } else {
+        session_send_system_line(ctx, "Status message set.");
+    }
 }
 
 static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
@@ -7218,8 +7271,52 @@ static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    (void)arguments;
-    session_send_system_line(ctx, "User status lookups have been retired.");
+    static const char *kUsage = "Usage: /showstatus <nickname>";
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, "/showstatus", kUsage, usage,
+                                 sizeof(usage));
+
+    if (arguments == nullptr || arguments[0] == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    char target_name[SSH_CHATTER_USERNAME_LEN];
+    snprintf(target_name, sizeof(target_name), "%s", arguments);
+    trim_whitespace_inplace(target_name);
+
+    if (target_name[0] == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    if (ctx->owner == nullptr) {
+        session_send_system_line(ctx, "User status lookup is unavailable.");
+        return;
+    }
+
+    session_ctx_t *target =
+        chat_room_find_user(&ctx->owner->room, target_name);
+    if (target == nullptr) {
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message), "User '%s' is not connected.",
+                 target_name);
+        session_send_system_line(ctx, message);
+        return;
+    }
+
+    if (target->status_message[0] == '\0') {
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message),
+                 "No status message set for '%s'.", target->user.name);
+        session_send_system_line(ctx, message);
+        return;
+    }
+
+    char message[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(message, sizeof(message), "Status for %s: %s", target->user.name,
+             target->status_message);
+    session_send_system_line(ctx, message);
 }
 
 static void session_handle_weather(session_ctx_t *ctx, const char *arguments)

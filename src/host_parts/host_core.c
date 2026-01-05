@@ -2780,6 +2780,48 @@ static const session_help_entry_t kSessionHelpExtended[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "status <message|off>",
+        .description =
+            {
+                "Set or clear your status message.",
+                "상태 메시지를 설정하거나 지웁니다.",
+                "ステータスメッセージを設定または削除します。",
+                "设置或清除状态消息。",
+                "Установить или очистить статусное сообщение.",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "상태 <메시지|끄기>",
+                [SESSION_UI_LANGUAGE_JP] = "ステータス <メッセージ|解除>",
+                [SESSION_UI_LANGUAGE_ZH] = "状态 <消息|关闭>",
+                [SESSION_UI_LANGUAGE_RU] = "статус <сообщение|выкл>",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "showstatus <nickname>",
+        .description =
+            {
+                "Show someone's status message.",
+                "다른 사용자의 상태 메시지를 확인합니다.",
+                "他のユーザーのステータスメッセージを表示します。",
+                "查看其他用户的状态消息。",
+                "Показать статус другого пользователя.",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "상태확인 <닉네임>",
+                [SESSION_UI_LANGUAGE_JP] = "ステータス確認 <ニックネーム>",
+                [SESSION_UI_LANGUAGE_ZH] = "状态查询 <昵称>",
+                [SESSION_UI_LANGUAGE_RU] = "показать-статус <ник>",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "image <url> [caption]",
         .description =
             {

@@ -3853,67 +3853,6 @@ static const session_help_entry_t kSessionHelpOperator[] = {
         .label_arg_count = 0U,
         .label_args = {},
     },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "ircserver <status|reconnect|disconnect>",
-        .description =
-            {
-                "Manage IRC relay server connection (operator only).",
-                "IRC 릴레이 서버 연결을 관리합니다 (운영자 전용).",
-                "IRC リレーサーバー接続を管理します（オペレーター専用）。",
-                "管理 IRC 中继服务器连接（仅限管理员）。",
-                "Управление подключением к IRC-серверу (оператор).",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "ddial <url> <port>|logs|status",
-        .description =
-            {
-                "Manage D-Dial relay connection, status, and logs (operator "
-                "only).",
-                "D-Dial 릴레이 연결·상태·로그를 관리합니다 (운영자 전용).",
-                "D-Dial "
-                "リレーの接続・状態・ログを管理します（オペレーター専用）。",
-                "管理 D-Dial 中继的连接、状态和日志（仅限管理员）。",
-                "Управление подключением, статусом и логами ретранслятора "
-                "D-Dial (только оператор).",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "discord status",
-        .description =
-            {
-                "Show Discord relay status (operator only).",
-                "Discord 릴레이 상태를 확인합니다 (운영자 전용).",
-                "Discord リレーの状態を表示します（オペレーター専用）。",
-                "查看 Discord 中继状态（仅限管理员）。",
-                "Показать статус ретрансляции Discord (только оператор).",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
-    {
-        .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "fidonet <status|reconnect|disconnect|logs>",
-        .description =
-            {
-                "Manage FidoNet/Binkp relay connection and logs (operator "
-                "only).",
-                "FidoNet/Binkp 릴레이 연결과 로그를 관리합니다 (운영자 전용).",
-                "FidoNet/Binkp "
-                "リレーの接続・ログを管理します（オペレーター専用）。",
-                "管理 FidoNet/Binkp 中继的连接与日志（仅限管理员）。",
-                "Управление подключением и логами FidoNet/Binkp (оператор).",
-            },
-        .label_arg_count = 0U,
-        .label_args = {},
-    },
 };
 
 static const int kSessionHelpLabelWidth = 26;

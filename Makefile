@@ -1,5 +1,5 @@
 # Default setting: Disable Garbage Collector (GC)
-ENABLE_GC ?= 1
+ENABLE_GC ?= 0
 
 # The C compiler to use
 CC := gcc
@@ -14,7 +14,6 @@ NPROC := $(shell nproc)
 SRC_DIR := src
 INCLUDE_DIR := include
 BUILD_DIR := build
-EXCLUDED_SRC := $(SRC_DIR)/synchronet_door.c $(SRC_DIR)/stubs/libssh_stub.c
 
 CFLAGS = -std=c2x -Ofast \
               -Werror \

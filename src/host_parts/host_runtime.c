@@ -1537,12 +1537,6 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         return;
     }
 
-    else if (session_parse_command_any(ctx, "/telnet-server", effective_line,
-                                       &args)) {
-        session_handle_telnetserver(ctx, args);
-        return;
-    }
-
     else if (session_parse_command_any(ctx, "/advanced", effective_line,
                                        &args)) {
         session_handle_advanced(ctx, args);
@@ -1919,18 +1913,6 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     } else if (session_parse_command_any(ctx, "/getaddr", effective_line,
                                          &args)) {
         session_handle_getaddr(ctx, args);
-        return;
-    } else if (session_parse_command_any(ctx, "/ddial", effective_line,
-                                         &args)) {
-        session_handle_ddial(ctx, args);
-        return;
-    } else if (session_parse_command_any(ctx, "/ircserver", effective_line,
-                                         &args)) {
-        session_handle_ircserver(ctx, args);
-        return;
-    } else if (session_parse_command_any(ctx, "/discord", effective_line,
-                                         &args)) {
-        session_handle_discord(ctx, args);
         return;
     } else if (session_parse_command_any(ctx, "/birthday", effective_line,
                                          &args)) {
@@ -4788,7 +4770,6 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->auth = auth;
     host->clients = nullptr;
     host->web_client = nullptr;
-    host->matrix_client = nullptr;
     host->morse_client = nullptr;
     host->security_layer_initialized =
         security_layer_init(&host->security_layer);
@@ -5033,30 +5014,6 @@ void host_init(host_t *host, auth_profile_t *auth)
                                 ENOMEM);
         }
 
-        if (host->security_layer_initialized) {
-            host->irc_client = irc_client_create(host);
-            if (host->irc_client == nullptr) {
-                humanized_log_error("irc",
-                                    "IRC relay inactive; check "
-                                    "CHATTER_IRC_* configuration",
-                                    EINVAL);
-            }
-
-            host->ddial_client = ddial_client_create(host, host->clients);
-            if (host->ddial_client == nullptr) {
-                humanized_log_error(
-                    "ddial", "D-Dial relay unavailable; check memory", ENOMEM);
-            }
-
-            host->discord_client =
-                discord_client_create(host, host->clients);
-            if (host->discord_client == nullptr) {
-                humanized_log_error(
-                    "discord",
-                    "Discord relay inactive; set CHATTER_DISCORD_WEBHOOK_URL",
-                    EINVAL);
-            }
-        }
     }
     if (host->morse_client == nullptr) {
         host->morse_client = morse_client_create(host);
@@ -5645,24 +5602,9 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         atomic_store(&host->bbs_watchdog_thread_running, false);
     }
 
-    if (host->matrix_client != nullptr) {
-        host->matrix_client = nullptr;
-    }
-    if (host->irc_client != nullptr) {
-        irc_client_destroy(host->irc_client);
-        host->irc_client = nullptr;
-    }
-    if (host->ddial_client != nullptr) {
-        ddial_client_destroy(host->ddial_client);
-        host->ddial_client = nullptr;
-    }
     if (host->morse_client != nullptr) {
         morse_client_destroy(host->morse_client);
         host->morse_client = nullptr;
-    }
-    if (host->discord_client != nullptr) {
-        discord_client_destroy(host->discord_client);
-        host->discord_client = nullptr;
     }
     if (host->web_client != nullptr) {
         webssh_client_destroy(host->web_client);

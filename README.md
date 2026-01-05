@@ -74,44 +74,6 @@ confirm the build still succeeds before pushing the result.
 - Suspicious submissions that trip the layered filter are now tracked per-IP; repeated hits trigger an automatic kick and ban when enabled, while the rapid reconnect detector allows longer recovery windows so unstable network sessions can rejoin without being penalized. Automatic ban entries are **off by default**; set `CHATTER_AUTO_BAN=on` (or `true`/`1`) to enable them, or leave the variable unset to keep warnings and throttling without writing automatic ban entries.
 - Operators can mark trusted ingress points (VPN exits, reverse proxies, localhost) with `CHATTER_PROTECTED_IPS` (comma-separated, defaults to `127.0.0.1,::1,192.168.0.1`) so emergency bans never lock the daemon out of its own control plane.
 
-## IRC Server relay (WIP)
-
-SSH-Chatter supports connecting to IRC servers, allowing integration with external IRC relay networks such as magviz.ca. The IRC relay automatically forwards messages between the SSH chat room and the configured relay server.
-
-### Configuration
-
-Set these environment variables to enable the IRC relay:
-
-- `CHATTER_IRC_SERVER` – hostname or IP address of the IRC server (e.g., `irc.magviz.ca`)
-- `CHATTER_IRC_PORT` – port number (defaults to `6667` if not specified)
-- `CHATTER_IRC_CHANNEL` – IRC-style channel to join (e.g., `#chat`)
-- `CHATTER_IRC_NICKNAME` – nickname for the bot (defaults to `ssh-chatter`)
-- `CHATTER_IRC_USERNAME` – username for IRC USER command (defaults to nickname if not specified)
-- `CHATTER_IRC_REALNAME` – real name for IRC USER command (defaults to `SSH-Chatter Bot` if not specified)
-
-Example configuration in `chatter.env`:
-
-```bash
-CHATTER_IRC_SERVER=irc.example.com
-CHATTER_IRC_PORT=6667
-CHATTER_IRC_CHANNEL=#general
-CHATTER_IRC_NICKNAME=chatbot
-CHATTER_IRC_USERNAME=myuser
-CHATTER_IRC_REALNAME=SSH-Chatter Bot
-```
-
-### Managing the connection
-
-Operators can manage the IRC relay connection using the `/ircserver` command:
-
-```bash
-/ircserver status        # Check connection status
-/ircserver reconnect     # Reconnect to the IRC server
-/ircserver disconnect    # Disconnect from the IRC server
-```
-
-Messages received from the IRC relay appear in the chat with a `[IRC]` prefix and the sender's nickname. The relay automatically handles reconnections if the connection drops, with a 30-second delay between attempts.
-
 ## Morse Relay
 SSH-Chatter supports amateur ham radio relay.
 This shows global morse signals.
@@ -121,45 +83,9 @@ This shows global morse signals.
 
 The implementation follows the Binkp protocol specification:
 - Standard Binkp frame structure with 2-byte headers
-- Session password authentication (CMD_PWD/CMD_OK)
-- Keepalive mechanism (CMD_NUL) every 60 seconds
-- Custom CHAT command (CMD_CHAT, extension) for message synchronization
-- Support for multiple FidoNet address formats
-
-## Matrix bridge
-
-Set these environment variables (either inside `chatter.env` or the systemd unit) to synchronise the room with Matrix while preserving onion-style secrecy:
-
-- `CHATTER_MATRIX_HOMESERVER` – base URL of your homeserver (for example `https://matrix.example.com`).
-- `CHATTER_MATRIX_ACCESS_TOKEN` – bot access token with permission to post to the target room.
-- `CHATTER_MATRIX_ROOM_ID` – canonical room identifier (such as `!room:example.com`).
-- `CHATTER_MATRIX_DEVICE_NAME` – optional device label shown to the homeserver; defaults to `ssh-chatter`.
-
-Outbound messages are serialised into `TorOnion/v1` envelopes produced by three layers of AES-256-GCM encryption; inbound Matrix events must decrypt with the same key schedule before they are replayed back into the terminal room.
-
-### Connecting from Matrix clients
-
-Once the bridge variables are configured and the daemon is running, you can access the shared room with any Matrix client:
-
-1. Sign in to the same homeserver that the bridge uses. For self-hosted servers this means the URL defined in `CHATTER_MATRIX_HOMESERVER`.
-2. Join the room by its canonical ID (`CHATTER_MATRIX_ROOM_ID`) or any published alias that points to that ID.
-3. Start chatting—messages will be mirrored between SSH-Chatter and Matrix as soon as the bot is online.
-
-For terminal users, clients such as [`gomuks`](https://github.com/tulir/gomuks) or [`matrix-commander`](https://github.com/8go/matrix-commander) work well: authenticate against your homeserver, run the room join command, and the bridge bot will relay messages automatically. GUI users can follow the same steps with Element, FluffyChat, or another desktop/mobile client—search for the room ID or alias, join it, and the bridge keeps both sides in sync.
-
-If the room is invite-only, ensure the bridge bot has been invited first so it can forward events. Client-side encryption (E2EE) is not supported through the bridge, so disable it for the bridged room to avoid missing messages.
-
-### Setting up the bridge on your server
-
-Server operators who want to expose their SSH-Chatter room to Matrix can prepare the bridge with the following workflow:
-
-1. **Create a Matrix service account.** Either register a dedicated bot user on your homeserver or create a new user on a managed homeserver that you control. Give it a strong password and avoid reusing an existing personal account.
-2. **Create or pick the target room.** From the Matrix client of your choice, create a new room (or reuse an existing community room) and note its canonical room ID (the form `!room:example.com`). Invite the bot user if the room is restricted.
-3. **Generate an access token.** Log in to the bot account with a client that exposes the developer tools (Element: _Settings → Help & About → Advanced → Access Token_). Copy the token and store it safely; the bridge uses it instead of the password.
-4. **Configure SSH-Chatter.** Set `CHATTER_MATRIX_HOMESERVER`, `CHATTER_MATRIX_ACCESS_TOKEN`, `CHATTER_MATRIX_ROOM_ID`, and optionally `CHATTER_MATRIX_DEVICE_NAME` in the environment. For systemd installations, add the variables to `/etc/ssh-chatter/chatter.env` or the `[Service]` section of the unit file and run `systemctl daemon-reload`.
-5. **Restart the service.** Bounce the daemon (`systemctl restart chatter.service` or restart the container) so the new settings take effect. Watch the logs for lines beginning with `matrix_bridge` to confirm that the bot joined successfully.
-
-If you ever rotate the access token or move the room, repeat steps 3–5. When decommissioning the bridge, clear the `CHATTER_MATRIX_*` variables and restart to return to a standalone SSH/TELNET deployment.
+- Session password authentication (CMD\_PWD/CMD\_OK)
+- Keepalive mechanism (CMD\_NUL) every 60 seconds
+- Custom CHAT command (CMD\_CHAT, extension) for message synchronization
 
 ## Prerequisites
 

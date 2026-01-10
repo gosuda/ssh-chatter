@@ -4634,6 +4634,10 @@ static void session_write_rendered_line(session_ctx_t *ctx,
     if (locked) {
         session_output_unlock(ctx);
     }
+
+    if (ctx->transport_kind == SESSION_TRANSPORT_TELNET) {
+        session_channel_flush(ctx);
+    }
 }
 
 static void session_send_caption_line(session_ctx_t *ctx, const char *message)

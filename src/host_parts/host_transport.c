@@ -4220,8 +4220,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
                     // clear the freeze flag so chat output resumes.
                     member->no_update = false;
                 }
-                if (member->no_update &&
-                    member->transport_kind != SESSION_TRANSPORT_TELNET) {
+                if (member->no_update) {
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4324,8 +4323,7 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
                     // clear the freeze flag so chat output resumes.
                     member->no_update = false;
                 }
-                if (member->no_update &&
-                    member->transport_kind != SESSION_TRANSPORT_TELNET) {
+                if (member->no_update) {
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4395,8 +4393,14 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
         targets = GC_MALLOC(expected_targets * sizeof(*targets));
+        sink_targets = GC_MALLOC(expected_targets * sizeof(*sink_targets));
         if (targets != nullptr) {
             memset(targets, 0, expected_targets * sizeof(*targets));
+        }
+        if (sink_targets != nullptr) {
+            memset(sink_targets, 0, expected_targets * sizeof(*sink_targets));
+        }
+        if (targets != nullptr) {
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
                 if (member == nullptr || !session_transport_active(member)) {
@@ -4412,9 +4416,10 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                     // clear the freeze flag so chat output resumes.
                     member->no_update = false;
                 }
-                if (member->no_update &&
-                    member->transport_kind != SESSION_TRANSPORT_TELNET) {
-                    sink_targets[sink_count++] = member;
+                if (member->no_update) {
+                    if (sink_targets != nullptr) {
+                        sink_targets[sink_count++] = member;
+                    }
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4492,11 +4497,14 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         // Flush the channel to ensure immediate delivery
         session_channel_flush(member);
 
-        // Auto-scroll all users to the latest message when new content arrives
-        // This ensures everyone sees new messages immediately, unless they're actively
-        // scrolled back viewing history
-        if (member->history_scroll_position > 0U) {
-            // Reset scroll position to show the latest messages
+        // Auto-scroll to the latest message for telnet sessions only when they
+        // are already at the newest entry. For other transports, preserve the
+        // existing behavior of snapping back when scrolled.
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
+            if (member->history_scroll_position == 0U) {
+                session_scrollback_reset_position(member);
+            }
+        } else if (member->history_scroll_position > 0U) {
             session_scrollback_reset_position(member);
         }
 

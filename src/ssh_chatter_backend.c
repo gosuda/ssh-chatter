@@ -1,3 +1,11 @@
+/**
+ * @file ssh_chatter_backend.c
+ * @desc File-level documentation for ssh_chatter_backend.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

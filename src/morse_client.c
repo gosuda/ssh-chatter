@@ -1,3 +1,11 @@
+/**
+ * @file morse_client.c
+ * @desc File-level documentation for morse_client.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #include "host_parts/host_internal.h"
 
 #include <sys/select.h>

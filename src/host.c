@@ -1,3 +1,11 @@
+/**
+ * @file host.c
+ * @desc File-level documentation for host.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 // This file stitches the host implementation together from modular C sources.
 // Each component lives in src/host_parts/ and is included here so the compiler
 // still sees a single translation unit, preserving the existing static helper

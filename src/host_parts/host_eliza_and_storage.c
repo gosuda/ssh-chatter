@@ -1,3 +1,11 @@
+/**
+ * @file host_eliza_and_storage.c
+ * @desc File-level documentation for host_eliza_and_storage.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 // Eliza memory management, BBS persistence, and rendering helpers.
 #include "host_internal.h"
 

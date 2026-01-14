@@ -1,3 +1,11 @@
+/**
+ * @file memory_manager.c
+ * @desc File-level documentation for memory_manager.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #include "ssh_chatter/memory_manager.h"
 
 #if !(defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC)

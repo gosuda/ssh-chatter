@@ -133,6 +133,8 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
                                  size_t step);
 void session_process_pending_sink(session_ctx_t *ctx);
 void session_flag_should_sink(session_ctx_t *ctx);
+void session_mark_should_sink(session_ctx_t *ctx);
+void session_clear_pending_sink(session_ctx_t *ctx);
 
 session_ui_language_t session_ui_language_from_code(const char *code);
 void host_store_ui_language(host_t *host, const session_ctx_t *ctx);

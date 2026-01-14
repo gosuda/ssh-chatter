@@ -1,3 +1,11 @@
+/**
+ * @file host_session_output.c
+ * @desc File-level documentation for host_session_output.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #include "host_internal.h"
 #include "ssh_chatter/user_data.h"
 #include "ssh_chatter/security_layer.h"
@@ -2914,12 +2922,19 @@ static bool session_try_command_completion(session_ctx_t *ctx)
     return true;
 }
 
+/**
+ * @desc Reset a session's scrollback to the latest message and clear any
+ *       scrollback flags so real-time output resumes.
+ * @param ctx Session context to reset.
+ * @return None.
+ */
 void session_scrollback_reset_position(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {
         return;
     }
 
+    // Reset scrollback counters so the latest history is shown.
     ctx->history_scroll_position = 0U;
     ctx->history_latest_notified = false;
     ctx->history_oldest_notified = false;
@@ -2931,6 +2946,13 @@ void session_scrollback_reset_position(session_ctx_t *ctx)
     session_process_pending_sink(ctx);
 }
 
+/**
+ * @desc Synchronize pending chat history to a session that is not scrolled
+ *       back, emitting the most recent chunk without forcing a redraw when
+ *       the session is paused in scrollback.
+ * @param ctx Session context to process pending sink state for.
+ * @return None.
+ */
 void session_process_pending_sink(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr || !ctx->pending_should_sink) {
@@ -2938,9 +2960,11 @@ void session_process_pending_sink(session_ctx_t *ctx)
     }
 
     if (ctx->history_scroll_position > 0U) {
+        // Do not force-render history when the user is scrolled back.
         return;
     }
 
+    // Compute the newest chunk to deliver.
     size_t total = host_history_total(ctx->owner);
     if (total == 0U) {
         ctx->pending_should_sink = false;
@@ -2953,6 +2977,7 @@ void session_process_pending_sink(session_ctx_t *ctx)
     }
 
     size_t start_index = (total > 0U && total > chunk) ? (total - chunk) : 0U;
+    // Allocate a temporary buffer to copy the newest history slice.
     chat_history_entry_t *buffer =
         (chat_history_entry_t *)calloc(chunk, sizeof(chat_history_entry_t));
     if (buffer == nullptr) {
@@ -2973,6 +2998,7 @@ void session_process_pending_sink(session_ctx_t *ctx)
     }
 
     for (size_t idx = 0; idx < copied; ++idx) {
+        // Emit each entry in order to rebuild the newest view.
         session_send_history_entry(ctx, &buffer[idx]);
     }
 
@@ -2982,9 +3008,17 @@ void session_process_pending_sink(session_ctx_t *ctx)
         session_output_buffer_stop(ctx);
     }
 
+    // Ensure the input line is visible after the sink update.
     session_refresh_input_line(ctx);
 }
 
+/**
+ * @desc Mark a session as needing to sink the latest chat chunk and
+ *       immediately attempt to deliver it when the session is at the
+ *       newest scrollback position.
+ * @param ctx Session context to mark and process.
+ * @return None.
+ */
 void session_flag_should_sink(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {
@@ -2993,6 +3027,37 @@ void session_flag_should_sink(session_ctx_t *ctx)
 
     ctx->pending_should_sink = true;
     session_process_pending_sink(ctx);
+}
+
+/**
+ * @desc Mark a session as needing to sink the latest chat chunk without
+ *       immediately rendering it (defer processing until the session is
+ *       at the newest position).
+ * @param ctx Session context to mark as pending.
+ * @return None.
+ */
+void session_mark_should_sink(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    ctx->pending_should_sink = true;
+}
+
+/**
+ * @desc Clear any pending sink state for a session that already received
+ *       real-time output, avoiding redundant history rendering later.
+ * @param ctx Session context to clear.
+ * @return None.
+ */
+void session_clear_pending_sink(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    ctx->pending_should_sink = false;
 }
 
 static size_t session_visible_history_lines(const session_ctx_t *ctx)

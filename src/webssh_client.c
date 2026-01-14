@@ -1,3 +1,11 @@
+/**
+ * @file webssh_client.c
+ * @desc File-level documentation for webssh_client.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #include "ssh_chatter/webssh_client.h"
 
 #include <pthread.h>

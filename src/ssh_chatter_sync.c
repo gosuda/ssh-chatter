@@ -1,3 +1,11 @@
+/**
+ * @file ssh_chatter_sync.c
+ * @desc File-level documentation for ssh_chatter_sync.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #define LIBSSH_STATIC
 #include "ssh_chatter/ssh_chatter_sync.h"
 #include "ssh_chatter/memory_manager.h"

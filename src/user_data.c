@@ -1,3 +1,11 @@
+/**
+ * @file user_data.c
+ * @desc File-level documentation for user_data.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif

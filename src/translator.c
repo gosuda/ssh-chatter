@@ -1,3 +1,11 @@
+/**
+ * @file translator.c
+ * @desc File-level documentation for translator.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif

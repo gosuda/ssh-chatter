@@ -1,3 +1,11 @@
+/**
+ * @file host_runtime.c
+ * @desc File-level documentation for host_runtime.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 // Remaining operator commands, ban management, and host lifecycle entry points.
 #include "host_internal.h"
 

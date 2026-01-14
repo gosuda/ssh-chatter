@@ -1,3 +1,11 @@
+/**
+ * @file host_json_api.c
+ * @desc File-level documentation for host_json_api.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 // JSON line-based API for chat commands and events.
 #include "host_internal.h"
 

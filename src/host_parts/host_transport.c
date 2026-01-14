@@ -1,3 +1,11 @@
+/**
+ * @file host_transport.c
+ * @desc File-level documentation for host_transport.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 // Connection setup, listener management, and transport helpers.
 #include "host_internal.h"
 
@@ -4110,6 +4118,12 @@ static void session_apply_granted_privileges(session_ctx_t *ctx)
     }
 }
 
+/**
+ * @desc Add a session to the chat room member list if not already present.
+ * @param room Chat room to update.
+ * @param session Session to add to the room.
+ * @return None.
+ */
 static void chat_room_add(chat_room_t *room, session_ctx_t *session)
 {
     if (room == nullptr || session == nullptr) {
@@ -4131,6 +4145,12 @@ static void chat_room_add(chat_room_t *room, session_ctx_t *session)
     pthread_mutex_unlock(&room->lock);
 }
 
+/**
+ * @desc Remove a session from the chat room member list.
+ * @param room Chat room to update.
+ * @param session Session to remove from the room.
+ * @return None.
+ */
 static void chat_room_remove(chat_room_t *room, const session_ctx_t *session)
 {
     if (room == nullptr || session == nullptr) {
@@ -4151,6 +4171,13 @@ static void chat_room_remove(chat_room_t *room, const session_ctx_t *session)
     pthread_mutex_unlock(&room->lock);
 }
 
+/**
+ * @desc Mark all connected room members as needing a history sink without
+ *       forcing an immediate redraw; delivery happens when sessions are at
+ *       the newest position.
+ * @param room Chat room whose members should be flagged.
+ * @return None.
+ */
 static void chat_room_broadcast_should_sink(chat_room_t *room)
 {
     if (room == nullptr) {
@@ -4182,12 +4209,20 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
     }
 
     for (size_t idx = 0; idx < target_count; ++idx) {
-        session_flag_should_sink(targets[idx]);
+        session_mark_should_sink(targets[idx]);
     }
 
     GC_FREE(targets);
 }
 
+/**
+ * @desc Broadcast a system or user line to all room members, skipping
+ *       sessions frozen in scrollback to preserve their view.
+ * @param room Chat room to broadcast into.
+ * @param message Message text to emit.
+ * @param from Optional sender; when null, treat as system output.
+ * @return None.
+ */
 static void chat_room_broadcast(chat_room_t *room, const char *message,
                                 const session_ctx_t *from)
 {
@@ -4243,6 +4278,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         // This is critical for telnet sessions where buffered writes can hide
         // new messages until another action flushes the buffer
         session_output_buffer_flush(member);
+        // Disable buffering so the chat line arrives immediately on slow clients.
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;
 
@@ -4257,6 +4293,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         if (from != nullptr) {
             // Format message directly for real-time delivery
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
+            // Pull color/highlight styling from the sender for live output.
             const char *color =
                 from->user_color_code != nullptr ? from->user_color_code : "";
             const char *highlight = from->user_highlight_code != nullptr
@@ -4278,16 +4315,23 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
 
             session_send_plain_line(member, formatted);
         } else {
+            // System messages bypass user formatting.
             session_send_system_line(member, message);
         }
 
         // Flush the channel to ensure immediate delivery
         session_channel_flush(member);
 
+        if (member->history_scroll_position == 0U) {
+            // Clear pending sink so we don't replay history after live delivery.
+            session_clear_pending_sink(member);
+        }
+
         // For telnet, always refresh input line to ensure messages are visible
         // For SSH, only refresh when at bottom of history
         if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
             member->history_scroll_position == 0U) {
+            // Refresh prompt/input line after message display.
             session_refresh_input_line(member);
         }
     }
@@ -4295,6 +4339,13 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     GC_FREE(targets);
 }
 
+/**
+ * @desc Broadcast a caption-style line to all room members, respecting
+ *       scrollback freeze and flushing telnet output as needed.
+ * @param room Chat room to broadcast into.
+ * @param message Caption text to emit.
+ * @return None.
+ */
 static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
 {
     if (room == nullptr || message == nullptr) {
@@ -4359,6 +4410,10 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
         // Flush the channel to ensure immediate delivery
         session_channel_flush(member);
 
+        if (member->history_scroll_position == 0U) {
+            session_clear_pending_sink(member);
+        }
+
         // For telnet, always refresh input line to ensure messages are visible
         // For SSH, only refresh when at bottom of history
         if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
@@ -4372,6 +4427,15 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
     GC_FREE(targets);
 }
 
+/**
+ * @desc Broadcast a stored chat history entry to all room members, marking
+ *       pending sink updates for scrolled-back sessions while keeping
+ *       real-time output for active viewers.
+ * @param room Chat room to broadcast into.
+ * @param entry Stored chat history entry to display.
+ * @param from Optional sender to exclude from the broadcast.
+ * @return None.
+ */
 static void chat_room_broadcast_entry(chat_room_t *room,
                                       const chat_history_entry_t *entry,
                                       const session_ctx_t *from)
@@ -4506,6 +4570,10 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             }
         } else if (member->history_scroll_position > 0U) {
             session_scrollback_reset_position(member);
+        }
+
+        if (member->history_scroll_position == 0U) {
+            session_clear_pending_sink(member);
         }
 
         // Refresh input line to display the message and prompt

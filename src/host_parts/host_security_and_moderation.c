@@ -1,3 +1,11 @@
+/**
+ * @file host_security_and_moderation.c
+ * @desc File-level documentation for host_security_and_moderation.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 // Host security pipeline, moderation workers, and persistence utilities.
 #include "host_internal.h"
 

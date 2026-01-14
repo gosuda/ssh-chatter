@@ -1,3 +1,11 @@
+/**
+ * @file translation_helpers.c
+ * @desc File-level documentation for translation_helpers.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #define _XOPEN_SOURCE 700
 #define _POSIX_C_SOURCE 200809L // Added for wcwidth
 

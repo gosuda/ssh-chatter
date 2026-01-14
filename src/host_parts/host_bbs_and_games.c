@@ -1,3 +1,11 @@
+/**
+ * @file host_bbs_and_games.c
+ * @desc File-level documentation for host_bbs_and_games.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 // BBS workflows plus interactive mini-games.
 #include "host_internal.h"
 

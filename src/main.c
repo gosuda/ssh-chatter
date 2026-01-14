@@ -1,3 +1,11 @@
+/**
+ * @file main.c
+ * @desc File-level documentation for main.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #define _POSIX_C_SOURCE 200809L
 #include "ssh_chatter/host.h"
 #include "ssh_chatter/humanized/humanized.h"

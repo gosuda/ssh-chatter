@@ -1,3 +1,11 @@
+/**
+ * @file codepage.c
+ * @desc File-level documentation for codepage.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #include "ssh_chatter/codepage.h"
 #include "ssh_chatter/host.h"
 #include <string.h>

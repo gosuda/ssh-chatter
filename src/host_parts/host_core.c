@@ -1,3 +1,11 @@
+/**
+ * @file host_core.c
+ * @desc File-level documentation for host_core.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #include "host_internal.h"
 
 static bool host_is_system_reserved_username(host_t *host, const char *username)

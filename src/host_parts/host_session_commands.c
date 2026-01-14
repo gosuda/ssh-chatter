@@ -1,3 +1,11 @@
+/**
+ * @file host_session_commands.c
+ * @desc File-level documentation for host_session_commands.c, describing its role
+ *       in the SSH-Chatter server and providing a consistent header
+ *       comment format across C sources.
+ * @return None.
+ */
+
 #include "host_internal.h"
 #include "ssh_chatter/security_layer.h"
 // Command handlers for chat interactions, media, and user utilities.

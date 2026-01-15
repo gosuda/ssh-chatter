@@ -4535,6 +4535,14 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                                        sizeof(id_label));
             }
 
+            char line[SSH_CHATTER_MESSAGE_LIMIT * 2U];
+            snprintf(line, sizeof(line), "[%s] <%s%s%s%s> %s", id_label,
+                     entry->user_color_code != nullptr ? entry->user_color_code
+                                                       : ANSI_RESET,
+                     entry->username, ANSI_RESET,
+                     entry->user_is_bold ? ANSI_BOLD : "", entry->message);
+            session_send_plain_line(member, line);
+
             // Send attachment if present
             if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&
                 entry->attachment_target[0] != '\0') {

@@ -1,4 +1,4 @@
-/**
+
  * @file ssh_chatter_sync.c
  * @desc File-level documentation for ssh_chatter_sync.c, describing its role
  *       in the SSH-Chatter server and providing a consistent header
@@ -145,6 +145,7 @@ void ssh_chatter_sync_free_history()
         return;
     }
 
+    // handling history can be dangerous: should lock process
     pthread_mutex_lock(&history_mutex);
     chat_message_t *cur = chat_history_head;
     while (cur) {
@@ -154,7 +155,7 @@ void ssh_chatter_sync_free_history()
         GC_FREE(cur->message_body);
         GC_FREE(cur);
 #else
-        cur->username = nullptr;
+        cur->username = nullptr;     // no GC_FREE when manual memory management: set to nullptr 
         cur->message_body = nullptr;
         cur->next = nullptr;
 #endif
@@ -162,6 +163,7 @@ void ssh_chatter_sync_free_history()
     }
     chat_history_head = nullptr;
     chat_history_size = 0;
+    // tasks are done, unlock
     pthread_mutex_unlock(&history_mutex);
 }
 

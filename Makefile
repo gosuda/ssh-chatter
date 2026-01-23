@@ -82,7 +82,7 @@ LDFLAGS = $(COMMON_LDFLAGS) -lssh
 TARGET := ssh-chatter
 SHARED_TARGET := libssh_chatter_backend.so
 SRC := $(filter-out $(EXCLUDED_SRC),\
-       $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/stubs/*.c))
+       $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/stubs/*.c) $(wildcard $(SRC_DIR)/utils/*.c))
 OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRC))
 SHARED_SRC := src/translator.c src/translation_helpers.c src/ssh_chatter_backend.c src/memory_manager.c
 SHARED_OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SHARED_SRC))

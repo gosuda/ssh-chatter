@@ -1,4 +1,5 @@
 
+/**
  * @file ssh_chatter_sync.c
  * @desc File-level documentation for ssh_chatter_sync.c, describing its role
  *       in the SSH-Chatter server and providing a consistent header

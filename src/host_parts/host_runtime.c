@@ -4753,6 +4753,14 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->json_api.last_error_time.tv_nsec = 0L;
     host->json_api.bind_address[0] = '\0';
     host->json_api.port[0] = '\0';
+    
+    const char *env_secret = getenv("JWT_SECRET");
+    if (env_secret && env_secret[0] != '\0') {
+        snprintf(host->jwt_secret, sizeof(host->jwt_secret), "%s", env_secret);
+    } else {
+        snprintf(host->jwt_secret, sizeof(host->jwt_secret), "ssh-chatter-secret-key-change-me");
+    }
+
     host->auth = auth;
     host->clients = nullptr;
     host->web_client = nullptr;

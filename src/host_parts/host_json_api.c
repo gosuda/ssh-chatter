@@ -8,6 +8,7 @@
 
 // JSON line-based API for chat commands and events.
 #include "host_internal.h"
+#include "ssh_chatter/utils/jwt.h"
 
 typedef struct json_builder {
     char *data;
@@ -26,6 +27,8 @@ typedef struct json_api_client {
     pthread_mutex_t write_lock;
     bool write_lock_initialized;
     char peer_ip[SSH_CHATTER_IP_LEN];
+    bool authenticated;
+    char username[SSH_CHATTER_USERNAME_LEN];
 } json_api_client_t;
 
 typedef struct json_api_request {
@@ -46,6 +49,7 @@ typedef struct json_api_request {
     char request_id[64];
     bool request_id_is_number;
     bool has_request_id;
+    char token[1024];
 } json_api_request_t;
 
 static bool host_prepare_chat_entry(host_t *host, const char *username,
@@ -702,6 +706,9 @@ static bool json_api_parse_request(const char *line, json_api_request_t *request
             request->request_id_is_number = true;
         }
     }
+
+    (void)json_api_extract_string(line, "\"token\"", request->token,
+                                  sizeof(request->token));
 
     return true;
 }
@@ -1694,6 +1701,53 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
     return true;
 }
 
+static void json_api_handle_login(json_api_client_t *client, const json_api_request_t *request) {
+    if (!client || !request) return;
+    
+    if (request->username[0] == '\0') {
+        json_api_send_response(client, request, false, "Username required.", nullptr);
+        return;
+    }
+    
+    // In a real scenario, we would check password here.
+    // For this prototype/CLI demo, we assume the user is claiming this username.
+    // To respect 'host' conventions, we should probably check if it's reserved.
+    
+    char *token = jwt_generate(client->host->jwt_secret, request->username, 3600 * 24);
+    if (!token) {
+        json_api_send_response(client, request, false, "Token generation failed.", nullptr);
+        return;
+    }
+    
+    json_builder_t result;
+    json_builder_init(&result);
+    json_builder_append(&result, "{\"token\":\"%s\"}", token);
+    
+    json_api_send_response(client, request, true, "Login successful", result.data);
+    
+    json_builder_free(&result);
+    free(token);
+}
+
+static void json_api_handle_auth(json_api_client_t *client, const json_api_request_t *request) {
+    if (!client || !request) return;
+    
+    if (request->token[0] == '\0') {
+        json_api_send_response(client, request, false, "Token required.", nullptr);
+        return;
+    }
+    
+    char *username = nullptr;
+    if (jwt_verify(client->host->jwt_secret, request->token, &username)) {
+        client->authenticated = true;
+        snprintf(client->username, sizeof(client->username), "%s", username ? username : "unknown");
+        free(username);
+        json_api_send_response(client, request, true, "Authenticated", nullptr);
+    } else {
+        json_api_send_response(client, request, false, "Invalid or expired token", nullptr);
+    }
+}
+
 static void json_api_handle_request(json_api_client_t *client,
                                     const char *line)
 {
@@ -1715,6 +1769,24 @@ static void json_api_handle_request(json_api_client_t *client,
                                "Request type is required.", nullptr);
         return;
     }
+
+    if (strcmp(request.type, "login") == 0) {
+        json_api_handle_login(client, &request);
+        return;
+    }
+
+    if (strcmp(request.type, "auth") == 0) {
+        json_api_handle_auth(client, &request);
+        return;
+    }
+
+    if (!client->authenticated) {
+        json_api_send_response(client, &request, false, "Authentication required. Please login first.", nullptr);
+        return;
+    }
+    
+    // Enforce the authenticated username
+    snprintf(request.username, sizeof(request.username), "%s", client->username);
 
     if (strcmp(request.type, "chat") == 0) {
         if (request.username[0] == '\0' || request.message[0] == '\0') {

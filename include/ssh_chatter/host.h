@@ -887,6 +887,7 @@ typedef struct host {
         char bind_address[64];
         char port[16];
     } json_api;
+    char jwt_secret[128];
     auth_profile_t *auth;
     UserTheme user_theme;
     SystemTheme system_theme;

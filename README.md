@@ -173,10 +173,10 @@ Once running, connect with any SSH client:
 ssh -p 2222 user@server-address
 ```
 
-The public server is available at `chat.korokorok.com` on the default SSH port:
+The public server is available at `bbs.chatter.pw` on the default SSH port:
 
 ```bash
-ssh -p 2222 yourname@chat.korokorok.com
+ssh -p 2222 yourname@bbs.chatter.pw
 ```
 
 Usernames provided at the SSH prompt are used as your chat nickname.

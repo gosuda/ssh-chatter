@@ -3924,29 +3924,20 @@ static void *session_thread(void *arg)
             ctx, "Note: I recommend UTF-8 for elegant multilingual support.");
         session_send_system_line(
             ctx, "~~~ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ~~~");
-        session_send_system_line(ctx, "FUNNY ART HERE:");
-        session_send_system_line(ctx, "               ");
-        session_send_system_line(
-            ctx,
-            "               //           - c-mon boy, let's play with me.");
-        session_send_system_line(ctx, "         ----////-- ");
-        session_send_system_line(ctx, "              //    ");
-        session_send_system_line(ctx, "      ////////      ");
-        session_send_system_line(ctx, "   //////////////   ");
-        session_send_system_line(ctx, "////////////////////");
-        session_send_system_line(ctx, " +__       +__      ");
-        session_send_system_line(ctx, " |+ |      |+ |     ");
-        session_send_system_line(ctx, " |__|      |__|     ");
-        session_send_system_line(ctx, "                    ");
-        session_send_system_line(ctx, "       |            ");
-        session_send_system_line(ctx, "       ---          ");
-        session_send_system_line(ctx, "  \\            /    ");
-        session_send_system_line(ctx, "  |         .  |    ");
-        session_send_system_line(ctx, "  |    -^-     |    ");
-        session_send_system_line(ctx, "       ---          ");
-        session_send_system_line(ctx, "    __  |  __       ");
-        session_send_system_line(ctx, "      |_|_|         ");
-
+	/* Duplicate the MOTD string because strtok_r modifies the source string */
+        char *motd_copy = strdup(ctx->owner->motd);
+        if (motd_copy != NULL) {
+            char *saveptr;
+            char *line = strtok_r(motd_copy, "\n", &saveptr);
+        
+            while (line != NULL) {
+                session_send_system_line(ctx, line);
+                line = strtok_r(NULL, "\n", &saveptr);
+            }
+        
+            /* Free the allocated copy after processing */
+            free(motd_copy);
+        }
         session_send_system_line(
             ctx, "For TELNET users: type /motd and follow the guide.");
         session_render_banner(ctx);

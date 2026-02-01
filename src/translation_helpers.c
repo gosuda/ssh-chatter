@@ -13,10 +13,11 @@
 
 #include <ctype.h>
 #include <stdio.h>
-#include <stdlib.h> // For GC_MALLOC, GC_REALLOC, free
 #include <string.h>
 #include <wchar.h>  // For wcwidth
 #include <locale.h> // For setlocale
+
+#include "ssh_chatter/memory_manager.h"
 
 bool translation_prepare_text(const char *message, char *sanitized,
                               size_t sanitized_len,
@@ -318,7 +319,7 @@ char **wrap_text_to_width(const char *text, int max_width, size_t *line_count)
     size_t current_line_count = 0;
     size_t lines_capacity = 8; // Initial capacity for lines array
 
-    lines = (char **)calloc(lines_capacity, sizeof(char *));
+    lines = (char **)GC_CALLOC(lines_capacity, sizeof(char *));
     if (lines == nullptr) {
         *line_count = 0;
         return nullptr;
@@ -450,7 +451,7 @@ char **wrap_text_to_width(const char *text, int max_width, size_t *line_count)
             lines = new_lines;
         }
 
-        lines[current_line_count] = strdup(current_line_buffer);
+        lines[current_line_count] = sshc_strdup(current_line_buffer);
         if (lines[current_line_count] == nullptr) {
             // Free all previously allocated lines
             for (size_t i = 0; i < current_line_count; i++) {

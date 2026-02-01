@@ -134,7 +134,7 @@ void host_set_welcome_banner(host_t *host, const char *banner)
 static void session_game_show_camouflage(session_ctx_t *ctx);
 
 #define SESSION_REALTIME_CLEAR_INTERVAL 100U
-#define SESSION_REALTIME_RECENT_LIMIT 5U
+#define SESSION_REALTIME_RECENT_LIMIT SSH_CHATTER_REALTIME_RECENT_LIMIT
 
 static void session_realtime_refresh(session_ctx_t *ctx)
 {

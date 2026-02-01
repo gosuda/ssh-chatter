@@ -448,7 +448,7 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
         return false;
     }
 
-    char *copy = strdup(payload);
+    char *copy = sshc_strdup(payload);
     if (copy == nullptr) {
         errno = ENOMEM;
         return false;

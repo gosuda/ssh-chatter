@@ -3925,7 +3925,7 @@ static void *session_thread(void *arg)
         session_send_system_line(
             ctx, "~~~ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ~~~");
 	/* Duplicate the MOTD string because strtok_r modifies the source string */
-        char *motd_copy = strdup(ctx->owner->motd);
+        char *motd_copy = sshc_strdup(ctx->owner->motd);
         if (motd_copy != NULL) {
             char *saveptr;
             char *line = strtok_r(motd_copy, "\n", &saveptr);
@@ -3936,7 +3936,7 @@ static void *session_thread(void *arg)
             }
         
             /* Free the allocated copy after processing */
-            free(motd_copy);
+            GC_FREE(motd_copy);
         }
         session_send_system_line(
             ctx, "For TELNET users: type /motd and follow the guide.");

@@ -1209,7 +1209,7 @@ static void host_version_ip_rules_load_env(host_t *host)
         return;
     }
 
-    char *copy = strdup(env);
+    char *copy = sshc_strdup(env);
     if (copy == nullptr) {
         return;
     }

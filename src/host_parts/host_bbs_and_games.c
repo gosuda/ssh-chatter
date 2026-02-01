@@ -660,7 +660,12 @@ static bool session_game_tetris_process_raw_input(session_ctx_t *ctx, char ch)
     if (ch == 0x1b) {
         state->input_escape_active = true;
         state->input_escape_length = 0U;
-        state->input_escape_buffer[state->input_escape_length++] = ch;
+        if (state->input_escape_length < sizeof(state->input_escape_buffer)) {
+            state->input_escape_buffer[state->input_escape_length++] = ch;
+        } else {
+            state->input_escape_active = false;
+            state->input_escape_length = 0U;
+        }
         return true;
     }
 

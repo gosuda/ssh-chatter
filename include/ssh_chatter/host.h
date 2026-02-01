@@ -82,6 +82,12 @@
 #define SSH_CHATTER_PROVIDER_LABEL_LEN 64
 #define SSH_CHATTER_CLIENT_BANNER_LEN 128
 #define SSH_CHATTER_TERMINAL_TYPE_LEN 64
+#define SSH_CHATTER_INPUT_ESCAPE_BUFFER_LEN 64
+#define SSH_CHATTER_TETRIS_ESCAPE_BUFFER_LEN 64
+#define SSH_CHATTER_MULTIBYTE_INPUT_BUFFER_LEN 16
+#define SSH_CHATTER_CAMOUFLAGE_LANGUAGE_LEN 64
+#define SSH_CHATTER_MORSE_FILTER_LEN 512
+#define SSH_CHATTER_REALTIME_RECENT_LIMIT 32
 #define SSH_CHATTER_BBS_MAX_LINES 1000
 #define SSH_CHATTER_ASCIIART_MAX_LINES 700
 #define SSH_CHATTER_ASCIIART_BUFFER_LEN SSH_CHATTER_BBS_BODY_LEN
@@ -296,7 +302,7 @@ typedef struct session_block_prompt {
     bool active;
     char username[SSH_CHATTER_USERNAME_LEN];
     char ip[SSH_CHATTER_IP_LEN];
-    char provider_label[32];
+    char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
 } session_block_prompt_t;
 
 typedef struct auth_profile {
@@ -343,7 +349,7 @@ typedef struct tetris_game_state {
     unsigned round;
     unsigned next_round_line_goal;
     bool input_escape_active;
-    char input_escape_buffer[8];
+    char input_escape_buffer[SSH_CHATTER_TETRIS_ESCAPE_BUFFER_LEN];
     size_t input_escape_length;
 } tetris_game_state_t;
 
@@ -476,7 +482,7 @@ typedef struct session_game_state {
     alpha_centauri_game_state_t saved_alpha_state;
     othello_game_state_t saved_othello_state;
     gonu_game_state_t saved_gonu_state;
-    char chosen_camouflage_language[16];
+    char chosen_camouflage_language[SSH_CHATTER_CAMOUFLAGE_LANGUAGE_LEN];
     liar_game_state_t liar;
     alpha_centauri_game_state_t alpha;
     othello_game_state_t othello;
@@ -606,10 +612,10 @@ typedef struct session_ctx {
     int input_history_position;
     session_input_mode_t input_mode;
     bool input_escape_active;
-    char input_escape_buffer[8];
+    char input_escape_buffer[SSH_CHATTER_INPUT_ESCAPE_BUFFER_LEN];
     size_t input_escape_length;
     /* Multi-byte character buffer for CP949, CP932, CP936, etc. */
-    unsigned char multibyte_input_buffer[4];
+    unsigned char multibyte_input_buffer[SSH_CHATTER_MULTIBYTE_INPUT_BUFFER_LEN];
     size_t multibyte_input_length;
     bool bracket_paste_active;
     char client_ip[SSH_CHATTER_IP_LEN];
@@ -688,7 +694,7 @@ typedef struct session_ctx {
     size_t bbs_breaking_count;
     bool breaking_alerts_enabled;
     bool morse_feed_enabled;
-    char morse_filter[128];
+    char morse_filter[SSH_CHATTER_MORSE_FILTER_LEN];
     bool prefer_utf16_output;
     bool prefer_cp437_output;
     session_cp437_scope_t cp437_output_scope;
@@ -764,7 +770,8 @@ typedef struct session_ctx {
     size_t realtime_line_count;
     size_t realtime_recent_count;
     size_t realtime_recent_start;
-    char realtime_recent_lines[5][SSH_CHATTER_MESSAGE_LIMIT];
+    char realtime_recent_lines[SSH_CHATTER_REALTIME_RECENT_LIMIT]
+                              [SSH_CHATTER_MESSAGE_LIMIT];
     bool capture_realtime_output;
     char last_output_line[SSH_CHATTER_MESSAGE_LIMIT];
     bool has_last_output_line;
@@ -804,7 +811,7 @@ typedef struct user_preference {
     char ui_language[SSH_CHATTER_LANG_NAME_LEN];
     bool breaking_alerts_enabled;
     char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
-    char camouflage_language[16];
+    char camouflage_language[SSH_CHATTER_CAMOUFLAGE_LANGUAGE_LEN];
     bool show_continuous_messages;
     struct {
         char label[SSH_CHATTER_POLL_LABEL_LEN];

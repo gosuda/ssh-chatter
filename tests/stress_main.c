@@ -68,21 +68,26 @@ int main(int argc, char **argv)
 
     sshc_memory_runtime_init();
 
-    host_t host;
-    memset(&host, 0, sizeof(host));
+    host_t *host = (host_t *)calloc(1U, sizeof(*host));
+    if (host == nullptr) {
+        fprintf(stderr, "failed to allocate host\n");
+        sshc_memory_runtime_shutdown();
+        return EXIT_FAILURE;
+    }
     volatile sig_atomic_t shutdown_flag = 0;
-    host.shutdown_flag = &shutdown_flag;
-    host.memory_context = sshc_memory_context_create("stress-host");
-    if (host.memory_context == nullptr) {
+    host->shutdown_flag = &shutdown_flag;
+    host->memory_context = sshc_memory_context_create("stress-host");
+    if (host->memory_context == nullptr) {
         fprintf(stderr, "failed to create host memory context\n");
+        free(host);
         sshc_memory_runtime_shutdown();
         return EXIT_FAILURE;
     }
 
     auth_profile_t auth = {0};
     sshc_memory_context_t *init_scope =
-        sshc_memory_context_push(host.memory_context);
-    host_init(&host, &auth);
+        sshc_memory_context_push(host->memory_context);
+    host_init(host, &auth);
     if (init_scope != nullptr) {
         sshc_memory_context_pop(init_scope);
     }
@@ -110,7 +115,7 @@ int main(int argc, char **argv)
         snprintf(ip, sizeof(ip), "192.0.2.%zu", (created_sessions % 254U) + 1U);
 
         sessions[created_sessions] =
-            host_session_create_for_testing(&host, username, ip, false);
+            host_session_create_for_testing(host, username, ip, false);
         if (sessions[created_sessions] == nullptr) {
             fprintf(stderr, "failed to prepare session %zu\n",
                     created_sessions);
@@ -143,10 +148,11 @@ cleanup:
         }
     }
 
-    host_shutdown_for_testing(&host);
-    sshc_memory_context_destroy(host.memory_context);
+    host_shutdown_for_testing(host);
+    sshc_memory_context_destroy(host->memory_context);
     sshc_memory_runtime_shutdown();
 
+    free(host);
     free(clients);
     free(threads);
     free(sessions);

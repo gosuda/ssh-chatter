@@ -791,6 +791,14 @@ static void host_moderation_handle_failure(host_t *host,
                                 task->client_ip, session, task->post_send);
 }
 
+static void host_moderation_task_free(host_moderation_task_t *task)
+{
+    if (task == nullptr) {
+        return;
+    }
+    GC_FREE(task);
+}
+
 static void host_moderation_flush_pending(host_t *host, const char *diagnostic)
 {
     if (host == nullptr) {
@@ -818,6 +826,7 @@ static void host_moderation_flush_pending(host_t *host, const char *diagnostic)
         host_security_process_error(host, task->category, message,
                                     task->username, task->client_ip, session,
                                     task->post_send);
+        host_moderation_task_free(task);
         task = next;
     }
 }
@@ -884,6 +893,7 @@ static void *host_moderation_thread(void *arg)
         if (!success) {
             failure_reason = "moderation worker unavailable";
             host_moderation_handle_failure(host, task, failure_reason);
+            host_moderation_task_free(task);
             bool recovered =
                 host_moderation_recover_worker(host, failure_reason);
             if (!recovered) {
@@ -898,6 +908,7 @@ static void *host_moderation_thread(void *arg)
                                       sizeof(response))) {
             failure_reason = "moderation worker unavailable";
             host_moderation_handle_failure(host, task, failure_reason);
+            host_moderation_task_free(task);
             bool recovered =
                 host_moderation_recover_worker(host, failure_reason);
             if (!recovered) {
@@ -917,9 +928,11 @@ static void *host_moderation_thread(void *arg)
                 if (discard != nullptr) {
                     (void)host_moderation_read_all(host->moderation.response_fd,
                                                    discard, message_length);
+                    GC_FREE(discard);
                 }
                 failure_reason = "moderation worker unavailable";
                 host_moderation_handle_failure(host, task, failure_reason);
+                host_moderation_task_free(task);
                 bool recovered =
                     host_moderation_recover_worker(host, failure_reason);
                 if (!recovered) {
@@ -933,6 +946,8 @@ static void *host_moderation_thread(void *arg)
                                           message_length)) {
                 failure_reason = "moderation worker unavailable";
                 host_moderation_handle_failure(host, task, failure_reason);
+                GC_FREE(message);
+                host_moderation_task_free(task);
                 bool recovered =
                     host_moderation_recover_worker(host, failure_reason);
                 if (!recovered) {
@@ -947,7 +962,9 @@ static void *host_moderation_thread(void *arg)
         const char *message_text = (message != nullptr) ? message : "";
         host_moderation_apply_result(host, task, &response, message_text);
         if (message != nullptr) {
+            GC_FREE(message);
         }
+        host_moderation_task_free(task);
         failure_reason = nullptr;
     }
 
@@ -1136,6 +1153,7 @@ static bool host_moderation_queue_chat(session_ctx_t *ctx, const char *message,
     pthread_mutex_lock(&host->moderation.mutex);
     if (!host->moderation.active || host->moderation.stop) {
         pthread_mutex_unlock(&host->moderation.mutex);
+        host_moderation_task_free(task);
         return false;
     }
 

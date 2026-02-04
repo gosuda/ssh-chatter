@@ -3903,6 +3903,9 @@ static void *session_thread(void *arg)
                      "newname@<server> (or ssh -l newname <server>).");
             session_send_system_line(ctx, "Type /exit to quit.");
         }
+        session_force_disconnect(ctx, "Disconnecting...");
+        session_destroy(ctx);
+        SESSION_THREAD_RETURN(nullptr);
     } else {
         host_join_attempt_result_t join_result = host_register_join_attempt(
             ctx->owner, ctx->user.name, ctx->client_ip);

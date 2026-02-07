@@ -59,7 +59,7 @@ void sshc_memory_runtime_init(void)
         // Boehm GC Tuning: Reduce stop-the-world frequency by allowing more free space
         // and setting a moderate free space divisor.
         GC_set_free_space_divisor(10); 
-        GC_INIT();
+        GC_init(); // Call libgc's init
 #endif
         // Initialize ttak memory system
         ttak_mem_set_trace(0); // Disable tracing by default for performance
@@ -236,20 +236,13 @@ sshc_memory_context_register_allocation(sshc_memory_context_t *ctx,
 #endif
 }
 
-void *GC_MALLOC(size_t size)
+void *sshc_gc_malloc(size_t size)
 {
     sshc_memory_context_t *ctx = sshc_memory_context_current();
     if (size == 0U) size = 1U;
 
     void *ptr = nullptr;
-#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
-    // Extreme combination: Use ttak's safe allocation but with Boehm GC backing if possible.
-    // Since ttak_mem_alloc_safe uses malloc, we'll use it for manual lifetime management,
-    // and Boehm GC will still see pointers in the stack.
     ptr = ttak_mem_alloc(size, __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
-#else
-    ptr = ttak_mem_alloc(size, __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
-#endif
 
     if (ptr == nullptr) return nullptr;
 
@@ -270,11 +263,11 @@ void *GC_MALLOC(size_t size)
     return ptr;
 }
 
-void *GC_REALLOC(void *ptr, size_t size)
+void *sshc_gc_realloc(void *ptr, size_t size)
 {
-    if (ptr == nullptr) return GC_MALLOC(size);
+    if (ptr == nullptr) return sshc_gc_malloc(size);
     if (size == 0U) {
-        GC_free(ptr);
+        sshc_gc_free(ptr);
         return nullptr;
     }
 
@@ -330,16 +323,16 @@ void *GC_REALLOC(void *ptr, size_t size)
     return new_ptr;
 }
 
-void *GC_CALLOC(size_t count, size_t size)
+void *sshc_gc_calloc(size_t count, size_t size)
 {
-    if (count == 0 || size == 0) return GC_MALLOC(0);
+    if (count == 0 || size == 0) return sshc_gc_malloc(0);
     size_t total = count * size;
-    void *ptr = GC_MALLOC(total);
+    void *ptr = sshc_gc_malloc(total);
     if (ptr) memset(ptr, 0, total);
     return ptr;
 }
 
-void GC_free(void *ptr)
+void sshc_gc_free(void *ptr)
 {
     if (ptr == nullptr) return;
 
@@ -388,6 +381,7 @@ void sshc_memory_context_reset(sshc_memory_context_t *ctx)
     }
 }
 
-#if !(defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC)
-void GC_INIT(void) { sshc_memory_runtime_init(); }
-#endif
+void sshc_gc_init(void) 
+{ 
+    sshc_memory_runtime_init(); 
+}

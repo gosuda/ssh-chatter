@@ -28,7 +28,6 @@ CFLAGS = -std=c2x -Ofast \
               -g \
               -D_FORTIFY_SOURCE=2 \
               -march=native -mtune=native \
-              -fwhole-program \
               -flto=auto -fuse-linker-plugin \
               -fomit-frame-pointer \
               -fno-signed-zeros \

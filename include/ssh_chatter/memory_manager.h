@@ -26,22 +26,37 @@ void sshc_memory_context_pop(sshc_memory_context_t *previous);
 void sshc_memory_context_reset(sshc_memory_context_t *ctx);
 sshc_memory_context_t *sshc_memory_context_current(void);
 
+// Internal implementation functions to avoid naming conflicts with libgc
+void *sshc_gc_malloc(size_t size);
+void *sshc_gc_realloc(void *ptr, size_t size);
+void *sshc_gc_calloc(size_t count, size_t size);
+void sshc_gc_free(void *ptr);
+void sshc_gc_init(void);
+
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
 #include <gc/gc.h>
-#ifndef GC_FREE
-#define GC_FREE(x) GC_free(x)
-#endif
-#else
-void GC_INIT(void);
-void GC_free(void *ptr);
-#ifndef GC_FREE
-#define GC_FREE(x) GC_free(x)
-#endif
 #endif
 
-void *GC_MALLOC(size_t size);
-void *GC_REALLOC(void *ptr, size_t size);
-void *GC_CALLOC(size_t count, size_t size);
+// Macros to map GC_* names to our wrapped implementations
+// We undefine them first in case gc.h or other headers defined them
+#undef GC_MALLOC
+#define GC_MALLOC(s) sshc_gc_malloc(s)
+
+#undef GC_REALLOC
+#define GC_REALLOC(p, s) sshc_gc_realloc(p, s)
+
+#undef GC_CALLOC
+#define GC_CALLOC(c, s) sshc_gc_calloc(c, s)
+
+#undef GC_FREE
+#define GC_FREE(p) sshc_gc_free(p)
+
+#undef GC_INIT
+#define GC_INIT() sshc_gc_init()
+
+// Compatibility for lowercase GC_free if used
+#undef GC_free
+#define GC_free(p) sshc_gc_free(p)
 
 static inline char *sshc_strdup(const char *text)
 {

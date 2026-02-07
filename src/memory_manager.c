@@ -1,21 +1,17 @@
 /**
  * @file memory_manager.c
- * @desc File-level documentation for memory_manager.c, describing its role
- *       in the SSH-Chatter server and providing a consistent header
- *       comment format across C sources.
- * @return None.
+ * @desc Unified memory manager for SSH-Chatter using libttak for manual lifetimes
+ *       and Boehm GC for automatic collection when enabled.
  */
 
 #include "ssh_chatter/memory_manager.h"
-
-#if !(defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC)
-
 #include <errno.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 typedef struct sshc_memory_allocation {
     void *ptr;
@@ -30,6 +26,7 @@ struct sshc_memory_context {
     sshc_memory_allocation_t *allocations;
     const char *label;
     struct sshc_memory_context *next;
+    tt_owner_t *owner;
 };
 
 static pthread_mutex_t sshc_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -46,6 +43,7 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
     ctx->allocations = nullptr;
     ctx->label = label;
     ctx->next = nullptr;
+    ctx->owner = ttak_owner_create(TTAK_OWNER_SAFE_DEFAULT);
 }
 
 static sshc_memory_context_t *sshc_memory_context_global(void)
@@ -57,6 +55,18 @@ void sshc_memory_runtime_init(void)
 {
     pthread_mutex_lock(&sshc_registry_mutex);
     if (!sshc_runtime_initialised) {
+#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
+        // Boehm GC Tuning: Reduce stop-the-world frequency by allowing more free space
+        // and setting a moderate free space divisor.
+        GC_set_free_space_divisor(10); 
+        GC_INIT();
+#endif
+        // Initialize ttak memory system
+        ttak_mem_set_trace(0); // Disable tracing by default for performance
+        
+        // Configure ttak's background cleaning: 100ms min, 1s max, 100MB pressure
+        ttak_mem_configure_gc(TT_MILLI_SECOND(100), TT_SECOND(1), 100 * 1024 * 1024);
+
         sshc_memory_context_init(&sshc_global_context, "global");
         sshc_global_context.next = nullptr;
         sshc_contexts = sshc_memory_context_global();
@@ -68,17 +78,29 @@ void sshc_memory_runtime_init(void)
 void sshc_memory_runtime_shutdown(void)
 {
     pthread_mutex_lock(&sshc_registry_mutex);
+    if (!sshc_runtime_initialised) {
+        pthread_mutex_unlock(&sshc_registry_mutex);
+        return;
+    }
+
     sshc_memory_context_t *ctx = sshc_contexts;
     while (ctx != nullptr) {
         sshc_memory_context_t *next = ctx->next;
         if (ctx != sshc_memory_context_global()) {
-            sshc_memory_context_destroy(ctx);
+            // We can't call sshc_memory_context_destroy here because it locks registry
+            // So we do manual cleanup
+            sshc_memory_context_reset(ctx);
+            if (ctx->owner) ttak_owner_destroy(ctx->owner);
+            pthread_mutex_destroy(&ctx->mutex);
+            free(ctx);
         }
         ctx = next;
     }
     // Clean up the global context's allocations
     sshc_memory_context_reset(sshc_memory_context_global());
+    if (sshc_global_context.owner) ttak_owner_destroy(sshc_global_context.owner);
     pthread_mutex_destroy(&sshc_global_context.mutex);
+    
     sshc_contexts = nullptr;
     sshc_runtime_initialised = false;
     pthread_mutex_unlock(&sshc_registry_mutex);
@@ -125,11 +147,12 @@ static void sshc_memory_registry_add(sshc_memory_allocation_t *allocation)
 
 void sshc_memory_context_destroy(sshc_memory_context_t *ctx)
 {
-    if (ctx == nullptr) {
+    if (ctx == nullptr || ctx == sshc_memory_context_global()) {
         return;
     }
 
     sshc_memory_context_reset(ctx);
+    if (ctx->owner) ttak_owner_destroy(ctx->owner);
     pthread_mutex_destroy(&ctx->mutex);
 
     pthread_mutex_lock(&sshc_registry_mutex);
@@ -199,30 +222,40 @@ sshc_memory_context_register_allocation(sshc_memory_context_t *ctx,
     allocation->next_in_context = ctx->allocations;
     ctx->allocations = allocation;
     pthread_mutex_unlock(&ctx->mutex);
+    
+    // Also register with ttak owner if available
+    if (ctx->owner) {
+        char name[32];
+        snprintf(name, sizeof(name), "alloc_%p", allocation->ptr);
+        ttak_owner_register_resource(ctx->owner, name, allocation->ptr);
+    }
+
+#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
+    // Ensure Boehm GC scans this manually managed block for pointers
+    GC_add_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
+#endif
 }
 
-static void *sshc_memory_context_alloc(sshc_memory_context_t *ctx, size_t size,
-                                       bool zero)
+void *GC_MALLOC(size_t size)
 {
-    if (ctx == nullptr) {
-        ctx = sshc_memory_context_current();
-    }
+    sshc_memory_context_t *ctx = sshc_memory_context_current();
+    if (size == 0U) size = 1U;
 
-    if (size == 0U) {
-        size = 1U;
-    }
+    void *ptr = nullptr;
+#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
+    // Extreme combination: Use ttak's safe allocation but with Boehm GC backing if possible.
+    // Since ttak_mem_alloc_safe uses malloc, we'll use it for manual lifetime management,
+    // and Boehm GC will still see pointers in the stack.
+    ptr = ttak_mem_alloc(size, __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
+#else
+    ptr = ttak_mem_alloc(size, __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
+#endif
 
-    void *ptr = zero ? calloc(1U, size) : malloc(size);
-    if (ptr == nullptr) {
-        errno = ENOMEM;
-        return nullptr;
-    }
+    if (ptr == nullptr) return nullptr;
 
-    sshc_memory_allocation_t *allocation =
-        (sshc_memory_allocation_t *)malloc(sizeof(*allocation));
+    sshc_memory_allocation_t *allocation = (sshc_memory_allocation_t *)malloc(sizeof(*allocation));
     if (allocation == nullptr) {
-        free(ptr);
-        errno = ENOMEM;
+        ttak_mem_free(ptr);
         return nullptr;
     }
 
@@ -237,23 +270,17 @@ static void *sshc_memory_context_alloc(sshc_memory_context_t *ctx, size_t size,
     return ptr;
 }
 
-static void *sshc_memory_context_realloc(sshc_memory_context_t *ctx, void *ptr,
-                                         size_t size, bool zero)
+void *GC_REALLOC(void *ptr, size_t size)
 {
-    if (ctx == nullptr) {
-        ctx = sshc_memory_context_current();
-    }
-
+    if (ptr == nullptr) return GC_MALLOC(size);
     if (size == 0U) {
-        size = 1U;
+        GC_free(ptr);
+        return nullptr;
     }
 
-    // If ptr is null, just allocate new memory
-    if (ptr == nullptr) {
-        return sshc_memory_context_alloc(ctx, size, zero);
-    }
-
-    // Find and remove the old allocation entry
+    sshc_memory_context_t *ctx = sshc_memory_context_current();
+    
+    // Find old allocation
     pthread_mutex_lock(&sshc_registry_mutex);
     sshc_memory_allocation_t **prev = &sshc_allocations;
     sshc_memory_allocation_t *old_allocation = nullptr;
@@ -267,114 +294,55 @@ static void *sshc_memory_context_realloc(sshc_memory_context_t *ctx, void *ptr,
     }
     pthread_mutex_unlock(&sshc_registry_mutex);
 
-    // Perform the realloc
-    void *new_ptr = realloc(ptr, size);
+    void *new_ptr = ttak_mem_realloc(ptr, size, __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
     if (new_ptr == nullptr) {
-        // Realloc failed, restore the old allocation entry
-        if (old_allocation != nullptr) {
-            sshc_memory_registry_add(old_allocation);
-        }
-        errno = ENOMEM;
+        if (old_allocation) sshc_memory_registry_add(old_allocation);
         return nullptr;
     }
 
-    // Create a new allocation entry for the reallocated memory
-    sshc_memory_allocation_t *allocation =
-        (sshc_memory_allocation_t *)malloc(sizeof(*allocation));
+    sshc_memory_allocation_t *allocation = (sshc_memory_allocation_t *)malloc(sizeof(*allocation));
     if (allocation == nullptr) {
-        // Can't track the allocation, but the memory was reallocated successfully
-        // Clean up the old allocation entry if it exists
-        if (old_allocation != nullptr) {
-            if (old_allocation->context != nullptr) {
-                sshc_memory_context_remove_allocation(old_allocation->context,
-                                                      ptr);
-            }
+        // We reallocated but can't track. This is bad.
+        if (old_allocation) {
+#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
+            GC_remove_roots(old_allocation->ptr, (char *)old_allocation->ptr + old_allocation->size);
+#endif
+            sshc_memory_context_remove_allocation(old_allocation->context, ptr);
             free(old_allocation);
         }
-        errno = ENOMEM;
         return new_ptr;
     }
 
-    // Set up the new allocation entry
     allocation->ptr = new_ptr;
     allocation->size = size;
     allocation->context = ctx;
-    allocation->next_in_context = nullptr;
-    allocation->next_global = nullptr;
-
-    // Clean up the old allocation entry
-    if (old_allocation != nullptr) {
-        if (old_allocation->context != nullptr) {
-            sshc_memory_context_remove_allocation(old_allocation->context, ptr);
-        }
+    
+    if (old_allocation) {
+#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
+        GC_remove_roots(old_allocation->ptr, (char *)old_allocation->ptr + old_allocation->size);
+#endif
+        sshc_memory_context_remove_allocation(old_allocation->context, ptr);
         free(old_allocation);
     }
 
-    // Register the new allocation
     sshc_memory_context_register_allocation(ctx, allocation);
     sshc_memory_registry_add(allocation);
-
     return new_ptr;
-}
-
-void sshc_memory_context_reset(sshc_memory_context_t *ctx)
-{
-    if (ctx == nullptr) {
-        return;
-    }
-
-    pthread_mutex_lock(&ctx->mutex);
-    sshc_memory_allocation_t *allocation = ctx->allocations;
-    ctx->allocations = nullptr;
-    pthread_mutex_unlock(&ctx->mutex);
-
-    while (allocation != nullptr) {
-        sshc_memory_allocation_t *next = allocation->next_in_context;
-        sshc_memory_registry_remove(allocation);
-        free(allocation->ptr);
-        free(allocation);
-        allocation = next;
-    }
-}
-
-void GC_INIT(void)
-{
-    sshc_memory_runtime_init();
-}
-
-void *GC_MALLOC(size_t size)
-{
-    return sshc_memory_context_alloc(sshc_memory_context_current(), size,
-                                     false);
-}
-
-void *GC_REALLOC(void *ptr, size_t size)
-{
-    return sshc_memory_context_realloc(sshc_memory_context_current(), ptr, size,
-                                       false);
 }
 
 void *GC_CALLOC(size_t count, size_t size)
 {
-    if (count == 0U || size == 0U) {
-        return sshc_memory_context_alloc(sshc_memory_context_current(), 1U,
-                                         true);
-    }
-    if (count > SIZE_MAX / size) {
-        errno = ENOMEM;
-        return nullptr;
-    }
-    return sshc_memory_context_alloc(sshc_memory_context_current(),
-                                     count * size, true);
+    if (count == 0 || size == 0) return GC_MALLOC(0);
+    size_t total = count * size;
+    void *ptr = GC_MALLOC(total);
+    if (ptr) memset(ptr, 0, total);
+    return ptr;
 }
 
-void GC_FREE(void *ptr)
+void GC_free(void *ptr)
 {
-    if (ptr == nullptr) {
-        return;
-    }
+    if (ptr == nullptr) return;
 
-    sshc_memory_runtime_init();
     pthread_mutex_lock(&sshc_registry_mutex);
     sshc_memory_allocation_t **prev = &sshc_allocations;
     sshc_memory_allocation_t *allocation = nullptr;
@@ -388,18 +356,38 @@ void GC_FREE(void *ptr)
     }
     pthread_mutex_unlock(&sshc_registry_mutex);
 
-    if (allocation == nullptr) {
-        free(ptr);
-        return;
+    if (allocation) {
+        sshc_memory_context_remove_allocation(allocation->context, ptr);
+#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
+        GC_remove_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
+#endif
+        free(allocation);
     }
 
-    sshc_memory_context_t *ctx = allocation->context;
-    if (ctx != nullptr) {
-        sshc_memory_context_remove_allocation(ctx, ptr);
-    }
-
-    free(allocation->ptr);
-    free(allocation);
+    ttak_mem_free(ptr);
 }
 
+void sshc_memory_context_reset(sshc_memory_context_t *ctx)
+{
+    if (ctx == nullptr) return;
+
+    pthread_mutex_lock(&ctx->mutex);
+    sshc_memory_allocation_t *allocation = ctx->allocations;
+    ctx->allocations = nullptr;
+    pthread_mutex_unlock(&ctx->mutex);
+
+    while (allocation != nullptr) {
+        sshc_memory_allocation_t *next = allocation->next_in_context;
+        sshc_memory_registry_remove(allocation);
+#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
+        GC_remove_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
+#endif
+        ttak_mem_free(allocation->ptr);
+        free(allocation);
+        allocation = next;
+    }
+}
+
+#if !(defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC)
+void GC_INIT(void) { sshc_memory_runtime_init(); }
 #endif

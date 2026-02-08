@@ -378,7 +378,7 @@ int main(int argc, char **argv)
         }
     }
 
-    GC_INIT();
+    sshc_gc_init();
 
     if (show_usage) {
         print_usage(argv[0]);
@@ -422,7 +422,7 @@ int main(int argc, char **argv)
     unsigned int restart_attempts = 0U;
 
     while (!g_shutdown_flag) {
-        host_t *host = GC_CALLOC(1U, sizeof(*host));
+        host_t *host = sshc_gc_calloc(1U, sizeof(*host));
 
         if (host == nullptr) {
             ++restart_attempts;
@@ -450,7 +450,7 @@ int main(int argc, char **argv)
             printf("[daemon] retrying host startup (attempt %u)\n",
                    restart_attempts);
 
-            GC_FREE(host);
+            sshc_gc_free(host);
 
             sleep_before_restart(restart_attempts);
 
@@ -529,7 +529,7 @@ int main(int argc, char **argv)
 
         host->memory_context = nullptr;
 
-        GC_FREE(host);
+        sshc_gc_free(host);
 
         host = nullptr;
 
@@ -586,7 +586,7 @@ int main(int argc, char **argv)
 
 cleanup:
     if (g_welcome_banner_content != nullptr) {
-        GC_FREE(g_welcome_banner_content);
+        sshc_gc_free(g_welcome_banner_content);
         g_welcome_banner_content = nullptr;
     }
     if (g_sync_initialized) {

@@ -319,7 +319,7 @@ char **wrap_text_to_width(const char *text, int max_width, size_t *line_count)
     size_t current_line_count = 0;
     size_t lines_capacity = 8; // Initial capacity for lines array
 
-    lines = (char **)GC_CALLOC(lines_capacity, sizeof(char *));
+    lines = (char **)sshc_gc_calloc(lines_capacity, sizeof(char *));
     if (lines == nullptr) {
         *line_count = 0;
         return nullptr;
@@ -438,13 +438,13 @@ char **wrap_text_to_width(const char *text, int max_width, size_t *line_count)
         if (current_line_count >= lines_capacity) {
             lines_capacity *= 2;
             char **new_lines =
-                (char **)GC_REALLOC(lines, lines_capacity * sizeof(char *));
+                (char **)sshc_gc_realloc(lines, lines_capacity * sizeof(char *));
             if (new_lines == nullptr) {
                 // Free all previously allocated lines
                 for (size_t i = 0; i < current_line_count; i++) {
-                    GC_FREE(lines[i]);
+                    sshc_gc_free(lines[i]);
                 }
-                GC_FREE(lines);
+                sshc_gc_free(lines);
                 *line_count = 0;
                 return nullptr;
             }
@@ -455,9 +455,9 @@ char **wrap_text_to_width(const char *text, int max_width, size_t *line_count)
         if (lines[current_line_count] == nullptr) {
             // Free all previously allocated lines
             for (size_t i = 0; i < current_line_count; i++) {
-                GC_FREE(lines[i]);
+                sshc_gc_free(lines[i]);
             }
-            GC_FREE(lines);
+            sshc_gc_free(lines);
             *line_count = 0;
             return nullptr;
         }

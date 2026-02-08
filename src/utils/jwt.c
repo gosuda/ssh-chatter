@@ -1,3 +1,4 @@
+#include "ssh_chatter/memory_manager.h"
 #include "ssh_chatter/utils/jwt.h"
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -12,7 +13,7 @@ static char *base64url_encode(const unsigned char *input, size_t length) {
     
     // Standard Base64 length calculation
     size_t encoded_len = 4 * ((length + 2) / 3);
-    char *output = malloc(encoded_len + 1);
+    char *output = sshc_gc_malloc(encoded_len + 1);
     if (!output) return NULL;
 
     const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_ ";
@@ -51,7 +52,7 @@ static unsigned char *base64url_decode(const char *input, size_t *out_len) {
     else if (len % 4 == 3) padding = 1;
     
     size_t decoded_len = (len * 3) / 4; // approximate
-    unsigned char *output = malloc(decoded_len + padding + 1); // + safety
+    unsigned char *output = sshc_gc_malloc(decoded_len + padding + 1); // + safety
     if (!output) return NULL;
 
     // Decoding table could be faster, but loop is simple for now
@@ -121,7 +122,7 @@ char *jwt_generate(const char *secret, const char *username, int64_t expiry_seco
 
     // Signature Input
     size_t input_len = strlen(header_b64) + 1 + strlen(payload_b64) + 1;
-    char *signature_input = malloc(input_len);
+    char *signature_input = sshc_gc_malloc(input_len);
     snprintf(signature_input, input_len, "%s.%s", header_b64, payload_b64);
 
     // Sign
@@ -133,13 +134,13 @@ char *jwt_generate(const char *secret, const char *username, int64_t expiry_seco
 
     // Combine
     size_t jwt_len = strlen(signature_input) + 1 + strlen(signature_b64) + 1;
-    char *jwt = malloc(jwt_len);
+    char *jwt = sshc_gc_malloc(jwt_len);
     snprintf(jwt, jwt_len, "%s.%s", signature_input, signature_b64);
 
-    free(header_b64);
-    free(payload_b64);
-    free(signature_input);
-    free(signature_b64);
+    sshc_gc_free(header_b64);
+    sshc_gc_free(payload_b64);
+    sshc_gc_free(signature_input);
+    sshc_gc_free(signature_b64);
     return jwt;
 }
 
@@ -156,14 +157,14 @@ bool jwt_verify(const char *secret, const char *token, char **username_out) {
     size_t header_len = (size_t)(dot1 - token);
     size_t payload_len = (size_t)(dot2 - (dot1 + 1));
 
-    char *header_b64 = malloc(header_len + 1);
-    char *payload_b64 = malloc(payload_len + 1);
+    char *header_b64 = sshc_gc_malloc(header_len + 1);
+    char *payload_b64 = sshc_gc_malloc(payload_len + 1);
     memcpy(header_b64, token, header_len); header_b64[header_len] = '\0';
     memcpy(payload_b64, dot1 + 1, payload_len); payload_b64[payload_len] = '\0';
 
     // Re-calculate signature
     size_t input_len = header_len + 1 + payload_len + 1;
-    char *signature_input = malloc(input_len);
+    char *signature_input = sshc_gc_malloc(input_len);
     snprintf(signature_input, input_len, "%s.%s", header_b64, payload_b64);
 
     unsigned char expected_sig[EVP_MAX_MD_SIZE];
@@ -174,19 +175,19 @@ bool jwt_verify(const char *secret, const char *token, char **username_out) {
     
     bool valid = (strcmp(expected_sig_b64, dot2 + 1) == 0);
     
-    free(signature_input);
-    free(expected_sig_b64);
-    free(header_b64); // Cleanup
+    sshc_gc_free(signature_input);
+    sshc_gc_free(expected_sig_b64);
+    sshc_gc_free(header_b64); // Cleanup
 
     if (!valid) {
-        free(payload_b64);
+        sshc_gc_free(payload_b64);
         return false;
     }
 
     // Decode payload and check expiration
     size_t json_len = 0;
     unsigned char *payload_json = base64url_decode(payload_b64, &json_len);
-    free(payload_b64);
+    sshc_gc_free(payload_b64);
     
     if (!payload_json) return false;
     
@@ -199,7 +200,7 @@ bool jwt_verify(const char *secret, const char *token, char **username_out) {
     if (exp_key) {
         long exp = atol(exp_key + 6);
         if (time(NULL) > exp) {
-            free(payload_json);
+            sshc_gc_free(payload_json);
             return false;
         }
     }
@@ -212,13 +213,13 @@ bool jwt_verify(const char *secret, const char *token, char **username_out) {
             char *end = strchr(start, '"');
             if (end) {
                 size_t name_len = (size_t)(end - start);
-                *username_out = malloc(name_len + 1);
+                *username_out = sshc_gc_malloc(name_len + 1);
                 memcpy(*username_out, start, name_len);
                 (*username_out)[name_len] = '\0';
             }
         }
     }
 
-    free(payload_json);
+    sshc_gc_free(payload_json);
     return true;
 }

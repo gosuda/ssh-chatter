@@ -703,11 +703,11 @@ static bool host_moderation_recover_worker(host_t *host, const char *diagnostic)
             "moderation",
             "too many moderation worker panics; disabling moderation filter",
             EIO);
-        pthread_mutex_lock(&host->moderation.mutex);
+        ttak_mutex_lock(&host->moderation.mutex);
         host->moderation.active = false;
         host->moderation.stop = true;
-        pthread_cond_broadcast(&host->moderation.cond);
-        pthread_mutex_unlock(&host->moderation.mutex);
+        ttak_cond_broadcast(&host->moderation.cond);
+        ttak_mutex_unlock(&host->moderation.mutex);
         atomic_store(&host->security_filter_enabled, false);
         return false;
     }
@@ -717,22 +717,22 @@ static bool host_moderation_recover_worker(host_t *host, const char *diagnostic)
     if (!host_moderation_spawn_worker(host)) {
         humanized_log_error("moderation", "failed to restart moderation worker",
                             EIO);
-        pthread_mutex_lock(&host->moderation.mutex);
+        ttak_mutex_lock(&host->moderation.mutex);
         host->moderation.active = false;
         host->moderation.stop = true;
-        pthread_cond_broadcast(&host->moderation.cond);
-        pthread_mutex_unlock(&host->moderation.mutex);
+        ttak_cond_broadcast(&host->moderation.cond);
+        ttak_mutex_unlock(&host->moderation.mutex);
         atomic_store(&host->security_filter_enabled, false);
         return false;
     }
 
     host->moderation.restart_attempts = attempt;
 
-    pthread_mutex_lock(&host->moderation.mutex);
+    ttak_mutex_lock(&host->moderation.mutex);
     host->moderation.active = true;
     host->moderation.stop = false;
-    pthread_cond_broadcast(&host->moderation.cond);
-    pthread_mutex_unlock(&host->moderation.mutex);
+    ttak_cond_broadcast(&host->moderation.cond);
+    ttak_mutex_unlock(&host->moderation.mutex);
 
     printf("[moderation] worker recovered after panic (attempt %u)\n", attempt);
     return true;
@@ -796,7 +796,7 @@ static void host_moderation_task_free(host_moderation_task_t *task)
     if (task == nullptr) {
         return;
     }
-    GC_FREE(task);
+    sshc_gc_free(task);
 }
 
 static void host_moderation_flush_pending(host_t *host, const char *diagnostic)
@@ -808,11 +808,11 @@ static void host_moderation_flush_pending(host_t *host, const char *diagnostic)
     host_moderation_task_t *task = nullptr;
 
     if (host->moderation.mutex_initialized) {
-        pthread_mutex_lock(&host->moderation.mutex);
+        ttak_mutex_lock(&host->moderation.mutex);
         task = host->moderation.head;
         host->moderation.head = nullptr;
         host->moderation.tail = nullptr;
-        pthread_mutex_unlock(&host->moderation.mutex);
+        ttak_mutex_unlock(&host->moderation.mutex);
     }
 
     const char *message = (diagnostic != nullptr && diagnostic[0] != '\0')
@@ -844,15 +844,15 @@ static void *host_moderation_thread(void *arg)
     const char *failure_reason = nullptr;
 
     while (true) {
-        pthread_mutex_lock(&host->moderation.mutex);
+        ttak_mutex_lock(&host->moderation.mutex);
         while (!host->moderation.stop && host->moderation.head == nullptr &&
                host->moderation.active) {
-            pthread_cond_wait(&host->moderation.cond, &host->moderation.mutex);
+            ttak_cond_wait(&host->moderation.cond, &host->moderation.mutex);
         }
 
         if (!host->moderation.active ||
             (host->moderation.stop && host->moderation.head == nullptr)) {
-            pthread_mutex_unlock(&host->moderation.mutex);
+            ttak_mutex_unlock(&host->moderation.mutex);
             break;
         }
 
@@ -863,7 +863,7 @@ static void *host_moderation_thread(void *arg)
                 host->moderation.tail = nullptr;
             }
         }
-        pthread_mutex_unlock(&host->moderation.mutex);
+        ttak_mutex_unlock(&host->moderation.mutex);
 
         if (task == nullptr) {
             continue;
@@ -922,13 +922,13 @@ static void *host_moderation_thread(void *arg)
         char *message = nullptr;
 
         if (message_length > 0U) {
-            message = (char *)GC_MALLOC(message_length + 1U);
+            message = (char *)sshc_gc_malloc(message_length + 1U);
             if (message == nullptr) {
-                char *discard = (char *)GC_MALLOC(message_length);
+                char *discard = (char *)sshc_gc_malloc(message_length);
                 if (discard != nullptr) {
                     (void)host_moderation_read_all(host->moderation.response_fd,
                                                    discard, message_length);
-                    GC_FREE(discard);
+                    sshc_gc_free(discard);
                 }
                 failure_reason = "moderation worker unavailable";
                 host_moderation_handle_failure(host, task, failure_reason);
@@ -946,7 +946,7 @@ static void *host_moderation_thread(void *arg)
                                           message_length)) {
                 failure_reason = "moderation worker unavailable";
                 host_moderation_handle_failure(host, task, failure_reason);
-                GC_FREE(message);
+                sshc_gc_free(message);
                 host_moderation_task_free(task);
                 bool recovered =
                     host_moderation_recover_worker(host, failure_reason);
@@ -962,7 +962,7 @@ static void *host_moderation_thread(void *arg)
         const char *message_text = (message != nullptr) ? message : "";
         host_moderation_apply_result(host, task, &response, message_text);
         if (message != nullptr) {
-            GC_FREE(message);
+            sshc_gc_free(message);
         }
         host_moderation_task_free(task);
         failure_reason = nullptr;
@@ -991,13 +991,13 @@ static bool host_moderation_init(host_t *host)
     host->moderation.mutex_initialized = false;
     host->moderation.cond_initialized = false;
 
-    if (pthread_mutex_init(&host->moderation.mutex, nullptr) != 0) {
+    if (ttak_mutex_init(&host->moderation.mutex) != 0) {
         return false;
     }
     host->moderation.mutex_initialized = true;
 
-    if (pthread_cond_init(&host->moderation.cond, nullptr) != 0) {
-        pthread_mutex_destroy(&host->moderation.mutex);
+    if (ttak_cond_init(&host->moderation.cond) != 0) {
+        ttak_mutex_destroy(&host->moderation.mutex);
         host->moderation.mutex_initialized = false;
         return false;
     }
@@ -1035,21 +1035,21 @@ static void host_moderation_shutdown(host_t *host)
 
     if (!host->moderation.active && !host->moderation.thread_started) {
         if (host->moderation.mutex_initialized) {
-            pthread_mutex_destroy(&host->moderation.mutex);
+            ttak_mutex_destroy(&host->moderation.mutex);
             host->moderation.mutex_initialized = false;
         }
         if (host->moderation.cond_initialized) {
-            pthread_cond_destroy(&host->moderation.cond);
+            ttak_cond_destroy(&host->moderation.cond);
             host->moderation.cond_initialized = false;
         }
         return;
     }
 
     if (host->moderation.mutex_initialized) {
-        pthread_mutex_lock(&host->moderation.mutex);
+        ttak_mutex_lock(&host->moderation.mutex);
         host->moderation.stop = true;
-        pthread_cond_broadcast(&host->moderation.cond);
-        pthread_mutex_unlock(&host->moderation.mutex);
+        ttak_cond_broadcast(&host->moderation.cond);
+        ttak_mutex_unlock(&host->moderation.mutex);
     }
 
     if (host->moderation.thread_started) {
@@ -1065,11 +1065,11 @@ static void host_moderation_shutdown(host_t *host)
     host_moderation_flush_pending(host, nullptr);
 
     if (host->moderation.mutex_initialized) {
-        pthread_mutex_destroy(&host->moderation.mutex);
+        ttak_mutex_destroy(&host->moderation.mutex);
         host->moderation.mutex_initialized = false;
     }
     if (host->moderation.cond_initialized) {
-        pthread_cond_destroy(&host->moderation.cond);
+        ttak_cond_destroy(&host->moderation.cond);
         host->moderation.cond_initialized = false;
     }
 
@@ -1110,7 +1110,7 @@ static bool host_moderation_queue_chat(session_ctx_t *ctx, const char *message,
     }
 
     host_moderation_task_t *task =
-        (host_moderation_task_t *)GC_MALLOC(sizeof(*task));
+        (host_moderation_task_t *)sshc_gc_malloc(sizeof(*task));
     if (task == nullptr) {
         return false;
     }
@@ -1150,9 +1150,9 @@ static bool host_moderation_queue_chat(session_ctx_t *ctx, const char *message,
     task->message[message_copy] = '\0';
     task->post_send = true;
 
-    pthread_mutex_lock(&host->moderation.mutex);
+    ttak_mutex_lock(&host->moderation.mutex);
     if (!host->moderation.active || host->moderation.stop) {
-        pthread_mutex_unlock(&host->moderation.mutex);
+        ttak_mutex_unlock(&host->moderation.mutex);
         host_moderation_task_free(task);
         return false;
     }
@@ -1166,8 +1166,8 @@ static bool host_moderation_queue_chat(session_ctx_t *ctx, const char *message,
         host->moderation.tail->next = task;
         host->moderation.tail = task;
     }
-    pthread_cond_signal(&host->moderation.cond);
-    pthread_mutex_unlock(&host->moderation.mutex);
+    ttak_cond_signal(&host->moderation.cond);
+    ttak_mutex_unlock(&host->moderation.mutex);
 
     return true;
 }
@@ -1181,7 +1181,7 @@ static bool host_eliza_enable(host_t *host)
     bool changed = false;
     bool announce = false;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (!atomic_load(&host->eliza_enabled)) {
         atomic_store(&host->eliza_enabled, true);
         changed = true;
@@ -1193,7 +1193,7 @@ static bool host_eliza_enable(host_t *host)
     if (changed) {
         host_eliza_state_save_locked(host);
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (announce) {
         host_eliza_announce_join(host);
@@ -1211,7 +1211,7 @@ static bool host_eliza_disable(host_t *host)
     bool changed = false;
     bool announce_depart = false;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (atomic_load(&host->eliza_enabled)) {
         changed = true;
     }
@@ -1223,7 +1223,7 @@ static bool host_eliza_disable(host_t *host)
     if (changed) {
         host_eliza_state_save_locked(host);
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (announce_depart) {
         host_eliza_announce_depart(host);
@@ -1424,13 +1424,13 @@ static bool host_eliza_worker_init(host_t *host)
     atomic_store(&worker->stop, false);
     atomic_store(&worker->active, false);
 
-    if (pthread_mutex_init(&worker->mutex, nullptr) != 0) {
+    if (ttak_mutex_init(&worker->mutex) != 0) {
         return false;
     }
     worker->mutex_initialized = true;
 
-    if (pthread_cond_init(&worker->cond, nullptr) != 0) {
-        pthread_mutex_destroy(&worker->mutex);
+    if (ttak_cond_init(&worker->cond) != 0) {
+        ttak_mutex_destroy(&worker->mutex);
         worker->mutex_initialized = false;
         return false;
     }
@@ -1438,9 +1438,9 @@ static bool host_eliza_worker_init(host_t *host)
 
     if (pthread_create(&worker->thread, nullptr, host_eliza_worker_thread,
                        host) != 0) {
-        pthread_cond_destroy(&worker->cond);
+        ttak_cond_destroy(&worker->cond);
         worker->cond_initialized = false;
-        pthread_mutex_destroy(&worker->mutex);
+        ttak_mutex_destroy(&worker->mutex);
         worker->mutex_initialized = false;
         return false;
     }
@@ -1458,10 +1458,10 @@ static void host_eliza_worker_shutdown(host_t *host)
     host_eliza_worker_state_t *worker = &host->eliza_worker;
 
     if (worker->mutex_initialized) {
-        pthread_mutex_lock(&worker->mutex);
+        ttak_mutex_lock(&worker->mutex);
         atomic_store(&worker->stop, true);
-        pthread_cond_broadcast(&worker->cond);
-        pthread_mutex_unlock(&worker->mutex);
+        ttak_cond_broadcast(&worker->cond);
+        ttak_mutex_unlock(&worker->mutex);
     } else {
         atomic_store(&worker->stop, true);
     }
@@ -1472,12 +1472,12 @@ static void host_eliza_worker_shutdown(host_t *host)
     }
 
     if (worker->mutex_initialized) {
-        pthread_mutex_destroy(&worker->mutex);
+        ttak_mutex_destroy(&worker->mutex);
         worker->mutex_initialized = false;
     }
 
     if (worker->cond_initialized) {
-        pthread_cond_destroy(&worker->cond);
+        ttak_cond_destroy(&worker->cond);
         worker->cond_initialized = false;
     }
 
@@ -1509,9 +1509,9 @@ host_eliza_worker_enqueue(host_t *host, host_eliza_intervene_task_t *task)
 
     task->next = nullptr;
 
-    pthread_mutex_lock(&worker->mutex);
+    ttak_mutex_lock(&worker->mutex);
     if (atomic_load(&worker->stop)) {
-        pthread_mutex_unlock(&worker->mutex);
+        ttak_mutex_unlock(&worker->mutex);
         return false;
     }
 
@@ -1523,8 +1523,8 @@ host_eliza_worker_enqueue(host_t *host, host_eliza_intervene_task_t *task)
         worker->tail = task;
     }
 
-    pthread_cond_signal(&worker->cond);
-    pthread_mutex_unlock(&worker->mutex);
+    ttak_cond_signal(&worker->cond);
+    ttak_mutex_unlock(&worker->mutex);
     return true;
 }
 
@@ -1542,13 +1542,13 @@ static void *host_eliza_worker_thread(void *arg)
     atomic_store(&worker->active, true);
 
     while (true) {
-        pthread_mutex_lock(&worker->mutex);
+        ttak_mutex_lock(&worker->mutex);
         while (!atomic_load(&worker->stop) && worker->head == nullptr) {
-            pthread_cond_wait(&worker->cond, &worker->mutex);
+            ttak_cond_wait(&worker->cond, &worker->mutex);
         }
 
         if (worker->head == nullptr && atomic_load(&worker->stop)) {
-            pthread_mutex_unlock(&worker->mutex);
+            ttak_mutex_unlock(&worker->mutex);
             break;
         }
 
@@ -1559,7 +1559,7 @@ static void *host_eliza_worker_thread(void *arg)
                 worker->tail = nullptr;
             }
         }
-        pthread_mutex_unlock(&worker->mutex);
+        ttak_mutex_unlock(&worker->mutex);
 
         if (task == nullptr) {
             continue;
@@ -1603,12 +1603,12 @@ static void host_eliza_intervene_execute(session_ctx_t *ctx, const char *reason,
 
     if (!atomic_load(&host->eliza_announced)) {
         bool announce = false;
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         if (!atomic_load(&host->eliza_announced)) {
             atomic_store(&host->eliza_announced, true);
             announce = true;
         }
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         if (announce) {
             host_eliza_announce_join(host);
         }
@@ -2006,10 +2006,10 @@ static bool host_alpha_landers_snapshot(host_t *host,
     }
 
     if (host->alpha_landers_lock_initialized) {
-        pthread_mutex_lock(&host->alpha_landers_lock);
+        ttak_mutex_lock(&host->alpha_landers_lock);
         bool success = host_alpha_landers_load_locked(host, entries, capacity,
                                                       entry_count);
-        pthread_mutex_unlock(&host->alpha_landers_lock);
+        ttak_mutex_unlock(&host->alpha_landers_lock);
         return success;
     }
 
@@ -2033,7 +2033,7 @@ static void host_alpha_landers_record(host_t *host, const char *username,
 
     bool locked = false;
     if (host->alpha_landers_lock_initialized) {
-        pthread_mutex_lock(&host->alpha_landers_lock);
+        ttak_mutex_lock(&host->alpha_landers_lock);
         locked = true;
     }
 
@@ -2041,7 +2041,7 @@ static void host_alpha_landers_record(host_t *host, const char *username,
         host, entries, ALPHA_LANDERS_MAX_RECORDS, &entry_count);
     if (!loaded) {
         if (locked) {
-            pthread_mutex_unlock(&host->alpha_landers_lock);
+            ttak_mutex_unlock(&host->alpha_landers_lock);
         }
         humanized_log_error("alpha", "failed to load alpha landers file",
                             errno != 0 ? errno : EIO);
@@ -2089,7 +2089,7 @@ static void host_alpha_landers_record(host_t *host, const char *username,
     (void)host_alpha_landers_save_locked(host, entries, entry_count);
 
     if (locked) {
-        pthread_mutex_unlock(&host->alpha_landers_lock);
+        ttak_mutex_unlock(&host->alpha_landers_lock);
     }
 }
 
@@ -2147,7 +2147,7 @@ static void host_user_data_bootstrap(host_t *host)
     }
 
     if (!host->user_data_lock_initialized) {
-        if (pthread_mutex_init(&host->user_data_lock, nullptr) != 0) {
+        if (ttak_mutex_init(&host->user_data_lock) != 0) {
             humanized_log_error("mailbox", "failed to initialise mailbox lock",
                                 errno != 0 ? errno : ENOMEM);
             host->user_data_lock_initialized = false;
@@ -2704,10 +2704,10 @@ static void host_eliza_state_load(host_t *host)
     if (record.enabled != 0U) {
         (void)host_eliza_enable(host);
     } else {
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         atomic_store(&host->eliza_enabled, false);
         atomic_store(&host->eliza_announced, false);
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
     }
 }
 
@@ -3775,7 +3775,7 @@ static void host_state_load(host_t *host)
         preference_count = SSH_CHATTER_MAX_PREFERENCES;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
 
     if (version >= 8U) {
         atomic_store(&host->captcha_enabled, captcha_enabled_raw != 0U);
@@ -3807,7 +3807,7 @@ static void host_state_load(host_t *host)
                               : next_message_id,
         host->history_total);
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     fclose(fp);
 
     // Clean up messages older than 3 days after loading state
@@ -3936,7 +3936,7 @@ static void host_ui_language_state_load(host_t *host)
         entry_count = SSH_CHATTER_MAX_PREFERENCES;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (uint32_t idx = 0U; idx < entry_count; ++idx) {
         ui_lang_state_entry_t entry = {0};
         if (fread(&entry, sizeof(entry), 1U, fp) != 1U) {
@@ -3966,7 +3966,7 @@ static void host_ui_language_state_load(host_t *host)
                      entry.ui_language);
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     fclose(fp);
 }
@@ -4028,7 +4028,7 @@ static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
         return false;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
 
     bool success = false;
 
@@ -4099,7 +4099,7 @@ static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
     success = true;
 
 cleanup:
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     return success;
 }
 
@@ -4117,7 +4117,7 @@ static bool host_rss_remove_feed(host_t *host, const char *tag, char *error,
         return false;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
 
     bool success = false;
 
@@ -4144,7 +4144,7 @@ static bool host_rss_remove_feed(host_t *host, const char *tag, char *error,
     success = true;
 
 cleanup:
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     return success;
 }
 
@@ -4313,7 +4313,7 @@ static void host_rss_state_load(host_t *host)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
 
     for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
         host_clear_rss_feed(&host->rss_feeds[idx]);
@@ -4366,7 +4366,7 @@ static void host_rss_state_load(host_t *host)
         host->rss_feed_count = 0U;
     }
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     fclose(fp);
 }
 
@@ -4384,7 +4384,7 @@ static size_t host_rss_write_callback(void *contents, size_t size, size_t nmemb,
         return 0U;
     }
 
-    char *resized = GC_REALLOC(buffer->data, buffer->length + total + 1U);
+    char *resized = sshc_gc_realloc(buffer->data, buffer->length + total + 1U);
     if (resized == nullptr) {
         return 0U;
     }
@@ -4578,7 +4578,7 @@ static size_t host_rss_parse_items(const char *payload,
         end += strlen(close_tag);
 
         size_t block_len = (size_t)(end - start);
-        char *block = (char *)GC_MALLOC(block_len + 1U);
+        char *block = (char *)sshc_gc_malloc(block_len + 1U);
         if (block == nullptr) {
             break;
         }
@@ -4726,14 +4726,14 @@ static void *host_rss_backend(void *arg)
         rss_feed_t feed_snapshots[SSH_CHATTER_RSS_MAX_FEEDS];
         size_t snapshot_count = 0U;
 
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
             if (!host->rss_feeds[idx].in_use) {
                 continue;
             }
             feed_snapshots[snapshot_count++] = host->rss_feeds[idx];
         }
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         if (snapshot_count > 0U) {
             for (size_t snapshot_index = 0U;
@@ -4780,7 +4780,7 @@ static void *host_rss_backend(void *arg)
                 bool key_changed = false;
                 time_t now = time(nullptr);
 
-                pthread_mutex_lock(&host->lock);
+                ttak_mutex_lock(&host->lock);
                 rss_feed_t *entry =
                     host_find_rss_feed_locked(host, feed_snapshot.tag);
                 if (entry != nullptr && entry->in_use) {
@@ -4829,7 +4829,7 @@ static void *host_rss_backend(void *arg)
                         host_rss_state_save_locked(host);
                     }
                 }
-                pthread_mutex_unlock(&host->lock);
+                ttak_mutex_unlock(&host->lock);
 
                 if (!feed_active || new_item_count == 0U) {
                     continue;
@@ -4894,7 +4894,7 @@ static void *host_rss_backend(void *arg)
 
                     printf("%s\n", notice);
                     // Iterate through all active sessions and send the notice only to those with breaking_alerts_enabled
-                    pthread_mutex_lock(&host->room.lock);
+                    ttak_mutex_lock(&host->room.lock);
                     for (size_t i = 0; i < host->room.member_count; ++i) {
                         session_ctx_t *member = host->room.members[i];
                         if (member != nullptr &&
@@ -4902,7 +4902,7 @@ static void *host_rss_backend(void *arg)
                             session_send_system_line(member, notice);
                         }
                     }
-                    pthread_mutex_unlock(&host->room.lock);
+                    ttak_mutex_unlock(&host->room.lock);
                 }
             }
         }
@@ -4946,9 +4946,9 @@ static void host_rss_start_backend(host_t *host)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     bool has_feeds = host->rss_feed_count > 0U;
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (!has_feeds) {
         return;
@@ -5237,7 +5237,7 @@ static void host_vote_state_load(host_t *host)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
 
     poll_state_reset(&host->poll);
     for (size_t idx = 0U; idx < SSH_CHATTER_MAX_NAMED_POLLS; ++idx) {
@@ -5292,7 +5292,7 @@ static void host_vote_state_load(host_t *host)
         host->named_poll_count = 0U;
     }
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     fclose(fp);
 }
 
@@ -5326,7 +5326,7 @@ static void host_ban_state_load(host_t *host)
     uint32_t entry_count = header.entry_count;
     ban_state_entry_t *entries = nullptr;
     if (entry_count > 0U) {
-        entries = GC_CALLOC(entry_count, sizeof(*entries));
+        entries = sshc_gc_calloc(entry_count, sizeof(*entries));
         if (entries == nullptr) {
             fclose(fp);
             humanized_log_error("host", "failed to allocate ban state buffer",
@@ -5352,11 +5352,11 @@ static void host_ban_state_load(host_t *host)
     if (!success) {
         humanized_log_error("host", "failed to read ban state file",
                             read_error != 0 ? read_error : EIO);
-        GC_FREE(entries);
+        sshc_gc_free(entries);
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     memset(host->bans, 0, sizeof(host->bans));
     host->ban_count = 0U;
     for (uint32_t idx = 0U; idx < entry_count; ++idx) {
@@ -5391,8 +5391,8 @@ static void host_ban_state_load(host_t *host)
                  sizeof(host->bans[host->ban_count].ip), "%s", entries[idx].ip);
         ++host->ban_count;
     }
-    pthread_mutex_unlock(&host->lock);
-    GC_FREE(entries);
+    ttak_mutex_unlock(&host->lock);
+    sshc_gc_free(entries);
 }
 
 static void host_reply_state_load(host_t *host)
@@ -5425,7 +5425,7 @@ static void host_reply_state_load(host_t *host)
     uint32_t entry_count = header.entry_count;
     reply_state_entry_t *entries = nullptr;
     if (entry_count > 0U) {
-        entries = GC_CALLOC(entry_count, sizeof(*entries));
+        entries = sshc_gc_calloc(entry_count, sizeof(*entries));
         if (entries == nullptr) {
             fclose(fp);
             humanized_log_error("host", "failed to allocate reply state buffer",
@@ -5454,7 +5454,7 @@ static void host_reply_state_load(host_t *host)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     memset(host->replies, 0, sizeof(host->replies));
     host->reply_count = 0U;
     host->next_reply_id =
@@ -5500,7 +5500,7 @@ static void host_reply_state_load(host_t *host)
         host->next_reply_id = (uint64_t)host->reply_count + 1U;
     }
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static void host_eliza_memory_resolve_path(host_t *host)
@@ -5667,7 +5667,7 @@ static void host_eliza_memory_load(host_t *host)
     uint32_t entry_count = header.entry_count;
     eliza_memory_entry_serialized_t *entries = nullptr;
     if (entry_count > 0U) {
-        entries = GC_CALLOC(entry_count, sizeof(*entries));
+        entries = sshc_gc_calloc(entry_count, sizeof(*entries));
         if (entries == nullptr) {
             fclose(fp);
             humanized_log_error(
@@ -5696,7 +5696,7 @@ static void host_eliza_memory_load(host_t *host)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     memset(host->eliza_memory, 0, sizeof(host->eliza_memory));
     host->eliza_memory_count = 0U;
     host->eliza_memory_next_id = header.next_id != 0U ? header.next_id : 1U;
@@ -5728,5 +5728,5 @@ static void host_eliza_memory_load(host_t *host)
         host->eliza_memory_next_id = (uint64_t)host->eliza_memory_count + 1U;
     }
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }

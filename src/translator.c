@@ -51,11 +51,12 @@ typedef struct translator_candidate {
     const char *api_key_name;
 } translator_candidate_t;
 
-static pthread_mutex_t g_init_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t g_error_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t g_rate_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t g_moderation_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t g_provider_mutex = PTHREAD_MUTEX_INITIALIZER;
+static ttak_mutex_t g_init_mutex;
+static ttak_mutex_t g_error_mutex;
+static ttak_mutex_t g_rate_mutex;
+static ttak_mutex_t g_moderation_mutex;
+static ttak_mutex_t g_provider_mutex;
+static bool g_init_mutex_initialized = false;
 static bool g_curl_initialised = false;
 static char g_last_error[256] = "";
 static bool g_last_error_was_quota = false;
@@ -66,8 +67,21 @@ static struct timespec g_gemini_disabled_until = {0, 0};
 static bool g_manual_chat_bbs_only = true;
 static bool g_manual_skip_scrollback_translation = true;
 static char g_gemini_cooldown_file_path[PATH_MAX] = "";
-static pthread_mutex_t g_gemini_cooldown_file_mutex = PTHREAD_MUTEX_INITIALIZER;
+static ttak_mutex_t g_gemini_cooldown_file_mutex;
 static bool g_gemini_cooldown_file_initialised = false;
+
+static void translator_mutex_init_all(void)
+{
+    if (!g_init_mutex_initialized) {
+        ttak_mutex_init(&g_init_mutex);
+        ttak_mutex_init(&g_error_mutex);
+        ttak_mutex_init(&g_rate_mutex);
+        ttak_mutex_init(&g_moderation_mutex);
+        ttak_mutex_init(&g_provider_mutex);
+        ttak_mutex_init(&g_gemini_cooldown_file_mutex);
+        g_init_mutex_initialized = true;
+    }
+}
 
 #define TRANSLATOR_RATE_LIMIT_INTERVAL_NS 800000000L
 #define TRANSLATOR_MODERATION_INTERVAL_NS 300000000L
@@ -179,19 +193,19 @@ static void translator_gemini_cooldown_write_snapshot(long long remaining_ns)
         return;
     }
 
-    pthread_mutex_lock(&g_gemini_cooldown_file_mutex);
+    ttak_mutex_lock(&g_gemini_cooldown_file_mutex);
 
     char temp_path[PATH_MAX];
     int written = snprintf(temp_path, sizeof(temp_path), "%s.tmp",
                            g_gemini_cooldown_file_path);
     if (written < 0 || (size_t)written >= sizeof(temp_path)) {
-        pthread_mutex_unlock(&g_gemini_cooldown_file_mutex);
+        ttak_mutex_unlock(&g_gemini_cooldown_file_mutex);
         return;
     }
 
     FILE *fp = fopen(temp_path, "wb");
     if (fp == nullptr) {
-        pthread_mutex_unlock(&g_gemini_cooldown_file_mutex);
+        ttak_mutex_unlock(&g_gemini_cooldown_file_mutex);
         return;
     }
 
@@ -223,7 +237,7 @@ static void translator_gemini_cooldown_write_snapshot(long long remaining_ns)
         unlink(temp_path);
     }
 
-    pthread_mutex_unlock(&g_gemini_cooldown_file_mutex);
+    ttak_mutex_unlock(&g_gemini_cooldown_file_mutex);
 }
 
 static void translator_gemini_cooldown_persist_locked(void)
@@ -265,17 +279,17 @@ static void translator_gemini_cooldown_load(void)
         return;
     }
 
-    pthread_mutex_lock(&g_gemini_cooldown_file_mutex);
+    ttak_mutex_lock(&g_gemini_cooldown_file_mutex);
     FILE *fp = fopen(g_gemini_cooldown_file_path, "rb");
     if (fp == nullptr) {
-        pthread_mutex_unlock(&g_gemini_cooldown_file_mutex);
+        ttak_mutex_unlock(&g_gemini_cooldown_file_mutex);
         return;
     }
 
     translator_gemini_cooldown_state_v1_t state = {0};
     bool success = fread(&state, sizeof(state), 1U, fp) == 1U;
     (void)fclose(fp);
-    pthread_mutex_unlock(&g_gemini_cooldown_file_mutex);
+    ttak_mutex_unlock(&g_gemini_cooldown_file_mutex);
 
     if (!success) {
         return;
@@ -292,9 +306,9 @@ static void translator_gemini_cooldown_load(void)
 
     long long remaining_ns = state.remaining_ns;
     if (remaining_ns <= 0) {
-        pthread_mutex_lock(&g_provider_mutex);
+        ttak_mutex_lock(&g_provider_mutex);
         translator_clear_gemini_backoff_locked();
-        pthread_mutex_unlock(&g_provider_mutex);
+        ttak_mutex_unlock(&g_provider_mutex);
         return;
     }
 
@@ -318,35 +332,35 @@ static void translator_gemini_cooldown_load(void)
         until.tv_nsec -= 1000000000L;
     }
 
-    pthread_mutex_lock(&g_provider_mutex);
+    ttak_mutex_lock(&g_provider_mutex);
     g_gemini_disabled_until = until;
     translator_gemini_cooldown_persist_locked();
-    pthread_mutex_unlock(&g_provider_mutex);
+    ttak_mutex_unlock(&g_provider_mutex);
 }
 
 static void translator_rate_limit_wait(void)
 {
     for (;;) {
-        pthread_mutex_lock(&g_rate_mutex);
+        ttak_mutex_lock(&g_rate_mutex);
         struct timespec now = translator_timespec_now();
         if (g_next_allowed_request.tv_sec == 0 &&
             g_next_allowed_request.tv_nsec == 0) {
             g_next_allowed_request = translator_timespec_add_ns(
                 &now, TRANSLATOR_RATE_LIMIT_INTERVAL_NS);
-            pthread_mutex_unlock(&g_rate_mutex);
+            ttak_mutex_unlock(&g_rate_mutex);
             return;
         }
 
         if (translator_timespec_compare(&now, &g_next_allowed_request) >= 0) {
             g_next_allowed_request = translator_timespec_add_ns(
                 &now, TRANSLATOR_RATE_LIMIT_INTERVAL_NS);
-            pthread_mutex_unlock(&g_rate_mutex);
+            ttak_mutex_unlock(&g_rate_mutex);
             return;
         }
 
         struct timespec wait_time =
             translator_timespec_diff(&g_next_allowed_request, &now);
-        pthread_mutex_unlock(&g_rate_mutex);
+        ttak_mutex_unlock(&g_rate_mutex);
         struct timespec request = wait_time;
         struct timespec remaining = {0};
         while (nanosleep(&request, &remaining) != 0) {
@@ -361,7 +375,7 @@ static void translator_rate_limit_wait(void)
 static void translator_moderation_throttle_wait(void)
 {
     for (;;) {
-        pthread_mutex_lock(&g_moderation_mutex);
+        ttak_mutex_lock(&g_moderation_mutex);
         struct timespec now = translator_timespec_now();
         if ((g_next_allowed_moderation.tv_sec == 0 &&
              g_next_allowed_moderation.tv_nsec == 0) ||
@@ -369,13 +383,13 @@ static void translator_moderation_throttle_wait(void)
                 0) {
             g_next_allowed_moderation = translator_timespec_add_ns(
                 &now, TRANSLATOR_MODERATION_INTERVAL_NS);
-            pthread_mutex_unlock(&g_moderation_mutex);
+            ttak_mutex_unlock(&g_moderation_mutex);
             return;
         }
 
         struct timespec wait_time =
             translator_timespec_diff(&g_next_allowed_moderation, &now);
-        pthread_mutex_unlock(&g_moderation_mutex);
+        ttak_mutex_unlock(&g_moderation_mutex);
         struct timespec request = wait_time;
         struct timespec remaining = {0};
         while (nanosleep(&request, &remaining) != 0) {
@@ -393,11 +407,11 @@ static void translator_rate_limit_penalise_until(const struct timespec *until)
         return;
     }
 
-    pthread_mutex_lock(&g_rate_mutex);
+    ttak_mutex_lock(&g_rate_mutex);
     if (translator_timespec_compare(until, &g_next_allowed_request) > 0) {
         g_next_allowed_request = *until;
     }
-    pthread_mutex_unlock(&g_rate_mutex);
+    ttak_mutex_unlock(&g_rate_mutex);
 }
 
 static void translator_rate_limit_penalize(long status)
@@ -458,9 +472,9 @@ static void translator_clear_gemini_backoff_locked(void)
 
 static void translator_clear_gemini_backoff_internal(void)
 {
-    pthread_mutex_lock(&g_provider_mutex);
+    ttak_mutex_lock(&g_provider_mutex);
     translator_clear_gemini_backoff_locked();
-    pthread_mutex_unlock(&g_provider_mutex);
+    ttak_mutex_unlock(&g_provider_mutex);
 }
 
 void translator_clear_gemini_backoff(void)
@@ -473,14 +487,14 @@ static void translator_schedule_gemini_backoff_ns(long duration_ns)
     struct timespec now = translator_timespec_now();
     struct timespec until = translator_timespec_add_ns(&now, duration_ns);
 
-    pthread_mutex_lock(&g_provider_mutex);
+    ttak_mutex_lock(&g_provider_mutex);
     if (duration_ns <= 0L) {
         translator_clear_gemini_backoff_locked();
     } else {
         g_gemini_disabled_until = until;
         translator_gemini_cooldown_persist_locked();
     }
-    pthread_mutex_unlock(&g_provider_mutex);
+    ttak_mutex_unlock(&g_provider_mutex);
 }
 
 static long translator_gemini_backoff_duration_until_midnight(void)
@@ -573,25 +587,25 @@ static bool translator_gemini_enabled_internal(void)
     struct timespec now = translator_timespec_now();
     bool enabled = true;
 
-    pthread_mutex_lock(&g_provider_mutex);
+    ttak_mutex_lock(&g_provider_mutex);
     if (g_gemini_manually_disabled) {
         enabled = false;
     } else if (translator_gemini_backoff_active_unlocked(&now, nullptr)) {
         enabled = false;
     }
-    pthread_mutex_unlock(&g_provider_mutex);
+    ttak_mutex_unlock(&g_provider_mutex);
 
     return enabled;
 }
 
 void translator_set_gemini_enabled(bool enabled)
 {
-    pthread_mutex_lock(&g_provider_mutex);
+    ttak_mutex_lock(&g_provider_mutex);
     g_gemini_manually_disabled = !enabled;
     if (enabled) {
         translator_clear_gemini_backoff_locked();
     }
-    pthread_mutex_unlock(&g_provider_mutex);
+    ttak_mutex_unlock(&g_provider_mutex);
 }
 
 bool translator_is_gemini_enabled(void)
@@ -601,9 +615,9 @@ bool translator_is_gemini_enabled(void)
 
 bool translator_is_gemini_manually_disabled(void)
 {
-    pthread_mutex_lock(&g_provider_mutex);
+    ttak_mutex_lock(&g_provider_mutex);
     bool disabled = g_gemini_manually_disabled;
-    pthread_mutex_unlock(&g_provider_mutex);
+    ttak_mutex_unlock(&g_provider_mutex);
     return disabled;
 }
 
@@ -612,9 +626,9 @@ bool translator_gemini_backoff_remaining(struct timespec *remaining)
     struct timespec now = translator_timespec_now();
     bool active = false;
 
-    pthread_mutex_lock(&g_provider_mutex);
+    ttak_mutex_lock(&g_provider_mutex);
     active = translator_gemini_backoff_active_unlocked(&now, remaining);
-    pthread_mutex_unlock(&g_provider_mutex);
+    ttak_mutex_unlock(&g_provider_mutex);
 
     return active;
 }
@@ -635,34 +649,34 @@ bool translator_is_ollama_only(void)
 
 void translator_set_manual_chat_bbs_only(bool enabled)
 {
-    pthread_mutex_lock(&g_provider_mutex);
+    ttak_mutex_lock(&g_provider_mutex);
     g_manual_chat_bbs_only = enabled;
     if (!enabled) {
         g_manual_skip_scrollback_translation = false;
     }
-    pthread_mutex_unlock(&g_provider_mutex);
+    ttak_mutex_unlock(&g_provider_mutex);
 }
 
 bool translator_is_manual_chat_bbs_only(void)
 {
-    pthread_mutex_lock(&g_provider_mutex);
+    ttak_mutex_lock(&g_provider_mutex);
     bool limited = g_manual_chat_bbs_only;
-    pthread_mutex_unlock(&g_provider_mutex);
+    ttak_mutex_unlock(&g_provider_mutex);
     return limited;
 }
 
 void translator_set_manual_skip_scrollback(bool enabled)
 {
-    pthread_mutex_lock(&g_provider_mutex);
+    ttak_mutex_lock(&g_provider_mutex);
     g_manual_skip_scrollback_translation = enabled;
-    pthread_mutex_unlock(&g_provider_mutex);
+    ttak_mutex_unlock(&g_provider_mutex);
 }
 
 bool translator_is_manual_skip_scrollback(void)
 {
-    pthread_mutex_lock(&g_provider_mutex);
+    ttak_mutex_lock(&g_provider_mutex);
     bool skip = g_manual_skip_scrollback_translation;
-    pthread_mutex_unlock(&g_provider_mutex);
+    ttak_mutex_unlock(&g_provider_mutex);
     return skip;
 }
 
@@ -886,14 +900,14 @@ static bool translator_decode_json_string(const char *input, char *output,
 
 static void translator_mark_quota_exhausted(void)
 {
-    pthread_mutex_lock(&g_error_mutex);
+    ttak_mutex_lock(&g_error_mutex);
     g_last_error_was_quota = true;
-    pthread_mutex_unlock(&g_error_mutex);
+    ttak_mutex_unlock(&g_error_mutex);
 }
 
 static void translator_set_error(const char *fmt, ...)
 {
-    pthread_mutex_lock(&g_error_mutex);
+    ttak_mutex_lock(&g_error_mutex);
     if (fmt == nullptr) {
         g_last_error[0] = '\0';
         g_last_error_was_quota = false;
@@ -904,29 +918,30 @@ static void translator_set_error(const char *fmt, ...)
         va_end(args);
         g_last_error_was_quota = false;
     }
-    pthread_mutex_unlock(&g_error_mutex);
+    ttak_mutex_unlock(&g_error_mutex);
 }
 
 const char *translator_last_error(void)
 {
     static _Thread_local char snapshot[256];
-    pthread_mutex_lock(&g_error_mutex);
+    ttak_mutex_lock(&g_error_mutex);
     snprintf(snapshot, sizeof(snapshot), "%s", g_last_error);
-    pthread_mutex_unlock(&g_error_mutex);
+    ttak_mutex_unlock(&g_error_mutex);
     return snapshot;
 }
 
 bool translator_last_error_was_quota(void)
 {
-    pthread_mutex_lock(&g_error_mutex);
+    ttak_mutex_lock(&g_error_mutex);
     const bool was_quota = g_last_error_was_quota;
-    pthread_mutex_unlock(&g_error_mutex);
+    ttak_mutex_unlock(&g_error_mutex);
     return was_quota;
 }
 
 void translator_global_init(void)
 {
-    pthread_mutex_lock(&g_init_mutex);
+    translator_mutex_init_all();
+    ttak_mutex_lock(&g_init_mutex);
     if (!g_curl_initialised) {
         if (curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK) {
             g_curl_initialised = true;
@@ -937,17 +952,17 @@ void translator_global_init(void)
         translator_gemini_cooldown_load();
         g_gemini_cooldown_file_initialised = true;
     }
-    pthread_mutex_unlock(&g_init_mutex);
+    ttak_mutex_unlock(&g_init_mutex);
 }
 
 void translator_global_cleanup(void)
 {
-    pthread_mutex_lock(&g_init_mutex);
+    ttak_mutex_lock(&g_init_mutex);
     if (g_curl_initialised) {
         curl_global_cleanup();
         g_curl_initialised = false;
     }
-    pthread_mutex_unlock(&g_init_mutex);
+    ttak_mutex_unlock(&g_init_mutex);
 }
 
 static size_t translator_write_callback(void *contents, size_t size,
@@ -967,7 +982,7 @@ static size_t translator_write_callback(void *contents, size_t size,
         return 0U;
     }
 
-    char *resized = GC_REALLOC(buffer->data, buffer->length + total + 1U);
+    char *resized = sshc_gc_realloc(buffer->data, buffer->length + total + 1U);
     if (resized == nullptr) {
         return 0U;
     }
@@ -1004,7 +1019,7 @@ static char *translator_escape_string(const char *input)
         }
     }
 
-    char *escaped = GC_MALLOC(required);
+    char *escaped = sshc_gc_malloc(required);
     if (escaped == nullptr) {
         return nullptr;
     }
@@ -1081,7 +1096,7 @@ static char *translator_extract_first_text_generic(const char *response)
         ++value_start;
 
         size_t capacity = strlen(value_start) + 1U;
-        char *candidate = GC_MALLOC(capacity);
+        char *candidate = sshc_gc_malloc(capacity);
         if (candidate == nullptr) {
             return nullptr;
         }
@@ -1134,7 +1149,7 @@ static char *translator_extract_payload_text(const char *response)
         ++value_start;
 
         size_t capacity = strlen(value_start) + 1U;
-        char *candidate = GC_MALLOC(capacity);
+        char *candidate = sshc_gc_malloc(capacity);
         if (candidate == nullptr) {
             return nullptr;
         }
@@ -1249,7 +1264,7 @@ static char *translator_extract_last_text_block(const char *response)
         ++value_start;
 
         size_t capacity = strlen(value_start) + 1U;
-        char *candidate = GC_MALLOC(capacity);
+        char *candidate = sshc_gc_malloc(capacity);
         if (candidate == nullptr) {
             return nullptr;
         }
@@ -1386,7 +1401,7 @@ static char *translator_build_gemini_url(const char *base, const char *model,
                    model_len + strlen(suffix) + strlen(query_prefix) +
                    strlen(api_key) + 1U;
 
-    char *url = GC_MALLOC(total);
+    char *url = sshc_gc_malloc(total);
     if (url == nullptr) {
         return nullptr;
     }
@@ -1409,7 +1424,7 @@ static char *translator_build_ollama_url(const char *base)
     size_t total =
         base_len + (has_trailing_slash ? 0U : 1U) + strlen(suffix) + 1U;
 
-    char *url = GC_MALLOC(total);
+    char *url = sshc_gc_malloc(total);
     if (url == nullptr) {
         return nullptr;
     }
@@ -1443,7 +1458,7 @@ static CURLcode translator_issue_gemini_request(
 
     if (api_key != nullptr && api_key[0] != '\0') {
         size_t header_len = strlen("x-goog-api-key: ") + strlen(api_key) + 1U;
-        char *header_value = GC_MALLOC(header_len);
+        char *header_value = sshc_gc_malloc(header_len);
         if (header_value != nullptr) {
             snprintf(header_value, header_len, "x-goog-api-key: %s", api_key);
             headers = curl_slist_append(headers, header_value);
@@ -1539,7 +1554,7 @@ static CURLcode translator_issue_json_post(
     if (auth_header_name != nullptr && auth_header_value != nullptr) {
         size_t header_len =
             strlen(auth_header_name) + 2U + strlen(auth_header_value) + 1U;
-        char *header_value = GC_MALLOC(header_len);
+        char *header_value = sshc_gc_malloc(header_len);
         if (header_value != nullptr) {
             snprintf(header_value, header_len, "%s: %s", auth_header_name,
                      auth_header_value);
@@ -1754,7 +1769,7 @@ static bool translator_try_gemini(const translator_candidate_t *candidate,
     }
 
     size_t body_len = (size_t)computed + 1U;
-    char *body = GC_MALLOC(body_len);
+    char *body = sshc_gc_malloc(body_len);
     if (body == nullptr) {
         translator_set_error("Failed to prepare translation request payload.");
         if (retryable != nullptr) {
@@ -1887,10 +1902,10 @@ static bool translator_try_gemini(const translator_candidate_t *candidate,
     }
 
     if (stream_buffer.data != nullptr) {
-        GC_FREE(stream_buffer.data);
+        sshc_gc_free(stream_buffer.data);
     }
     if (buffer.data != nullptr) {
-        GC_FREE(buffer.data);
+        sshc_gc_free(buffer.data);
     }
     curl_easy_cleanup(curl);
 
@@ -1993,7 +2008,7 @@ static bool translator_try_gemini_eliza(const translator_candidate_t *candidate,
     }
 
     size_t body_len = (size_t)computed + 1U;
-    char *body = GC_MALLOC(body_len);
+    char *body = sshc_gc_malloc(body_len);
     if (body == nullptr) {
         translator_set_error("Failed to prepare eliza request payload.");
         return false;
@@ -2087,7 +2102,7 @@ static bool translator_try_gemini_eliza(const translator_candidate_t *candidate,
     }
 
     if (buffer.data != nullptr) {
-        GC_FREE(buffer.data);
+        sshc_gc_free(buffer.data);
     }
     curl_easy_cleanup(curl);
 
@@ -2178,7 +2193,7 @@ translator_try_gemini_moderation(const translator_candidate_t *candidate,
     }
 
     size_t body_size = (size_t)body_length + 1U;
-    char *body = GC_MALLOC(body_size);
+    char *body = sshc_gc_malloc(body_size);
     if (body == nullptr) {
         translator_set_error("Failed to prepare moderation request payload.");
         return false;
@@ -2252,7 +2267,7 @@ translator_try_gemini_moderation(const translator_candidate_t *candidate,
     }
 
     if (buffer.data != nullptr) {
-        GC_FREE(buffer.data);
+        sshc_gc_free(buffer.data);
     }
     curl_easy_cleanup(curl);
 
@@ -2316,7 +2331,7 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
     }
 
     size_t prompt_size = (size_t)prompt_length + 1U;
-    char *prompt_buffer = GC_MALLOC(prompt_size);
+    char *prompt_buffer = sshc_gc_malloc(prompt_size);
     if (prompt_buffer == nullptr) {
         translator_set_error("Failed to allocate translation prompt.");
         return false;
@@ -2346,7 +2361,7 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
     }
 
     size_t body_size = (size_t)body_length + 1U;
-    char *body = GC_MALLOC(body_size);
+    char *body = sshc_gc_malloc(body_size);
     if (body == nullptr) {
         translator_set_error("Failed to prepare translation request.");
         return false;
@@ -2435,7 +2450,7 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
     }
 
     if (buffer.data != nullptr) {
-        GC_FREE(buffer.data);
+        sshc_gc_free(buffer.data);
     }
     curl_easy_cleanup(curl);
 
@@ -2500,7 +2515,7 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
     }
 
     size_t body_len = (size_t)computed + 1U;
-    char *body = GC_MALLOC(body_len);
+    char *body = sshc_gc_malloc(body_len);
     if (body == nullptr) {
         translator_set_error("Failed to prepare eliza request.");
         return false;
@@ -2565,7 +2580,7 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
     }
 
     if (buffer.data != nullptr) {
-        GC_FREE(buffer.data);
+        sshc_gc_free(buffer.data);
     }
     curl_easy_cleanup(curl);
 
@@ -2619,7 +2634,7 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
     }
 
     size_t prompt_size = (size_t)prompt_length + 1U;
-    char *prompt_buffer = GC_MALLOC(prompt_size);
+    char *prompt_buffer = sshc_gc_malloc(prompt_size);
     if (prompt_buffer == nullptr) {
         translator_set_error("Failed to allocate moderation prompt.");
         return false;
@@ -2650,7 +2665,7 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
     }
 
     size_t body_size = (size_t)body_length + 1U;
-    char *body = GC_MALLOC(body_size);
+    char *body = sshc_gc_malloc(body_size);
     if (body == nullptr) {
         translator_set_error("Failed to prepare moderation request.");
         return false;
@@ -2719,7 +2734,7 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
     }
 
     if (buffer.data != nullptr) {
-        GC_FREE(buffer.data);
+        sshc_gc_free(buffer.data);
     }
     curl_easy_cleanup(curl);
 

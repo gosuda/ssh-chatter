@@ -27,7 +27,7 @@ host_eliza_memory_store(host_t *host, const char *prompt, const char *reply)
     trim_whitespace_inplace(clean_prompt);
     trim_whitespace_inplace(clean_reply);
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (host->eliza_memory_count >= SSH_CHATTER_ELIZA_MEMORY_MAX) {
         memmove(host->eliza_memory, host->eliza_memory + 1,
                 (SSH_CHATTER_ELIZA_MEMORY_MAX - 1U) *
@@ -49,7 +49,7 @@ host_eliza_memory_store(host_t *host, const char *prompt, const char *reply)
     snprintf(entry->reply, sizeof(entry->reply), "%s", clean_reply);
 
     host_eliza_memory_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static size_t __attribute__((unused))
@@ -124,7 +124,7 @@ host_eliza_memory_collect_context(host_t *host, const char *prompt,
     eliza_memory_entry_t snapshot[SSH_CHATTER_ELIZA_MEMORY_MAX];
     size_t snapshot_count = 0U;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     snapshot_count = host->eliza_memory_count;
     if (snapshot_count > SSH_CHATTER_ELIZA_MEMORY_MAX) {
         snapshot_count = SSH_CHATTER_ELIZA_MEMORY_MAX;
@@ -133,7 +133,7 @@ host_eliza_memory_collect_context(host_t *host, const char *prompt,
         memcpy(snapshot, host->eliza_memory,
                snapshot_count * sizeof(snapshot[0]));
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (snapshot_count == 0U) {
         return 0U;
@@ -493,7 +493,7 @@ host_eliza_bbs_collect_context(host_t *host, char *context,
     bbs_post_t snapshot[SSH_CHATTER_BBS_MAX_POSTS];
     size_t snapshot_count = 0U;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
         if (!host->bbs_posts[idx].in_use) {
             continue;
@@ -503,7 +503,7 @@ host_eliza_bbs_collect_context(host_t *host, char *context,
             snapshot[snapshot_count++] = host->bbs_posts[idx];
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (snapshot_count == 0U) {
         return 0U;
@@ -924,7 +924,7 @@ static void host_bbs_state_load(host_t *host)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
 
     for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
         host->bbs_posts[idx].in_use = false;
@@ -1136,7 +1136,7 @@ static void host_bbs_state_load(host_t *host)
         host->next_bbs_id = 1U;
     }
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     fclose(fp);
 }
 
@@ -1155,7 +1155,7 @@ static void host_bbs_watchdog_scan(host_t *host)
     }
 
     bbs_post_t *snapshot =
-        GC_CALLOC(SSH_CHATTER_BBS_MAX_POSTS, sizeof(*snapshot));
+        sshc_gc_calloc(SSH_CHATTER_BBS_MAX_POSTS, sizeof(*snapshot));
     if (snapshot == nullptr) {
         humanized_log_error("bbs", "failed to allocate watchdog snapshot",
                             ENOMEM);
@@ -1164,7 +1164,7 @@ static void host_bbs_watchdog_scan(host_t *host)
 
     size_t snapshot_count = 0U;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
         if (!host->bbs_posts[idx].in_use) {
             continue;
@@ -1174,7 +1174,7 @@ static void host_bbs_watchdog_scan(host_t *host)
             snapshot[snapshot_count++] = host->bbs_posts[idx];
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (snapshot_count == 0U) {
         return;
@@ -1183,7 +1183,7 @@ static void host_bbs_watchdog_scan(host_t *host)
     const size_t content_capacity =
         SSH_CHATTER_BBS_BODY_LEN +
         (SSH_CHATTER_BBS_COMMENT_LEN * SSH_CHATTER_BBS_MAX_COMMENTS) + 1024U;
-    char *content = (char *)GC_MALLOC(content_capacity);
+    char *content = (char *)sshc_gc_malloc(content_capacity);
     if (content == nullptr) {
         humanized_log_error("bbs", "failed to allocate watchdog buffer",
                             ENOMEM);
@@ -1289,13 +1289,13 @@ static void host_bbs_watchdog_scan(host_t *host)
         const char *diagnostic =
             (reason[0] != '\0') ? reason : "policy violation";
 
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         bbs_post_t *live = host_find_bbs_post_locked(host, post->id);
         if (live != nullptr) {
             host_clear_bbs_post_locked(host, live);
             host_bbs_state_save_locked(host);
         }
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         if (live == nullptr) {
             continue;
@@ -1711,7 +1711,7 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
     bool has_ip_snapshot = false;
     bool user_theme_applied = false;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_find_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
@@ -1726,7 +1726,7 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
             has_ip_snapshot = true;
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     session_ui_language_t previous_language = ctx->ui_language;
     session_cp437_override_t previous_cp437_override = ctx->cp437_override;
@@ -2085,7 +2085,7 @@ typedef struct translation_result {
 
 static translation_job_t *session_translation_job_alloc(void)
 {
-    translation_job_t *job = (translation_job_t *)GC_MALLOC(sizeof(*job));
+    translation_job_t *job = (translation_job_t *)sshc_gc_malloc(sizeof(*job));
     if (job != nullptr) {
         memset(job, 0, sizeof(*job));
     }
@@ -2095,7 +2095,7 @@ static translation_job_t *session_translation_job_alloc(void)
 static translation_result_t *session_translation_result_alloc(void)
 {
     translation_result_t *result =
-        (translation_result_t *)GC_MALLOC(sizeof(*result));
+        (translation_result_t *)sshc_gc_malloc(sizeof(*result));
     if (result != nullptr) {
         memset(result, 0, sizeof(*result));
     }
@@ -2109,15 +2109,15 @@ static bool session_translation_worker_ensure(session_ctx_t *ctx)
     }
 
     if (!ctx->translation_mutex_initialized) {
-        if (pthread_mutex_init(&ctx->translation_mutex, nullptr) != 0) {
+        if (ttak_mutex_init(&ctx->translation_mutex) != 0) {
             return false;
         }
         ctx->translation_mutex_initialized = true;
     }
 
     if (!ctx->translation_cond_initialized) {
-        if (pthread_cond_init(&ctx->translation_cond, nullptr) != 0) {
-            pthread_mutex_destroy(&ctx->translation_mutex);
+        if (ttak_cond_init(&ctx->translation_cond) != 0) {
+            ttak_mutex_destroy(&ctx->translation_mutex);
             ctx->translation_mutex_initialized = false;
             return false;
         }
@@ -2128,9 +2128,9 @@ static bool session_translation_worker_ensure(session_ctx_t *ctx)
         ctx->translation_thread_stop = false;
         if (pthread_create(&ctx->translation_thread, nullptr,
                            session_translation_worker, ctx) != 0) {
-            pthread_cond_destroy(&ctx->translation_cond);
+            ttak_cond_destroy(&ctx->translation_cond);
             ctx->translation_cond_initialized = false;
-            pthread_mutex_destroy(&ctx->translation_mutex);
+            ttak_mutex_destroy(&ctx->translation_mutex);
             ctx->translation_mutex_initialized = false;
             return false;
         }
@@ -2149,24 +2149,24 @@ static void session_translation_clear_queue(session_ctx_t *ctx)
     translation_job_t *pending = nullptr;
     translation_result_t *ready = nullptr;
 
-    pthread_mutex_lock(&ctx->translation_mutex);
+    ttak_mutex_lock(&ctx->translation_mutex);
     pending = ctx->translation_pending_head;
     ctx->translation_pending_head = nullptr;
     ctx->translation_pending_tail = nullptr;
     ready = ctx->translation_ready_head;
     ctx->translation_ready_head = nullptr;
     ctx->translation_ready_tail = nullptr;
-    pthread_mutex_unlock(&ctx->translation_mutex);
+    ttak_mutex_unlock(&ctx->translation_mutex);
 
     while (pending != nullptr) {
         translation_job_t *next = pending->next;
-        GC_FREE(pending);
+        sshc_gc_free(pending);
         pending = next;
     }
 
     while (ready != nullptr) {
         translation_result_t *next = ready->next;
-        GC_FREE(ready);
+        sshc_gc_free(ready);
         ready = next;
     }
 
@@ -2219,7 +2219,7 @@ static bool session_translation_queue_caption(session_ctx_t *ctx,
     snprintf(job->target_language, sizeof(job->target_language), "%s",
              ctx->output_translation_language);
 
-    pthread_mutex_lock(&ctx->translation_mutex);
+    ttak_mutex_lock(&ctx->translation_mutex);
     job->next = nullptr;
     if (ctx->translation_pending_tail != nullptr) {
         ctx->translation_pending_tail->next = job;
@@ -2227,8 +2227,8 @@ static bool session_translation_queue_caption(session_ctx_t *ctx,
         ctx->translation_pending_head = job;
     }
     ctx->translation_pending_tail = job;
-    pthread_cond_signal(&ctx->translation_cond);
-    pthread_mutex_unlock(&ctx->translation_mutex);
+    ttak_cond_signal(&ctx->translation_cond);
+    ttak_mutex_unlock(&ctx->translation_mutex);
 
     return true;
 }
@@ -2318,7 +2318,7 @@ static bool session_translation_queue_private_message(session_ctx_t *ctx,
     snprintf(job->data.pm.to_sender_label, sizeof(job->data.pm.to_sender_label),
              "you -> %s", target->user.name);
 
-    pthread_mutex_lock(&ctx->translation_mutex);
+    ttak_mutex_lock(&ctx->translation_mutex);
     job->next = nullptr;
     if (ctx->translation_pending_tail != nullptr) {
         ctx->translation_pending_tail->next = job;
@@ -2326,8 +2326,8 @@ static bool session_translation_queue_private_message(session_ctx_t *ctx,
         ctx->translation_pending_head = job;
     }
     ctx->translation_pending_tail = job;
-    pthread_cond_signal(&ctx->translation_cond);
-    pthread_mutex_unlock(&ctx->translation_mutex);
+    ttak_cond_signal(&ctx->translation_cond);
+    ttak_mutex_unlock(&ctx->translation_mutex);
 
     return true;
 }
@@ -2360,7 +2360,7 @@ static bool session_translation_queue_input(session_ctx_t *ctx,
     snprintf(job->data.input.original, sizeof(job->data.input.original), "%s",
              text);
 
-    pthread_mutex_lock(&ctx->translation_mutex);
+    ttak_mutex_lock(&ctx->translation_mutex);
     job->next = nullptr;
     if (ctx->translation_pending_tail != nullptr) {
         ctx->translation_pending_tail->next = job;
@@ -2368,8 +2368,8 @@ static bool session_translation_queue_input(session_ctx_t *ctx,
         ctx->translation_pending_head = job;
     }
     ctx->translation_pending_tail = job;
-    pthread_cond_signal(&ctx->translation_cond);
-    pthread_mutex_unlock(&ctx->translation_mutex);
+    ttak_cond_signal(&ctx->translation_cond);
+    ttak_mutex_unlock(&ctx->translation_mutex);
 
     return true;
 }
@@ -2454,10 +2454,10 @@ static void host_prepend_translation_notice_in_memory(host_t *host,
         snprintf(updated, sizeof(updated), "%s\n", kTranslationQuotaNotice);
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     snprintf(host->motd_base, sizeof(host->motd_base), "%s", updated);
     host_refresh_motd_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static void host_handle_translation_quota_exhausted(host_t *host)
@@ -2472,7 +2472,7 @@ static void host_handle_translation_quota_exhausted(host_t *host)
     char motd_snapshot[sizeof(host->motd_base)];
     motd_snapshot[0] = '\0';
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (host->translation_quota_exhausted) {
         already_marked = true;
     } else {
@@ -2482,7 +2482,7 @@ static void host_handle_translation_quota_exhausted(host_t *host)
         }
         snprintf(motd_snapshot, sizeof(motd_snapshot), "%s", host->motd_base);
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (already_marked) {
         return;
@@ -2596,11 +2596,11 @@ static void session_translation_flush_ready(session_ctx_t *ctx)
 
     translation_result_t *ready = nullptr;
 
-    pthread_mutex_lock(&ctx->translation_mutex);
+    ttak_mutex_lock(&ctx->translation_mutex);
     ready = ctx->translation_ready_head;
     ctx->translation_ready_head = nullptr;
     ctx->translation_ready_tail = nullptr;
-    pthread_mutex_unlock(&ctx->translation_mutex);
+    ttak_mutex_unlock(&ctx->translation_mutex);
 
     if (ready == nullptr) {
         return;
@@ -2755,26 +2755,26 @@ static void session_translation_worker_shutdown(session_ctx_t *ctx)
     }
 
     if (ctx->translation_mutex_initialized) {
-        pthread_mutex_lock(&ctx->translation_mutex);
+        ttak_mutex_lock(&ctx->translation_mutex);
         if (ctx->translation_thread_started) {
             ctx->translation_thread_stop = true;
-            pthread_cond_broadcast(&ctx->translation_cond);
-            pthread_mutex_unlock(&ctx->translation_mutex);
+            ttak_cond_broadcast(&ctx->translation_cond);
+            ttak_mutex_unlock(&ctx->translation_mutex);
             pthread_join(ctx->translation_thread, nullptr);
             ctx->translation_thread_started = false;
         } else {
-            pthread_mutex_unlock(&ctx->translation_mutex);
+            ttak_mutex_unlock(&ctx->translation_mutex);
         }
     }
 
     session_translation_clear_queue(ctx);
 
     if (ctx->translation_cond_initialized) {
-        pthread_cond_destroy(&ctx->translation_cond);
+        ttak_cond_destroy(&ctx->translation_cond);
         ctx->translation_cond_initialized = false;
     }
     if (ctx->translation_mutex_initialized) {
-        pthread_mutex_destroy(&ctx->translation_mutex);
+        ttak_mutex_destroy(&ctx->translation_mutex);
         ctx->translation_mutex_initialized = false;
     }
 
@@ -2861,7 +2861,7 @@ static void session_translation_publish_result(
         result->original[0] = '\0';
     }
 
-    pthread_mutex_lock(&ctx->translation_mutex);
+    ttak_mutex_lock(&ctx->translation_mutex);
     result->next = nullptr;
     if (ctx->translation_ready_tail != nullptr) {
         ctx->translation_ready_tail->next = result;
@@ -2869,7 +2869,7 @@ static void session_translation_publish_result(
         ctx->translation_ready_head = result;
     }
     ctx->translation_ready_tail = result;
-    pthread_mutex_unlock(&ctx->translation_mutex);
+    ttak_mutex_unlock(&ctx->translation_mutex);
 }
 
 static void session_translation_process_single_job(session_ctx_t *ctx,
@@ -3055,9 +3055,9 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
     }
 
     char *combined =
-        GC_CALLOC(SSH_CHATTER_TRANSLATION_BATCH_BUFFER, sizeof(char));
+        sshc_gc_calloc(SSH_CHATTER_TRANSLATION_BATCH_BUFFER, sizeof(char));
     char *translated =
-        GC_CALLOC(SSH_CHATTER_TRANSLATION_BATCH_BUFFER, sizeof(char));
+        sshc_gc_calloc(SSH_CHATTER_TRANSLATION_BATCH_BUFFER, sizeof(char));
     if (combined == nullptr || translated == nullptr) {
         return false;
     }
@@ -3235,14 +3235,14 @@ static void *session_translation_worker(void *arg)
         translation_job_t *batch[SSH_CHATTER_TRANSLATION_BATCH_MAX] = {0};
         size_t batch_count = 0U;
 
-        pthread_mutex_lock(&ctx->translation_mutex);
+        ttak_mutex_lock(&ctx->translation_mutex);
         while (!ctx->translation_thread_stop &&
                ctx->translation_pending_head == nullptr) {
-            pthread_cond_wait(&ctx->translation_cond, &ctx->translation_mutex);
+            ttak_cond_wait(&ctx->translation_cond, &ctx->translation_mutex);
         }
 
         if (ctx->translation_thread_stop) {
-            pthread_mutex_unlock(&ctx->translation_mutex);
+            ttak_mutex_unlock(&ctx->translation_mutex);
             break;
         }
 
@@ -3255,7 +3255,7 @@ static void *session_translation_worker(void *arg)
             job->next = nullptr;
             batch[batch_count++] = job;
         }
-        pthread_mutex_unlock(&ctx->translation_mutex);
+        ttak_mutex_unlock(&ctx->translation_mutex);
 
         if (batch_count == 0U) {
             continue;
@@ -3271,12 +3271,12 @@ static void *session_translation_worker(void *arg)
 
         if (batch_count == 1U) {
             bool delay_needed = false;
-            pthread_mutex_lock(&ctx->translation_mutex);
+            ttak_mutex_lock(&ctx->translation_mutex);
             if (!ctx->translation_thread_stop &&
                 ctx->translation_pending_head == nullptr) {
                 delay_needed = true;
             }
-            pthread_mutex_unlock(&ctx->translation_mutex);
+            ttak_mutex_unlock(&ctx->translation_mutex);
 
             if (delay_needed) {
                 struct timespec aggregation_delay = {
@@ -3286,7 +3286,7 @@ static void *session_translation_worker(void *arg)
             }
         }
 
-        pthread_mutex_lock(&ctx->translation_mutex);
+        ttak_mutex_lock(&ctx->translation_mutex);
         while (batch_count < SSH_CHATTER_TRANSLATION_BATCH_MAX &&
                ctx->translation_pending_head != nullptr) {
             translation_job_t *candidate = ctx->translation_pending_head;
@@ -3318,7 +3318,7 @@ static void *session_translation_worker(void *arg)
             batch[batch_count++] = candidate;
             estimate += candidate_len;
         }
-        pthread_mutex_unlock(&ctx->translation_mutex);
+        ttak_mutex_unlock(&ctx->translation_mutex);
 
         bool processed = false;
         if (batch_count > 1U) {
@@ -3640,7 +3640,7 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
     }
 
     size_t capacity = length + 16U;
-    char *buffer = (char *)GC_MALLOC(capacity);
+    char *buffer = (char *)sshc_gc_malloc(capacity);
     if (buffer == nullptr) {
         if (normalized_length != nullptr) {
             *normalized_length = length;
@@ -3672,9 +3672,9 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
                 if (new_capacity < needed) {
                     new_capacity = needed + 16U;
                 }
-                char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
                 if (resized == nullptr) {
-                    GC_FREE(buffer);
+                    sshc_gc_free(buffer);
                     if (normalized_length != nullptr) {
                         *normalized_length = length;
                     }
@@ -3692,9 +3692,9 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
                 if (new_capacity < needed) {
                     new_capacity = needed + 16U;
                 }
-                char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
                 if (resized == nullptr) {
-                    GC_FREE(buffer);
+                    sshc_gc_free(buffer);
                     if (normalized_length != nullptr) {
                         *normalized_length = length;
                     }
@@ -3712,7 +3712,7 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
     }
 
     if (!modified) {
-        GC_FREE(buffer);
+        sshc_gc_free(buffer);
         if (normalized_length != nullptr) {
             *normalized_length = length;
         }
@@ -3739,7 +3739,7 @@ session_channel_write_cp437(session_ctx_t *ctx, const char *data, size_t length)
     }
 
     size_t capacity = (length > 0U ? length : 1U) * 4U + 16U;
-    char *buffer = (char *)GC_MALLOC(capacity);
+    char *buffer = (char *)sshc_gc_malloc(capacity);
     if (buffer == nullptr) {
         iconv_close(descriptor);
         return session_channel_write_all(ctx, data, length);
@@ -3767,7 +3767,7 @@ session_channel_write_cp437(session_ctx_t *ctx, const char *data, size_t length)
                 if (new_capacity <= capacity) {
                     new_capacity = capacity + length + 32U;
                 }
-                char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
                 if (resized == nullptr) {
                     fallback_to_plaintext = true;
                     goto cleanup;
@@ -3787,7 +3787,7 @@ session_channel_write_cp437(session_ctx_t *ctx, const char *data, size_t length)
                     if (new_capacity <= capacity) {
                         new_capacity = capacity + length + 32U;
                     }
-                    char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                    char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
                     if (resized == nullptr) {
                         fallback_to_plaintext = true;
                         goto cleanup;
@@ -3819,9 +3819,9 @@ cleanup:
         size_t produced = capacity - output_remaining;
         success = session_channel_write_all(ctx, buffer, produced);
     }
-    GC_FREE(buffer);
+    sshc_gc_free(buffer);
     if (normalized != nullptr) {
-        GC_FREE(normalized);
+        sshc_gc_free(normalized);
     }
     return success;
 }
@@ -3897,7 +3897,7 @@ static bool session_channel_write_codepage(session_ctx_t *ctx, const char *data,
     }
 
     size_t capacity = (length > 0U ? length : 1U) * 4U + 16U;
-    char *buffer = (char *)GC_MALLOC(capacity);
+    char *buffer = (char *)sshc_gc_malloc(capacity);
     if (buffer == nullptr) {
         iconv_close(descriptor);
         return session_channel_write_all(ctx, data, length);
@@ -3929,7 +3929,7 @@ static bool session_channel_write_codepage(session_ctx_t *ctx, const char *data,
                 if (new_capacity <= capacity) {
                     new_capacity = capacity + length + 32U;
                 }
-                char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
                 if (resized == nullptr) {
                     fallback_to_plaintext = true;
                     goto cleanup;
@@ -3949,7 +3949,7 @@ static bool session_channel_write_codepage(session_ctx_t *ctx, const char *data,
                     if (new_capacity <= capacity) {
                         new_capacity = capacity + length + 32U;
                     }
-                    char *resized = (char *)GC_REALLOC(buffer, new_capacity);
+                    char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
                     if (resized == nullptr) {
                         fallback_to_plaintext = true;
                         goto cleanup;
@@ -3981,9 +3981,9 @@ cleanup:
         size_t produced = capacity - output_remaining;
         success = session_channel_write_all(ctx, buffer, produced);
     }
-    GC_FREE(buffer);
+    sshc_gc_free(buffer);
     if (normalized != nullptr) {
-        GC_FREE(normalized);
+        sshc_gc_free(normalized);
     }
     return success;
 }
@@ -3994,7 +3994,7 @@ static bool session_output_lock(session_ctx_t *ctx)
         return false;
     }
 
-    int error = pthread_mutex_lock(&ctx->output_lock);
+    int error = ttak_mutex_lock(&ctx->output_lock);
     if (error != 0) {
         printf("[session] failed to lock output for %s: %s\n",
                (ctx->user.name[0] != '\0') ? ctx->user.name : "unknown",
@@ -4011,7 +4011,7 @@ static void session_output_unlock(session_ctx_t *ctx)
         return;
     }
 
-    int error = pthread_mutex_unlock(&ctx->output_lock);
+    int error = ttak_mutex_unlock(&ctx->output_lock);
     if (error != 0) {
         printf("[session] failed to unlock output for %s: %s\n",
                (ctx->user.name[0] != '\0') ? ctx->user.name : "unknown",
@@ -4253,7 +4253,7 @@ static bool session_channel_write_utf16_segment(session_ctx_t *ctx,
     if (use_stack) {
         buffer = stack_buffer;
     } else {
-        buffer = (unsigned char *)GC_MALLOC(max_output);
+        buffer = (unsigned char *)sshc_gc_malloc(max_output);
         if (buffer == nullptr) {
             return session_channel_write_all(ctx, data, length);
         }
@@ -5703,9 +5703,9 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
     }
 
     if (ctx->chat_message_count < SIZE_MAX) {
-        pthread_mutex_lock(&ctx->chat_message_count_mutex);
+        ttak_mutex_lock(&ctx->chat_message_count_mutex);
         ctx->chat_message_count += 1U;
-        pthread_mutex_unlock(&ctx->chat_message_count_mutex);
+        ttak_mutex_unlock(&ctx->chat_message_count_mutex);
     }
 
     session_scrollback_reset_position(ctx);

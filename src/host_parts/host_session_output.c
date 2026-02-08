@@ -242,7 +242,7 @@ static void session_send_reply_tree(session_ctx_t *ctx,
     host_t *host = ctx->owner;
 
     size_t match_count = 0U;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0U; idx < host->reply_count; ++idx) {
         const chat_reply_entry_t *candidate = &host->replies[idx];
         if (!candidate->in_use) {
@@ -255,13 +255,13 @@ static void session_send_reply_tree(session_ctx_t *ctx,
     }
 
     if (match_count == 0U) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return;
     }
 
-    chat_reply_entry_t *snapshot = GC_CALLOC(match_count, sizeof(*snapshot));
+    chat_reply_entry_t *snapshot = sshc_gc_calloc(match_count, sizeof(*snapshot));
     if (snapshot == nullptr) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return;
     }
 
@@ -277,7 +277,7 @@ static void session_send_reply_tree(session_ctx_t *ctx,
             snapshot[copy_idx++] = *candidate;
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     for (size_t idx = 0U; idx < copy_idx; ++idx) {
         const chat_reply_entry_t *reply = &snapshot[idx];
@@ -441,7 +441,7 @@ int count_unicode_points(const char *str, utf8_code_count_t **counts_out,
     size_t unique_count = 0;
     size_t capacity = 100;
     utf8_code_count_t *counts =
-        (utf8_code_count_t *)calloc(capacity, sizeof(utf8_code_count_t));
+        (utf8_code_count_t *)sshc_gc_calloc(capacity, sizeof(utf8_code_count_t));
 
     if (!counts)
         return -1;
@@ -489,10 +489,10 @@ int count_unicode_points(const char *str, utf8_code_count_t **counts_out,
         if (!found) {
             if (unique_count >= capacity) {
                 capacity *= 2;
-                utf8_code_count_t *new_counts = (utf8_code_count_t *)GC_REALLOC(
+                utf8_code_count_t *new_counts = (utf8_code_count_t *)sshc_gc_realloc(
                     counts, capacity * sizeof(utf8_code_count_t));
                 if (!new_counts) {
-                    GC_FREE(counts);
+                    sshc_gc_free(counts);
                     return -1;
                 }
                 counts = new_counts;
@@ -516,7 +516,7 @@ double calculate_chi_squared(const char *str)
 
     if (N <= 0 || !counts || unique_count == 0) {
         if (counts)
-            GC_FREE(counts);
+            sshc_gc_free(counts);
         return 0.0;
     }
 
@@ -532,7 +532,7 @@ double calculate_chi_squared(const char *str)
         }
     }
 
-    GC_FREE(counts);
+    sshc_gc_free(counts);
     return chi_squared;
 }
 
@@ -2979,14 +2979,14 @@ void session_process_pending_sink(session_ctx_t *ctx)
     size_t start_index = (total > 0U && total > chunk) ? (total - chunk) : 0U;
     // Allocate a temporary buffer to copy the newest history slice.
     chat_history_entry_t *buffer =
-        (chat_history_entry_t *)calloc(chunk, sizeof(chat_history_entry_t));
+        (chat_history_entry_t *)sshc_gc_calloc(chunk, sizeof(chat_history_entry_t));
     if (buffer == nullptr) {
         return;
     }
     size_t copied =
         host_history_copy_range(ctx->owner, start_index, buffer, chunk);
     if (copied == 0U) {
-        free(buffer);
+        sshc_gc_free(buffer);
         return;
     }
 
@@ -3002,7 +3002,7 @@ void session_process_pending_sink(session_ctx_t *ctx)
         session_send_history_entry(ctx, &buffer[idx]);
     }
 
-    free(buffer);
+    sshc_gc_free(buffer);
 
     if (buffering_started) {
         session_output_buffer_stop(ctx);
@@ -3325,7 +3325,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
     session_send_system_line(ctx, header);
 
     buffer_capacity = session_scrollback_line_capacity(ctx);
-    buffer = (chat_history_entry_t *)calloc(buffer_capacity,
+    buffer = (chat_history_entry_t *)sshc_gc_calloc(buffer_capacity,
                                             sizeof(chat_history_entry_t));
     if (buffer == nullptr) {
         goto cleanup;
@@ -3365,7 +3365,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
 
 cleanup:
     if (buffer != nullptr) {
-        free(buffer);
+        sshc_gc_free(buffer);
     }
     if (buffering_started) {
         session_output_buffer_stop(ctx);
@@ -3468,7 +3468,7 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         (newest_visible + 1U > chunk) ? (newest_visible + 1U - chunk) : 0U;
 
     buffer_capacity = session_scrollback_line_capacity(ctx);
-    buffer = (chat_history_entry_t *)calloc(buffer_capacity,
+    buffer = (chat_history_entry_t *)sshc_gc_calloc(buffer_capacity,
                                             sizeof(chat_history_entry_t));
     if (buffer == nullptr) {
         goto cleanup;
@@ -3505,7 +3505,7 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
 
 cleanup:
     if (buffer != nullptr) {
-        free(buffer);
+        sshc_gc_free(buffer);
     }
     if (buffering_started) {
         session_output_buffer_stop(ctx);
@@ -3846,7 +3846,7 @@ static void session_send_multiline_message(session_ctx_t *ctx,
         return;
     }
 
-    char *message_copy = GC_CALLOC(1U, message_len + 1U);
+    char *message_copy = sshc_gc_calloc(1U, message_len + 1U);
     if (message_copy == nullptr) {
         // If allocation fails, split inline without copying
         // This is a fallback path that still preserves the line-by-line behavior
@@ -4091,7 +4091,7 @@ session_send_poll_summary(session_ctx_t *ctx)
     named_poll_state_t named_snapshot[SSH_CHATTER_MAX_NAMED_POLLS];
     size_t named_count = 0U;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     main_snapshot = host->poll;
     for (size_t idx = 0U; idx < SSH_CHATTER_MAX_NAMED_POLLS; ++idx) {
         if (host->named_polls[idx].label[0] == '\0') {
@@ -4102,7 +4102,7 @@ session_send_poll_summary(session_ctx_t *ctx)
             break;
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     session_send_poll_summary_generic(ctx, &main_snapshot, nullptr);
 
@@ -4138,7 +4138,7 @@ static __attribute__((unused)) void session_list_named_polls(session_ctx_t *ctx)
     named_poll_state_t snapshot[SSH_CHATTER_MAX_NAMED_POLLS];
     size_t count = 0U;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0U; idx < SSH_CHATTER_MAX_NAMED_POLLS; ++idx) {
         if (host->named_polls[idx].label[0] == '\0') {
             continue;
@@ -4148,7 +4148,7 @@ static __attribute__((unused)) void session_list_named_polls(session_ctx_t *ctx)
             break;
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (count == 0U) {
         session_send_system_line(
@@ -4292,7 +4292,7 @@ static int session_authenticate(session_ctx_t *ctx)
 
             // Load user data
             bool loaded_by_username = false;
-            pthread_mutex_lock(&ctx->owner->user_data_lock);
+            ttak_mutex_lock(&ctx->owner->user_data_lock);
             if (user_data_load(ctx->owner->user_data_root, ctx->user.name, NULL,
                                &ctx->user_data)) {
                 if (!security_layer_is_zero_hash(
@@ -4307,7 +4307,7 @@ static int session_authenticate(session_ctx_t *ctx)
                                         ctx->user.name, ctx->client_ip,
                                         &ctx->user_data);
             }
-            pthread_mutex_unlock(&ctx->owner->user_data_lock);
+            ttak_mutex_unlock(&ctx->owner->user_data_lock);
 
             // Check if a password is set for this user
             bool password_is_set = !security_layer_is_zero_hash(
@@ -4783,7 +4783,7 @@ static void host_update_last_captcha_prompt(host_t *host,
         combined_question[combined_length] = '\0';
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     snprintf(host->last_captcha_question, sizeof(host->last_captcha_question),
              "%s", combined_question);
     snprintf(host->last_captcha_answer, sizeof(host->last_captcha_answer), "%s",
@@ -4799,7 +4799,7 @@ static void host_update_last_captcha_prompt(host_t *host,
         host->last_captcha_generated.tv_sec = 0;
         host->last_captcha_generated.tv_nsec = 0L;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static bool session_run_captcha(session_ctx_t *ctx)
@@ -5567,7 +5567,7 @@ static void session_handle_ban_list(session_ctx_t *ctx, const char *arguments)
     ban_snapshot_t entries[SSH_CHATTER_MAX_BANS];
     size_t entry_count = 0U;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     entry_count = host->ban_count;
     if (entry_count > SSH_CHATTER_MAX_BANS) {
         entry_count = SSH_CHATTER_MAX_BANS;
@@ -5578,7 +5578,7 @@ static void session_handle_ban_list(session_ctx_t *ctx, const char *arguments)
         snprintf(entries[idx].ip, sizeof(entries[idx].ip), "%s",
                  host->bans[idx].ip);
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (entry_count == 0U) {
         session_send_system_line(ctx, "No active bans.");
@@ -6134,7 +6134,7 @@ static void session_handle_search(session_ctx_t *ctx, const char *arguments)
     listing[0] = '\0';
     size_t match_count = 0U;
 
-    pthread_mutex_lock(&ctx->owner->room.lock);
+    ttak_mutex_lock(&ctx->owner->room.lock);
     for (size_t idx = 0U; idx < ctx->owner->room.member_count; ++idx) {
         session_ctx_t *member = ctx->owner->room.members[idx];
         if (member == nullptr) {
@@ -6162,7 +6162,7 @@ static void session_handle_search(session_ctx_t *ctx, const char *arguments)
         listing[current_len + name_len] = '\0';
         ++match_count;
     }
-    pthread_mutex_unlock(&ctx->owner->room.lock);
+    ttak_mutex_unlock(&ctx->owner->room.lock);
 
     if (match_count == 0U) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
@@ -6200,7 +6200,7 @@ void session_channel_write(session_ctx_t *ctx, const void *data,
 
     bool success = true;
     if (ctx->channel_mutex_initialized) {
-        int lock_result = pthread_mutex_lock(&ctx->channel_mutex);
+        int lock_result = ttak_mutex_lock(&ctx->channel_mutex);
         if (lock_result == 0) {
             // locked = true; // This line was causing a double lock issue.
         } else {
@@ -6230,7 +6230,7 @@ void session_channel_write(session_ctx_t *ctx, const void *data,
     }
 
     if (ctx->channel_mutex_initialized && locked) { // Only unlock if it was successfully locked
-        int unlock_result = pthread_mutex_unlock(&ctx->channel_mutex);
+        int unlock_result = ttak_mutex_unlock(&ctx->channel_mutex);
         if (unlock_result != 0) {
             humanized_log_error("session", "failed to unlock channel mutex",
                                 unlock_result);

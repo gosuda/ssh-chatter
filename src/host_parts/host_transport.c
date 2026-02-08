@@ -557,7 +557,7 @@ host_ensure_connection_guard_locked(host_t *host, const char *ip)
                                   ? host->connection_guard_capacity * 2U
                                   : 16U;
         connection_guard_entry_t *resized =
-            GC_REALLOC(host->connection_guard,
+            sshc_gc_realloc(host->connection_guard,
                        new_capacity * sizeof(connection_guard_entry_t));
         if (resized == nullptr) {
             return nullptr;
@@ -586,12 +586,12 @@ static connection_guard_result_t host_connection_guard_register(host_t *host,
     struct timespec now = {0, 0};
     clock_gettime(CLOCK_MONOTONIC, &now);
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     host_connection_guard_prune_locked(host, &now);
     connection_guard_entry_t *entry =
         host_ensure_connection_guard_locked(host, ip);
     if (entry == nullptr) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return result;
     }
 
@@ -603,7 +603,7 @@ static connection_guard_result_t host_connection_guard_register(host_t *host,
             result.blocked_until = entry->blocked_until;
             result.block_count = entry->block_count;
             result.attempt_count = entry->attempts;
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
             return result;
         }
         entry->blocked_until.tv_sec = 0;
@@ -657,7 +657,7 @@ static connection_guard_result_t host_connection_guard_register(host_t *host,
         }
     }
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     return result;
 }
 
@@ -712,13 +712,13 @@ static void host_maybe_reload_motd_from_file(host_t *host)
     struct timespec last_loaded = {0, 0};
     bool had_file = false;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (host->motd_path[0] != '\0') {
         snprintf(stored_path, sizeof(stored_path), "%s", host->motd_path);
         last_loaded = host->motd_last_modified;
         had_file = host->motd_has_file;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (stored_path[0] == '\0') {
         return;
@@ -748,14 +748,14 @@ static void host_maybe_reload_motd_from_file(host_t *host)
             (void)host_try_load_motd_from_path(host, path_to_try);
         }
         if (had_file) {
-            pthread_mutex_lock(&host->lock);
+            ttak_mutex_lock(&host->lock);
             if (host->motd_has_file && strncmp(host->motd_path, stored_path,
                                                sizeof(host->motd_path)) == 0) {
                 host->motd_has_file = false;
                 host->motd_last_modified.tv_sec = 0;
                 host->motd_last_modified.tv_nsec = 0L;
             }
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
         }
         return;
     }
@@ -812,9 +812,9 @@ static void session_build_captcha_prompt(session_ctx_t *ctx,
 
     host_t *host = (ctx != nullptr) ? ctx->owner : nullptr;
     if (host != nullptr) {
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         uint64_t nonce = ++host->captcha_nonce;
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         entropy ^= (unsigned)nonce;
         entropy ^= (unsigned)(nonce >> 32);
     }
@@ -2325,12 +2325,12 @@ static void session_handle_grant(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    pthread_mutex_lock(&ctx->owner->lock);
+    ttak_mutex_lock(&ctx->owner->lock);
     bool added = host_add_operator_grant_locked(ctx->owner, ip);
     if (added) {
         host_state_save_locked(ctx->owner);
     }
-    pthread_mutex_unlock(&ctx->owner->lock);
+    ttak_mutex_unlock(&ctx->owner->lock);
 
     if (!added) {
         session_send_system_line(ctx, "That IP address already has a grant.");
@@ -3174,7 +3174,7 @@ static void host_state_assign_color_codes(chat_history_entry_t *entry,
 
     if (color_code != nullptr && color_code[0] != '\0') {
         size_t length = strnlen(color_code, SSH_CHATTER_COLOR_CODE_LEN - 1U);
-        char *copy = GC_MALLOC(length + 1U);
+        char *copy = sshc_gc_malloc(length + 1U);
         if (copy != nullptr) {
             memcpy(copy, color_code, length);
             copy[length] = '\0';
@@ -3185,7 +3185,7 @@ static void host_state_assign_color_codes(chat_history_entry_t *entry,
     if (highlight_code != nullptr && highlight_code[0] != '\0') {
         size_t length =
             strnlen(highlight_code, SSH_CHATTER_COLOR_CODE_LEN - 1U);
-        char *copy = GC_MALLOC(length + 1U);
+        char *copy = sshc_gc_malloc(length + 1U);
         if (copy != nullptr) {
             memcpy(copy, highlight_code, length);
             copy[length] = '\0';
@@ -3659,7 +3659,7 @@ static bool chat_room_ensure_capacity(chat_room_t *room, size_t required)
     }
 
     session_ctx_t **resized =
-        GC_REALLOC(room->members, new_capacity * sizeof(*resized));
+        sshc_gc_realloc(room->members, new_capacity * sizeof(*resized));
     if (resized == nullptr) {
         return false;
     }
@@ -3678,7 +3678,7 @@ static void chat_room_init(chat_room_t *room)
     if (room == nullptr) {
         return;
     }
-    pthread_mutex_init(&room->lock, nullptr);
+    ttak_mutex_init(&room->lock);
     room->members = nullptr;
     room->member_count = 0U;
     room->member_capacity = 0U;
@@ -3817,7 +3817,7 @@ session_probe_client_hostkey_algorithms(ssh_session session,
 
     const size_t max_buffer_size = 65536U;
     size_t buffer_size = 16384U;
-    unsigned char *buffer = (unsigned char *)GC_MALLOC(buffer_size);
+    unsigned char *buffer = (unsigned char *)sshc_gc_malloc(buffer_size);
     if (buffer == nullptr) {
         return result;
     }
@@ -3877,7 +3877,7 @@ session_probe_client_hostkey_algorithms(ssh_session session,
                 if (new_size > max_buffer_size) {
                     new_size = max_buffer_size;
                 }
-                unsigned char *resized = GC_REALLOC(buffer, new_size);
+                unsigned char *resized = sshc_gc_realloc(buffer, new_size);
                 if (resized != nullptr) {
                     buffer = resized;
                     buffer_size = new_size;
@@ -3920,7 +3920,7 @@ session_probe_client_hostkey_algorithms(ssh_session session,
                     }
                 }
                 if (new_size > buffer_size) {
-                    unsigned char *resized = GC_REALLOC(buffer, new_size);
+                    unsigned char *resized = sshc_gc_realloc(buffer, new_size);
                     if (resized != nullptr) {
                         buffer = resized;
                         buffer_size = new_size;
@@ -4011,11 +4011,11 @@ session_probe_client_hostkey_algorithms(ssh_session session,
             }
         }
 
-        GC_FREE(buffer);
+        sshc_gc_free(buffer);
         return result;
     }
 
-    GC_FREE(buffer);
+    sshc_gc_free(buffer);
     return result;
 }
 
@@ -4127,10 +4127,10 @@ static void chat_room_add(chat_room_t *room, session_ctx_t *session)
         return;
     }
 
-    pthread_mutex_lock(&room->lock);
+    ttak_mutex_lock(&room->lock);
     for (size_t idx = 0; idx < room->member_count; ++idx) {
         if (room->members[idx] == session) {
-            pthread_mutex_unlock(&room->lock);
+            ttak_mutex_unlock(&room->lock);
             return;
         }
     }
@@ -4139,7 +4139,7 @@ static void chat_room_add(chat_room_t *room, session_ctx_t *session)
     } else {
         humanized_log_error("chat-room", "failed to grow member list", ENOMEM);
     }
-    pthread_mutex_unlock(&room->lock);
+    ttak_mutex_unlock(&room->lock);
 }
 
 /**
@@ -4154,7 +4154,7 @@ static void chat_room_remove(chat_room_t *room, const session_ctx_t *session)
         return;
     }
 
-    pthread_mutex_lock(&room->lock);
+    ttak_mutex_lock(&room->lock);
     for (size_t idx = 0; idx < room->member_count; ++idx) {
         if (room->members[idx] == session) {
             for (size_t shift = idx; shift + 1U < room->member_count; ++shift) {
@@ -4165,7 +4165,7 @@ static void chat_room_remove(chat_room_t *room, const session_ctx_t *session)
             break;
         }
     }
-    pthread_mutex_unlock(&room->lock);
+    ttak_mutex_unlock(&room->lock);
 }
 
 /**
@@ -4184,10 +4184,10 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
     session_ctx_t **targets = nullptr;
     size_t target_count = 0U;
 
-    pthread_mutex_lock(&room->lock);
+    ttak_mutex_lock(&room->lock);
     size_t expected_targets = room->member_count;
     if (expected_targets > 0U) {
-        targets = GC_MALLOC(expected_targets * sizeof(*targets));
+        targets = sshc_gc_malloc(expected_targets * sizeof(*targets));
         if (targets != nullptr) {
             memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
@@ -4199,7 +4199,7 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
             }
         }
     }
-    pthread_mutex_unlock(&room->lock);
+    ttak_mutex_unlock(&room->lock);
 
     if (targets == nullptr && target_count == 0U) {
         return;
@@ -4209,7 +4209,7 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
         session_mark_should_sink(targets[idx]);
     }
 
-    GC_FREE(targets);
+    sshc_gc_free(targets);
 }
 
 /**
@@ -4231,10 +4231,10 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     size_t target_count = 0U;
     size_t expected_targets = 0U;
 
-    pthread_mutex_lock(&room->lock);
+    ttak_mutex_lock(&room->lock);
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
-        targets = GC_MALLOC(expected_targets * sizeof(*targets));
+        targets = sshc_gc_malloc(expected_targets * sizeof(*targets));
         if (targets != nullptr) {
             memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
@@ -4259,7 +4259,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             }
         }
     }
-    pthread_mutex_unlock(&room->lock);
+    ttak_mutex_unlock(&room->lock);
 
     if (targets == nullptr && expected_targets > 0U) {
         humanized_log_error("chat-room", "failed to allocate broadcast buffer",
@@ -4333,7 +4333,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         }
     }
 
-    GC_FREE(targets);
+    sshc_gc_free(targets);
 }
 
 /**
@@ -4353,10 +4353,10 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
     size_t target_count = 0U;
     size_t expected_targets = 0U;
 
-    pthread_mutex_lock(&room->lock);
+    ttak_mutex_lock(&room->lock);
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
-        targets = GC_MALLOC(expected_targets * sizeof(*targets));
+        targets = sshc_gc_malloc(expected_targets * sizeof(*targets));
         if (targets != nullptr) {
             memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
@@ -4378,7 +4378,7 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
             }
         }
     }
-    pthread_mutex_unlock(&room->lock);
+    ttak_mutex_unlock(&room->lock);
 
     if (targets == nullptr && expected_targets > 0U) {
         humanized_log_error("chat-room", "failed to allocate broadcast buffer",
@@ -4421,7 +4421,7 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
 
     // printf("\033[1G[broadcast caption] %s\n", message);
 
-    GC_FREE(targets);
+    sshc_gc_free(targets);
 }
 
 /**
@@ -4450,11 +4450,11 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     session_ctx_t **sink_targets = nullptr;
     size_t sink_count = 0U;
 
-    pthread_mutex_lock(&room->lock);
+    ttak_mutex_lock(&room->lock);
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
-        targets = GC_MALLOC(expected_targets * sizeof(*targets));
-        sink_targets = GC_MALLOC(expected_targets * sizeof(*sink_targets));
+        targets = sshc_gc_malloc(expected_targets * sizeof(*targets));
+        sink_targets = sshc_gc_malloc(expected_targets * sizeof(*sink_targets));
         if (targets != nullptr) {
             memset(targets, 0, expected_targets * sizeof(*targets));
         }
@@ -4487,7 +4487,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             }
         }
     }
-    pthread_mutex_unlock(&room->lock);
+    ttak_mutex_unlock(&room->lock);
 
     if (sink_targets != nullptr && sink_count > 0U) {
         for (size_t idx = 0; idx < sink_count; ++idx) {
@@ -4498,7 +4498,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     if (targets == nullptr && expected_targets > 0U) {
         humanized_log_error(
             "chat-room", "failed to allocate entry broadcast buffer", ENOMEM);
-        GC_FREE(sink_targets);
+        sshc_gc_free(sink_targets);
         return;
     }
 
@@ -4598,8 +4598,8 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         member->capture_realtime_output = previous_capture;
     }
 
-    GC_FREE(targets);
-    GC_FREE(sink_targets);
+    sshc_gc_free(targets);
+    sshc_gc_free(sink_targets);
 }
 
 static void
@@ -4673,7 +4673,7 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
     }
 
     size_t bytes = new_capacity * sizeof(chat_history_entry_t);
-    chat_history_entry_t *resized = GC_REALLOC(host->history, bytes);
+    chat_history_entry_t *resized = sshc_gc_realloc(host->history, bytes);
     if (resized == nullptr) {
         humanized_log_error("host-history",
                             "failed to grow chat history buffer",
@@ -4749,9 +4749,9 @@ static size_t host_history_total(host_t *host)
     }
 
     size_t count = 0U;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     count = host->history_total;
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     return count;
 }
 
@@ -4994,10 +4994,10 @@ static size_t host_history_copy_range(host_t *host, size_t start_index,
     char state_path[PATH_MAX];
     state_path[0] = '\0';
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     size_t total = host->history_total;
     if (start_index >= total) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return 0U;
     }
 
@@ -5033,10 +5033,10 @@ static size_t host_history_copy_range(host_t *host, size_t start_index,
     }
 
     if (cache_portion > 0U) {
-        cached_copy = (chat_history_entry_t *)GC_MALLOC(cache_portion *
+        cached_copy = (chat_history_entry_t *)sshc_gc_malloc(cache_portion *
                                                         sizeof(*cached_copy));
         if (cached_copy == nullptr) {
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
             return 0U;
         }
         cached_offset = cache_begin_index - cache_start;
@@ -5046,19 +5046,19 @@ static size_t host_history_copy_range(host_t *host, size_t start_index,
         cached_count = cache_portion;
     }
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     size_t produced = 0U;
 
     if (before_cache > 0U) {
         if (state_path[0] == '\0') {
-            GC_FREE(cached_copy);
+            sshc_gc_free(cached_copy);
             return 0U;
         }
         size_t fetched = host_state_read_history_range(state_path, start_index,
                                                        buffer, before_cache);
         if (fetched < before_cache) {
-            GC_FREE(cached_copy);
+            sshc_gc_free(cached_copy);
             return fetched;
         }
         produced += fetched;
@@ -5070,7 +5070,7 @@ static size_t host_history_copy_range(host_t *host, size_t start_index,
         produced += cached_count;
     }
 
-    GC_FREE(cached_copy);
+    sshc_gc_free(cached_copy);
     return produced;
 }
 
@@ -5088,7 +5088,7 @@ static bool host_history_find_entry_by_id(host_t *host, uint64_t message_id,
     uint32_t file_version = 0U;
     uint32_t file_history_count = 0U;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (host->history != nullptr) {
         for (size_t idx = 0U; idx < host->history_count; ++idx) {
             const chat_history_entry_t *candidate = &host->history[idx];
@@ -5108,7 +5108,7 @@ static bool host_history_find_entry_by_id(host_t *host, uint64_t message_id,
                      host->state_file_path);
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (found) {
         return true;
@@ -5168,7 +5168,7 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
     uint64_t local_first = 0U;
     uint64_t local_last = 0U;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
 
     chat_history_entry_t *entries = nullptr;
     size_t entry_count = 0U;
@@ -5182,7 +5182,7 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
                                    &file_history_count)) {
             entry_count = (size_t)file_history_count;
             if (entry_count > 0U) {
-                entries = (chat_history_entry_t *)GC_MALLOC(entry_count *
+                entries = (chat_history_entry_t *)sshc_gc_malloc(entry_count *
                                                             sizeof(*entries));
                 if (entries != nullptr) {
                     history_loaded = true;
@@ -5204,10 +5204,10 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
     if (!history_loaded) {
         entry_count = host->history_count;
         if (entry_count > 0U) {
-            entries = (chat_history_entry_t *)GC_MALLOC(entry_count *
+            entries = (chat_history_entry_t *)sshc_gc_malloc(entry_count *
                                                         sizeof(*entries));
             if (entries == nullptr) {
-                pthread_mutex_unlock(&host->lock);
+                ttak_mutex_unlock(&host->lock);
                 return 0U;
             }
             for (size_t idx = 0U; idx < entry_count; ++idx) {
@@ -5218,8 +5218,8 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
     }
 
     if (!history_loaded || (entries == nullptr && entry_count == 0U)) {
-        pthread_mutex_unlock(&host->lock);
-        GC_FREE(entries);
+        ttak_mutex_unlock(&host->lock);
+        sshc_gc_free(entries);
         return 0U;
     }
 
@@ -5249,8 +5249,8 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
     entry_count = write_index;
 
     if (removed == 0U) {
-        pthread_mutex_unlock(&host->lock);
-        GC_FREE(entries);
+        ttak_mutex_unlock(&host->lock);
+        sshc_gc_free(entries);
         return 0U;
     }
 
@@ -5263,8 +5263,8 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
         (entry_count > new_cache_count) ? (entry_count - new_cache_count) : 0U;
 
     if (!host_history_reserve_locked(host, new_cache_count)) {
-        pthread_mutex_unlock(&host->lock);
-        GC_FREE(entries);
+        ttak_mutex_unlock(&host->lock);
+        sshc_gc_free(entries);
         return 0U;
     }
 
@@ -5349,7 +5349,7 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
     host->history_override = nullptr;
     host->history_override_count = 0U;
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (first_removed != nullptr) {
         *first_removed = local_first;
@@ -5361,7 +5361,7 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
         *replies_removed = reply_removed;
     }
 
-    GC_FREE(entries);
+    sshc_gc_free(entries);
     return removed;
 }
 
@@ -5374,7 +5374,7 @@ static bool host_replies_find_entry_by_id(host_t *host, uint64_t reply_id,
 
     bool found = false;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0U; idx < host->reply_count; ++idx) {
         const chat_reply_entry_t *candidate = &host->replies[idx];
         if (!candidate->in_use) {
@@ -5388,7 +5388,7 @@ static bool host_replies_find_entry_by_id(host_t *host, uint64_t reply_id,
         found = true;
         break;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     return found;
 }
@@ -5427,7 +5427,7 @@ static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
     snprintf(entry->user_ip, sizeof(entry->user_ip), "%s", from->client_ip);
     if (from->user_color_code != nullptr && from->user_color_code[0] != '\0') {
         size_t color_len = strlen(from->user_color_code);
-        char *color_copy = GC_MALLOC(color_len + 1U);
+        char *color_copy = sshc_gc_malloc(color_len + 1U);
         if (color_copy != nullptr) {
             memcpy(color_copy, from->user_color_code, color_len + 1U);
             entry->user_color_code = color_copy;
@@ -5439,7 +5439,7 @@ static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
     if (from->user_highlight_code != nullptr &&
         from->user_highlight_code[0] != '\0') {
         size_t highlight_len = strlen(from->user_highlight_code);
-        char *highlight_copy = GC_MALLOC(highlight_len + 1U);
+        char *highlight_copy = sshc_gc_malloc(highlight_len + 1U);
         if (highlight_copy != nullptr) {
             memcpy(highlight_copy, from->user_highlight_code,
                    highlight_len + 1U);
@@ -5475,7 +5475,7 @@ static bool host_history_commit_entry(host_t *host, chat_history_entry_t *entry,
         return false;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (entry->is_user_message) {
         if (host->next_message_id == 0U) {
             host->next_message_id = 1U;
@@ -5486,7 +5486,7 @@ static bool host_history_commit_entry(host_t *host, chat_history_entry_t *entry,
     }
 
     if (!host_history_append_locked(host, entry)) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return false;
     }
 
@@ -5494,7 +5494,7 @@ static bool host_history_commit_entry(host_t *host, chat_history_entry_t *entry,
         *stored_entry = *entry;
     }
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     return true;
 }
 
@@ -5507,9 +5507,9 @@ static bool host_replies_commit_entry(host_t *host, chat_reply_entry_t *entry,
 
     bool committed = false;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (host->reply_count >= SSH_CHATTER_MAX_REPLIES) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return false;
     }
 
@@ -5539,7 +5539,7 @@ static bool host_replies_commit_entry(host_t *host, chat_reply_entry_t *entry,
 
     committed = true;
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     return committed;
 }
 
@@ -5618,10 +5618,10 @@ static void host_history_cleanup_expired(host_t *host)
     // Calculate expiration threshold: 3 days ago
     const time_t expiration_threshold = now - (3 * 24 * 60 * 60);
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
 
     if (host->history == nullptr || host->history_count == 0U) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return;
     }
 
@@ -5654,7 +5654,7 @@ static void host_history_cleanup_expired(host_t *host)
         }
     }
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
@@ -5668,9 +5668,9 @@ static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
 
     bool applied = false;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (host->history == nullptr) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return false;
     }
     for (size_t idx = 0U; idx < host->history_count; ++idx) {
@@ -5694,7 +5694,7 @@ static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
         applied = true;
         break;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     return applied;
 }
@@ -5844,7 +5844,7 @@ static void host_store_user_theme(host_t *host, session_ctx_t *ctx)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
@@ -5880,7 +5880,7 @@ static void host_store_user_theme(host_t *host, session_ctx_t *ctx)
         (void)session_user_data_commit(ctx);
     }
     host_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static void host_store_system_theme(host_t *host, const session_ctx_t *ctx)
@@ -5889,7 +5889,7 @@ static void host_store_system_theme(host_t *host, const session_ctx_t *ctx)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
@@ -5904,7 +5904,7 @@ static void host_store_system_theme(host_t *host, const session_ctx_t *ctx)
         pref->system_is_bold = ctx->system_is_bold;
     }
     host_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static void host_store_user_os(host_t *host, const session_ctx_t *ctx)
@@ -5913,14 +5913,14 @@ static void host_store_user_os(host_t *host, const session_ctx_t *ctx)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
         snprintf(pref->os_name, sizeof(pref->os_name), "%s", ctx->os_name);
     }
     host_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static void host_store_birthday(host_t *host, const session_ctx_t *ctx,
@@ -5930,7 +5930,7 @@ static void host_store_birthday(host_t *host, const session_ctx_t *ctx,
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
@@ -5939,7 +5939,7 @@ static void host_store_birthday(host_t *host, const session_ctx_t *ctx,
     }
     host_state_save_locked(host);
     host_refresh_motd_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static void host_store_chat_spacing(host_t *host, const session_ctx_t *ctx)
@@ -5948,7 +5948,7 @@ static void host_store_chat_spacing(host_t *host, const session_ctx_t *ctx)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
@@ -5960,7 +5960,7 @@ static void host_store_chat_spacing(host_t *host, const session_ctx_t *ctx)
         }
     }
     host_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static void host_store_translation_preferences(host_t *host,
@@ -5970,7 +5970,7 @@ static void host_store_translation_preferences(host_t *host,
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
@@ -5986,7 +5986,7 @@ static void host_store_translation_preferences(host_t *host,
                  ctx->input_translation_language);
     }
     host_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static void host_store_breaking_alerts(host_t *host, const session_ctx_t *ctx)
@@ -5995,14 +5995,14 @@ static void host_store_breaking_alerts(host_t *host, const session_ctx_t *ctx)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name, "");
     if (pref != nullptr) {
         pref->breaking_alerts_enabled = ctx->breaking_alerts_enabled;
     }
     host_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 void host_store_ui_language(host_t *host, const session_ctx_t *ctx)
@@ -6011,7 +6011,7 @@ void host_store_ui_language(host_t *host, const session_ctx_t *ctx)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     user_preference_t *pref =
         host_ensure_preference_locked(host, ctx->user.name, ctx->client_ip);
     if (pref != nullptr) {
@@ -6030,7 +6030,7 @@ void host_store_ui_language(host_t *host, const session_ctx_t *ctx)
     }
     host_state_save_locked(host);
     host_ui_language_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static bool host_ip_has_grant_locked(host_t *host, const char *ip)
@@ -6077,9 +6077,9 @@ static bool host_ip_has_grant(host_t *host, const char *ip)
     }
 
     bool result = false;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     result = host_ip_has_grant_locked(host, ip);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     return result;
 }
 
@@ -6092,9 +6092,9 @@ static void host_apply_grant_to_ip(host_t *host, const char *ip)
     session_ctx_t **matches = nullptr;
     size_t match_count = 0U;
 
-    pthread_mutex_lock(&host->room.lock);
+    ttak_mutex_lock(&host->room.lock);
     if (host->room.member_count > 0U) {
-        matches = GC_CALLOC(host->room.member_count, sizeof(*matches));
+        matches = sshc_gc_calloc(host->room.member_count, sizeof(*matches));
         if (matches != nullptr) {
             for (size_t idx = 0U; idx < host->room.member_count; ++idx) {
                 session_ctx_t *member = host->room.members[idx];
@@ -6110,7 +6110,7 @@ static void host_apply_grant_to_ip(host_t *host, const char *ip)
             }
         }
     }
-    pthread_mutex_unlock(&host->room.lock);
+    ttak_mutex_unlock(&host->room.lock);
 
     if (matches == nullptr) {
         return;
@@ -6157,10 +6157,10 @@ static void host_revoke_grant_from_ip(host_t *host, const char *ip)
     session_ctx_t **matches = nullptr;
     size_t match_count = 0U;
 
-    pthread_mutex_lock(&host->room.lock);
+    ttak_mutex_lock(&host->room.lock);
     if (host->room.member_count > 0U) {
         session_ctx_t **allocated =
-            GC_CALLOC(host->room.member_count, sizeof(*allocated));
+            sshc_gc_calloc(host->room.member_count, sizeof(*allocated));
         if (allocated != nullptr) {
             matches = allocated;
         }
@@ -6185,7 +6185,7 @@ static void host_revoke_grant_from_ip(host_t *host, const char *ip)
             }
         }
     }
-    pthread_mutex_unlock(&host->room.lock);
+    ttak_mutex_unlock(&host->room.lock);
 
     if (matches == nullptr) {
         return;
@@ -6211,13 +6211,13 @@ static bool host_lookup_user_os(host_t *host, const char *username,
 
     bool found = false;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     user_preference_t *pref = host_find_preference_locked(host, username, "");
     if (pref != nullptr && pref->os_name[0] != '\0') {
         snprintf(buffer, length, "%s", pref->os_name);
         found = true;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (found) {
         return true;

@@ -1755,14 +1755,14 @@ static void session_game_othello_finish_multiplayer(
     session_ctx_t *players[2] = {nullptr, nullptr};
     othello_game_state_t snapshot = {0};
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (slot->in_use) {
         snapshot = slot->state;
         players[0] = slot->players[0];
         players[1] = slot->players[1];
         host_othello_release_slot_locked(host, slot);
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     const char *reasons[2] = {reason_p1, reason_p2};
 
@@ -1873,7 +1873,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
         if (strcmp(working, "quit") == 0 || strcmp(working, "resign") == 0 ||
             strcmp(working, "exit") == 0) {
             if (session_state->slot_index > 0) {
-                pthread_mutex_lock(&host->lock);
+                ttak_mutex_lock(&host->lock);
                 othello_multiplayer_slot_t *slot =
                     host_othello_slot_by_id_locked(host,
                                                    session_state->slot_index);
@@ -1881,7 +1881,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
                     slot->players[0] == ctx) {
                     host_othello_release_slot_locked(host, slot);
                 }
-                pthread_mutex_unlock(&host->lock);
+                ttak_mutex_unlock(&host->lock);
             }
             session_state->multiplayer = false;
             session_state->awaiting_mode_selection = false;
@@ -1905,11 +1905,11 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     othello_multiplayer_slot_t *slot =
         host_othello_slot_by_id_locked(host, session_state->slot_index);
     if (slot == nullptr || !slot->in_use) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "This multiplayer game has ended.");
         session_state->multiplayer = false;
         session_game_suspend(ctx, "Game suspended.");
@@ -1924,7 +1924,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
     }
 
     if (player_index >= 2U) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "You are no longer part of this game.");
         session_state->multiplayer = false;
         session_game_suspend(ctx, "Game suspended.");
@@ -1932,14 +1932,14 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
     }
 
     if (!slot->active) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(
             ctx, "Waiting for another player to accept the game.");
         return;
     }
 
     if (slot->state.game_over) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_game_othello_finish_multiplayer(host, slot, nullptr, nullptr);
         return;
     }
@@ -1952,7 +1952,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
     bool my_turn = (player_index == 0U) ? slot->state.player_turn
                                         : !slot->state.player_turn;
     if (!my_turn) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "Please wait for your turn.");
         return;
     }
@@ -1965,7 +1965,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
         unsigned my_moves = session_game_othello_collect_moves(
             &slot->state, my_color, nullptr, 0U);
         if (my_moves > 0U) {
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
             session_send_system_line(ctx,
                                      "You still have legal moves available.");
             return;
@@ -1991,7 +1991,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
         }
 
         othello_game_state_t snapshot = slot->state;
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         if (finish) {
             session_game_othello_finish_multiplayer(host, slot,
@@ -2026,7 +2026,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
         slot->state.game_over = true;
         session_game_othello_count_scores(&slot->state, &slot->state.red_score,
                                           &slot->state.green_score);
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         char self_reason[64];
         char opp_reason[64];
@@ -2055,7 +2055,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
     }
 
     if (!session_game_othello_in_bounds(row, col)) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "Invalid move. Use coordinates like d3.");
         return;
     }
@@ -2063,7 +2063,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
     int flips =
         session_game_othello_count_flips(&slot->state, row, col, my_color);
     if (flips <= 0) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "That square is not a legal move.");
         return;
     }
@@ -2104,7 +2104,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
     session_game_othello_format_coordinate(row, col, coord, sizeof(coord));
 
     othello_game_state_t snapshot = slot->state;
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (finish) {
         session_game_othello_finish_multiplayer(
@@ -2168,11 +2168,11 @@ bool session_game_othello_handle_forced_exit(session_ctx_t *ctx)
     }
 
     host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     othello_multiplayer_slot_t *slot =
         host_othello_slot_by_id_locked(host, state->slot_index);
     if (slot == nullptr || !slot->in_use || !slot->active) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return false;
     }
 
@@ -2184,14 +2184,14 @@ bool session_game_othello_handle_forced_exit(session_ctx_t *ctx)
     } else if (is_player_two) {
         opponent = slot->players[0];
     } else {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return false;
     }
 
     slot->state.game_over = true;
     session_game_othello_count_scores(&slot->state, &slot->state.red_score,
                                       &slot->state.green_score);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     const char *resigner_name =
         (ctx->user.name[0] != '\0') ? ctx->user.name : "Opponent";
@@ -2322,9 +2322,9 @@ static void session_game_othello_finish(session_ctx_t *ctx, const char *reason)
         host_t *host = ctx->owner;
         othello_multiplayer_slot_t *slot = nullptr;
         if (host != nullptr && state->slot_index > 0) {
-            pthread_mutex_lock(&host->lock);
+            ttak_mutex_lock(&host->lock);
             slot = host_othello_slot_by_id_locked(host, state->slot_index);
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
         }
 
         if (host != nullptr && slot != nullptr) {
@@ -2586,9 +2586,9 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
             }
 
             size_t member_count = 0U;
-            pthread_mutex_lock(&ctx->owner->room.lock);
+            ttak_mutex_lock(&ctx->owner->room.lock);
             member_count = ctx->owner->room.member_count;
-            pthread_mutex_unlock(&ctx->owner->room.lock);
+            ttak_mutex_unlock(&ctx->owner->room.lock);
 
             if (member_count < 2U) {
                 session_send_system_line(
@@ -2599,14 +2599,14 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
 
             othello_multiplayer_slot_t *slot = nullptr;
             int slot_id = -1;
-            pthread_mutex_lock(&ctx->owner->lock);
+            ttak_mutex_lock(&ctx->owner->lock);
             slot =
                 host_othello_allocate_slot_locked(ctx->owner, ctx->user.name);
             if (slot != nullptr) {
                 slot->players[0] = ctx;
                 slot_id = (int)slot->slot_id;
             }
-            pthread_mutex_unlock(&ctx->owner->lock);
+            ttak_mutex_unlock(&ctx->owner->lock);
 
             if (slot == nullptr) {
                 session_send_system_line(
@@ -2838,7 +2838,7 @@ static void session_othello_list_games(session_ctx_t *ctx)
     char owners[SSH_CHATTER_OTHELLO_MAX_SLOTS][SSH_CHATTER_USERNAME_LEN];
     size_t count = 0U;
 
-    pthread_mutex_lock(&ctx->owner->lock);
+    ttak_mutex_lock(&ctx->owner->lock);
     for (size_t idx = 0U; idx < SSH_CHATTER_OTHELLO_MAX_SLOTS; ++idx) {
         othello_multiplayer_slot_t *slot = &ctx->owner->othello_games[idx];
         if (!slot->in_use || slot->active || !slot->awaiting_second_player) {
@@ -2855,7 +2855,7 @@ static void session_othello_list_games(session_ctx_t *ctx)
             ++count;
         }
     }
-    pthread_mutex_unlock(&ctx->owner->lock);
+    ttak_mutex_unlock(&ctx->owner->lock);
 
     if (count == 0U) {
         session_send_system_line(
@@ -2894,18 +2894,18 @@ static void session_othello_accept_game(session_ctx_t *ctx, unsigned slot_id)
     }
 
     host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     othello_multiplayer_slot_t *slot =
         host_othello_slot_by_id_locked(host, (int)slot_id);
     if (slot == nullptr || !slot->in_use || slot->active ||
         !slot->awaiting_second_player) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "That game is not available.");
         return;
     }
 
     if (slot->players[0] == ctx) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "You cannot accept your own game.");
         return;
     }
@@ -2915,7 +2915,7 @@ static void session_othello_accept_game(session_ctx_t *ctx, unsigned slot_id)
         creator->game.type != SESSION_GAME_OTHELLO ||
         !creator->game.othello.multiplayer) {
         host_othello_release_slot_locked(host, slot);
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "That game is no longer available.");
         return;
     }
@@ -2941,7 +2941,7 @@ static void session_othello_accept_game(session_ctx_t *ctx, unsigned slot_id)
     slot->active = true;
 
     othello_game_state_t snapshot = slot->state;
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     session_game_seed_rng(player_two);
 
@@ -6359,9 +6359,9 @@ static void session_handle_motd(session_ctx_t *ctx)
 
     host_refresh_motd(ctx->owner);
 
-    pthread_mutex_lock(&ctx->owner->lock);
+    ttak_mutex_lock(&ctx->owner->lock);
     const char *motd_to_display = ctx->owner->motd;
-    pthread_mutex_unlock(&ctx->owner->lock);
+    ttak_mutex_unlock(&ctx->owner->lock);
 
     if (motd_to_display[0] != '\0') {
         session_send_raw_text(ctx, motd_to_display);
@@ -7132,7 +7132,7 @@ static size_t session_weather_write_callback(void *contents, size_t size,
         return 0U;
     }
 
-    char *resized = GC_REALLOC(buffer->data, buffer->length + total + 1U);
+    char *resized = sshc_gc_realloc(buffer->data, buffer->length + total + 1U);
     if (resized == nullptr) {
         return 0U;
     }
@@ -7948,9 +7948,9 @@ static void session_handle_captcha(session_ctx_t *ctx, const char *arguments)
                      ctx->user.name);
             host_history_record_system(host, notice, nullptr);
             chat_room_broadcast(&host->room, notice, nullptr);
-            pthread_mutex_lock(&host->lock);
+            ttak_mutex_lock(&host->lock);
             host_state_save_locked(host);
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
         }
         return;
     }
@@ -7967,9 +7967,9 @@ static void session_handle_captcha(session_ctx_t *ctx, const char *arguments)
                  ctx->user.name);
         host_history_record_system(host, notice, nullptr);
         chat_room_broadcast(&host->room, notice, nullptr);
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         host_state_save_locked(host);
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
     }
     return;
 }
@@ -8037,9 +8037,9 @@ static void session_handle_geo_language(session_ctx_t *ctx,
                  ctx->user.name);
         host_history_record_system(host, notice, nullptr);
         chat_room_broadcast(&host->room, notice, nullptr);
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         host_state_save_locked(host);
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return;
     }
 
@@ -8057,9 +8057,9 @@ static void session_handle_geo_language(session_ctx_t *ctx,
              ctx->user.name);
     host_history_record_system(host, notice, nullptr);
     chat_room_broadcast(&host->room, notice, nullptr);
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     host_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static void session_handle_eliza(session_ctx_t *ctx, const char *arguments)

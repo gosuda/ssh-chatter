@@ -24,7 +24,7 @@ typedef struct json_api_client {
     pthread_t thread;
     bool thread_initialized;
     _Atomic bool stop;
-    pthread_mutex_t write_lock;
+    ttak_mutex_t write_lock;
     bool write_lock_initialized;
     char peer_ip[SSH_CHATTER_IP_LEN];
     bool authenticated;
@@ -120,7 +120,7 @@ static void json_builder_free(json_builder_t *builder)
         return;
     }
     if (builder->data != nullptr) {
-        free(builder->data);
+        sshc_gc_free(builder->data);
     }
     builder->data = nullptr;
     builder->len = 0U;
@@ -140,7 +140,7 @@ static bool json_builder_reserve(json_builder_t *builder, size_t extra)
     while (new_cap < required) {
         new_cap *= 2U;
     }
-    char *next = (char *)realloc(builder->data, new_cap);
+    char *next = (char *)sshc_gc_realloc(builder->data, new_cap);
     if (next == nullptr) {
         return false;
     }
@@ -386,7 +386,7 @@ static char *json_api_escape_string(const char *input)
 
     size_t length = strlen(input);
     size_t max_len = length * 6U + 1U;
-    char *output = (char *)malloc(max_len);
+    char *output = (char *)sshc_gc_malloc(max_len);
     if (output == nullptr) {
         return nullptr;
     }
@@ -723,7 +723,7 @@ static bool json_api_send_line(json_api_client_t *client, const char *line)
         return false;
     }
 
-    pthread_mutex_lock(&client->write_lock);
+    ttak_mutex_lock(&client->write_lock);
     size_t length = strlen(line);
     size_t offset = 0U;
     bool success = true;
@@ -745,7 +745,7 @@ static bool json_api_send_line(json_api_client_t *client, const char *line)
         }
     }
 
-    pthread_mutex_unlock(&client->write_lock);
+    ttak_mutex_unlock(&client->write_lock);
     return success;
 }
 
@@ -793,7 +793,7 @@ static void json_api_send_response(json_api_client_t *client,
     }
 
     json_builder_free(&builder);
-    free(escaped_message);
+    sshc_gc_free(escaped_message);
 }
 
 static const char *json_api_attachment_type_label(chat_attachment_type_t type)
@@ -828,10 +828,10 @@ static void json_api_on_message(client_connection_t *connection,
 
     if (escaped_username == nullptr || escaped_message == nullptr ||
         escaped_target == nullptr || escaped_caption == nullptr) {
-        free(escaped_username);
-        free(escaped_message);
-        free(escaped_target);
-        free(escaped_caption);
+        sshc_gc_free(escaped_username);
+        sshc_gc_free(escaped_message);
+        sshc_gc_free(escaped_target);
+        sshc_gc_free(escaped_caption);
         return;
     }
 
@@ -861,10 +861,10 @@ static void json_api_on_message(client_connection_t *connection,
     }
 
     json_builder_free(&builder);
-    free(escaped_username);
-    free(escaped_message);
-    free(escaped_target);
-    free(escaped_caption);
+    sshc_gc_free(escaped_username);
+    sshc_gc_free(escaped_message);
+    sshc_gc_free(escaped_target);
+    sshc_gc_free(escaped_caption);
 }
 
 static void json_api_on_detach(client_connection_t *connection)
@@ -1020,7 +1020,7 @@ static char *json_api_build_poll_json(const poll_state_t *poll)
         char *escaped_option = json_api_escape_string(poll->options[idx].text);
         if (escaped_option == nullptr) {
             json_builder_free(&builder);
-            free(escaped_question);
+            sshc_gc_free(escaped_question);
             return nullptr;
         }
         json_builder_append(&builder,
@@ -1028,11 +1028,11 @@ static char *json_api_build_poll_json(const poll_state_t *poll)
                             "\"votes\":%u}",
                             idx == 0U ? "" : ",", idx + 1U, escaped_option,
                             poll->options[idx].votes);
-        free(escaped_option);
+        sshc_gc_free(escaped_option);
     }
 
     json_builder_append(&builder, "]}");
-    free(escaped_question);
+    sshc_gc_free(escaped_question);
 
     if (builder.data == nullptr) {
         json_builder_free(&builder);
@@ -1051,15 +1051,15 @@ static char *json_api_build_named_poll_json(const named_poll_state_t *poll)
     char *escaped_label = json_api_escape_string(poll->label);
     char *escaped_owner = json_api_escape_string(poll->owner);
     if (escaped_label == nullptr || escaped_owner == nullptr) {
-        free(escaped_label);
-        free(escaped_owner);
+        sshc_gc_free(escaped_label);
+        sshc_gc_free(escaped_owner);
         return nullptr;
     }
 
     char *poll_json = json_api_build_poll_json(&poll->poll);
     if (poll_json == nullptr) {
-        free(escaped_label);
-        free(escaped_owner);
+        sshc_gc_free(escaped_label);
+        sshc_gc_free(escaped_owner);
         return nullptr;
     }
 
@@ -1070,9 +1070,9 @@ static char *json_api_build_named_poll_json(const named_poll_state_t *poll)
                         "\"poll\":%s}",
                         escaped_label, escaped_owner, poll_json);
 
-    free(escaped_label);
-    free(escaped_owner);
-    free(poll_json);
+    sshc_gc_free(escaped_label);
+    sshc_gc_free(escaped_owner);
+    sshc_gc_free(poll_json);
 
     if (builder.data == nullptr) {
         json_builder_free(&builder);
@@ -1091,14 +1091,14 @@ static char *json_api_build_named_poll_list(host_t *host)
     named_poll_state_t snapshot[SSH_CHATTER_MAX_NAMED_POLLS];
     size_t count = 0U;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0U; idx < SSH_CHATTER_MAX_NAMED_POLLS; ++idx) {
         if (host->named_polls[idx].label[0] == '\0') {
             continue;
         }
         snapshot[count++] = host->named_polls[idx];
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     json_builder_t builder;
     json_builder_init(&builder);
@@ -1109,8 +1109,8 @@ static char *json_api_build_named_poll_list(host_t *host)
         char *escaped_question =
             json_api_escape_string(snapshot[idx].poll.question);
         if (escaped_label == nullptr || escaped_question == nullptr) {
-            free(escaped_label);
-            free(escaped_question);
+            sshc_gc_free(escaped_label);
+            sshc_gc_free(escaped_question);
             json_builder_free(&builder);
             return nullptr;
         }
@@ -1123,8 +1123,8 @@ static char *json_api_build_named_poll_list(host_t *host)
                             snapshot[idx].poll.allow_multiple ? "true" :
                                                                      "false",
                             escaped_question, snapshot[idx].poll.option_count);
-        free(escaped_label);
-        free(escaped_question);
+        sshc_gc_free(escaped_label);
+        sshc_gc_free(escaped_question);
     }
 
     json_builder_append(&builder, "]");
@@ -1149,9 +1149,9 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
     if (action == nullptr || strcmp(action, "status") == 0 ||
         strcmp(action, "list") == 0) {
         poll_state_t snapshot = {0};
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         snapshot = host->poll;
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         char *poll_json = json_api_build_poll_json(&snapshot);
         if (poll_json == nullptr) {
@@ -1166,7 +1166,7 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
         json_api_send_response(client, request, true, "poll summary",
                                result.data);
         json_builder_free(&result);
-        free(poll_json);
+        sshc_gc_free(poll_json);
         return true;
     }
 
@@ -1179,13 +1179,13 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
         }
 
         bool was_active = false;
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         if (host->poll.active) {
             host->poll.active = false;
             was_active = true;
             host_vote_state_save_locked(host);
         }
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         if (!was_active) {
             json_api_send_response(client, request, false,
@@ -1212,10 +1212,10 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
         char response[SSH_CHATTER_MESSAGE_LIMIT];
         response[0] = '\0';
 
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         poll_state_t *poll = &host->poll;
         if (!poll->active || poll->option_count == 0U) {
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
             json_api_send_response(client, request, false,
                                    "No active poll right now.", nullptr);
             return false;
@@ -1223,7 +1223,7 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
 
         size_t option_index = request->choice - 1U;
         if (option_index >= poll->option_count) {
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
             json_api_send_response(client, request, false,
                                    "That poll option does not exist.",
                                    nullptr);
@@ -1233,7 +1233,7 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
         user_preference_t *pref = host_ensure_preference_locked(
             host, request->username, client->peer_ip);
         if (pref == nullptr) {
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
             json_api_send_response(client, request, false,
                                    "Unable to record your vote.", nullptr);
             return false;
@@ -1267,7 +1267,7 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
         } else {
             int32_t previous = pref->last_poll_choice;
             if (previous == (int32_t)option_index) {
-                pthread_mutex_unlock(&host->lock);
+                ttak_mutex_unlock(&host->lock);
                 json_api_send_response(client, request, false,
                                        "You have already voted for that "
                                        "option.",
@@ -1287,7 +1287,7 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
         pref->last_poll_id = poll->id;
         host_vote_state_save_locked(host);
         host_state_save_locked(host);
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         json_api_send_response(client, request, true,
                                response[0] != '\0' ? response
@@ -1311,7 +1311,7 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
     }
 
     poll_state_t snapshot = {0};
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     uint64_t next_id = host->poll.id + 1U;
     poll_state_reset(&host->poll);
     host->poll.active = true;
@@ -1328,7 +1328,7 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
     }
     host_vote_state_save_locked(host);
     snapshot = host->poll;
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(notice, sizeof(notice), "* [%s] started a poll: %s",
@@ -1347,7 +1347,7 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
     json_builder_append(&result, "{\"poll\":%s}", poll_json);
     json_api_send_response(client, request, true, "poll started", result.data);
     json_builder_free(&result);
-    free(poll_json);
+    sshc_gc_free(poll_json);
     return true;
 }
 
@@ -1373,7 +1373,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
         json_builder_append(&result, "{\"polls\":%s}", list_json);
         json_api_send_response(client, request, true, "poll list", result.data);
         json_builder_free(&result);
-        free(list_json);
+        sshc_gc_free(list_json);
         return true;
     }
 
@@ -1394,14 +1394,14 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
     if (strcmp(action, "status") == 0) {
         named_poll_state_t snapshot = {0};
         bool found = false;
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         named_poll_state_t *poll = host_find_named_poll_locked(host,
                                                                request->label);
         if (poll != nullptr) {
             snapshot = *poll;
             found = true;
         }
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         if (!found) {
             json_api_send_response(client, request, false,
@@ -1421,7 +1421,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
         json_api_send_response(client, request, true, "poll summary",
                                result.data);
         json_builder_free(&result);
-        free(poll_json);
+        sshc_gc_free(poll_json);
         return true;
     }
 
@@ -1430,7 +1430,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
         bool closed = false;
         bool allowed = false;
         bool found = false;
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         named_poll_state_t *poll = host_find_named_poll_locked(host,
                                                                request->label);
         if (poll != nullptr) {
@@ -1444,7 +1444,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
                 host_vote_state_save_locked(host);
             }
         }
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         if (!found) {
             json_api_send_response(client, request, false,
@@ -1483,12 +1483,12 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
         char response[SSH_CHATTER_MESSAGE_LIMIT];
         response[0] = '\0';
 
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         named_poll_state_t *poll = host_find_named_poll_locked(host,
                                                                request->label);
         if (poll == nullptr || !poll->poll.active ||
             poll->poll.option_count == 0U) {
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
             json_api_send_response(client, request, false,
                                    "That poll is not active.", nullptr);
             return false;
@@ -1496,7 +1496,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
 
         size_t option_index = request->choice - 1U;
         if (option_index >= poll->poll.option_count) {
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
             json_api_send_response(client, request, false,
                                    "That poll option does not exist.",
                                    nullptr);
@@ -1552,7 +1552,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
                 }
             } else {
                 if (poll->voter_count >= SSH_CHATTER_MAX_NAMED_VOTERS) {
-                    pthread_mutex_unlock(&host->lock);
+                    ttak_mutex_unlock(&host->lock);
                     json_api_send_response(client, request, false,
                                            "That poll has reached its voter "
                                            "limit.",
@@ -1573,7 +1573,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
             if (voter_index >= 0) {
                 int previous = poll->voters[voter_index].choice;
                 if (previous == (int)option_index) {
-                    pthread_mutex_unlock(&host->lock);
+                    ttak_mutex_unlock(&host->lock);
                     json_api_send_response(client, request, false,
                                            "You have already voted for that "
                                            "option.",
@@ -1592,7 +1592,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
                          "Vote recorded for option %zu.", option_index + 1U);
             } else {
                 if (poll->voter_count >= SSH_CHATTER_MAX_NAMED_VOTERS) {
-                    pthread_mutex_unlock(&host->lock);
+                    ttak_mutex_unlock(&host->lock);
                     json_api_send_response(client, request, false,
                                            "That poll has reached its voter "
                                            "limit.",
@@ -1612,7 +1612,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
         }
 
         host_vote_state_save_locked(host);
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         json_api_send_response(client, request, true,
                                response[0] != '\0' ? response
@@ -1631,7 +1631,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
     named_poll_state_t snapshot = {0};
     bool created = false;
     bool allowed = true;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     named_poll_state_t *poll = host_ensure_named_poll_locked(host,
                                                              request->label);
     if (poll == nullptr) {
@@ -1665,7 +1665,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
         snapshot = *poll;
         created = true;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (!allowed) {
         json_api_send_response(client, request, false,
@@ -1695,7 +1695,7 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
         json_api_send_response(client, request, true, "poll started",
                                result.data);
         json_builder_free(&result);
-        free(poll_json);
+        sshc_gc_free(poll_json);
     }
 
     return true;
@@ -1726,7 +1726,7 @@ static void json_api_handle_login(json_api_client_t *client, const json_api_requ
     json_api_send_response(client, request, true, "Login successful", result.data);
     
     json_builder_free(&result);
-    free(token);
+    sshc_gc_free(token);
 }
 
 static void json_api_handle_auth(json_api_client_t *client, const json_api_request_t *request) {
@@ -1741,7 +1741,7 @@ static void json_api_handle_auth(json_api_client_t *client, const json_api_reque
     if (jwt_verify(client->host->jwt_secret, request->token, &username)) {
         client->authenticated = true;
         snprintf(client->username, sizeof(client->username), "%s", username ? username : "unknown");
-        free(username);
+        sshc_gc_free(username);
         json_api_send_response(client, request, true, "Authenticated", nullptr);
     } else {
         json_api_send_response(client, request, false, "Invalid or expired token", nullptr);
@@ -1963,11 +1963,11 @@ static void *json_api_client_thread(void *arg)
     }
 
     if (client->write_lock_initialized) {
-        pthread_mutex_destroy(&client->write_lock);
+        ttak_mutex_destroy(&client->write_lock);
         client->write_lock_initialized = false;
     }
 
-    free(client);
+    sshc_gc_free(client);
     return nullptr;
 }
 
@@ -1981,7 +1981,7 @@ static json_api_client_t *json_api_client_create(host_t *host,
     }
 
     json_api_client_t *client =
-        (json_api_client_t *)malloc(sizeof(json_api_client_t));
+        (json_api_client_t *)sshc_gc_malloc(sizeof(json_api_client_t));
     if (client == nullptr) {
         return nullptr;
     }
@@ -1993,8 +1993,8 @@ static json_api_client_t *json_api_client_create(host_t *host,
     snprintf(client->peer_ip, sizeof(client->peer_ip), "%s",
              peer_ip != nullptr ? peer_ip : "");
 
-    if (pthread_mutex_init(&client->write_lock, nullptr) != 0) {
-        free(client);
+    if (ttak_mutex_init(&client->write_lock) != 0) {
+        sshc_gc_free(client);
         return nullptr;
     }
     client->write_lock_initialized = true;
@@ -2011,16 +2011,16 @@ static json_api_client_t *json_api_client_create(host_t *host,
     client->connection.owner = nullptr;
 
     if (!client_manager_register(manager, &client->connection)) {
-        pthread_mutex_destroy(&client->write_lock);
-        free(client);
+        ttak_mutex_destroy(&client->write_lock);
+        sshc_gc_free(client);
         return nullptr;
     }
 
     if (pthread_create(&client->thread, nullptr, json_api_client_thread,
                        client) != 0) {
         client_manager_unregister(manager, &client->connection);
-        pthread_mutex_destroy(&client->write_lock);
-        free(client);
+        ttak_mutex_destroy(&client->write_lock);
+        sshc_gc_free(client);
         return nullptr;
     }
 

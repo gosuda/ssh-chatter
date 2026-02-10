@@ -9,6 +9,8 @@
 #include <ttak/mem/mem.h>
 #include <ttak/mem/owner.h>
 #include <ttak/timing/timing.h>
+#include <ttak/sync/sync.h>
+#include <ttak/atomic/atomic.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,7 +67,7 @@ static inline char *sshc_strdup(const char *text)
     }
 
     size_t length = strlen(text) + 1U;
-    char *copy = (char *)GC_MALLOC(length);
+    char *copy = (char *)sshc_gc_malloc(length);
     if (copy == nullptr) {
         return nullptr;
     }

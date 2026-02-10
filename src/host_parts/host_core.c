@@ -263,9 +263,9 @@ static bool host_protected_ip_add(host_t *host, const char *ip)
     }
 
     bool added = false;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     added = host_protected_ip_add_unlocked(host, ip);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     return added;
 }
 
@@ -281,7 +281,7 @@ static void host_protected_ips_load_from_env(host_t *host)
     }
 
     size_t env_length = strlen(env);
-    char *copy = (char *)GC_MALLOC(env_length + 1U);
+    char *copy = (char *)sshc_gc_malloc(env_length + 1U);
     if (copy == nullptr) {
         humanized_log_error("host", "failed to allocate protected ip buffer",
                             errno != 0 ? errno : ENOMEM);
@@ -329,7 +329,7 @@ static void host_protected_ips_load_from_env(host_t *host)
         (void)host_protected_ip_add(host, working);
     }
 
-    GC_FREE(copy);
+    sshc_gc_free(copy);
 }
 
 static void host_protected_ips_bootstrap(host_t *host)
@@ -340,11 +340,11 @@ static void host_protected_ips_bootstrap(host_t *host)
 
     const char *defaults[] = {"127.0.0.1", "::1", "192.168.0.1"};
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0; idx < sizeof(defaults) / sizeof(defaults[0]); ++idx) {
         (void)host_protected_ip_add_unlocked(host, defaults[idx]);
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     host_protected_ips_load_from_env(host);
 }
@@ -1257,7 +1257,7 @@ static void host_version_ip_rules_load_env(host_t *host)
         }
     }
 
-    GC_FREE(copy);
+    sshc_gc_free(copy);
 }
 
 static bool

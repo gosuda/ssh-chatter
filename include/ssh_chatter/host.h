@@ -174,7 +174,7 @@ typedef struct lan_operator_credential {
 } lan_operator_credential_t;
 
 typedef struct chat_room {
-    pthread_mutex_t lock;
+    ttak_mutex_t lock;
     struct session_ctx **members;
     size_t member_count;
     size_t member_capacity;
@@ -184,8 +184,8 @@ typedef struct host_moderation_task host_moderation_task_t;
 
 typedef struct host_moderation_state {
     bool active;
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
+    ttak_mutex_t mutex;
+    ttak_cond_t cond;
     bool mutex_initialized;
     bool cond_initialized;
     bool thread_started;
@@ -204,8 +204,8 @@ typedef struct host_moderation_state {
 typedef struct host_eliza_intervene_task host_eliza_intervene_task_t;
 
 typedef struct host_eliza_worker_state {
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
+    ttak_mutex_t mutex;
+    ttak_cond_t cond;
     bool mutex_initialized;
     bool cond_initialized;
     bool thread_started;
@@ -716,11 +716,11 @@ typedef struct session_ctx {
     bool translation_manual_scope_override;
     bool translation_quota_notified;
     session_ui_language_t ui_language;
-    pthread_mutex_t translation_mutex;
-    pthread_mutex_t chat_message_count_mutex;
-    pthread_mutex_t channel_mutex;
-    pthread_cond_t translation_cond;
-    pthread_mutex_t output_lock;
+    ttak_mutex_t translation_mutex;
+    ttak_mutex_t chat_message_count_mutex;
+    ttak_mutex_t channel_mutex;
+    ttak_cond_t translation_cond;
+    ttak_mutex_t output_lock;
     bool translation_mutex_initialized;
     bool translation_cond_initialized;
     bool output_lock_initialized;
@@ -731,7 +731,7 @@ typedef struct session_ctx {
     char reserved_nicknames[SSH_CHATTER_MAX_RESERVED_NAMES]
                            [SSH_CHATTER_USERNAME_LEN];
     size_t reserved_nicknames_len;
-    pthread_mutex_t nickname_reserve_lock;
+    ttak_mutex_t nickname_reserve_lock;
     struct translation_job *translation_pending_head;
     struct translation_job *translation_pending_tail;
     struct translation_result *translation_ready_head;
@@ -931,7 +931,7 @@ typedef struct host {
     uint64_t next_reply_id;
     user_preference_t preferences[SSH_CHATTER_MAX_PREFERENCES];
     size_t preference_count;
-    pthread_mutex_t lock;
+    ttak_mutex_t lock;
     char state_file_path[PATH_MAX];
     char sync_state_file_path[PATH_MAX];
     char bbs_state_file_path[PATH_MAX];
@@ -943,9 +943,9 @@ typedef struct host {
     char alpha_landers_file_path[PATH_MAX];
     char user_data_root[PATH_MAX];
     bool user_data_ready;
-    pthread_mutex_t user_data_lock;
+    ttak_mutex_t user_data_lock;
     bool user_data_lock_initialized;
-    pthread_mutex_t alpha_landers_lock;
+    ttak_mutex_t alpha_landers_lock;
     bool alpha_landers_lock_initialized;
     _Atomic bool security_filter_enabled;
     _Atomic bool security_filter_failure_logged;
@@ -1037,7 +1037,7 @@ typedef struct host {
     char reserved_nicknames[SSH_CHATTER_MAX_RESERVED_NAMES]
                            [SSH_CHATTER_USERNAME_LEN];
     size_t reserved_nicknames_len;
-    pthread_mutex_t nickname_reserve_lock;
+    ttak_mutex_t nickname_reserve_lock;
     volatile sig_atomic_t *shutdown_flag;
 } host_t;
 

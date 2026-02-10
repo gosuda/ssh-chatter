@@ -51,7 +51,7 @@ static void morse_client_collect_targets(host_t *host, session_ctx_t ***out,
     size_t expected = host->room.member_count;
     if (expected > 0U) {
         session_ctx_t **targets =
-            (session_ctx_t **)GC_MALLOC(expected * sizeof(*targets));
+            (session_ctx_t **)sshc_gc_malloc(expected * sizeof(*targets));
         if (targets != nullptr) {
             memset(targets, 0, expected * sizeof(*targets));
             for (size_t idx = 0; idx < host->room.member_count; ++idx) {
@@ -155,7 +155,7 @@ static void morse_client_broadcast(morse_client_t *client, const char *line)
 
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *target = targets[idx];
-        char *country_flag = GC_MALLOC(sizeof(char) * 8);
+        char *country_flag = sshc_gc_malloc(sizeof(char) * 8);
         strncpy(country_flag, line + 6, 7);
         if (target->morse_filter[0] != '\0') {
             if (strcasestr(country_flag, target->morse_filter) == NULL)
@@ -172,7 +172,7 @@ static void morse_client_broadcast(morse_client_t *client, const char *line)
         }
     }
 
-    GC_FREE(targets);
+    sshc_gc_free(targets);
 }
 
 static bool morse_client_connect(morse_client_t *client)
@@ -388,7 +388,7 @@ morse_client_t *morse_client_create(host_t *host)
         return nullptr;
     }
 
-    morse_client_t *client = (morse_client_t *)calloc(1U, sizeof(*client));
+    morse_client_t *client = (morse_client_t *)sshc_gc_calloc(1U, sizeof(*client));
     if (client == nullptr) {
         return nullptr;
     }
@@ -402,7 +402,7 @@ morse_client_t *morse_client_create(host_t *host)
     int error = pthread_create(&client->thread, nullptr, morse_client_thread, client);
     if (error != 0) {
         printf("[morse] failed to start worker: %s\n", strerror(error));
-        free(client);
+        sshc_gc_free(client);
         return nullptr;
     }
 
@@ -422,7 +422,7 @@ void morse_client_destroy(morse_client_t *client)
         client->thread_initialized = false;
     }
     morse_client_close_socket(client);
-    free(client);
+    sshc_gc_free(client);
 }
 
 bool morse_client_send(morse_client_t *client, const char *line)

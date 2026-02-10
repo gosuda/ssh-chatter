@@ -17,9 +17,9 @@
 static session_ctx_t *session_create(void)
 {
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
-    session_ctx_t *ctx = (session_ctx_t *)GC_CALLOC(1U, sizeof(session_ctx_t));
+    session_ctx_t *ctx = (session_ctx_t *)sshc_gc_calloc(1U, sizeof(session_ctx_t));
 #else
-    session_ctx_t *ctx = (session_ctx_t *)calloc(1U, sizeof(session_ctx_t));
+    session_ctx_t *ctx = (session_ctx_t *)sshc_gc_calloc(1U, sizeof(session_ctx_t));
 #endif
     if (ctx != nullptr) {
         ctx->user.is_authenticated = false;
@@ -214,7 +214,7 @@ host_provider_language_preference(host_t *host, const char *provider_label,
     size_t counts[SESSION_UI_LANGUAGE_COUNT] = {0};
     size_t total = 0U;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0U; idx < SSH_CHATTER_MAX_PREFERENCES; ++idx) {
         const user_preference_t *pref = &host->preferences[idx];
         if (!pref->in_use || pref->ui_language[0] == '\0') {
@@ -244,7 +244,7 @@ host_provider_language_preference(host_t *host, const char *provider_label,
         ++counts[(size_t)lang];
         ++total;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (total < 4U) {
         return false;
@@ -727,14 +727,14 @@ static bool find_reserved_names(session_ctx_t *ctx, const char *nick)
     }
 
     bool found = false;
-    pthread_mutex_lock(&ctx->owner->nickname_reserve_lock);
+    ttak_mutex_lock(&ctx->owner->nickname_reserve_lock);
     for (size_t i = 0; i < ctx->owner->reserved_nicknames_len; ++i) {
         if (strcasecmp(nick, ctx->owner->reserved_nicknames[i]) == 0) {
             found = true;
             break;
         }
     }
-    pthread_mutex_unlock(&ctx->owner->nickname_reserve_lock);
+    ttak_mutex_unlock(&ctx->owner->nickname_reserve_lock);
     return found;
 }
 
@@ -929,10 +929,10 @@ static void session_force_disconnect(session_ctx_t *ctx, const char *reason)
     ctx->exit_status = EXIT_FAILURE;
 
     if (ctx->translation_mutex_initialized) {
-        pthread_mutex_lock(&ctx->translation_mutex);
+        ttak_mutex_lock(&ctx->translation_mutex);
         ctx->translation_thread_stop = true;
-        pthread_cond_broadcast(&ctx->translation_cond);
-        pthread_mutex_unlock(&ctx->translation_mutex);
+        ttak_cond_broadcast(&ctx->translation_cond);
+        ttak_mutex_unlock(&ctx->translation_mutex);
     }
     session_translation_clear_queue(ctx);
 
@@ -987,7 +987,7 @@ static session_ctx_t *chat_room_find_user(chat_room_t *room,
     }
 
     session_ctx_t *result = nullptr;
-    pthread_mutex_lock(&room->lock);
+    ttak_mutex_lock(&room->lock);
     for (size_t idx = 0; idx < room->member_count; ++idx) {
         session_ctx_t *member = room->members[idx];
         if (member == nullptr) {
@@ -1000,7 +1000,7 @@ static session_ctx_t *chat_room_find_user(chat_room_t *room,
             break;
         }
     }
-    pthread_mutex_unlock(&room->lock);
+    ttak_mutex_unlock(&room->lock);
 
     return result;
 }
@@ -1091,7 +1091,7 @@ host_prune_join_activity_locked(host_t *host,
     }
 
     if (host->join_activity_count == 0U) {
-        GC_FREE(host->join_activity);
+        sshc_gc_free(host->join_activity);
         host->join_activity = nullptr;
         host->join_activity_capacity = 0U;
     } else if (host->join_activity_capacity > 8U &&
@@ -1103,7 +1103,7 @@ host_prune_join_activity_locked(host_t *host,
         if (new_capacity < host->join_activity_count) {
             new_capacity = host->join_activity_count;
         }
-        join_activity_entry_t *resized = (join_activity_entry_t *)GC_REALLOC(
+        join_activity_entry_t *resized = (join_activity_entry_t *)sshc_gc_realloc(
             host->join_activity, new_capacity * sizeof(*resized));
         if (resized != nullptr) {
             host->join_activity = resized;
@@ -1128,7 +1128,7 @@ static join_activity_entry_t *host_ensure_join_activity_locked(host_t *host,
         size_t new_capacity = host->join_activity_capacity > 0U
                                   ? host->join_activity_capacity * 2U
                                   : 8U;
-        join_activity_entry_t *resized = GC_REALLOC(
+        join_activity_entry_t *resized = sshc_gc_realloc(
             host->join_activity, new_capacity * sizeof(join_activity_entry_t));
         if (resized == nullptr) {
             return nullptr;
@@ -1157,7 +1157,7 @@ static size_t host_prepare_join_delay(host_t *host,
     struct timespec now = {0, 0};
     clock_gettime(CLOCK_MONOTONIC, &now);
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (!host->join_throttle_initialised) {
         host->next_join_ready_time = now;
         host->join_throttle_initialised = true;
@@ -1176,7 +1176,7 @@ static size_t host_prepare_join_delay(host_t *host,
     host->join_progress_length =
         (host->join_progress_length % SSH_CHATTER_JOIN_BAR_MAX) + 1U;
     size_t progress = host->join_progress_length;
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (wait_duration != nullptr) {
         *wait_duration = wait;
@@ -1197,11 +1197,11 @@ host_register_join_attempt(host_t *host, const char *username, const char *ip)
     bool exempt_ip = false;
     bool kick_ip = false;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     host_prune_join_activity_locked(host, &now);
     join_activity_entry_t *entry = host_ensure_join_activity_locked(host, ip);
     if (entry == nullptr) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return HOST_JOIN_ATTEMPT_OK;
     }
 
@@ -1264,7 +1264,7 @@ host_register_join_attempt(host_t *host, const char *username, const char *ip)
         entry->join_window_attempts >= SSH_CHATTER_JOIN_KICK_THRESHOLD) {
         kick_ip = true;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (!exempt_ip && kick_ip) {
         printf("[auto-kick] %s exceeded join limit\n", ip);
@@ -1292,7 +1292,7 @@ static bool host_register_suspicious_activity(host_t *host,
     clock_gettime(CLOCK_MONOTONIC, &now);
 
     size_t attempts = 0U;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     join_activity_entry_t *entry = host_ensure_join_activity_locked(host, ip);
     if (entry != nullptr) {
         if (entry->last_suspicious.tv_sec != 0 ||
@@ -1313,7 +1313,7 @@ static bool host_register_suspicious_activity(host_t *host,
         entry->last_suspicious = now;
         attempts = entry->suspicious_events;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (attempts_out != nullptr) {
         *attempts_out = attempts;
@@ -1329,9 +1329,9 @@ static bool host_is_ip_banned(host_t *host, const char *ip)
     }
 
     bool banned = false;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (host_is_protected_ip_unlocked(host, ip)) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return false;
     }
     for (size_t idx = 0; idx < host->ban_count; ++idx) {
@@ -1357,7 +1357,7 @@ static bool host_is_ip_banned(host_t *host, const char *ip)
             break;
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     return banned;
 }
@@ -1369,7 +1369,7 @@ static bool host_is_username_banned(host_t *host, const char *username)
     }
 
     bool banned = false;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0; idx < host->ban_count; ++idx) {
         if (strncmp(host->bans[idx].username, username,
                     SSH_CHATTER_USERNAME_LEN) == 0) {
@@ -1377,7 +1377,7 @@ static bool host_is_username_banned(host_t *host, const char *username)
             break;
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     return banned;
 }
@@ -1390,15 +1390,15 @@ static bool host_add_ban_entry(host_t *host, const char *username,
     }
 
     bool added = false;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (host->ban_count >= SSH_CHATTER_MAX_BANS) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return false;
     }
 
     if (ip != nullptr && ip[0] != '\0' &&
         host_is_protected_ip_unlocked(host, ip)) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         return true;
     }
     if (ip != nullptr && ip[0] != '\0' && strchr(ip, '/') != nullptr) {
@@ -1406,7 +1406,7 @@ static bool host_add_ban_entry(host_t *host, const char *username,
                              idx < SSH_CHATTER_MAX_PROTECTED_IPS;
              ++idx) {
             if (host_cidr_contains_ip(ip, host->protected_ips[idx])) {
-                pthread_mutex_unlock(&host->lock);
+                ttak_mutex_unlock(&host->lock);
                 return true;
             }
         }
@@ -1421,7 +1421,7 @@ static bool host_add_ban_entry(host_t *host, const char *username,
             (ip != nullptr && ip[0] != '\0' &&
              strncmp(host->bans[idx].ip, ip, SSH_CHATTER_IP_LEN) == 0);
         if (username_match || ip_match) {
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
             return true;
         }
     }
@@ -1437,7 +1437,7 @@ static bool host_add_ban_entry(host_t *host, const char *username,
 
     host_ban_state_save_locked(host);
 
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     return added;
 }
 
@@ -1448,7 +1448,7 @@ static bool host_remove_ban_entry(host_t *host, const char *token)
     }
 
     bool removed = false;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0; idx < host->ban_count; ++idx) {
         if (strncmp(host->bans[idx].username, token,
                     SSH_CHATTER_USERNAME_LEN) == 0 ||
@@ -1464,7 +1464,7 @@ static bool host_remove_ban_entry(host_t *host, const char *token)
             break;
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     return removed;
 }
@@ -2160,7 +2160,7 @@ bool host_user_data_load_existing(host_t *host, const char *username,
 
     bool success = false;
     if (host->user_data_lock_initialized) {
-        pthread_mutex_lock(&host->user_data_lock);
+        ttak_mutex_lock(&host->user_data_lock);
     }
 
     if (create_if_missing) {
@@ -2171,7 +2171,7 @@ bool host_user_data_load_existing(host_t *host, const char *username,
     }
 
     if (host->user_data_lock_initialized) {
-        pthread_mutex_unlock(&host->user_data_lock);
+        ttak_mutex_unlock(&host->user_data_lock);
     }
 
     return success;
@@ -2306,11 +2306,11 @@ static bool host_user_data_send_mail(host_t *host, const char *recipient,
 
     bool success;
     if (host->user_data_lock_initialized) {
-        pthread_mutex_lock(&host->user_data_lock);
+        ttak_mutex_lock(&host->user_data_lock);
     }
     success = user_data_save(host->user_data_root, &record, resolved_ip);
     if (host->user_data_lock_initialized) {
-        pthread_mutex_unlock(&host->user_data_lock);
+        ttak_mutex_unlock(&host->user_data_lock);
     }
 
     if (!success) {
@@ -3370,7 +3370,7 @@ static void *host_telnet_thread(void *arg)
         }
         ctx->output_lock_initialized = true;
         ctx->owner = host;
-        if (pthread_mutex_init(&ctx->channel_mutex, nullptr) == 0) {
+        if (ttak_mutex_init(&ctx->channel_mutex) == 0) {
             ctx->channel_mutex_initialized = true;
         } else {
             humanized_log_error("session", "failed to initialize channel mutex",
@@ -3416,11 +3416,11 @@ static void *host_telnet_thread(void *arg)
         /* Favor CP437-style output for legacy telnet clients */
         ctx->prefer_cp437_output = true;
 
-        pthread_mutex_lock(&host->lock);
+        ttak_mutex_lock(&host->lock);
         ++host->connection_count;
         ctx->user.is_operator = false;
         ctx->user.is_lan_operator = false;
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         pthread_t thread_id;
         if (pthread_create(&thread_id, nullptr, session_thread, ctx) != 0) {
@@ -3584,7 +3584,7 @@ static void session_cleanup(session_ctx_t *ctx)
 
     session_translation_worker_shutdown(ctx);
     if (ctx->channel_mutex_initialized) {
-        pthread_mutex_destroy(&ctx->channel_mutex);
+        ttak_mutex_destroy(&ctx->channel_mutex);
         ctx->channel_mutex_initialized = false;
     }
     if (ctx->transport_kind == SESSION_TRANSPORT_SSH &&
@@ -3594,7 +3594,7 @@ static void session_cleanup(session_ctx_t *ctx)
     session_close_channel(ctx);
 
     if (ctx->output_lock_initialized) {
-        pthread_mutex_destroy(&ctx->output_lock);
+        ttak_mutex_destroy(&ctx->output_lock);
         ctx->output_lock_initialized = false;
     }
 
@@ -3614,7 +3614,7 @@ static void session_destroy(session_ctx_t *ctx)
     session_cleanup(ctx);
 
 #if !(defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC)
-    GC_FREE(ctx);
+    sshc_gc_free(ctx);
 #endif
 }
 
@@ -3662,7 +3662,7 @@ session_ctx_t *host_session_create_for_testing(host_t *host,
     pthread_mutexattr_destroy(&lock_attr);
     ctx->output_lock_initialized = true;
 
-    if (pthread_mutex_init(&ctx->channel_mutex, nullptr) != 0) {
+    if (ttak_mutex_init(&ctx->channel_mutex) != 0) {
         session_destroy(ctx);
         return nullptr;
     }
@@ -3939,7 +3939,7 @@ static void *session_thread(void *arg)
             }
         
             /* Free the allocated copy after processing */
-            GC_FREE(motd_copy);
+            sshc_gc_free(motd_copy);
         }
         session_send_system_line(
             ctx, "For TELNET users: type /motd and follow the guide.");
@@ -4862,7 +4862,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     snprintf(host->user_data_root, sizeof(host->user_data_root), "%s",
              "/var/lib/mailbox");
     host->user_data_ready = user_data_ensure_root(host->user_data_root);
-    if (pthread_mutex_init(&host->user_data_lock, nullptr) == 0) {
+    if (ttak_mutex_init(&host->user_data_lock) == 0) {
         host->user_data_lock_initialized = true;
     } else {
         humanized_log_error("mailbox", "failed to initialise mailbox lock",
@@ -4870,7 +4870,7 @@ void host_init(host_t *host, auth_profile_t *auth)
         host->user_data_lock_initialized = false;
         host->user_data_ready = false;
     }
-    if (pthread_mutex_init(&host->alpha_landers_lock, nullptr) == 0) {
+    if (ttak_mutex_init(&host->alpha_landers_lock) == 0) {
         host->alpha_landers_lock_initialized = true;
     } else {
         humanized_log_error("alpha", "failed to initialise alpha landers lock",
@@ -4907,7 +4907,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_version_ip_rules_init(host);
     memset(host->protected_ips, 0, sizeof(host->protected_ips));
     host->protected_ip_count = 0U;
-    pthread_mutex_init(&host->lock, nullptr);
+    ttak_mutex_init(&host->lock);
     host_protected_ips_bootstrap(host);
     poll_state_reset(&host->poll);
     for (size_t idx = 0U; idx < SSH_CHATTER_MAX_NAMED_POLLS; ++idx) {
@@ -5165,9 +5165,9 @@ static void host_refresh_motd(host_t *host)
 
     host_maybe_reload_motd_from_file(host);
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     host_refresh_motd_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static bool host_try_load_motd_from_path(host_t *host, const char *path)
@@ -5240,7 +5240,7 @@ static bool host_try_load_motd_from_path(host_t *host, const char *path)
         humanized_log_error("host", "failed to close motd file", close_error);
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     snprintf(host->motd_base, sizeof(host->motd_base), "%s", motd_buffer);
     snprintf(host->motd_path, sizeof(host->motd_path), "%s", path);
     host->motd_has_file = true;
@@ -5251,7 +5251,7 @@ static bool host_try_load_motd_from_path(host_t *host, const char *path)
         host->motd_last_modified.tv_nsec = 0L;
     }
     host_refresh_motd_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     return true;
 }
 
@@ -5306,7 +5306,7 @@ void host_set_motd(host_t *host, const char *motd)
     snprintf(normalized, sizeof(normalized), "%s", motd);
     session_normalize_newlines(normalized);
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     if (motd_path[0] != '\0') {
         snprintf(host->motd_path, sizeof(host->motd_path), "%s", motd_path);
     } else {
@@ -5317,7 +5317,7 @@ void host_set_motd(host_t *host, const char *motd)
     host->motd_last_modified.tv_nsec = 0L;
     snprintf(host->motd_base, sizeof(host->motd_base), "%s", normalized);
     host_refresh_motd_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
 exit_host_set_motd:
     if (memory_scope != nullptr) {
@@ -5463,7 +5463,7 @@ bool host_snapshot_last_captcha(host_t *host, char *question,
         return false;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     bool has_captcha = host->has_last_captcha;
     if (has_captcha) {
         if (question != nullptr && question_length > 0U) {
@@ -5488,7 +5488,7 @@ bool host_snapshot_last_captcha(host_t *host, char *question,
             timestamp->tv_nsec = 0L;
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     return has_captcha;
 }
 
@@ -5604,7 +5604,7 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     }
     chat_history_entry_t *history_buffer = nullptr;
     join_activity_entry_t *join_buffer = nullptr;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     history_buffer = host->history;
     host->history = nullptr;
     host->history_capacity = 0U;
@@ -5613,14 +5613,14 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     host->join_activity = nullptr;
     host->join_activity_capacity = 0U;
     host->join_activity_count = 0U;
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
     if (history_buffer != nullptr) {
-        GC_FREE(history_buffer);
+        sshc_gc_free(history_buffer);
     }
     if (join_buffer != nullptr) {
-        GC_FREE(join_buffer);
+        sshc_gc_free(join_buffer);
     }
-    GC_FREE(host->connection_guard);
+    sshc_gc_free(host->connection_guard);
     host->connection_guard = nullptr;
     host->connection_guard_capacity = 0U;
     host->connection_guard_count = 0U;
@@ -5629,21 +5629,21 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     host->health_guard.last_error_time.tv_sec = 0;
     host->health_guard.last_error_time.tv_nsec = 0L;
     session_ctx_t **room_members = nullptr;
-    pthread_mutex_lock(&host->room.lock);
+    ttak_mutex_lock(&host->room.lock);
     room_members = host->room.members;
     host->room.members = nullptr;
     host->room.member_capacity = 0U;
     host->room.member_count = 0U;
-    pthread_mutex_unlock(&host->room.lock);
+    ttak_mutex_unlock(&host->room.lock);
     if (room_members != nullptr) {
-        GC_FREE(room_members);
+        sshc_gc_free(room_members);
     }
     if (host->user_data_lock_initialized) {
-        pthread_mutex_destroy(&host->user_data_lock);
+        ttak_mutex_destroy(&host->user_data_lock);
         host->user_data_lock_initialized = false;
     }
     if (host->alpha_landers_lock_initialized) {
-        pthread_mutex_destroy(&host->alpha_landers_lock);
+        ttak_mutex_destroy(&host->alpha_landers_lock);
         host->alpha_landers_lock_initialized = false;
     }
     if (host->security_layer_initialized) {
@@ -6180,7 +6180,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             }
             ctx->output_lock_initialized = true;
             ctx->owner = host;
-            if (pthread_mutex_init(&ctx->channel_mutex, nullptr) == 0) {
+            if (ttak_mutex_init(&ctx->channel_mutex) == 0) {
                 ctx->channel_mutex_initialized = true;
             } else {
                 humanized_log_error("session",
@@ -6229,11 +6229,11 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             }
             session_refresh_output_encoding(ctx);
 
-            pthread_mutex_lock(&host->lock);
+            ttak_mutex_lock(&host->lock);
             ++host->connection_count;
             ctx->user.is_operator = false;
             ctx->user.is_lan_operator = false;
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
 
             pthread_t thread_id;
             if (pthread_create(&thread_id, nullptr, session_thread, ctx) != 0) {

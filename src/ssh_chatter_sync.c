@@ -17,10 +17,6 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
-#include <gc/gc.h>
-#endif
-
 static ssh_session session = nullptr;
 static ssh_channel channel = nullptr;
 static pthread_t read_thread;
@@ -34,7 +30,7 @@ static message_received_callback_t msg_callback = nullptr;
 
 static chat_message_t *chat_history_head = nullptr;
 static int chat_history_size = 0;
-static pthread_mutex_t history_mutex = PTHREAD_MUTEX_INITIALIZER;
+static ttak_mutex_t history_mutex;
 static bool history_mutex_initialized = false;
 
 static sync_settings_t current_settings = {.sync_in_enabled = true,
@@ -93,18 +89,18 @@ void ssh_chatter_sync_add_message_to_history(const chat_message_t *new_msg)
         return;
     }
 
-    pthread_mutex_lock(&history_mutex);
+    ttak_mutex_lock(&history_mutex);
 
     if (chat_history_head &&
         strcmp(chat_history_head->message_body, new_msg->message_body) == 0 &&
         strcmp(chat_history_head->username, new_msg->username) == 0) {
-        pthread_mutex_unlock(&history_mutex);
+        ttak_mutex_unlock(&history_mutex);
         return;
     }
 
-    chat_message_t *node = GC_MALLOC(sizeof(chat_message_t));
+    chat_message_t *node = sshc_gc_malloc(sizeof(chat_message_t));
     if (!node) {
-        pthread_mutex_unlock(&history_mutex);
+        ttak_mutex_unlock(&history_mutex);
         return;
     }
 
@@ -124,9 +120,9 @@ void ssh_chatter_sync_add_message_to_history(const chat_message_t *new_msg)
         }
         if (prev && cur) {
 #if !(defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC)
-            GC_FREE(cur->username);
-            GC_FREE(cur->message_body);
-            GC_FREE(cur);
+            sshc_gc_free(cur->username);
+            sshc_gc_free(cur->message_body);
+            sshc_gc_free(cur);
 #else
             cur->username = nullptr;
             cur->message_body = nullptr;
@@ -137,7 +133,7 @@ void ssh_chatter_sync_add_message_to_history(const chat_message_t *new_msg)
         }
     }
 
-    pthread_mutex_unlock(&history_mutex);
+    ttak_mutex_unlock(&history_mutex);
 }
 
 void ssh_chatter_sync_free_history()
@@ -147,16 +143,16 @@ void ssh_chatter_sync_free_history()
     }
 
     // handling history can be dangerous: should lock process
-    pthread_mutex_lock(&history_mutex);
+    ttak_mutex_lock(&history_mutex);
     chat_message_t *cur = chat_history_head;
     while (cur) {
         chat_message_t *next = cur->next;
 #if !(defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC)
-        GC_FREE(cur->username);
-        GC_FREE(cur->message_body);
-        GC_FREE(cur);
+        sshc_gc_free(cur->username);
+        sshc_gc_free(cur->message_body);
+        sshc_gc_free(cur);
 #else
-        cur->username = nullptr;     // no GC_FREE when manual memory management: set to nullptr 
+        cur->username = nullptr;     // no sshc_gc_free when manual memory management: set to nullptr 
         cur->message_body = nullptr;
         cur->next = nullptr;
 #endif
@@ -165,7 +161,7 @@ void ssh_chatter_sync_free_history()
     chat_history_head = nullptr;
     chat_history_size = 0;
     // tasks are done, unlock
-    pthread_mutex_unlock(&history_mutex);
+    ttak_mutex_unlock(&history_mutex);
 }
 
 chat_message_t *ssh_chatter_sync_get_last_messages(int count)
@@ -178,7 +174,7 @@ void ssh_chatter_sync_init()
 {
     fprintf(stderr, "[SSH_SYNC] Initialized SSH Chatter Sync module.\n");
     if (!history_mutex_initialized) {
-        pthread_mutex_init(&history_mutex, nullptr);
+        ttak_mutex_init(&history_mutex);
         history_mutex_initialized = true;
     }
     ssh_chatter_sync_load_settings();
@@ -293,7 +289,7 @@ void ssh_chatter_sync_cleanup()
     }
 
     ssh_chatter_sync_free_history();
-    pthread_mutex_destroy(&history_mutex);
+    ttak_mutex_destroy(&history_mutex);
     history_mutex_initialized = false;
 }
 
@@ -372,7 +368,7 @@ void ssh_chatter_sync_send_message(const char *message)
         return;
 
     size_t len = strlen(message) + 2;
-    char *msg = GC_MALLOC(len);
+    char *msg = sshc_gc_malloc(len);
     if (!msg)
         return;
 
@@ -380,7 +376,7 @@ void ssh_chatter_sync_send_message(const char *message)
     strcat(msg, "\n");
 
     ssh_channel_write(channel, msg, (uint32_t)strlen(msg));
-    GC_FREE(msg);
+    sshc_gc_free(msg);
 }
 
 void ssh_chatter_sync_set_message_received_callback(

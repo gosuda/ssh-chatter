@@ -13,6 +13,7 @@
 #include "ssh_chatter/ssh_chatter_backend.h"
 #include "ssh_chatter/translation_helpers.h"
 #include "ssh_chatter/translator.h"
+#include "ssh_chatter/memory_manager.h"
 
 void ssh_chatter_backend_init(void)
 {
@@ -132,7 +133,7 @@ char *session_show_welcome_banner(const char *path)
     rewind(banner_file);
 
     // Allocate memory for the banner content + null terminator
-    char *banner_content = (char *)GC_MALLOC((size_t)file_size + 1);
+    char *banner_content = (char *)sshc_gc_malloc((size_t)file_size + 1);
     if (banner_content == nullptr) {
         fclose(banner_file);
         return nullptr; // Memory allocation failed
@@ -143,7 +144,7 @@ char *session_show_welcome_banner(const char *path)
         fread(banner_content, 1, (size_t)file_size, banner_file);
     if (bytes_read != (size_t)file_size) {
         // Error reading file content
-        GC_FREE(banner_content);
+        sshc_gc_free(banner_content);
         fclose(banner_file);
         return nullptr;
     }
@@ -153,7 +154,7 @@ char *session_show_welcome_banner(const char *path)
 
     // Ensure there is at least a newline at the end if the file didn't have one
     if (file_size == 0 || banner_content[file_size - 1] != '\n') {
-        char *temp = (char *)GC_REALLOC(banner_content, (size_t)file_size + 2);
+        char *temp = (char *)sshc_gc_realloc(banner_content, (size_t)file_size + 2);
         if (temp == nullptr) {
             // Realloc failed, return original content (might be missing newline)
             return banner_content;

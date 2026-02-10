@@ -717,9 +717,9 @@ static void session_handle_usercount(session_ctx_t *ctx)
     }
 
     size_t count = 0U;
-    pthread_mutex_lock(&ctx->owner->room.lock);
+    ttak_mutex_lock(&ctx->owner->room.lock);
     count = ctx->owner->room.member_count;
-    pthread_mutex_unlock(&ctx->owner->room.lock);
+    ttak_mutex_unlock(&ctx->owner->room.lock);
 
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(message, sizeof(message),
@@ -955,7 +955,7 @@ static void session_handle_connected(session_ctx_t *ctx)
     size_t offset = 0U;
     size_t count = 0U;
 
-    pthread_mutex_lock(&ctx->owner->room.lock);
+    ttak_mutex_lock(&ctx->owner->room.lock);
     for (size_t idx = 0U; idx < ctx->owner->room.member_count; ++idx) {
         session_ctx_t *member = ctx->owner->room.members[idx];
         if (member == nullptr) {
@@ -976,7 +976,7 @@ static void session_handle_connected(session_ctx_t *ctx)
         buffer[offset] = '\0';
         ++count;
     }
-    pthread_mutex_unlock(&ctx->owner->room.lock);
+    ttak_mutex_unlock(&ctx->owner->room.lock);
 
     char header[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(header, sizeof(header), "Connected users (%zu):", count);
@@ -1339,11 +1339,11 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    pthread_mutex_lock(&ctx->nickname_reserve_lock);
+    ttak_mutex_lock(&ctx->nickname_reserve_lock);
     strncpy(ctx->reserved_nicknames[ctx->reserved_nicknames_len],
             ctx->user.name, SSH_CHATTER_USERNAME_LEN);
     ctx->reserved_nicknames_len++;
-    pthread_mutex_unlock(&ctx->nickname_reserve_lock);
+    ttak_mutex_unlock(&ctx->nickname_reserve_lock);
     security_layer_generate_salt(ctx->user_data.password_salt);
     security_layer_hash_password(arguments, ctx->user_data.password_salt,
                                  ctx->user_data.password_hash);
@@ -1362,7 +1362,7 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
         // Add user's nickname to reserved list if password was set
         if (ctx->owner != nullptr && ctx->owner->reserved_nicknames_len <
                                          SSH_CHATTER_MAX_RESERVED_NAMES) {
-            pthread_mutex_lock(&ctx->owner->nickname_reserve_lock);
+            ttak_mutex_lock(&ctx->owner->nickname_reserve_lock);
             // Check if nickname is already reserved to avoid duplicates
             bool already_reserved = false;
             for (size_t i = 0; i < ctx->owner->reserved_nicknames_len; ++i) {
@@ -1378,7 +1378,7 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
                         ctx->user.name, SSH_CHATTER_USERNAME_LEN);
                 ctx->owner->reserved_nicknames_len++;
             }
-            pthread_mutex_unlock(&ctx->owner->nickname_reserve_lock);
+            ttak_mutex_unlock(&ctx->owner->nickname_reserve_lock);
         }
 
     } else {
@@ -1474,7 +1474,7 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
 
         // Remove from reserved nicknames if password was deleted
         if (ctx->owner != nullptr && ctx->owner->reserved_nicknames_len > 0) {
-            pthread_mutex_lock(&ctx->owner->nickname_reserve_lock);
+            ttak_mutex_lock(&ctx->owner->nickname_reserve_lock);
             for (size_t i = 0; i < ctx->owner->reserved_nicknames_len; ++i) {
                 if (strncmp(ctx->owner->reserved_nicknames[i], target_user,
                             SSH_CHATTER_USERNAME_LEN) == 0) {
@@ -1492,7 +1492,7 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
                     break; // Found and removed, exit loop
                 }
             }
-            pthread_mutex_unlock(&ctx->owner->nickname_reserve_lock);
+            ttak_mutex_unlock(&ctx->owner->nickname_reserve_lock);
         }
 
         if (!session_pw_auth_update(ctx->owner, target_user, nullptr, 0U,
@@ -1634,12 +1634,12 @@ static void session_handle_revoke(session_ctx_t *ctx, const char *arguments)
     }
 
     bool removed = false;
-    pthread_mutex_lock(&ctx->owner->lock);
+    ttak_mutex_lock(&ctx->owner->lock);
     removed = host_remove_operator_grant_locked(ctx->owner, ip);
     if (removed) {
         host_state_save_locked(ctx->owner);
     }
-    pthread_mutex_unlock(&ctx->owner->lock);
+    ttak_mutex_unlock(&ctx->owner->lock);
 
     if (!removed) {
         session_send_system_line(ctx,
@@ -1907,13 +1907,13 @@ static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
         }
 
         bool was_active = false;
-        pthread_mutex_lock(&ctx->owner->lock);
+        ttak_mutex_lock(&ctx->owner->lock);
         if (ctx->owner->poll.active) {
             ctx->owner->poll.active = false;
             was_active = true;
             host_vote_state_save_locked(ctx->owner);
         }
-        pthread_mutex_unlock(&ctx->owner->lock);
+        ttak_mutex_unlock(&ctx->owner->lock);
 
         if (!was_active) {
             session_send_system_line(ctx, "No active poll to close.");
@@ -1951,7 +1951,7 @@ static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
     }
 
     poll_state_t snapshot = {0};
-    pthread_mutex_lock(&ctx->owner->lock);
+    ttak_mutex_lock(&ctx->owner->lock);
     uint64_t next_id = ctx->owner->poll.id + 1U;
     poll_state_reset(&ctx->owner->poll);
     ctx->owner->poll.active = true;
@@ -1968,7 +1968,7 @@ static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
     }
     host_vote_state_save_locked(ctx->owner);
     snapshot = ctx->owner->poll;
-    pthread_mutex_unlock(&ctx->owner->lock);
+    ttak_mutex_unlock(&ctx->owner->lock);
 
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(notice, sizeof(notice), "* [%s] started a poll: %s",
@@ -1987,16 +1987,16 @@ static void session_handle_vote(session_ctx_t *ctx, size_t option_index)
     char response[SSH_CHATTER_MESSAGE_LIMIT];
     response[0] = '\0';
 
-    pthread_mutex_lock(&ctx->owner->lock);
+    ttak_mutex_lock(&ctx->owner->lock);
     poll_state_t *poll = &ctx->owner->poll;
     if (!poll->active || poll->option_count == 0U) {
-        pthread_mutex_unlock(&ctx->owner->lock);
+        ttak_mutex_unlock(&ctx->owner->lock);
         session_send_system_line(ctx, "No active poll right now.");
         return;
     }
 
     if (option_index >= poll->option_count) {
-        pthread_mutex_unlock(&ctx->owner->lock);
+        ttak_mutex_unlock(&ctx->owner->lock);
         session_send_system_line(ctx, "That poll option does not exist.");
         return;
     }
@@ -2005,7 +2005,7 @@ static void session_handle_vote(session_ctx_t *ctx, size_t option_index)
         host_ensure_preference_locked(ctx->owner, ctx->user.name,
                                       ctx->client_ip);
     if (pref == nullptr) {
-        pthread_mutex_unlock(&ctx->owner->lock);
+        ttak_mutex_unlock(&ctx->owner->lock);
         session_send_system_line(ctx, "Unable to record your vote.");
         return;
     }
@@ -2037,7 +2037,7 @@ static void session_handle_vote(session_ctx_t *ctx, size_t option_index)
     } else {
         int32_t previous = pref->last_poll_choice;
         if (previous == (int32_t)option_index) {
-            pthread_mutex_unlock(&ctx->owner->lock);
+            ttak_mutex_unlock(&ctx->owner->lock);
             session_send_system_line(ctx,
                                      "You have already voted for that option.");
             return;
@@ -2055,7 +2055,7 @@ static void session_handle_vote(session_ctx_t *ctx, size_t option_index)
     pref->last_poll_id = poll->id;
     host_vote_state_save_locked(ctx->owner);
     host_state_save_locked(ctx->owner);
-    pthread_mutex_unlock(&ctx->owner->lock);
+    ttak_mutex_unlock(&ctx->owner->lock);
 
     if (response[0] != '\0') {
         session_send_system_line(ctx, response);
@@ -2083,18 +2083,18 @@ static void session_handle_named_vote(session_ctx_t *ctx, size_t option_index,
     char response[SSH_CHATTER_MESSAGE_LIMIT];
     response[0] = '\0';
 
-    pthread_mutex_lock(&ctx->owner->lock);
+    ttak_mutex_lock(&ctx->owner->lock);
     named_poll_state_t *poll =
         host_find_named_poll_locked(ctx->owner, normalized_label);
     if (poll == nullptr || !poll->poll.active ||
         poll->poll.option_count == 0U) {
-        pthread_mutex_unlock(&ctx->owner->lock);
+        ttak_mutex_unlock(&ctx->owner->lock);
         session_send_system_line(ctx, "That poll is not active.");
         return;
     }
 
     if (option_index >= poll->poll.option_count) {
-        pthread_mutex_unlock(&ctx->owner->lock);
+        ttak_mutex_unlock(&ctx->owner->lock);
         session_send_system_line(ctx, "That poll option does not exist.");
         return;
     }
@@ -2146,7 +2146,7 @@ static void session_handle_named_vote(session_ctx_t *ctx, size_t option_index,
             }
         } else {
             if (poll->voter_count >= SSH_CHATTER_MAX_NAMED_VOTERS) {
-                pthread_mutex_unlock(&ctx->owner->lock);
+                ttak_mutex_unlock(&ctx->owner->lock);
                 session_send_system_line(ctx,
                                          "That poll has reached "
                                          "its voter limit.");
@@ -2167,7 +2167,7 @@ static void session_handle_named_vote(session_ctx_t *ctx, size_t option_index,
         if (voter_index >= 0) {
             int previous = poll->voters[voter_index].choice;
             if (previous == (int)option_index) {
-                pthread_mutex_unlock(&ctx->owner->lock);
+                ttak_mutex_unlock(&ctx->owner->lock);
                 session_send_system_line(
                     ctx, "You have already voted for that option.");
                 return;
@@ -2184,7 +2184,7 @@ static void session_handle_named_vote(session_ctx_t *ctx, size_t option_index,
                      "Vote recorded for option %zu.", option_index + 1U);
         } else {
             if (poll->voter_count >= SSH_CHATTER_MAX_NAMED_VOTERS) {
-                pthread_mutex_unlock(&ctx->owner->lock);
+                ttak_mutex_unlock(&ctx->owner->lock);
                 session_send_system_line(ctx,
                                          "That poll has reached "
                                          "its voter limit.");
@@ -2203,7 +2203,7 @@ static void session_handle_named_vote(session_ctx_t *ctx, size_t option_index,
     }
 
     host_vote_state_save_locked(ctx->owner);
-    pthread_mutex_unlock(&ctx->owner->lock);
+    ttak_mutex_unlock(&ctx->owner->lock);
 
     if (response[0] != '\0') {
         session_send_system_line(ctx, response);
@@ -2324,14 +2324,14 @@ static void session_handle_vote_command(session_ctx_t *ctx,
     if (remainder[0] == '\0') {
         named_poll_state_t snapshot = {0};
         bool found = false;
-        pthread_mutex_lock(&ctx->owner->lock);
+        ttak_mutex_lock(&ctx->owner->lock);
         named_poll_state_t *poll =
             host_find_named_poll_locked(ctx->owner, label);
         if (poll != nullptr) {
             snapshot = *poll;
             found = true;
         }
-        pthread_mutex_unlock(&ctx->owner->lock);
+        ttak_mutex_unlock(&ctx->owner->lock);
 
         if (!found) {
             char message[SSH_CHATTER_MESSAGE_LIMIT];
@@ -2352,7 +2352,7 @@ static void session_handle_vote_command(session_ctx_t *ctx,
         bool closed = false;
         bool allowed = false;
         bool found = false;
-        pthread_mutex_lock(&ctx->owner->lock);
+        ttak_mutex_lock(&ctx->owner->lock);
         named_poll_state_t *poll =
             host_find_named_poll_locked(ctx->owner, label);
         if (poll != nullptr) {
@@ -2366,7 +2366,7 @@ static void session_handle_vote_command(session_ctx_t *ctx,
                 host_vote_state_save_locked(ctx->owner);
             }
         }
-        pthread_mutex_unlock(&ctx->owner->lock);
+        ttak_mutex_unlock(&ctx->owner->lock);
 
         if (!found) {
             char message[SSH_CHATTER_MESSAGE_LIMIT];
@@ -2416,7 +2416,7 @@ static void session_handle_vote_command(session_ctx_t *ctx,
     named_poll_state_t snapshot = {0};
     bool created = false;
     bool allowed = true;
-    pthread_mutex_lock(&ctx->owner->lock);
+    ttak_mutex_lock(&ctx->owner->lock);
     named_poll_state_t *poll =
         host_ensure_named_poll_locked(ctx->owner, label);
     if (poll == nullptr) {
@@ -2450,7 +2450,7 @@ static void session_handle_vote_command(session_ctx_t *ctx,
         snapshot = *poll;
         created = true;
     }
-    pthread_mutex_unlock(&ctx->owner->lock);
+    ttak_mutex_unlock(&ctx->owner->lock);
 
     if (!allowed) {
         session_send_system_line(ctx,
@@ -2500,7 +2500,7 @@ session_handle_gameopt(session_ctx_t *ctx, const char *arguments)
         snprintf(ctx->game.chosen_camouflage_language,
                  sizeof(ctx->game.chosen_camouflage_language), "c");
         if (ctx->owner != nullptr) {
-            pthread_mutex_lock(&ctx->owner->lock);
+            ttak_mutex_lock(&ctx->owner->lock);
             user_preference_t *pref =
                 host_ensure_preference_locked(ctx->owner, ctx->user.name, "");
             if (pref != nullptr) {
@@ -2508,7 +2508,7 @@ session_handle_gameopt(session_ctx_t *ctx, const char *arguments)
                          sizeof(pref->camouflage_language), "c");
                 host_state_save_locked(ctx->owner);
             }
-            pthread_mutex_unlock(&ctx->owner->lock);
+            ttak_mutex_unlock(&ctx->owner->lock);
         }
         session_send_system_line(
             ctx, "Game options reset. Camouflage language set to default (C).");
@@ -2735,13 +2735,13 @@ static bool session_bbs_refresh_view(session_ctx_t *ctx)
     }
 
     host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, ctx->bbs_view_post_id);
     bbs_post_t snapshot = {0};
     if (post != nullptr) {
         snapshot = *post;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (post == nullptr || !snapshot.in_use) {
         ctx->bbs_view_active = false;
@@ -2874,7 +2874,7 @@ static void session_bbs_list(session_ctx_t *ctx)
     size_t count = 0U;
 
     host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
         const bbs_post_t *post = &host->bbs_posts[idx];
         if (!post->in_use) {
@@ -2898,7 +2898,7 @@ static void session_bbs_list(session_ctx_t *ctx)
             break;
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (count == 0U) {
         char empty_hint[SSH_CHATTER_MESSAGE_LIMIT];
@@ -3063,7 +3063,7 @@ static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
     size_t count = 0U;
 
     host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
         const bbs_post_t *post = &host->bbs_posts[idx];
         if (!post->in_use) {
@@ -3089,7 +3089,7 @@ static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
             break;
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (count == 0U) {
         session_send_system_line(ctx, "The bulletin board is empty.");
@@ -3191,13 +3191,13 @@ static void session_bbs_read(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     bbs_post_t snapshot = {0};
     if (post != nullptr) {
         snapshot = *post;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (post == nullptr || !snapshot.in_use) {
         session_send_system_line(ctx, "No post exists with that identifier.");
@@ -3427,13 +3427,13 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     bbs_post_t snapshot = {0};
     if (ctx->editor_mode == SESSION_EDITOR_MODE_BBS_EDIT) {
         uint64_t edit_id = ctx->pending_bbs_edit_id;
         bbs_post_t *post = host_find_bbs_post_locked(host, edit_id);
         if (post == nullptr || !post->in_use) {
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
             session_send_system_line(
                 ctx, "No post exists with that identifier anymore.");
             session_bbs_reset_pending_post(ctx);
@@ -3444,7 +3444,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
                                  SSH_CHATTER_USERNAME_LEN) == 0) ||
                         ctx->user.is_operator || ctx->user.is_lan_operator;
         if (!can_edit) {
-            pthread_mutex_unlock(&host->lock);
+            ttak_mutex_unlock(&host->lock);
             session_send_system_line(
                 ctx, "Only the author or an operator may edit this post.");
             session_bbs_reset_pending_post(ctx);
@@ -3467,7 +3467,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
         post->bumped_at = time(nullptr);
         snapshot = *post;
         host_bbs_state_save_locked(host);
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
 
         session_bbs_reset_pending_post(ctx);
         session_bbs_render_post(ctx, &snapshot, "Post updated.", false);
@@ -3476,7 +3476,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
 
     bbs_post_t *post = host_allocate_bbs_post_locked(host);
     if (post == nullptr) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "The bulletin board is full right now.");
         return;
     }
@@ -3497,7 +3497,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
 
     snapshot = *post;
     host_bbs_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     session_bbs_reset_pending_post(ctx);
 
@@ -3787,13 +3787,13 @@ static void session_bbs_begin_edit(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     bbs_post_t snapshot = {0};
     if (post != nullptr && post->in_use) {
         snapshot = *post;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (post == nullptr || !snapshot.in_use) {
         session_send_system_line(ctx, "No post exists with that identifier.");
@@ -3886,15 +3886,15 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
     }
 
     host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     if (post == nullptr || !post->in_use) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "No post exists with that identifier.");
         return;
     }
     if (post->comment_count >= SSH_CHATTER_BBS_MAX_COMMENTS) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx,
                                  "This post has reached the comment limit.");
         return;
@@ -3914,7 +3914,7 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
     post->bumped_at = comment->created_at;
     bbs_post_t snapshot = *post;
     host_bbs_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (comment_index < snapshot.comment_count) {
         session_bbs_announce_comment(ctx->owner, &snapshot,
@@ -3935,10 +3935,10 @@ static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     if (post == nullptr || !post->in_use) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "No post exists with that identifier.");
         return;
     }
@@ -3947,7 +3947,7 @@ static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
                                SSH_CHATTER_USERNAME_LEN) == 0) ||
                       ctx->user.is_operator || ctx->user.is_lan_operator;
     if (!can_delete) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(
             ctx, "Only the author or an operator may delete this post.");
         return;
@@ -3955,7 +3955,7 @@ static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
 
     host_clear_bbs_post_locked(host, post);
     host_bbs_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     session_send_system_line(ctx, "Post deleted.");
 }
@@ -3968,10 +3968,10 @@ static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     if (post == nullptr || !post->in_use) {
-        pthread_mutex_unlock(&host->lock);
+        ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "No post exists with that identifier.");
         return;
     }
@@ -3979,7 +3979,7 @@ static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id)
     post->bumped_at = time(nullptr);
     bbs_post_t snapshot = *post;
     host_bbs_state_save_locked(host);
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     session_bbs_render_post(ctx, &snapshot, "Post bumped to the top.", false);
 }
@@ -4138,7 +4138,7 @@ static void session_rss_list(session_ctx_t *ctx)
     rss_feed_t snapshot[SSH_CHATTER_RSS_MAX_FEEDS];
     size_t count = 0U;
 
-    pthread_mutex_lock(&ctx->owner->lock);
+    ttak_mutex_lock(&ctx->owner->lock);
     for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
         if (!ctx->owner->rss_feeds[idx].in_use) {
             continue;
@@ -4148,7 +4148,7 @@ static void session_rss_list(session_ctx_t *ctx)
             break;
         }
     }
-    pthread_mutex_unlock(&ctx->owner->lock);
+    ttak_mutex_unlock(&ctx->owner->lock);
 
     session_render_separator(ctx, "RSS Feeds");
     if (count == 0U) {
@@ -4191,12 +4191,12 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
     }
 
     rss_feed_t feed_snapshot = {0};
-    pthread_mutex_lock(&ctx->owner->lock);
+    ttak_mutex_lock(&ctx->owner->lock);
     rss_feed_t *entry = host_find_rss_feed_locked(ctx->owner, working);
     if (entry != nullptr) {
         feed_snapshot = *entry;
     }
-    pthread_mutex_unlock(&ctx->owner->lock);
+    ttak_mutex_unlock(&ctx->owner->lock);
 
     if (feed_snapshot.tag[0] == '\0') {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
@@ -4222,7 +4222,7 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
     }
 
     time_t now = time(nullptr);
-    pthread_mutex_lock(&ctx->owner->lock);
+    ttak_mutex_lock(&ctx->owner->lock);
     entry = host_find_rss_feed_locked(ctx->owner, working);
     if (entry != nullptr) {
         entry->last_checked = now;
@@ -4232,7 +4232,7 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
                  items[0].link);
         host_rss_state_save_locked(ctx->owner);
     }
-    pthread_mutex_unlock(&ctx->owner->lock);
+    ttak_mutex_unlock(&ctx->owner->lock);
 
     session_rss_begin(ctx, feed_snapshot.tag, items, item_count);
 }
@@ -4481,7 +4481,7 @@ static bool host_asciiart_cooldown_active(host_t *host, const char *ip,
     bool active = false;
     long remaining = 0L;
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     join_activity_entry_t *entry = host_find_join_activity_locked(host, ip);
     if (entry != nullptr && entry->asciiart_has_cooldown) {
         struct timespec expiry = entry->last_asciiart_post;
@@ -4500,7 +4500,7 @@ static bool host_asciiart_cooldown_active(host_t *host, const char *ip,
             }
         }
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 
     if (remaining_seconds != nullptr) {
         *remaining_seconds = active ? remaining : 0L;
@@ -4516,13 +4516,13 @@ static void host_asciiart_register_post(host_t *host, const char *ip,
         return;
     }
 
-    pthread_mutex_lock(&host->lock);
+    ttak_mutex_lock(&host->lock);
     join_activity_entry_t *entry = host_ensure_join_activity_locked(host, ip);
     if (entry != nullptr) {
         entry->last_asciiart_post = *when;
         entry->asciiart_has_cooldown = true;
     }
-    pthread_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->lock);
 }
 
 static void session_asciiart_reset(session_ctx_t *ctx)

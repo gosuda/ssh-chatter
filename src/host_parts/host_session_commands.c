@@ -3356,8 +3356,6 @@ static void session_bbs_reset_pending_post(session_ctx_t *ctx)
     ctx->bbs_post_pending = false;
     ctx->editor_mode = SESSION_EDITOR_MODE_NONE;
     ctx->pending_bbs_edit_id = 0U;
-    ctx->pending_bbs_title[0] = '\0';
-    ctx->pending_bbs_body[0] = '\0';
     ctx->pending_bbs_body_length = 0U;
     ctx->pending_bbs_tag_count = 0U;
     ctx->pending_bbs_line_count = 0U;
@@ -3368,7 +3366,19 @@ static void session_bbs_reset_pending_post(session_ctx_t *ctx)
     ctx->bbs_editor_selection_start_set = false;
     ctx->bbs_editor_selection_end = 0U;
     ctx->bbs_editor_selection_end_set = false;
-    ctx->bbs_editor_clipboard[0] = '\0';
+    if (ctx->pending_bbs_title != nullptr) {
+        ctx->pending_bbs_title[0] = '\0';
+    }
+    if (ctx->pending_bbs_body != nullptr) {
+        ctx->pending_bbs_body[0] = '\0';
+    }
+    if (ctx->pending_bbs_tags != nullptr) {
+        memset(ctx->pending_bbs_tags, 0,
+               sizeof(*ctx->pending_bbs_tags) * SSH_CHATTER_BBS_MAX_TAGS);
+    }
+    if (ctx->bbs_editor_clipboard != nullptr) {
+        ctx->bbs_editor_clipboard[0] = '\0';
+    }
     ctx->bbs_editor_clipboard_length = 0U;
     ctx->bbs_editor_clipboard_lines = 0U;
     ctx->bbs_line_edit_mode = false;
@@ -3377,11 +3387,6 @@ static void session_bbs_reset_pending_post(session_ctx_t *ctx)
     ctx->bbs_search_restore_line = 0U;
     ctx->bbs_search_restore_editing = false;
     ctx->bbs_search_restore_scroll = 0U;
-    for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_TAGS; ++idx) {
-        ctx->pending_bbs_tags[idx][0] = '\0';
-    }
-    ctx->bbs_breaking_count = 0U;
-    memset(ctx->bbs_breaking_messages, 0, sizeof(ctx->bbs_breaking_messages));
     ctx->bbs_rendering_editor = false;
 }
 
@@ -3521,8 +3526,6 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    ctx->bbs_breaking_count = 0U;
-    memset(ctx->bbs_breaking_messages, 0, sizeof(ctx->bbs_breaking_messages));
     ctx->bbs_view_active = false;
     ctx->bbs_view_post_id = 0U;
 
@@ -3533,6 +3536,10 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
     }
 
     session_bbs_reset_pending_post(ctx);
+    if (!session_bbs_workspace_acquire(ctx)) {
+        session_send_system_line(ctx, "Unable to allocate editor workspace.");
+        return;
+    }
 
     if (arguments == nullptr) {
         session_bbs_send_usage(ctx, "post", "<title>[|tags...]");
@@ -3646,7 +3653,7 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
                     return;
                 }
                 snprintf(ctx->pending_bbs_tags[tag_count],
-                         sizeof(ctx->pending_bbs_tags[tag_count]), "%s",
+                         SSH_CHATTER_BBS_TAG_LEN, "%s",
                          tag_value);
                 ++tag_count;
             } else {
@@ -3657,14 +3664,13 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
     }
 
     if (tag_count == 0U) {
-        snprintf(ctx->pending_bbs_tags[0], sizeof(ctx->pending_bbs_tags[0]),
+        snprintf(ctx->pending_bbs_tags[0], SSH_CHATTER_BBS_TAG_LEN,
                  "%s", SSH_CHATTER_BBS_DEFAULT_TAG);
         tag_count = 1U;
         default_tag_applied = true;
     }
 
-    snprintf(ctx->pending_bbs_title, sizeof(ctx->pending_bbs_title), "%s",
-             title);
+    snprintf(ctx->pending_bbs_title, SSH_CHATTER_BBS_TITLE_LEN, "%s", title);
     ctx->pending_bbs_tag_count = tag_count;
     ctx->pending_bbs_body[0] = '\0';
     ctx->pending_bbs_body_length = 0U;
@@ -3810,15 +3816,19 @@ static void session_bbs_begin_edit(session_ctx_t *ctx, uint64_t id)
     }
 
     session_bbs_reset_pending_post(ctx);
+    if (!session_bbs_workspace_acquire(ctx)) {
+        session_send_system_line(ctx, "Unable to allocate editor workspace.");
+        return;
+    }
     ctx->bbs_post_pending = true;
     ctx->editor_mode = SESSION_EDITOR_MODE_BBS_EDIT;
     ctx->pending_bbs_edit_id = id;
 
-    snprintf(ctx->pending_bbs_title, sizeof(ctx->pending_bbs_title), "%s",
+    snprintf(ctx->pending_bbs_title, SSH_CHATTER_BBS_TITLE_LEN, "%s",
              snapshot.title);
 
     size_t body_len =
-        strnlen(snapshot.body, sizeof(ctx->pending_bbs_body) - 1U);
+        strnlen(snapshot.body, SSH_CHATTER_BBS_BODY_LEN - 1U);
     memcpy(ctx->pending_bbs_body, snapshot.body, body_len);
     ctx->pending_bbs_body[body_len] = '\0';
     ctx->pending_bbs_body_length = body_len;
@@ -3828,7 +3838,7 @@ static void session_bbs_begin_edit(session_ctx_t *ctx, uint64_t id)
         ctx->pending_bbs_tag_count = SSH_CHATTER_BBS_MAX_TAGS;
     }
     for (size_t idx = 0U; idx < ctx->pending_bbs_tag_count; ++idx) {
-        snprintf(ctx->pending_bbs_tags[idx], sizeof(ctx->pending_bbs_tags[idx]),
+        snprintf(ctx->pending_bbs_tags[idx], SSH_CHATTER_BBS_TAG_LEN,
                  "%s", snapshot.tags[idx]);
     }
 
@@ -4533,7 +4543,9 @@ static void session_asciiart_reset(session_ctx_t *ctx)
 
     ctx->asciiart_pending = false;
     ctx->asciiart_target = SESSION_ASCIIART_TARGET_NONE;
-    ctx->asciiart_buffer[0] = '\0';
+    if (ctx->asciiart_buffer != nullptr) {
+        ctx->asciiart_buffer[0] = '\0';
+    }
     ctx->asciiart_length = 0U;
     ctx->asciiart_line_count = 0U;
 }
@@ -4652,6 +4664,13 @@ static void session_asciiart_begin(session_ctx_t *ctx,
     ctx->asciiart_target = target;
 
     session_bbs_reset_pending_post(ctx);
+    if (!session_asciiart_buffer_acquire(ctx) ||
+        !session_bbs_workspace_acquire(ctx)) {
+        session_send_system_line(
+            ctx, "ASCII art editor is unavailable right now.");
+        session_asciiart_reset(ctx);
+        return;
+    }
     ctx->editor_mode = SESSION_EDITOR_MODE_ASCIIART;
     ctx->bbs_post_pending = true;
 
@@ -4671,11 +4690,18 @@ static void session_asciiart_import_from_editor(session_ctx_t *ctx)
         return;
     }
 
+    if (!session_bbs_workspace_acquire(ctx) ||
+        !session_asciiart_buffer_acquire(ctx)) {
+        session_send_system_line(
+            ctx, "ASCII art workspace is unavailable right now.");
+        return;
+    }
+
     session_bbs_recalculate_line_count(ctx);
 
     size_t copy_len = ctx->pending_bbs_body_length;
-    if (copy_len >= sizeof(ctx->asciiart_buffer)) {
-        copy_len = sizeof(ctx->asciiart_buffer) - 1U;
+    if (copy_len >= SSH_CHATTER_ASCIIART_BUFFER_LEN) {
+        copy_len = SSH_CHATTER_ASCIIART_BUFFER_LEN - 1U;
     }
 
     if (copy_len > 0U) {
@@ -4692,6 +4718,11 @@ static void session_asciiart_import_from_editor(session_ctx_t *ctx)
 static void session_asciiart_commit(session_ctx_t *ctx)
 {
     if (ctx == nullptr || !ctx->asciiart_pending) {
+        return;
+    }
+
+    if (!session_asciiart_buffer_acquire(ctx)) {
+        session_asciiart_reset(ctx);
         return;
     }
 
@@ -4833,6 +4864,11 @@ static void session_asciiart_capture_line(session_ctx_t *ctx, const char *line)
         return;
     }
 
+    if (!session_asciiart_buffer_acquire(ctx)) {
+        session_send_system_line(ctx, "ASCII art buffer unavailable.");
+        return;
+    }
+
     char trimmed[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(trimmed, sizeof(trimmed), "%s", line != nullptr ? line : "");
     trim_whitespace_inplace(trimmed);
@@ -4856,7 +4892,7 @@ static void session_asciiart_capture_line(session_ctx_t *ctx, const char *line)
     const char *truncate_message =
         "Line truncated to fit within the ASCII art size limit.";
 
-    size_t buffer_capacity = sizeof(ctx->asciiart_buffer);
+    size_t buffer_capacity = SSH_CHATTER_ASCIIART_BUFFER_LEN;
 
     if (ctx->asciiart_length >= buffer_capacity - 1U) {
         session_send_system_line(ctx, full_message);

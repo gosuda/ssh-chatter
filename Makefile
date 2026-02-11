@@ -1,5 +1,5 @@
 # Default setting: Disable Garbage Collector (GC)
-ENABLE_GC ?= 1
+ENABLE_GC ?= 0
 
 # The C compiler to use
 CC := gcc
@@ -27,7 +27,6 @@ CFLAGS = -std=c2x -Ofast \
               -fPIC \
               -g \
               -D_FORTIFY_SOURCE=2 \
-              -march=native -mtune=native \
               -flto=auto -fuse-linker-plugin \
               -fomit-frame-pointer \
               -fno-signed-zeros \

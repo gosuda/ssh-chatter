@@ -13,6 +13,275 @@
 #define SSH_CHATTER_TCP_KEEPALIVE_IDLE 60
 #define SSH_CHATTER_TCP_KEEPALIVE_INTERVAL 10
 #define SSH_CHATTER_TCP_KEEPALIVE_COUNT 3
+#define SESSION_LIFETIME_INITIAL_UNITS 8U
+#define SESSION_LIFETIME_ACTIVITY_BONUS 2U
+#define SESSION_LIFETIME_MAX_UNITS 64U
+#define SESSION_LIFETIME_MIN_UNITS 1U
+#define SESSION_LIFETIME_INACTIVE_THRESHOLD (20 * 60)
+#define SESSION_LIFETIME_DECAY_INTERVAL (5 * 60)
+
+static inline void session_safe_free(void **ptr)
+{
+    if (ptr != nullptr && *ptr != nullptr) {
+        sshc_gc_free(*ptr);
+        *ptr = nullptr;
+    }
+}
+
+static struct timespec session_now_monotonic(void)
+{
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        now.tv_sec = time(nullptr);
+        now.tv_nsec = 0L;
+    }
+    return now;
+}
+
+static double session_timespec_elapsed_seconds(const struct timespec *now,
+                                               const struct timespec *then)
+{
+    if (now == nullptr || then == nullptr) {
+        return 0.0;
+    }
+    double seconds = (double)(now->tv_sec - then->tv_sec);
+    double nanos = (double)(now->tv_nsec - then->tv_nsec) / 1000000000.0;
+    return seconds + nanos;
+}
+
+static void session_timespec_add_seconds(struct timespec *ts, time_t seconds)
+{
+    if (ts == nullptr) {
+        return;
+    }
+    ts->tv_sec += seconds;
+    if (ts->tv_nsec >= 1000000000L) {
+        ts->tv_sec += 1;
+        ts->tv_nsec -= 1000000000L;
+    }
+}
+
+bool session_bbs_workspace_acquire(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return false;
+    }
+
+    if (ctx->pending_bbs_title == nullptr) {
+        ctx->pending_bbs_title =
+            (char *)sshc_gc_calloc(SSH_CHATTER_BBS_TITLE_LEN, sizeof(char));
+    }
+    if (ctx->pending_bbs_tags == nullptr) {
+        ctx->pending_bbs_tags = sshc_gc_calloc(
+            SSH_CHATTER_BBS_MAX_TAGS, sizeof(*ctx->pending_bbs_tags));
+    }
+    if (ctx->pending_bbs_body == nullptr) {
+        ctx->pending_bbs_body =
+            (char *)sshc_gc_calloc(SSH_CHATTER_BBS_BODY_LEN, sizeof(char));
+    }
+    if (ctx->bbs_editor_clipboard == nullptr) {
+        ctx->bbs_editor_clipboard =
+            (char *)sshc_gc_calloc(SSH_CHATTER_BBS_BODY_LEN, sizeof(char));
+    }
+
+    return ctx->pending_bbs_title != nullptr &&
+           ctx->pending_bbs_tags != nullptr &&
+           ctx->pending_bbs_body != nullptr &&
+           ctx->bbs_editor_clipboard != nullptr;
+}
+
+void session_bbs_workspace_release(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    session_safe_free((void **)&ctx->pending_bbs_title);
+    session_safe_free((void **)&ctx->pending_bbs_tags);
+    session_safe_free((void **)&ctx->pending_bbs_body);
+    session_safe_free((void **)&ctx->bbs_editor_clipboard);
+}
+
+bool session_bbs_view_notice_acquire(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return false;
+    }
+    if (ctx->bbs_view_notice == nullptr) {
+        ctx->bbs_view_notice = (char *)sshc_gc_calloc(
+            SSH_CHATTER_MESSAGE_LIMIT, sizeof(char));
+    }
+    return ctx->bbs_view_notice != nullptr;
+}
+
+void session_bbs_view_notice_release(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->bbs_view_notice);
+}
+
+bool session_asciiart_buffer_acquire(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return false;
+    }
+    if (ctx->asciiart_buffer == nullptr) {
+        ctx->asciiart_buffer = (char *)sshc_gc_calloc(
+            SSH_CHATTER_ASCIIART_BUFFER_LEN, sizeof(char));
+    }
+    return ctx->asciiart_buffer != nullptr;
+}
+
+void session_asciiart_buffer_release(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->asciiart_buffer);
+}
+
+bool session_tetris_buffers_acquire(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return false;
+    }
+    if (ctx->tetris_screen_buffer == nullptr) {
+        ctx->tetris_screen_buffer = (char *)sshc_gc_calloc(
+            SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE, sizeof(char));
+    }
+    if (ctx->tetris_prev_screen_buffer == nullptr) {
+        ctx->tetris_prev_screen_buffer = (char *)sshc_gc_calloc(
+            SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE, sizeof(char));
+    }
+    return ctx->tetris_screen_buffer != nullptr &&
+           ctx->tetris_prev_screen_buffer != nullptr;
+}
+
+void session_tetris_buffers_release(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->tetris_screen_buffer);
+    session_safe_free((void **)&ctx->tetris_prev_screen_buffer);
+}
+
+tetris_game_state_t *session_game_ensure_tetris(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.tetris == nullptr) {
+        ctx->game.tetris =
+            (tetris_game_state_t *)sshc_gc_calloc(1U, sizeof(tetris_game_state_t));
+    }
+    return ctx->game.tetris;
+}
+
+tetris_game_state_t *
+session_game_ensure_saved_tetris(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.saved_tetris_state == nullptr) {
+        ctx->game.saved_tetris_state =
+            (tetris_game_state_t *)sshc_gc_calloc(1U, sizeof(tetris_game_state_t));
+    }
+    return ctx->game.saved_tetris_state;
+}
+
+void session_game_release_tetris(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.tetris);
+}
+
+void session_game_release_saved_tetris(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.saved_tetris_state);
+}
+
+void session_mark_activity(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    struct timespec now = session_now_monotonic();
+    ctx->lifetime_last_activity = now;
+    ctx->lifetime_has_activity = true;
+    ctx->lifetime_decay_active = false;
+
+    if (ctx->lifetime_units < SESSION_LIFETIME_MAX_UNITS) {
+        uint32_t next =
+            ctx->lifetime_units + SESSION_LIFETIME_ACTIVITY_BONUS;
+        ctx->lifetime_units =
+            next > SESSION_LIFETIME_MAX_UNITS ? SESSION_LIFETIME_MAX_UNITS
+                                              : next;
+    }
+}
+
+bool session_enforce_lifetime(session_ctx_t *ctx,
+                              const struct timespec *now)
+{
+    if (ctx == nullptr || now == nullptr) {
+        return false;
+    }
+
+    if (!ctx->lifetime_has_activity) {
+        return false;
+    }
+
+    double idle_seconds =
+        session_timespec_elapsed_seconds(now, &ctx->lifetime_last_activity);
+    if (idle_seconds < SESSION_LIFETIME_INACTIVE_THRESHOLD) {
+        ctx->lifetime_decay_active = false;
+        return false;
+    }
+
+    if (!ctx->lifetime_decay_active) {
+        ctx->lifetime_decay_reference = ctx->lifetime_last_activity;
+        session_timespec_add_seconds(&ctx->lifetime_decay_reference,
+                                     SESSION_LIFETIME_INACTIVE_THRESHOLD);
+        ctx->lifetime_decay_active = true;
+    }
+
+    double since_decay =
+        session_timespec_elapsed_seconds(now, &ctx->lifetime_decay_reference);
+    if (since_decay < SESSION_LIFETIME_DECAY_INTERVAL) {
+        return false;
+    }
+
+    size_t intervals =
+        (size_t)(since_decay / SESSION_LIFETIME_DECAY_INTERVAL);
+    session_timespec_add_seconds(
+        &ctx->lifetime_decay_reference,
+        (time_t)(intervals * SESSION_LIFETIME_DECAY_INTERVAL));
+
+    for (size_t idx = 0U; idx < intervals; ++idx) {
+        if (ctx->lifetime_units > SESSION_LIFETIME_MIN_UNITS) {
+            ctx->lifetime_units /= 2U;
+            if (ctx->lifetime_units < SESSION_LIFETIME_MIN_UNITS) {
+                ctx->lifetime_units = SESSION_LIFETIME_MIN_UNITS;
+            }
+        }
+    }
+
+    if (ctx->lifetime_units <= SESSION_LIFETIME_MIN_UNITS) {
+        session_force_disconnect(ctx, "Session removed after inactivity.");
+        return true;
+    }
+
+    return false;
+}
 
 static session_ctx_t *session_create(void)
 {
@@ -28,6 +297,31 @@ static session_ctx_t *session_create(void)
         ctx->exit_notice_sent = false;
         ctx->has_last_output_line = false;
         ctx->disable_output_dedup = false;
+        ctx->lifetime_units = SESSION_LIFETIME_INITIAL_UNITS;
+        ctx->lifetime_last_activity = session_now_monotonic();
+        ctx->lifetime_decay_reference = ctx->lifetime_last_activity;
+        ctx->lifetime_has_activity = true;
+        ctx->lifetime_decay_active = false;
+
+        bool workspace_ready = session_bbs_workspace_acquire(ctx);
+        bool notice_ready = workspace_ready && session_bbs_view_notice_acquire(ctx);
+        bool ascii_ready = notice_ready && session_asciiart_buffer_acquire(ctx);
+        bool tetris_buffers_ready =
+            ascii_ready && session_tetris_buffers_acquire(ctx);
+        bool tetris_state_ready =
+            tetris_buffers_ready && session_game_ensure_tetris(ctx) != nullptr &&
+            session_game_ensure_saved_tetris(ctx) != nullptr;
+
+        if (!tetris_state_ready) {
+            session_asciiart_buffer_release(ctx);
+            session_bbs_view_notice_release(ctx);
+            session_bbs_workspace_release(ctx);
+            session_tetris_buffers_release(ctx);
+            session_game_release_tetris(ctx);
+            session_game_release_saved_tetris(ctx);
+            sshc_gc_free(ctx);
+            return nullptr;
+        }
     }
     return ctx;
 }
@@ -3060,20 +3354,27 @@ static void session_reset_for_retry(session_ctx_t *ctx)
     ctx->multibyte_input_length = 0U;
     memset(ctx->multibyte_input_buffer, 0, sizeof(ctx->multibyte_input_buffer));
     ctx->bbs_post_pending = false;
-    ctx->pending_bbs_title[0] = '\0';
-    ctx->pending_bbs_body[0] = '\0';
     ctx->pending_bbs_body_length = 0U;
     ctx->pending_bbs_tag_count = 0U;
-    memset(ctx->pending_bbs_tags, 0, sizeof(ctx->pending_bbs_tags));
+    if (ctx->pending_bbs_title != nullptr) {
+        ctx->pending_bbs_title[0] = '\0';
+    }
+    if (ctx->pending_bbs_body != nullptr) {
+        ctx->pending_bbs_body[0] = '\0';
+    }
+    if (ctx->pending_bbs_tags != nullptr) {
+        memset(ctx->pending_bbs_tags, 0,
+               sizeof(*ctx->pending_bbs_tags) * SSH_CHATTER_BBS_MAX_TAGS);
+    }
     ctx->bbs_view_active = false;
     ctx->bbs_view_post_id = 0U;
     ctx->bbs_view_scroll_offset = 0U;
     ctx->bbs_view_total_lines = 0U;
     ctx->bbs_view_notice_pending = false;
-    ctx->bbs_view_notice[0] = '\0';
+    if (ctx->bbs_view_notice != nullptr) {
+        ctx->bbs_view_notice[0] = '\0';
+    }
     ctx->bbs_rendering_editor = false;
-    ctx->bbs_breaking_count = 0U;
-    memset(ctx->bbs_breaking_messages, 0, sizeof(ctx->bbs_breaking_messages));
     ctx->telnet_terminal_type_requested = false;
     ctx->terminal_type[0] = '\0';
     ctx->prefer_cp437_output = false;
@@ -3085,7 +3386,7 @@ static void session_reset_for_retry(session_ctx_t *ctx)
     ctx->asciiart_has_cooldown = false;
     ctx->last_asciiart_post.tv_sec = 0;
     ctx->last_asciiart_post.tv_nsec = 0;
-    session_game_tetris_reset(&ctx->game.tetris);
+    session_game_tetris_reset(ctx->game.tetris);
     ctx->game.liar.awaiting_guess = false;
     ctx->game.liar.round_number = 0U;
     ctx->game.liar.score = 0U;
@@ -3583,6 +3884,13 @@ static void session_cleanup(session_ctx_t *ctx)
     }
 
     session_translation_worker_shutdown(ctx);
+    session_asciiart_buffer_release(ctx);
+    session_bbs_workspace_release(ctx);
+    session_bbs_view_notice_release(ctx);
+    session_tetris_buffers_release(ctx);
+    session_game_release_tetris(ctx);
+    session_game_release_saved_tetris(ctx);
+
     if (ctx->channel_mutex_initialized) {
         ttak_mutex_destroy(&ctx->channel_mutex);
         ctx->channel_mutex_initialized = false;
@@ -4100,6 +4408,10 @@ static void *session_thread(void *arg)
     char buffer[SSH_CHATTER_MAX_INPUT_LEN];
     const int poll_timeout_ms = 100;
     while (!ctx->should_exit) {
+        struct timespec lifetime_now = session_now_monotonic();
+        if (session_enforce_lifetime(ctx, &lifetime_now)) {
+            break;
+        }
         session_translation_flush_ready(ctx);
 
         if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {
@@ -4225,6 +4537,10 @@ static void *session_thread(void *arg)
         }
         if (read_result < 0) {
             continue;
+        }
+
+        if (read_result > 0) {
+            session_mark_activity(ctx);
         }
 
         for (int idx = 0; idx < read_result; ++idx) {
@@ -4415,7 +4731,7 @@ static void *session_thread(void *arg)
                                 ctx, ctx->bbs_editor_selection_start,
                                 ctx->bbs_editor_selection_end,
                                 ctx->bbs_editor_clipboard,
-                                sizeof(ctx->bbs_editor_clipboard),
+                                SSH_CHATTER_BBS_BODY_LEN,
                                 &ctx->bbs_editor_clipboard_lines)) {
                             ctx->bbs_editor_clipboard_length =
                                 strlen(ctx->bbs_editor_clipboard);

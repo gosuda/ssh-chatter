@@ -65,7 +65,6 @@
 #define SSH_CHATTER_BBS_MAX_COMMENTS 64
 #define SSH_CHATTER_BBS_COMMENT_LEN 512
 #define SSH_CHATTER_BBS_VIEW_WINDOW 60
-#define SSH_CHATTER_BBS_BREAKING_MAX 4096
 #define SSH_CHATTER_RSS_MAX_FEEDS 32
 #define SSH_CHATTER_RSS_TAG_LEN 32
 #define SSH_CHATTER_RSS_URL_LEN 512
@@ -475,9 +474,9 @@ typedef struct gonu_game_state {
 typedef struct session_game_state {
     bool active;
     session_game_type_t type;
-    tetris_game_state_t tetris;
+    tetris_game_state_t *tetris;
     bool is_camouflaged;
-    tetris_game_state_t saved_tetris_state;
+    tetris_game_state_t *saved_tetris_state;
     liar_game_state_t saved_liar_state;
     alpha_centauri_game_state_t saved_alpha_state;
     othello_game_state_t saved_othello_state;
@@ -660,10 +659,10 @@ typedef struct session_ctx {
     bool bbs_post_pending;
     session_editor_mode_t editor_mode;
     uint64_t pending_bbs_edit_id;
-    char pending_bbs_title[SSH_CHATTER_BBS_TITLE_LEN];
-    char pending_bbs_tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
+    char *pending_bbs_title;
+    char (*pending_bbs_tags)[SSH_CHATTER_BBS_TAG_LEN];
     size_t pending_bbs_tag_count;
-    char pending_bbs_body[SSH_CHATTER_BBS_BODY_LEN];
+    char *pending_bbs_body;
     size_t pending_bbs_body_length;
     size_t pending_bbs_line_count;
     size_t pending_bbs_cursor_line;
@@ -673,7 +672,7 @@ typedef struct session_ctx {
     bool bbs_editor_selection_start_set;
     size_t bbs_editor_selection_end;
     bool bbs_editor_selection_end_set;
-    char bbs_editor_clipboard[SSH_CHATTER_BBS_BODY_LEN];
+    char *bbs_editor_clipboard;
     size_t bbs_editor_clipboard_length;
     size_t bbs_editor_clipboard_lines;
     bool bbs_line_edit_mode;
@@ -687,11 +686,8 @@ typedef struct session_ctx {
     size_t bbs_view_scroll_offset;
     size_t bbs_view_total_lines;
     bool bbs_view_notice_pending;
-    char bbs_view_notice[SSH_CHATTER_MESSAGE_LIMIT];
+    char *bbs_view_notice;
     bool bbs_rendering_editor;
-    char bbs_breaking_messages[SSH_CHATTER_BBS_BREAKING_MAX]
-                              [SSH_CHATTER_MESSAGE_LIMIT];
-    size_t bbs_breaking_count;
     bool breaking_alerts_enabled;
     bool morse_feed_enabled;
     char morse_filter[SSH_CHATTER_MORSE_FILTER_LEN];
@@ -739,7 +735,7 @@ typedef struct session_ctx {
     char status_message[SSH_CHATTER_STATUS_LEN];
     bool asciiart_pending;
     session_asciiart_target_t asciiart_target;
-    char asciiart_buffer[SSH_CHATTER_ASCIIART_BUFFER_LEN];
+    char *asciiart_buffer;
     size_t asciiart_length;
     size_t asciiart_line_count;
     bool asciiart_has_cooldown;
@@ -753,8 +749,8 @@ typedef struct session_ctx {
     bool user_data_loaded;
     user_data_record_t user_data;
     bool password_not_set; // Flag to indicate if user needs to set a password
-    char tetris_screen_buffer[SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE];
-    char tetris_prev_screen_buffer[SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE];
+    char *tetris_screen_buffer;
+    char *tetris_prev_screen_buffer;
     const session_ops_t *ops;
     bool history_oldest_notified;
     bool history_latest_notified;
@@ -776,6 +772,11 @@ typedef struct session_ctx {
     char last_output_line[SSH_CHATTER_MESSAGE_LIMIT];
     bool has_last_output_line;
     bool disable_output_dedup;
+    uint32_t lifetime_units;
+    struct timespec lifetime_last_activity;
+    struct timespec lifetime_decay_reference;
+    bool lifetime_has_activity;
+    bool lifetime_decay_active;
 } session_ctx_t;
 
 typedef struct user_preference {

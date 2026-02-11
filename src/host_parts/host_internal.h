@@ -139,6 +139,21 @@ void session_clear_pending_sink(session_ctx_t *ctx);
 session_ui_language_t session_ui_language_from_code(const char *code);
 void host_store_ui_language(host_t *host, const session_ctx_t *ctx);
 
+bool session_bbs_workspace_acquire(session_ctx_t *ctx);
+void session_bbs_workspace_release(session_ctx_t *ctx);
+bool session_bbs_view_notice_acquire(session_ctx_t *ctx);
+void session_bbs_view_notice_release(session_ctx_t *ctx);
+bool session_asciiart_buffer_acquire(session_ctx_t *ctx);
+void session_asciiart_buffer_release(session_ctx_t *ctx);
+bool session_tetris_buffers_acquire(session_ctx_t *ctx);
+void session_tetris_buffers_release(session_ctx_t *ctx);
+tetris_game_state_t *session_game_ensure_tetris(session_ctx_t *ctx);
+tetris_game_state_t *session_game_ensure_saved_tetris(session_ctx_t *ctx);
+void session_game_release_tetris(session_ctx_t *ctx);
+void session_game_release_saved_tetris(session_ctx_t *ctx);
+void session_mark_activity(session_ctx_t *ctx);
+bool session_enforce_lifetime(session_ctx_t *ctx, const struct timespec *now);
+
 static inline const char *
 chat_history_entry_display_name(const chat_history_entry_t *entry)
 {

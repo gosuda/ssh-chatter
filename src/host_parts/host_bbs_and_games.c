@@ -268,7 +268,10 @@ static void session_game_tetris_apply_round_settings(tetris_game_state_t *state)
 
 static void session_game_tetris_fill_bag(session_ctx_t *ctx)
 {
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = session_game_ensure_tetris(ctx);
+    if (state == nullptr) {
+        return;
+    }
     for (size_t idx = 0U; idx < 7U; ++idx) {
         state->bag[idx] = (int)idx;
     }
@@ -283,7 +286,10 @@ static void session_game_tetris_fill_bag(session_ctx_t *ctx)
 
 static int session_game_tetris_take_piece(session_ctx_t *ctx)
 {
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = session_game_ensure_tetris(ctx);
+    if (state == nullptr) {
+        return 0;
+    }
     if (state->bag_index >= 7U) {
         session_game_tetris_fill_bag(ctx);
     }
@@ -342,7 +348,10 @@ static bool session_game_tetris_spawn_piece(session_ctx_t *ctx)
     if (ctx == nullptr) {
         return false;
     }
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = session_game_ensure_tetris(ctx);
+    if (state == nullptr) {
+        return false;
+    }
     state->current_piece = state->next_piece;
     state->rotation = 0;
     state->row = 0;
@@ -367,7 +376,10 @@ static bool session_game_tetris_move(session_ctx_t *ctx, int drow, int dcol)
     if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS) {
         return false;
     }
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = session_game_ensure_tetris(ctx);
+    if (state == nullptr) {
+        return false;
+    }
     if (state->current_piece < 0) {
         return false;
     }
@@ -399,7 +411,10 @@ static bool session_game_tetris_apply_gravity(session_ctx_t *ctx,
         return false;
     }
 
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = session_game_ensure_tetris(ctx);
+    if (state == nullptr) {
+        return false;
+    }
     if (state->game_over || ticks == 0U) {
         return false;
     }
@@ -441,7 +456,10 @@ static bool session_game_tetris_update_timer(session_ctx_t *ctx,
         return false;
     }
 
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = session_game_ensure_tetris(ctx);
+    if (state == nullptr) {
+        return false;
+    }
     if (state->game_over) {
         return false;
     }
@@ -500,13 +518,17 @@ static bool session_game_tetris_process_timeout(session_ctx_t *ctx)
     }
 
     if (ctx->game.is_camouflaged) {
-        ctx->game.tetris.gravity_timer_initialized = false;
-        ctx->game.tetris.gravity_timer_accumulator_ns = 0U;
+        tetris_game_state_t *tetris = session_game_ensure_tetris(ctx);
+        if (tetris != nullptr) {
+            tetris->gravity_timer_initialized = false;
+            tetris->gravity_timer_accumulator_ns = 0U;
+        }
         return false;
     }
 
     bool redraw = session_game_tetris_update_timer(ctx, false);
-    if (ctx->game.tetris.game_over) {
+    tetris_game_state_t *state = session_game_ensure_tetris(ctx);
+    if (state != nullptr && state->game_over) {
         session_game_suspend(ctx, "Game over!");
         return true;
     }
@@ -534,7 +556,7 @@ static bool session_game_tetris_process_action(session_ctx_t *ctx,
         return false;
     }
 
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = ctx->game.tetris;
     if (state->game_over) {
         session_game_suspend(ctx, "Game over!");
         return true;
@@ -613,7 +635,7 @@ static bool session_game_tetris_process_raw_input(session_ctx_t *ctx, char ch)
         return false;
     }
 
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = ctx->game.tetris;
     const bool camouflaged = ctx->game.is_camouflaged;
 
     if (ch == 0x01 || ch == 0x03 || ch == 0x1a || ch == 0x13) {
@@ -689,19 +711,27 @@ static bool session_game_tetris_process_raw_input(session_ctx_t *ctx, char ch)
     if (lowered == 't') {
         if (ctx->game.is_camouflaged) {
             ctx->game.is_camouflaged = false;
-            ctx->game.tetris = ctx->game.saved_tetris_state;
-            ctx->game.tetris.gravity_timer_initialized = false;
-            ctx->game.tetris.gravity_timer_accumulator_ns = 0U;
+            if (ctx->game.tetris != nullptr &&
+                ctx->game.saved_tetris_state != nullptr) {
+                *ctx->game.tetris = *ctx->game.saved_tetris_state;
+            }
+            ctx->game.tetris->gravity_timer_initialized = false;
+            ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
             // Re-enable alternate screen buffer when returning to game
             session_enable_alternate_screen(ctx);
             session_game_tetris_render(ctx);
         } else {
             ctx->game.is_camouflaged = true;
-            ctx->game.saved_tetris_state = ctx->game.tetris;
-            ctx->game.saved_tetris_state.gravity_timer_initialized = false;
-            ctx->game.saved_tetris_state.gravity_timer_accumulator_ns = 0U;
-            ctx->game.tetris.gravity_timer_initialized = false;
-            ctx->game.tetris.gravity_timer_accumulator_ns = 0U;
+            if (ctx->game.tetris != nullptr &&
+                ctx->game.saved_tetris_state != nullptr) {
+                *ctx->game.saved_tetris_state = *ctx->game.tetris;
+                ctx->game.saved_tetris_state->gravity_timer_initialized =
+                    false;
+                ctx->game.saved_tetris_state->gravity_timer_accumulator_ns =
+                    0U;
+            }
+            ctx->game.tetris->gravity_timer_initialized = false;
+            ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
             // Disable alternate screen buffer when showing camouflage
             session_disable_alternate_screen(ctx);
             session_game_show_camouflage(ctx);
@@ -745,7 +775,7 @@ static bool session_game_tetris_rotate(session_ctx_t *ctx)
     if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS) {
         return false;
     }
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = ctx->game.tetris;
     if (state->current_piece < 0) {
         return false;
     }
@@ -769,7 +799,7 @@ static void session_game_tetris_clear_lines(session_ctx_t *ctx,
         return;
     }
 
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = ctx->game.tetris;
     unsigned removed = 0U;
     for (int row = 0; row < SSH_CHATTER_TETRIS_HEIGHT; ++row) {
         bool full = true;
@@ -806,7 +836,7 @@ static void session_game_tetris_handle_round_progress(session_ctx_t *ctx)
         return;
     }
 
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = ctx->game.tetris;
     while (state->round < SSH_CHATTER_TETRIS_MAX_ROUNDS &&
            state->lines_cleared >= state->next_round_line_goal) {
         state->round += 1U;
@@ -836,7 +866,7 @@ static void session_game_tetris_lock_piece(session_ctx_t *ctx)
         return;
     }
 
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = ctx->game.tetris;
     if (state->current_piece < 0) {
         return;
     }
@@ -1015,7 +1045,10 @@ static void session_game_tetris_render(session_ctx_t *ctx)
     bool previous_dedup_state = ctx->disable_output_dedup;
     ctx->disable_output_dedup = true;
 
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = ctx->game.tetris;
+    if (state == nullptr) {
+        return;
+    }
 
     char *buffer = ctx->tetris_screen_buffer;
     size_t offset = 0;
@@ -1157,7 +1190,7 @@ static void session_game_tetris_handle_line(session_ctx_t *ctx,
         return;
     }
 
-    tetris_game_state_t *state = &ctx->game.tetris;
+    tetris_game_state_t *state = ctx->game.tetris;
     if (state->game_over) {
         session_game_suspend(ctx, "Game over!");
         return;
@@ -1270,13 +1303,13 @@ static void session_game_start_tetris(session_ctx_t *ctx)
                  sizeof(ctx->game.chosen_camouflage_language), "c");
     }
 
-    session_game_tetris_reset(&ctx->game.tetris);
+    session_game_tetris_reset(ctx->game.tetris);
     session_game_seed_rng(ctx);
     session_game_tetris_fill_bag(ctx);
-    ctx->game.tetris.next_piece = session_game_tetris_take_piece(ctx);
+    ctx->game.tetris->next_piece = session_game_tetris_take_piece(ctx);
     ctx->game.type = SESSION_GAME_TETRIS;
     ctx->game.active = true;
-    ctx->game.tetris.game_over = false;
+    ctx->game.tetris->game_over = false;
     bool previous_translation_suppress = ctx->translation_suppress_output;
     if (!session_game_tetris_spawn_piece(ctx)) {
         session_send_system_line(ctx, "Unable to start Tetris right now.");
@@ -1285,9 +1318,9 @@ static void session_game_start_tetris(session_ctx_t *ctx)
         return;
     }
 
-    memset(ctx->tetris_screen_buffer, 0, sizeof(ctx->tetris_screen_buffer));
+    memset(ctx->tetris_screen_buffer, 0, SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE);
     memset(ctx->tetris_prev_screen_buffer, 0,
-           sizeof(ctx->tetris_prev_screen_buffer));
+           SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE);
 
     session_send_system_line(ctx,
                              "Tetris started. Pieces fall on their own - use "
@@ -5889,9 +5922,9 @@ static void session_game_suspend(session_ctx_t *ctx, const char *reason)
         char summary[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(summary, sizeof(summary),
                  "Tetris final score: %u (lines cleared: %u).",
-                 ctx->game.tetris.score, ctx->game.tetris.lines_cleared);
+                 ctx->game.tetris->score, ctx->game.tetris->lines_cleared);
         session_send_system_line(ctx, summary);
-        session_game_tetris_reset(&ctx->game.tetris);
+        session_game_tetris_reset(ctx->game.tetris);
     } else if (ctx->game.type == SESSION_GAME_LIARGAME) {
         char summary[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(summary, sizeof(summary),
@@ -7505,18 +7538,10 @@ static void session_handle_breaking_alerts(session_ctx_t *ctx,
         return;
     }
 
-    if (!desired_state) {
-        ctx->breaking_alerts_enabled = false;
-        if (ctx->bbs_breaking_count > 0U) {
-            ctx->bbs_breaking_count = 0U;
-            memset(ctx->bbs_breaking_messages, 0,
-                   sizeof(ctx->bbs_breaking_messages));
-        }
-        session_send_system_line(ctx, "Breaking alerts disabled.");
-    } else {
-        ctx->breaking_alerts_enabled = true;
-        session_send_system_line(ctx, "Breaking alerts enabled.");
-    }
+    ctx->breaking_alerts_enabled = desired_state;
+    session_send_system_line(
+        ctx, desired_state ? "Breaking alerts enabled."
+                           : "Breaking alerts disabled.");
 
     if (ctx->owner != nullptr) {
         host_store_breaking_alerts(ctx->owner, ctx);

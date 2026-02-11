@@ -92,7 +92,7 @@ void sshc_memory_runtime_shutdown(void)
             sshc_memory_context_reset(ctx);
             if (ctx->owner) ttak_owner_destroy(ctx->owner);
             pthread_mutex_destroy(&ctx->mutex);
-            free(ctx);
+            ttak_mem_free(ctx);
         }
         ctx = next;
     }
@@ -109,7 +109,10 @@ void sshc_memory_runtime_shutdown(void)
 sshc_memory_context_t *sshc_memory_context_create(const char *label)
 {
     sshc_memory_runtime_init();
-    sshc_memory_context_t *ctx = (sshc_memory_context_t *)malloc(sizeof(*ctx));
+    sshc_memory_context_t *ctx =
+        (sshc_memory_context_t *)ttak_mem_alloc(sizeof(*ctx),
+                                                __TTAK_UNSAFE_MEM_FOREVER__,
+                                                ttak_get_tick_count());
     if (ctx == nullptr) {
         errno = ENOMEM;
         return nullptr;
@@ -165,7 +168,7 @@ void sshc_memory_context_destroy(sshc_memory_context_t *ctx)
         prev = &(*prev)->next;
     }
     pthread_mutex_unlock(&sshc_registry_mutex);
-    free(ctx);
+    ttak_mem_free(ctx);
 }
 
 sshc_memory_context_t *sshc_memory_context_push(sshc_memory_context_t *ctx)
@@ -246,7 +249,10 @@ void *sshc_gc_malloc(size_t size)
 
     if (ptr == nullptr) return nullptr;
 
-    sshc_memory_allocation_t *allocation = (sshc_memory_allocation_t *)malloc(sizeof(*allocation));
+    sshc_memory_allocation_t *allocation =
+        (sshc_memory_allocation_t *)ttak_mem_alloc(
+            sizeof(*allocation), __TTAK_UNSAFE_MEM_FOREVER__,
+            ttak_get_tick_count());
     if (allocation == nullptr) {
         ttak_mem_free(ptr);
         return nullptr;
@@ -293,7 +299,10 @@ void *sshc_gc_realloc(void *ptr, size_t size)
         return nullptr;
     }
 
-    sshc_memory_allocation_t *allocation = (sshc_memory_allocation_t *)malloc(sizeof(*allocation));
+    sshc_memory_allocation_t *allocation =
+        (sshc_memory_allocation_t *)ttak_mem_alloc(
+            sizeof(*allocation), __TTAK_UNSAFE_MEM_FOREVER__,
+            ttak_get_tick_count());
     if (allocation == nullptr) {
         // We reallocated but can't track. This is bad.
         if (old_allocation) {
@@ -301,7 +310,7 @@ void *sshc_gc_realloc(void *ptr, size_t size)
             GC_remove_roots(old_allocation->ptr, (char *)old_allocation->ptr + old_allocation->size);
 #endif
             sshc_memory_context_remove_allocation(old_allocation->context, ptr);
-            free(old_allocation);
+            ttak_mem_free(old_allocation);
         }
         return new_ptr;
     }
@@ -315,7 +324,7 @@ void *sshc_gc_realloc(void *ptr, size_t size)
         GC_remove_roots(old_allocation->ptr, (char *)old_allocation->ptr + old_allocation->size);
 #endif
         sshc_memory_context_remove_allocation(old_allocation->context, ptr);
-        free(old_allocation);
+        ttak_mem_free(old_allocation);
     }
 
     sshc_memory_context_register_allocation(ctx, allocation);
@@ -354,7 +363,7 @@ void sshc_gc_free(void *ptr)
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
         GC_remove_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
 #endif
-        free(allocation);
+        ttak_mem_free(allocation);
     }
 
     ttak_mem_free(ptr);
@@ -376,7 +385,7 @@ void sshc_memory_context_reset(sshc_memory_context_t *ctx)
         GC_remove_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
 #endif
         ttak_mem_free(allocation->ptr);
-        free(allocation);
+        ttak_mem_free(allocation);
         allocation = next;
     }
 }

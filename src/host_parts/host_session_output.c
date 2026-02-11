@@ -965,72 +965,31 @@ static void session_bbs_buffer_breaking_notice(session_ctx_t *ctx,
         return;
     }
 
-    // Check message length to decide if wrapping is needed
-    size_t msg_len = strlen(message);
-    const size_t kWrapThreshold = 76U; // Wrap if message is longer than this
-
-    if (msg_len > kWrapThreshold) {
-        // Use wrapped formatting for long messages
-        char wrapped_lines[4][SSH_CHATTER_MESSAGE_LIMIT];
-        size_t wrapped_count = 0U;
-        session_bbs_format_breaking_notice_wrapped(message, wrapped_lines, 4U,
-                                                   &wrapped_count);
-
-        size_t limit = SSH_CHATTER_BBS_BREAKING_MAX;
-        if (limit == 0U) {
-            return;
-        }
-
-        // Add each wrapped line as a separate breaking message
-        for (size_t i = 0U; i < wrapped_count; ++i) {
-            if (ctx->bbs_breaking_count < limit) {
-                snprintf(
-                    ctx->bbs_breaking_messages[ctx->bbs_breaking_count],
-                    sizeof(ctx->bbs_breaking_messages[ctx->bbs_breaking_count]),
-                    "%s", wrapped_lines[i]);
-                ctx->bbs_breaking_count += 1U;
-            } else {
-                // Shift messages up and add new one at the end
-                for (size_t idx = 1U; idx < limit; ++idx) {
-                    snprintf(
-                        ctx->bbs_breaking_messages[idx - 1U],
-                        sizeof(ctx->bbs_breaking_messages[idx - 1U]), "%s",
-                        ctx->bbs_breaking_messages[idx]);
-                }
-                snprintf(ctx->bbs_breaking_messages[limit - 1U],
-                         sizeof(ctx->bbs_breaking_messages[limit - 1U]), "%s",
-                         wrapped_lines[i]);
-            }
-        }
+    const size_t kWrapThreshold = 76U;
+    char formatted_lines[4][SSH_CHATTER_MESSAGE_LIMIT];
+    size_t formatted_count = 0U;
+    if (strlen(message) > kWrapThreshold) {
+        session_bbs_format_breaking_notice_wrapped(
+            message, formatted_lines,
+            sizeof(formatted_lines) / sizeof(formatted_lines[0]),
+            &formatted_count);
     } else {
-        // Use original formatting for short messages
-        char formatted[SSH_CHATTER_MESSAGE_LIMIT];
-        session_bbs_format_breaking_notice(message, formatted,
-                                           sizeof(formatted));
-
-        size_t limit = SSH_CHATTER_BBS_BREAKING_MAX;
-        if (limit == 0U) {
-            return;
-        }
-
-        if (ctx->bbs_breaking_count < limit) {
-            snprintf(
-                ctx->bbs_breaking_messages[ctx->bbs_breaking_count],
-                sizeof(ctx->bbs_breaking_messages[ctx->bbs_breaking_count]),
-                "%s", formatted);
-            ctx->bbs_breaking_count += 1U;
-        } else {
-            for (size_t idx = 1U; idx < limit; ++idx) {
-                snprintf(ctx->bbs_breaking_messages[idx - 1U],
-                         sizeof(ctx->bbs_breaking_messages[idx - 1U]), "%s",
-                         ctx->bbs_breaking_messages[idx]);
-            }
-            snprintf(ctx->bbs_breaking_messages[limit - 1U],
-                     sizeof(ctx->bbs_breaking_messages[limit - 1U]), "%s",
-                     formatted);
-        }
+        session_bbs_format_breaking_notice(
+            message, formatted_lines[0], sizeof(formatted_lines[0]));
+        formatted_count = 1U;
     }
 
+    if (formatted_count == 0U) {
+        session_bbs_format_breaking_notice(
+            message, formatted_lines[0], sizeof(formatted_lines[0]));
+        formatted_count = 1U;
+    }
+
+    session_send_plain_line(ctx, "");
+    for (size_t idx = 0U; idx < formatted_count; ++idx) {
+        session_send_plain_line(ctx, formatted_lines[idx]);
+    }
+    session_send_plain_line(ctx, "");
     session_bbs_render_editor(ctx, nullptr);
 }
 
@@ -1458,7 +1417,7 @@ static size_t session_editor_body_capacity(const session_ctx_t *ctx)
         return SSH_CHATTER_ASCIIART_BUFFER_LEN;
     }
 
-    return sizeof(ctx->pending_bbs_body);
+    return SSH_CHATTER_BBS_BODY_LEN;
 }
 
 static size_t session_editor_max_lines(const session_ctx_t *ctx)
@@ -1489,10 +1448,6 @@ static size_t session_bbs_editor_window(const session_ctx_t *ctx,
     }
 
     size_t reserved = ascii_mode ? 10U : 11U;
-    if (!ascii_mode && ctx->breaking_alerts_enabled &&
-        ctx->bbs_breaking_count > 0U) {
-        reserved += 2U + ctx->bbs_breaking_count;
-    }
     reserved += 1U; // Prompt line.
 
     if (ctx->terminal_height <= reserved) {
@@ -2280,16 +2235,6 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
                  terminator);
     }
     session_send_plain_line(ctx, publish_hint);
-
-    // Send breaking updates if any
-    if (ctx->breaking_alerts_enabled && ctx->bbs_breaking_count > 0U &&
-        !ascii_mode) {
-        session_send_plain_line(ctx, "");
-        session_send_plain_line(ctx, "Breaking updates:");
-        for (size_t idx = 0U; idx < ctx->bbs_breaking_count; ++idx) {
-            session_send_plain_line(ctx, ctx->bbs_breaking_messages[idx]);
-        }
-    }
 
     // Send status if any
     if (status != nullptr && status[0] != '\0') {
@@ -5101,9 +5046,12 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
             if (ctx->game.is_camouflaged) {
                 ctx->game.is_camouflaged = false;
                 if (ctx->game.type == SESSION_GAME_TETRIS) {
-                    ctx->game.tetris = ctx->game.saved_tetris_state;
-                    ctx->game.tetris.gravity_timer_initialized = false;
-                    ctx->game.tetris.gravity_timer_accumulator_ns = 0U;
+                    if (ctx->game.tetris != nullptr &&
+                        ctx->game.saved_tetris_state != nullptr) {
+                        *ctx->game.tetris = *ctx->game.saved_tetris_state;
+                    }
+                    ctx->game.tetris->gravity_timer_initialized = false;
+                    ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
                     session_game_tetris_render(ctx);
                 } else if (ctx->game.type == SESSION_GAME_LIARGAME) {
                     ctx->game.liar = ctx->game.saved_liar_state;
@@ -5119,13 +5067,16 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
             } else {
                 ctx->game.is_camouflaged = true;
                 if (ctx->game.type == SESSION_GAME_TETRIS) {
-                    ctx->game.saved_tetris_state = ctx->game.tetris;
-                    ctx->game.saved_tetris_state.gravity_timer_initialized =
-                        false;
-                    ctx->game.saved_tetris_state.gravity_timer_accumulator_ns =
-                        0U;
-                    ctx->game.tetris.gravity_timer_initialized = false;
-                    ctx->game.tetris.gravity_timer_accumulator_ns = 0U;
+                    if (ctx->game.tetris != nullptr &&
+                        ctx->game.saved_tetris_state != nullptr) {
+                        *ctx->game.saved_tetris_state = *ctx->game.tetris;
+                        ctx->game.saved_tetris_state->gravity_timer_initialized =
+                            false;
+                        ctx->game.saved_tetris_state
+                            ->gravity_timer_accumulator_ns = 0U;
+                    }
+                    ctx->game.tetris->gravity_timer_initialized = false;
+                    ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
                 } else if (ctx->game.type == SESSION_GAME_LIARGAME) {
                     ctx->game.saved_liar_state = ctx->game.liar;
                 } else if (ctx->game.type == SESSION_GAME_ALPHA) {

@@ -1236,7 +1236,7 @@ static const l10n_string_t PALETTE_DESC_NEON_GENESIS_EVANGELION =
     L10N_ALL("Sho-nen yo Shin-wa ni nare--");
 static const l10n_string_t PALETTE_NAME_MEGAMI = L10N_ALL("megami");
 static const l10n_string_t PALETTE_DESC_MEGAMI =
-    L10N_ALL("Japanese anime goddess cliché");
+    L10N_ALL("Japanese anime goddess cliche");
 static const l10n_string_t PALETTE_NAME_CLEAN = L10N_ALL("clean");
 static const l10n_string_t PALETTE_DESC_CLEAN =
     L10N_ALL("Balanced neutral palette");
@@ -1340,7 +1340,7 @@ static const l10n_string_t PALETTE_DESC_GYEONGJU_HERITAGE =
 static const l10n_string_t PALETTE_NAME_KANGWON_WINTER =
     L10N_ALL("kangwon-winter");
 static const l10n_string_t PALETTE_DESC_KANGWON_WINTER =
-    L10N_ALL("Cold white peaks and blue shadows of Gangwon’s frozen dawn");
+    L10N_ALL("Cold white peaks and blue shadows of Gangwon's frozen dawn");
 static const l10n_string_t PALETTE_NAME_ULSAN_STEEL = L10N_ALL("ulsan-steel");
 static const l10n_string_t PALETTE_DESC_ULSAN_STEEL =
     L10N_ALL("Molten metal glow inside heavy industry furnace halls");
@@ -1528,7 +1528,7 @@ static const l10n_string_t PALETTE_NAME_KANGWON_WINTER_256 =
     L10N_ALL("kangwon-winter-256");
 static const l10n_string_t PALETTE_DESC_KANGWON_WINTER_256 =
     L10N_ALL("256-color reinterpretation of Cold white peaks and blue "
-             "shadows of Gangwon’s frozen dawn");
+             "shadows of Gangwon's frozen dawn");
 static const l10n_string_t PALETTE_NAME_ULSAN_STEEL_256 =
     L10N_ALL("ulsan-steel-256");
 static const l10n_string_t PALETTE_DESC_ULSAN_STEEL_256 =

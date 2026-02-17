@@ -838,6 +838,7 @@ static void *host_moderation_thread(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
     sshc_memory_context_t *memory_scope =
         sshc_memory_context_push(host->memory_context);
 
@@ -970,6 +971,7 @@ static void *host_moderation_thread(void *arg)
 
     host_moderation_flush_pending(host, failure_reason);
     sshc_memory_context_pop(memory_scope);
+    sshc_epoch_thread_exit();
     return nullptr;
 }
 
@@ -1535,6 +1537,7 @@ static void *host_eliza_worker_thread(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
     sshc_memory_context_t *memory_scope =
         sshc_memory_context_push(host->memory_context);
 
@@ -1572,6 +1575,7 @@ static void *host_eliza_worker_thread(void *arg)
 
     atomic_store(&worker->active, false);
     sshc_memory_context_pop(memory_scope);
+    sshc_epoch_thread_exit();
     return nullptr;
 }
 
@@ -4718,6 +4722,7 @@ static void *host_rss_backend(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
     atomic_store(&host->rss_thread_running, true);
     printf("[rss] backend thread started (interval: %u seconds)\n",
            (unsigned int)SSH_CHATTER_RSS_REFRESH_SECONDS);
@@ -4937,6 +4942,7 @@ static void *host_rss_backend(void *arg)
 
     atomic_store(&host->rss_thread_running, false);
     printf("[rss] backend thread stopped\n");
+    sshc_epoch_thread_exit();
     return nullptr;
 }
 
@@ -5145,6 +5151,7 @@ static void *host_archive_backend(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
     atomic_store(&host->archive_thread_running, true);
 
     while (!atomic_load(&host->archive_thread_stop)) {
@@ -5175,6 +5182,7 @@ static void *host_archive_backend(void *arg)
     }
 
     atomic_store(&host->archive_thread_running, false);
+    sshc_epoch_thread_exit();
     return nullptr;
 }
 

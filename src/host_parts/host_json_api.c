@@ -1907,6 +1907,7 @@ static void *json_api_client_thread(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
     char line_buffer[65536];
     size_t line_length = 0U;
     bool overflowed = false;
@@ -1968,6 +1969,7 @@ static void *json_api_client_thread(void *arg)
     }
 
     sshc_gc_free(client);
+    sshc_epoch_thread_exit();
     return nullptr;
 }
 
@@ -2086,6 +2088,7 @@ static void *json_api_thread(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
     atomic_store(&host->json_api.running, true);
 
     while (!atomic_load(&host->json_api.stop)) {
@@ -2151,6 +2154,7 @@ static void *json_api_thread(void *arg)
     }
 
     atomic_store(&host->json_api.running, false);
+    sshc_epoch_thread_exit();
     return nullptr;
 }
 

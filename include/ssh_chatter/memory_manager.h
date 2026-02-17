@@ -8,6 +8,8 @@
 
 #include <ttak/mem/mem.h>
 #include <ttak/mem/owner.h>
+#include <ttak/mem/epoch_gc.h>
+#include <ttak/mem/epoch.h>
 #include <ttak/timing/timing.h>
 #include <ttak/sync/sync.h>
 #include <ttak/atomic/atomic.h>
@@ -27,6 +29,49 @@ sshc_memory_context_t *sshc_memory_context_push(sshc_memory_context_t *ctx);
 void sshc_memory_context_pop(sshc_memory_context_t *previous);
 void sshc_memory_context_reset(sshc_memory_context_t *ctx);
 sshc_memory_context_t *sshc_memory_context_current(void);
+
+/**
+ * @brief Rotate the EpochGC associated with a memory context.
+ *
+ * Advances the epoch and triggers a non-blocking cleanup pass that frees
+ * blocks from expired epochs.  Call periodically (e.g. once per second)
+ * from a background thread or at natural safepoints.
+ */
+void sshc_memory_context_epoch_gc_rotate(sshc_memory_context_t *ctx);
+
+/**
+ * @brief Register the calling thread with the EBR (Epoch-Based Reclamation)
+ *        subsystem.
+ *
+ * Must be called once from each thread that will perform deferred frees
+ * via sshc_epoch_retire.  Typically invoked at the start of a session
+ * thread or worker thread.
+ */
+void sshc_epoch_thread_enter(void);
+
+/**
+ * @brief Deregister the calling thread from the EBR subsystem.
+ *
+ * Should be called before a thread exits to indicate it is no longer
+ * holding references to any retired memory.
+ */
+void sshc_epoch_thread_exit(void);
+
+/**
+ * @brief Defer freeing a pointer until it is safe to do so.
+ *
+ * The pointer is retired via EBR and will be freed once all threads
+ * have observed the current epoch.
+ */
+void sshc_epoch_retire(void *ptr);
+
+/**
+ * @brief Attempt to reclaim memory from safe epochs.
+ *
+ * Call periodically to actually free pointers that were retired and
+ * are no longer observable by any thread.
+ */
+void sshc_epoch_reclaim(void);
 
 // Internal implementation functions to avoid naming conflicts with libgc
 void *sshc_gc_malloc(size_t size);

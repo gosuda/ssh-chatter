@@ -1325,6 +1325,7 @@ static void *host_bbs_watchdog_thread(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
     sshc_memory_context_t *memory_scope =
         sshc_memory_context_push(host->memory_context);
 
@@ -1359,6 +1360,7 @@ static void *host_bbs_watchdog_thread(void *arg)
     atomic_store(&host->bbs_watchdog_thread_running, false);
     printf("[bbs] watchdog thread stopped\n");
     sshc_memory_context_pop(memory_scope);
+    sshc_epoch_thread_exit();
     return nullptr;
 }
 

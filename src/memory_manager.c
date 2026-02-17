@@ -2,8 +2,29 @@
  * @file memory_manager.c
  * @desc Unified memory manager for SSH-Chatter using libttak for manual lifetimes
  *       and Boehm GC for automatic collection when enabled.
- *       Integrates EpochGC for generational cleanup and EBR for safe deferred
- *       reclamation of shared data structures.
+ *
+ *       Integrates three libttak subsystems to govern variable lifecycles:
+ *
+ *       * Owner (tt_owner_t)
+ *           Each memory context carries an owner that tracks live allocations.
+ *           Resources are registered via ttak_owner_register_resource() so that
+ *           the owner can audit and release them on context destruction.
+ *
+ *       * EpochGC (ttak_epoch_gc_t)
+ *           Generational garbage collector backed by ttak_mem_tree.  Allocations
+ *           are registered with the current epoch; calling epoch_gc_rotate()
+ *           advances the epoch and frees expired blocks without a global pause.
+ *
+ *       * EBR (ttak_epoch_* / Epoch-Based Reclamation)
+ *           Lock-free deferred reclamation for shared pointers.  A pointer
+ *           passed to sshc_epoch_retire() is freed only after every thread has
+ *           moved past the epoch in which the retirement occurred.
+ *
+ *       * Detachable Memory (ttak_detachable_*)
+ *           Arena-like allocator with a small LRU cache for tiny chunks.
+ *           Each context owns a ttak_detachable_context_t that provides fast
+ *           alloc/free with epoch protection, suitable for per-session scratch
+ *           buffers whose lifetime is strictly bounded by the session.
  */
 
 #include "ssh_chatter/memory_manager.h"
@@ -28,8 +49,12 @@ struct sshc_memory_context {
     sshc_memory_allocation_t *allocations;
     const char *label;
     struct sshc_memory_context *next;
+    /** Owner: tracks resource provenance and enforces isolation policies. */
     tt_owner_t *owner;
+    /** EpochGC: generational epoch-based garbage collector. */
     ttak_epoch_gc_t epoch_gc;
+    /** Detachable: arena-like allocator for short-lived, session-scoped data. */
+    ttak_detachable_context_t detachable;
 };
 
 static pthread_mutex_t sshc_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -46,8 +71,21 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
     ctx->allocations = nullptr;
     ctx->label = label;
     ctx->next = nullptr;
+
+    /* Owner: governs resource provenance for this context. */
     ctx->owner = ttak_owner_create(TTAK_OWNER_SAFE_DEFAULT);
+
+    /* EpochGC: generational collector -- rotated periodically by the caller. */
     ttak_epoch_gc_init(&ctx->epoch_gc);
+
+    /* Detachable arena: fast alloc/free with epoch protection and LRU cache.
+     * TTAK_ARENA_HAS_EPOCH_RECLAMATION  -- freed blocks go through EBR.
+     * TTAK_ARENA_HAS_DEFAULT_EPOCH_GC   -- epoch delay defaults to 2.
+     * TTAK_ARENA_USE_LOCKED_ACCESS      -- safe for multi-threaded sessions. */
+    ttak_detachable_context_init(
+        &ctx->detachable,
+        TTAK_ARENA_HAS_EPOCH_RECLAMATION | TTAK_ARENA_HAS_DEFAULT_EPOCH_GC |
+            TTAK_ARENA_USE_LOCKED_ACCESS);
 }
 
 static sshc_memory_context_t *sshc_memory_context_global(void)
@@ -97,6 +135,7 @@ void sshc_memory_runtime_shutdown(void)
             // We can't call sshc_memory_context_destroy here because it locks registry
             // So we do manual cleanup
             sshc_memory_context_reset(ctx);
+            ttak_detachable_context_destroy(&ctx->detachable);
             ttak_epoch_gc_destroy(&ctx->epoch_gc);
             if (ctx->owner) ttak_owner_destroy(ctx->owner);
             pthread_mutex_destroy(&ctx->mutex);
@@ -106,6 +145,7 @@ void sshc_memory_runtime_shutdown(void)
     }
     // Clean up the global context's allocations
     sshc_memory_context_reset(sshc_memory_context_global());
+    ttak_detachable_context_destroy(&sshc_global_context.detachable);
     ttak_epoch_gc_destroy(&sshc_global_context.epoch_gc);
     if (sshc_global_context.owner) ttak_owner_destroy(sshc_global_context.owner);
     pthread_mutex_destroy(&sshc_global_context.mutex);
@@ -164,6 +204,7 @@ void sshc_memory_context_destroy(sshc_memory_context_t *ctx)
     }
 
     sshc_memory_context_reset(ctx);
+    ttak_detachable_context_destroy(&ctx->detachable);
     ttak_epoch_gc_destroy(&ctx->epoch_gc);
     if (ctx->owner) ttak_owner_destroy(ctx->owner);
     pthread_mutex_destroy(&ctx->mutex);
@@ -418,7 +459,7 @@ void sshc_gc_init(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* EBR wrappers – thin helpers around libttak's epoch-based reclaimer */
+/* EBR wrappers -- thin helpers around libttak's epoch-based reclaimer */
 /* ------------------------------------------------------------------ */
 
 static void sshc_epoch_free_callback(void *ptr)
@@ -448,4 +489,39 @@ void sshc_epoch_retire(void *ptr)
 void sshc_epoch_reclaim(void)
 {
     ttak_epoch_reclaim();
+}
+
+/* ------------------------------------------------------------------ */
+/* Owner / detachable context accessors                               */
+/* ------------------------------------------------------------------ */
+
+tt_owner_t *sshc_memory_context_get_owner(sshc_memory_context_t *ctx)
+{
+    if (ctx == nullptr) return nullptr;
+    return ctx->owner;
+}
+
+ttak_detachable_context_t *sshc_memory_context_get_detachable(
+    sshc_memory_context_t *ctx)
+{
+    if (ctx == nullptr) return nullptr;
+    return &ctx->detachable;
+}
+
+/* ------------------------------------------------------------------ */
+/* Detachable memory wrappers                                         */
+/* ------------------------------------------------------------------ */
+
+ttak_detachable_allocation_t sshc_detachable_alloc(size_t size)
+{
+    sshc_memory_context_t *ctx = sshc_memory_context_current();
+    uint64_t epoch_hint = ctx->epoch_gc.current_epoch;
+    return ttak_detachable_mem_alloc(&ctx->detachable, size, epoch_hint);
+}
+
+void sshc_detachable_free(ttak_detachable_allocation_t *alloc)
+{
+    if (alloc == nullptr || alloc->data == nullptr) return;
+    sshc_memory_context_t *ctx = sshc_memory_context_current();
+    ttak_detachable_mem_free(&ctx->detachable, alloc);
 }

@@ -13,6 +13,10 @@
 #define MSG_DONTWAIT 0
 #endif
 
+#define SESSION_TELNET_INPUT_POLL_MS 1000
+#define SESSION_TELNET_IDLE_WARNING_MS (60 * 1000)
+#define SESSION_TELNET_IDLE_TIMEOUT_MS (180 * 1000)
+
 static void __attribute__((unused))
 host_eliza_memory_store(host_t *host, const char *prompt, const char *reply)
 {
@@ -5065,17 +5069,37 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
     bool ignore_next_newline = ctx->telnet_consume_next_lf;
     unsigned char glyph_sizes[SSH_CHATTER_MESSAGE_LIMIT];
     size_t glyph_count = 0U;
+    unsigned int idle_time_ms = 0U;
+    bool idle_warning_sent = false;
 
     while (!ctx->should_exit) {
         unsigned char byte = 0U;
-        int read_result = session_telnet_read_byte(ctx, &byte, -1);
+        int read_result =
+            session_telnet_read_byte(ctx, &byte, SESSION_TELNET_INPUT_POLL_MS);
         if (read_result == SSH_AGAIN) {
+            idle_time_ms += SESSION_TELNET_INPUT_POLL_MS;
+            if (!idle_warning_sent &&
+                idle_time_ms >= SESSION_TELNET_IDLE_WARNING_MS) {
+                session_send_system_line(
+                    ctx,
+                    "Still waiting for input... type /exit to disconnect.");
+                idle_warning_sent = true;
+            }
+            if (idle_time_ms >= SESSION_TELNET_IDLE_TIMEOUT_MS) {
+                session_send_system_line(
+                    ctx,
+                    "No response detected, closing the telnet session.");
+                ctx->should_exit = true;
+                return false;
+            }
             continue;
         }
         if (read_result <= 0) {
             ctx->should_exit = true;
             return false;
         }
+        idle_time_ms = 0U;
+        idle_warning_sent = false;
 
         if (ignore_next_newline) {
             if (byte == '\n' || byte == '\0') {
@@ -5322,12 +5346,11 @@ static bool session_telnet_prompt_unicode_check(session_ctx_t *ctx)
 
     char resp[2];
     memset(resp, 0, 2);
+    unsigned int attempts = 0U;
+    const unsigned int max_attempts = 5U;
+    bool prefer_unicode = true;
 
-    while (!ctx->should_exit) {
-        static jmp_buf ask_unicode_sanity;
-        int ret = 0;
-        if (!ret)
-            ret = setjmp(ask_unicode_sanity);
+    while (!ctx->should_exit && attempts < max_attempts) {
         session_send_plain_line(ctx, "Are you using Unicode terminal? <Y/N>");
         session_send_plain_line(ctx,
                                 "If you are using SyncTerm/other Retro Terms,");
@@ -5348,17 +5371,25 @@ static bool session_telnet_prompt_unicode_check(session_ctx_t *ctx)
             to_lowercase(resp);
         } else {
             session_send_system_line(ctx, "Type Y/N. No other response.");
-            longjmp(ask_unicode_sanity, ret++);
+            ++attempts;
+            continue;
         }
 
-        if (resp[0] == 'n') {
-            session_handle_retro(ctx, "on");
-            session_handle_set_ui_lang(ctx, "en");
-            break;
-        } else {
-            session_handle_retro(ctx, "off");
-            break;
-        }
+        prefer_unicode = (resp[0] != 'n');
+        break;
+    }
+
+    if (attempts >= max_attempts && !ctx->should_exit) {
+        session_send_system_line(
+            ctx, "No clear answer, defaulting to Unicode output.");
+        prefer_unicode = true;
+    }
+
+    if (prefer_unicode) {
+        session_handle_retro(ctx, "off");
+    } else {
+        session_handle_retro(ctx, "on");
+        session_handle_set_ui_lang(ctx, "en");
     }
 
     return session_telnet_login_prompt(ctx);

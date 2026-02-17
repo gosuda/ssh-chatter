@@ -2,6 +2,8 @@
  * @file memory_manager.c
  * @desc Unified memory manager for SSH-Chatter using libttak for manual lifetimes
  *       and Boehm GC for automatic collection when enabled.
+ *       Integrates EpochGC for generational cleanup and EBR for safe deferred
+ *       reclamation of shared data structures.
  */
 
 #include "ssh_chatter/memory_manager.h"
@@ -27,6 +29,7 @@ struct sshc_memory_context {
     const char *label;
     struct sshc_memory_context *next;
     tt_owner_t *owner;
+    ttak_epoch_gc_t epoch_gc;
 };
 
 static pthread_mutex_t sshc_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -44,6 +47,7 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
     ctx->label = label;
     ctx->next = nullptr;
     ctx->owner = ttak_owner_create(TTAK_OWNER_SAFE_DEFAULT);
+    ttak_epoch_gc_init(&ctx->epoch_gc);
 }
 
 static sshc_memory_context_t *sshc_memory_context_global(void)
@@ -83,6 +87,9 @@ void sshc_memory_runtime_shutdown(void)
         return;
     }
 
+    // Final EBR reclaim pass before tearing down contexts
+    ttak_epoch_reclaim();
+
     sshc_memory_context_t *ctx = sshc_contexts;
     while (ctx != nullptr) {
         sshc_memory_context_t *next = ctx->next;
@@ -90,6 +97,7 @@ void sshc_memory_runtime_shutdown(void)
             // We can't call sshc_memory_context_destroy here because it locks registry
             // So we do manual cleanup
             sshc_memory_context_reset(ctx);
+            ttak_epoch_gc_destroy(&ctx->epoch_gc);
             if (ctx->owner) ttak_owner_destroy(ctx->owner);
             pthread_mutex_destroy(&ctx->mutex);
             ttak_mem_free(ctx);
@@ -98,6 +106,7 @@ void sshc_memory_runtime_shutdown(void)
     }
     // Clean up the global context's allocations
     sshc_memory_context_reset(sshc_memory_context_global());
+    ttak_epoch_gc_destroy(&sshc_global_context.epoch_gc);
     if (sshc_global_context.owner) ttak_owner_destroy(sshc_global_context.owner);
     pthread_mutex_destroy(&sshc_global_context.mutex);
     
@@ -155,6 +164,7 @@ void sshc_memory_context_destroy(sshc_memory_context_t *ctx)
     }
 
     sshc_memory_context_reset(ctx);
+    ttak_epoch_gc_destroy(&ctx->epoch_gc);
     if (ctx->owner) ttak_owner_destroy(ctx->owner);
     pthread_mutex_destroy(&ctx->mutex);
 
@@ -226,6 +236,9 @@ sshc_memory_context_register_allocation(sshc_memory_context_t *ctx,
     ctx->allocations = allocation;
     pthread_mutex_unlock(&ctx->mutex);
     
+    // Register with EpochGC for generational tracking
+    ttak_epoch_gc_register(&ctx->epoch_gc, allocation->ptr, allocation->size);
+
     // Also register with ttak owner if available
     if (ctx->owner) {
         char name[32];
@@ -388,9 +401,51 @@ void sshc_memory_context_reset(sshc_memory_context_t *ctx)
         ttak_mem_free(allocation);
         allocation = next;
     }
+
+    // Rotate the epoch GC to free expired blocks tracked by the tree
+    ttak_epoch_gc_rotate(&ctx->epoch_gc);
+}
+
+void sshc_memory_context_epoch_gc_rotate(sshc_memory_context_t *ctx)
+{
+    if (ctx == nullptr) return;
+    ttak_epoch_gc_rotate(&ctx->epoch_gc);
 }
 
 void sshc_gc_init(void) 
 { 
     sshc_memory_runtime_init(); 
+}
+
+/* ------------------------------------------------------------------ */
+/* EBR wrappers – thin helpers around libttak's epoch-based reclaimer */
+/* ------------------------------------------------------------------ */
+
+static void sshc_epoch_free_callback(void *ptr)
+{
+    ttak_mem_free(ptr);
+}
+
+void sshc_epoch_thread_enter(void)
+{
+    ttak_epoch_register_thread();
+    ttak_epoch_enter();
+}
+
+void sshc_epoch_thread_exit(void)
+{
+    ttak_epoch_exit();
+    ttak_epoch_reclaim();
+    ttak_epoch_deregister_thread();
+}
+
+void sshc_epoch_retire(void *ptr)
+{
+    if (ptr == nullptr) return;
+    ttak_epoch_retire(ptr, sshc_epoch_free_callback);
+}
+
+void sshc_epoch_reclaim(void)
+{
+    ttak_epoch_reclaim();
 }

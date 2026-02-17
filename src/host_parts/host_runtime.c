@@ -3470,6 +3470,7 @@ static void *host_telnet_thread(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
     atomic_store(&host->telnet.running, true);
 
     while (!atomic_load(&host->telnet.stop) &&
@@ -3741,6 +3742,7 @@ static void *host_telnet_thread(void *arg)
     }
 
     atomic_store(&host->telnet.running, false);
+    sshc_epoch_thread_exit();
     return nullptr;
 }
 
@@ -3921,9 +3923,7 @@ static void session_destroy(session_ctx_t *ctx)
 
     session_cleanup(ctx);
 
-#if !(defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC)
     sshc_gc_free(ctx);
-#endif
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,
@@ -3993,6 +3993,8 @@ static void *session_thread(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
+
     sshc_memory_context_t *memory_scope = nullptr;
     if (ctx->owner != nullptr) {
         memory_scope = sshc_memory_context_push(ctx->owner->memory_context);
@@ -4003,6 +4005,7 @@ static void *session_thread(void *arg)
         if (memory_scope != nullptr) {                                            \
             sshc_memory_context_pop(memory_scope);                             \
         }                                                                      \
+        sshc_epoch_thread_exit();                                              \
         return (value);                                                        \
     } while (0)
 
@@ -5967,6 +5970,9 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         host->security_layer_initialized = false;
     }
 
+    ttak_mutex_destroy(&host->room.lock);
+    ttak_mutex_destroy(&host->lock);
+
     if (memory_scope != nullptr) {
         sshc_memory_context_pop(memory_scope);
     }
@@ -6561,6 +6567,12 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
             pthread_detach(thread_id);
             host_error_guard_register_success(host);
+
+            // Periodically rotate EpochGC to reclaim expired memory
+            if (host->memory_context != nullptr) {
+                sshc_memory_context_epoch_gc_rotate(host->memory_context);
+            }
+            sshc_epoch_reclaim();
         }
 
         ssh_bind_free(bind_handle);

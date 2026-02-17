@@ -491,6 +491,10 @@ int main(int argc, char **argv)
             sshc_memory_context_push(host->memory_context);
 
         const char *welcome_banner_path = getenv("CHATTER_WELCOME_BANNER");
+        if (g_welcome_banner_content != nullptr) {
+            sshc_gc_free(g_welcome_banner_content);
+            g_welcome_banner_content = nullptr;
+        }
         g_welcome_banner_content =
             session_show_welcome_banner(welcome_banner_path);
         if (g_welcome_banner_content == nullptr) {

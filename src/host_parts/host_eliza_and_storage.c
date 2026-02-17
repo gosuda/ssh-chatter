@@ -2856,7 +2856,7 @@ static void session_translation_publish_result(
             if (success) {
                 message = "";
             } else {
-                message = "⚠️ translation unavailable.";
+                message = "[!] translation unavailable.";
             }
         }
 
@@ -2926,13 +2926,13 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
             if (quota_failure) {
                 if (error != nullptr && error[0] != '\0') {
                     snprintf(message, sizeof(message),
-                             "⚠️ translation unavailable (quota exhausted: %s); "
+                             "[!] translation unavailable (quota exhausted: %s); "
                              "sending "
                              "your original message.",
                              error);
                 } else {
                     snprintf(message, sizeof(message),
-                             "⚠️ translation unavailable (quota exhausted); "
+                             "[!] translation unavailable (quota exhausted); "
                              "sending your "
                              "original message.");
                 }
@@ -2983,11 +2983,11 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
             if (quota_failure) {
                 if (error != nullptr && error[0] != '\0') {
                     snprintf(failure_message, sizeof(failure_message),
-                             "⚠️ translation unavailable (quota exhausted: %s)",
+                             "[!] translation unavailable (quota exhausted: %s)",
                              error);
                 } else {
                     snprintf(failure_message, sizeof(failure_message),
-                             "⚠️ translation unavailable (quota exhausted).");
+                             "[!] translation unavailable (quota exhausted).");
                 }
                 session_handle_translation_quota_exhausted(ctx, error);
                 break;
@@ -2995,10 +2995,10 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
 
             if (error != nullptr && error[0] != '\0') {
                 snprintf(failure_message, sizeof(failure_message),
-                         "⚠️ translation failed: %s", error);
+                         "[!] translation failed: %s", error);
             } else {
                 snprintf(failure_message, sizeof(failure_message),
-                         "⚠️ translation failed.");
+                         "[!] translation failed.");
             }
 
             if (attempt + 1 < max_attempts) {
@@ -3013,7 +3013,7 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
                                       job->data.caption.placeholders,
                                       job->data.caption.placeholder_count)) {
             snprintf(failure_message, sizeof(failure_message),
-                     "⚠️ translation post-processing failed.");
+                     "[!] translation post-processing failed.");
             break;
         }
 
@@ -3023,7 +3023,7 @@ static void session_translation_process_single_job(session_ctx_t *ctx,
 
     if (!success && failure_message[0] == '\0') {
         snprintf(failure_message, sizeof(failure_message),
-                 "⚠️ translation unavailable.");
+                 "[!] translation unavailable.");
     }
 
     if (ctx->translation_thread_stop) {

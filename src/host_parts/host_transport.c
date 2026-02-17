@@ -1376,7 +1376,7 @@ static const l10n_string_t PALETTE_DESC_JEJU_ROCK =
 static const l10n_string_t PALETTE_NAME_GYEONGSANGNAMDO =
     L10N_ALL("gyeongsangnamdo");
 static const l10n_string_t PALETTE_DESC_GYEONGSANGNAMDO = L10N_ALL(
-    "Sea breeze and industry — blue steel, orange dusk, and vibrant harbors");
+    "Sea breeze and industry -- blue steel, orange dusk, and vibrant harbors");
 static const l10n_string_t PALETTE_NAME_BUSAN_HARBOR = L10N_ALL("busan-harbor");
 static const l10n_string_t PALETTE_DESC_BUSAN_HARBOR =
     L10N_ALL("Night harbor lights and steel-blue waters of Busan Port");
@@ -1421,7 +1421,7 @@ static const l10n_string_t PALETTE_DESC_STONEAGE_KOREA =
 static const l10n_string_t PALETTE_NAME_FLAME_AND_BLOOD =
     L10N_ALL("flame-and-blood");
 static const l10n_string_t PALETTE_DESC_FLAME_AND_BLOOD = L10N_ALL(
-    "An East Asian war of 1592–1598. A great conflict akin to a world war, "
+    "An East Asian war of 1592-1598. A great conflict akin to a world war, "
     "where flame met blood and nothing could be forsaken.");
 static const l10n_string_t PALETTE_NAME_KOREAN_WAR = L10N_ALL("korean-war");
 static const l10n_string_t PALETTE_DESC_KOREAN_WAR = L10N_ALL(
@@ -1577,7 +1577,7 @@ static const l10n_string_t PALETTE_DESC_JEJU_ROCK_256 =
 static const l10n_string_t PALETTE_NAME_GYEONGSANGNAMDO_256 =
     L10N_ALL("gyeongsangnamdo-256");
 static const l10n_string_t PALETTE_DESC_GYEONGSANGNAMDO_256 =
-    L10N_ALL("256-color reinterpretation of Sea breeze and industry — blue "
+    L10N_ALL("256-color reinterpretation of Sea breeze and industry -- blue "
              "steel, orange dusk, and vibrant harbors");
 static const l10n_string_t PALETTE_NAME_BUSAN_HARBOR_256 =
     L10N_ALL("busan-harbor-256");
@@ -1632,7 +1632,7 @@ static const l10n_string_t PALETTE_DESC_STONEAGE_KOREA_256 =
 static const l10n_string_t PALETTE_NAME_FLAME_AND_BLOOD_256 =
     L10N_ALL("flame-and-blood-256");
 static const l10n_string_t PALETTE_DESC_FLAME_AND_BLOOD_256 =
-    L10N_ALL("256-color reinterpretation of An East Asian war of 1592–1598. "
+    L10N_ALL("256-color reinterpretation of An East Asian war of 1592-1598. "
              "A great conflict akin to a world war, where flame met blood "
              "and nothing could be forsaken.");
 static const l10n_string_t PALETTE_NAME_KOREAN_WAR_256 =
@@ -1649,27 +1649,27 @@ static const l10n_string_t PALETTE_DESC_INDEPENDENCE_SPIRIT_256 =
 static const l10n_string_t PALETTE_NAME_FRENCH_ROCOCO_256 =
     L10N_ALL("french-rococo-256");
 static const l10n_string_t PALETTE_DESC_FRENCH_ROCOCO_256 =
-    L10N_ALL("Dramatic Silence—Rameau to Couperin");
+    L10N_ALL("Dramatic Silence--Rameau to Couperin");
 
 static const l10n_string_t PALETTE_NAME_POLISH_CATHOLIC_256 =
     L10N_ALL("polish-catholic-256");
 static const l10n_string_t PALETTE_DESC_POLISH_CATHOLIC_256 =
-    L10N_ALL("Sacred Echoes—Chant to Solidarity");
+    L10N_ALL("Sacred Echoes--Chant to Solidarity");
 
 static const l10n_string_t PALETTE_NAME_GERMAN_INDUSTRY_256 =
     L10N_ALL("german-industry-256");
 static const l10n_string_t PALETTE_DESC_GERMAN_INDUSTRY_256 =
-    L10N_ALL("Iron Will & Innovation—Ruhr to Raumfahrt");
+    L10N_ALL("Iron Will & Innovation--Ruhr to Raumfahrt");
 
 static const l10n_string_t PALETTE_NAME_LEIPZIG_BLACK_256 =
     L10N_ALL("leipzig-black-256");
 static const l10n_string_t PALETTE_DESC_LEIPZIG_BLACK_256 =
-    L10N_ALL("Timeless Trendsetter—J.S Bach To Graffiti");
+    L10N_ALL("Timeless Trendsetter--J.S Bach To Graffiti");
 
 static const l10n_string_t PALETTE_NAME_CHOPIN_MAZURKA_256 =
     L10N_ALL("chopin-mazurka-256");
 static const l10n_string_t PALETTE_DESC_CHOPIN_MAZURKA_256 =
-    L10N_ALL("Poetic Melancholy—Salon to Soul");
+    L10N_ALL("Poetic Melancholy--Salon to Soul");
 
 static const palette_descriptor_t PALETTE_DEFINITIONS[] = {
     {"windows", &PALETTE_NAME_WINDOWS, &PALETTE_DESC_WINDOWS, "cyan", "blue",

@@ -1003,7 +1003,7 @@ static void session_handle_alpha_centauri_landers(session_ctx_t *ctx)
     }
 
     session_send_system_line(
-        ctx, "Alpha Centauri Landers — Immigrants' Flag Hall of Fame:");
+        ctx, "Alpha Centauri Landers -- Immigrants' Flag Hall of Fame:");
 
     if (entry_count == 0U) {
         session_send_system_line(ctx, "No landings logged yet. Finish the "
@@ -1033,7 +1033,7 @@ static void session_handle_alpha_centauri_landers(session_ctx_t *ctx)
 
         char line[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(line, sizeof(line),
-                 "#%zu %s — flags planted: %u (last landing %s)", idx + 1U,
+                 "#%zu %s -- flags planted: %u (last landing %s)", idx + 1U,
                  lander->username, lander->flag_count, when);
         session_send_system_line(ctx, line);
     }
@@ -1042,7 +1042,7 @@ static void session_handle_alpha_centauri_landers(session_ctx_t *ctx)
         size_t remaining = entry_count - display_count;
         char summary[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(summary, sizeof(summary),
-                 "…and %zu more landers recorded in the archives.", remaining);
+                 "...and %zu more landers recorded in the archives.", remaining);
         session_send_system_line(ctx, summary);
     }
 }

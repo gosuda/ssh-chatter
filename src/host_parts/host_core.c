@@ -1313,7 +1313,7 @@ static void host_version_ip_rules_init(host_t *host)
 #endif
 
 static const char kTranslationQuotaNotice[] =
-    "⚠️ Translation quota exhausted. Translation features are temporarily "
+    "[!] Translation quota exhausted. Translation features are temporarily "
     "disabled.";
 static const char kTranslationQuotaSystemMessage[] =
     "Translation quota exhausted. Translation has been disabled. Try again "

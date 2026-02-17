@@ -3784,7 +3784,7 @@ static void session_game_alpha_render_navigation(session_ctx_t *ctx)
                 source->name[0] != '\0' ? source->name : "Gravity Source";
             char symbol = source->symbol != '\0' ? source->symbol : 'G';
             written = snprintf(gravity_line + offset,
-                               sizeof(gravity_line) - offset, "%s%c=%s(μ=%.2e)",
+                               sizeof(gravity_line) - offset, "%s%c=%s(u=%.2e)",
                                idx == 0U ? "" : ", ", symbol, name, source->mu);
             if (written < 0) {
                 break;
@@ -3945,7 +3945,7 @@ static void session_game_alpha_present_waypoints(session_ctx_t *ctx)
             snprintf(
                 line, sizeof(line), "  [%c] %c - %s%s",
                 waypoint->visited ? 'x' : ' ', waypoint->symbol, waypoint->name,
-                idx == state->waypoint_index ? " ← current objective" : "");
+                idx == state->waypoint_index ? " <- current objective" : "");
             session_send_system_line(ctx, line);
         }
 
@@ -4103,16 +4103,16 @@ static void session_game_alpha_present_stage(session_ctx_t *ctx)
 
     if (state->stage == 4U) {
         session_send_system_line(
-            ctx, "Route markers: 1–9 mark required waystations; P "
+            ctx, "Route markers: 1-9 mark required waystations; P "
                  "marks the Proxima landing zone.");
         session_send_system_line(ctx,
                                  "Gravitational pulls: B=black hole, S=star, "
-                                 "D=debris - each mass tugs with its own μ.");
+                                 "D=debris - each mass tugs with its own u.");
     } else {
         session_send_system_line(
             ctx,
             "Gravitational pulls: B=black hole, S=star, P=planet, D=debris - "
-            "each mass tugs with its own μ.");
+            "each mass tugs with its own u.");
     }
     if (state->stage == 4U) {
         session_send_system_line(ctx,
@@ -4124,7 +4124,7 @@ static void session_game_alpha_present_stage(session_ctx_t *ctx)
             ctx, "Legend: @ craft, + beacon, * beacon contact, B "
                  "black hole, S star, P planet, D debris.");
     }
-    session_send_system_line(ctx, "Navigation grid spans 60×60 sectors; each "
+    session_send_system_line(ctx, "Navigation grid spans 60x60 sectors; each "
                                   "maneuver reshuffles the gravity field.");
     session_send_system_line(ctx, "Use arrow keys to nudge the craft; touching "
                                   "the beacon advances immediately.");
@@ -4963,7 +4963,7 @@ static void session_game_gonu_build_patterns(void)
     session_game_gonu_add_line(bakwi, 0, GONU_BOARD_SIZE - 1,
                                GONU_BOARD_SIZE - 1, 0);
 
-    // Umul-gonu:井 grid thickened with inner walls and cross-cut diagonals
+    // Umul-gonu: well grid thickened with inner walls and cross-cut diagonals
     gonu_board_pattern_t *umul = &gonu_patterns[GONU_VARIANT_UMUL];
     session_game_gonu_add_line(umul, 0, 0, 0, GONU_BOARD_SIZE - 1);
     session_game_gonu_add_line(umul, GONU_BOARD_SIZE - 1, 0,
@@ -5788,7 +5788,7 @@ static void session_game_start_gonu(session_ctx_t *ctx)
     session_send_system_line(
         ctx, "2. Bakwi-gonu (Wheel) - triple-ring wheel with spokes");
     session_send_system_line(
-        ctx, "3. Umul-gonu (Well) - thickened井 grid with diagonals");
+        ctx, "3. Umul-gonu (Well) - thickened well grid with diagonals");
     session_send_system_line(
         ctx, "4. Janggi-gonu (Star Palace) - extended palace star lattice");
     session_send_system_line(ctx, "Enter 1, 2, 3, or 4 (default 4):");

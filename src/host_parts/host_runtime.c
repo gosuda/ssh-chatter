@@ -6569,9 +6569,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             host_error_guard_register_success(host);
 
             // Periodically rotate EpochGC to reclaim expired memory
-            if (host->memory_context != nullptr) {
-                sshc_memory_context_epoch_gc_rotate(host->memory_context);
-            }
+            sshc_memory_context_epoch_gc_rotate(host->memory_context);
             sshc_epoch_reclaim();
         }
 

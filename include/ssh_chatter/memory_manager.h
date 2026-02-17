@@ -23,7 +23,7 @@ extern "C" {
  * Variable Lifecycle & Ownership Model
  * ====================================================================
  *
- * Every allocation in ssh-chatter flows through three cooperating layers
+ * Every allocation in ssh-chatter flows through four cooperating layers
  * provided by libttak.  Understanding them is essential for safe memory
  * management in a multi-threaded chat server.
  *

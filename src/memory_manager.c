@@ -3,7 +3,7 @@
  * @desc Unified memory manager for SSH-Chatter using libttak for manual lifetimes
  *       and Boehm GC for automatic collection when enabled.
  *
- *       Integrates three libttak subsystems to govern variable lifecycles:
+ *       Integrates four libttak subsystems to govern variable lifecycles:
  *
  *       * Owner (tt_owner_t)
  *           Each memory context carries an owner that tracks live allocations.

@@ -13,3 +13,5 @@ Makefile.valgrind
 build_for_valgrind.sh
 *.dat
 leak_test_run/
+build/
+stress-test

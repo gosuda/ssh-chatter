@@ -13,6 +13,18 @@
 #define SSH_CHATTER_TCP_KEEPALIVE_IDLE 60
 #define SSH_CHATTER_TCP_KEEPALIVE_INTERVAL 10
 #define SSH_CHATTER_TCP_KEEPALIVE_COUNT 3
+// Total dead-peer detection time (seconds) for TCP_USER_TIMEOUT.
+// Should be >= IDLE + INTERVAL * COUNT to avoid premature drops.
+#define SSH_CHATTER_TCP_USER_TIMEOUT_MS                                        \
+    ((SSH_CHATTER_TCP_KEEPALIVE_IDLE +                                         \
+      SSH_CHATTER_TCP_KEEPALIVE_INTERVAL * SSH_CHATTER_TCP_KEEPALIVE_COUNT) *  \
+     1000)
+// SSH-level operation timeout (seconds) for ssh_options_set.
+#define SSH_CHATTER_SSH_TIMEOUT_SECONDS 60
+// Interval between poll() wakeups in the accept loop (milliseconds).
+#define SSH_CHATTER_ACCEPT_POLL_TIMEOUT_MS 2000
+// Maximum consecutive poll timeouts before forcing a bind socket health check.
+#define SSH_CHATTER_ACCEPT_HEALTH_CHECK_POLLS 30
 #define SESSION_LIFETIME_INITIAL_UNITS 8U
 #define SESSION_LIFETIME_ACTIVITY_BONUS 2U
 #define SESSION_LIFETIME_MAX_UNITS 64U
@@ -340,7 +352,7 @@ static void session_configure_tcp_keepalive(ssh_session session)
     int enabled = 1;
     if (setsockopt(socket_fd, SOL_SOCKET, SO_KEEPALIVE, &enabled,
                    sizeof(enabled)) < 0) {
-        fprintf(stderr, "[session] setsockopt SO_KEEPALIVE failed");
+        fprintf(stderr, "[session] setsockopt SO_KEEPALIVE failed\n");
     }
 
 #ifdef TCP_KEEPIDLE
@@ -348,7 +360,7 @@ static void session_configure_tcp_keepalive(ssh_session session)
         int idle_seconds = SSH_CHATTER_TCP_KEEPALIVE_IDLE;
         if (setsockopt(socket_fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle_seconds,
                        sizeof(idle_seconds)) < 0) {
-            fprintf(stderr, "[session] setsockopt TCP_KEEPIDLE failed");
+            fprintf(stderr, "[session] setsockopt TCP_KEEPIDLE failed\n");
         }
     }
 #endif
@@ -358,26 +370,62 @@ static void session_configure_tcp_keepalive(ssh_session session)
         int idle_seconds = SSH_CHATTER_TCP_KEEPALIVE_IDLE;
         if (setsockopt(socket_fd, IPPROTO_TCP, TCP_KEEPALIVE, &idle_seconds,
                        sizeof(idle_seconds)) < 0) {
-            fprintf(stderr, "[session] setsockopt TCP_KEEPALIVE failed");
+            fprintf(stderr, "[session] setsockopt TCP_KEEPALIVE failed\n");
         }
     }
 #endif
 
 #ifdef TCP_KEEPINTVL
-    int interval_seconds = SSH_CHATTER_TCP_KEEPALIVE_INTERVAL;
-    if (setsockopt(socket_fd, IPPROTO_TCP, TCP_KEEPINTVL, &interval_seconds,
-                   sizeof(interval_seconds)) < 0) {
-        fprintf(stderr, "[session] setsockopt TCP_KEEPINTVL failed");
+    {
+        int interval_seconds = SSH_CHATTER_TCP_KEEPALIVE_INTERVAL;
+        if (setsockopt(socket_fd, IPPROTO_TCP, TCP_KEEPINTVL, &interval_seconds,
+                       sizeof(interval_seconds)) < 0) {
+            fprintf(stderr, "[session] setsockopt TCP_KEEPINTVL failed\n");
+        }
     }
 #endif
 
 #ifdef TCP_KEEPCNT
-    int keepalive_probes = SSH_CHATTER_TCP_KEEPALIVE_COUNT;
-    if (setsockopt(socket_fd, IPPROTO_TCP, TCP_KEEPCNT, &keepalive_probes,
-                   sizeof(keepalive_probes)) < 0) {
-        fprintf(stderr, "[session] setsockopt TCP_KEEPCNT failed");
+    {
+        int keepalive_probes = SSH_CHATTER_TCP_KEEPALIVE_COUNT;
+        if (setsockopt(socket_fd, IPPROTO_TCP, TCP_KEEPCNT, &keepalive_probes,
+                       sizeof(keepalive_probes)) < 0) {
+            fprintf(stderr, "[session] setsockopt TCP_KEEPCNT failed\n");
+        }
     }
 #endif
+
+#ifdef TCP_USER_TIMEOUT
+    {
+        int user_timeout_ms = SSH_CHATTER_TCP_USER_TIMEOUT_MS;
+        if (setsockopt(socket_fd, IPPROTO_TCP, TCP_USER_TIMEOUT,
+                       &user_timeout_ms, sizeof(user_timeout_ms)) < 0) {
+            fprintf(stderr, "[session] setsockopt TCP_USER_TIMEOUT failed\n");
+        }
+    }
+#endif
+
+    // Enable TCP_NODELAY for low-latency interactive sessions
+    if (setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, &enabled,
+                   sizeof(enabled)) < 0) {
+        fprintf(stderr, "[session] setsockopt TCP_NODELAY failed\n");
+    }
+}
+
+// Configure SSH-level session options after accept (timeout, nodelay, rekey).
+static void session_configure_ssh_options(ssh_session session)
+{
+    if (session == nullptr) {
+        return;
+    }
+
+    // Set SSH operation timeout (matches openssh LoginGraceTime behavior)
+    long timeout_seconds = SSH_CHATTER_SSH_TIMEOUT_SECONDS;
+    ssh_options_set(session, SSH_OPTIONS_TIMEOUT, &timeout_seconds);
+
+    // Enable TCP_NODELAY at SSH layer as well
+    int nodelay = 1;
+    ssh_options_set(session, SSH_OPTIONS_NODELAY, &nodelay);
 }
 
 static const char *session_cp437_scope_label(session_cp437_scope_t cp437_scope)
@@ -6201,9 +6249,65 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         printf("[listener] listening on %s:%s\n", address, bind_port);
         host_error_guard_register_success(host);
 
+        // Retrieve the bind socket fd for poll()-based accept gating
+        socket_t bind_fd = ssh_bind_get_fd(bind_handle);
+        unsigned int idle_poll_cycles = 0U;
+
         bool restart_listener = false;
         while (!restart_listener &&
                (host->shutdown_flag == nullptr || *host->shutdown_flag == 0)) {
+
+            // Gate accept() with poll() so we never block indefinitely.
+            // This lets us check shutdown flags and run health probes.
+            if (bind_fd >= 0) {
+                struct pollfd pfd;
+                pfd.fd = bind_fd;
+                pfd.events = POLLIN;
+                pfd.revents = 0;
+
+                int poll_rc =
+                    poll(&pfd, 1, SSH_CHATTER_ACCEPT_POLL_TIMEOUT_MS);
+                if (poll_rc < 0) {
+                    if (errno == EINTR) {
+                        continue;
+                    }
+                    // poll() failed on the bind socket -- treat as fatal
+                    printf("[listener] poll() on bind socket failed: %s\n",
+                           strerror(errno));
+                    restart_listener = true;
+                    break;
+                }
+                if (poll_rc == 0) {
+                    // Timeout: no incoming connection yet
+                    ++idle_poll_cycles;
+                    if (idle_poll_cycles >=
+                        SSH_CHATTER_ACCEPT_HEALTH_CHECK_POLLS) {
+                        // Verify bind socket is still healthy
+                        idle_poll_cycles = 0U;
+                        int sock_err = 0;
+                        socklen_t err_len = sizeof(sock_err);
+                        if (getsockopt(bind_fd, SOL_SOCKET, SO_ERROR,
+                                       &sock_err, &err_len) < 0 ||
+                            sock_err != 0) {
+                            printf("[listener] bind socket health check "
+                                   "failed (error=%d), restarting\n",
+                                   sock_err);
+                            restart_listener = true;
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                    printf("[listener] bind socket reported error "
+                           "(revents=0x%x), restarting\n",
+                           (unsigned)pfd.revents);
+                    restart_listener = true;
+                    break;
+                }
+                idle_poll_cycles = 0U;
+            }
+
             ssh_session session = ssh_new();
             if (session == nullptr) {
                 humanized_log_error("host", "failed to allocate session",
@@ -6302,8 +6406,10 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 #ifdef ENOSR
                     case ENOSR:
 #endif
-                        fatal_socket_error = true;
-                        should_backoff_after_socket_error = false;
+                        // Resource exhaustion: treat as transient with backoff
+                        // instead of fatal restart.  Restarting the listener
+                        // while FDs are exhausted will just fail again.
+                        should_backoff_after_socket_error = true;
                         break;
                     default:
                         break;
@@ -6349,9 +6455,15 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 }
 
                 if (should_backoff_after_socket_error) {
+                    // Use longer backoff for resource exhaustion errors
+                    long backoff_ns = 200000000L; // 200ms default
+                    if (accept_error == EMFILE || accept_error == ENFILE ||
+                        accept_error == ENOBUFS) {
+                        backoff_ns = 1000000000L; // 1s for FD/buffer exhaustion
+                    }
                     struct timespec retry_delay = {
-                        .tv_sec = 0,
-                        .tv_nsec = 200000000L,
+                        .tv_sec = backoff_ns / 1000000000L,
+                        .tv_nsec = backoff_ns % 1000000000L,
                     };
                     host_sleep_uninterruptible(&retry_delay);
                 }
@@ -6370,6 +6482,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             }
 
             session_configure_tcp_keepalive(session);
+            session_configure_ssh_options(session);
 
             hostkey_probe_result_t hostkey_probe =
                 session_probe_client_hostkey_algorithms(

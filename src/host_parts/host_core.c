@@ -76,15 +76,22 @@ static const session_ops_t telnet_session_ops = {
 #define SSH_CHATTER_HANDSHAKE_RETRY_LIMIT ((unsigned int)INT_MAX)
 #define SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS_DISPLAY                        \
     "rsa-sha2-512, rsa-sha2-256, ssh-rsa, ssh-ed25519, ecdsa-sha2-nistp256"
+// KEX algorithms matching modern openssh-server defaults
 #define SSH_CHATTER_SUPPORTED_KEX_ALGORITHMS                                   \
-    "curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-"  \
-    "sha2-nistp384,"                                                           \
-    "ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-"  \
-    "group14-sha256,"                                                          \
-    "diffie-hellman-group14-sha1"
+    "curve25519-sha256,curve25519-sha256@libssh.org,"                          \
+    "ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,"               \
+    "diffie-hellman-group-exchange-sha256,"                                    \
+    "diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,"             \
+    "diffie-hellman-group14-sha256,diffie-hellman-group14-sha1"
+// Ciphers matching modern openssh-server defaults (strongest first)
 #define SSH_CHATTER_STRONG_CIPHERS                                             \
-    "chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes256-ctr"
-#define SSH_CHATTER_STRONG_MACS "hmac-sha2-512,hmac-sha2-256"
+    "chacha20-poly1305@openssh.com,"                                           \
+    "aes256-gcm@openssh.com,aes128-gcm@openssh.com,"                          \
+    "aes256-ctr,aes192-ctr,aes128-ctr"
+// MACs matching modern openssh-server defaults (ETM variants preferred)
+#define SSH_CHATTER_STRONG_MACS                                                \
+    "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,"            \
+    "hmac-sha2-256,hmac-sha2-512"
 #define SSH_CHATTER_SECURE_COMPRESSION "none"
 #define SSH_CHATTER_BIRTHDAY_WINDOW_SECONDS (7 * 24 * 60 * 60)
 

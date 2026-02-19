@@ -4644,6 +4644,7 @@ static void session_write_rendered_line(session_ctx_t *ctx,
     }
 
     session_channel_write(ctx, "\r\n", 2U);
+    session_note_output_lines(ctx, 1U);
 
     if (locked) {
         session_output_unlock(ctx);

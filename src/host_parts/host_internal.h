@@ -124,6 +124,7 @@ size_t session_cp437_byte_to_utf8(unsigned char byte, char *output,
                                   size_t capacity);
 
 void session_render_banner_ascii(session_ctx_t *ctx);
+void session_note_output_lines(session_ctx_t *ctx, size_t line_count);
 
 bool host_compact_id_encode(uint64_t id, char *buffer, size_t length);
 bool host_compact_id_decode(const char *text, uint64_t *id_out);

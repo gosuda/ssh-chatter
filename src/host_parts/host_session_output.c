@@ -16,6 +16,28 @@
 void session_process_pending_sink(session_ctx_t *ctx);
 void session_flag_should_sink(session_ctx_t *ctx);
 
+void session_note_output_lines(session_ctx_t *ctx, size_t line_count)
+{
+    if (ctx == nullptr || line_count == 0U) {
+        return;
+    }
+
+    size_t total =
+        (size_t)ctx->output_lines_since_prompt + line_count;
+    unsigned int clamp =
+        (ctx->terminal_height > 0U) ? ctx->terminal_height : UINT_MAX;
+
+    if (total > clamp) {
+        total = clamp;
+    }
+    if (total > UINT_MAX) {
+        total = UINT_MAX;
+    }
+
+    ctx->output_lines_since_prompt = (unsigned int)total;
+    ctx->prompt_needs_padding = true;
+}
+
 static size_t session_scrollback_line_capacity(const session_ctx_t *ctx)
 {
     size_t target = SSH_CHATTER_SCROLLBACK_CHUNK;
@@ -99,6 +121,7 @@ static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
             session_channel_write(ctx, cursor, length);
         }
         session_channel_write(ctx, "\r\n", 2U);
+        session_note_output_lines(ctx, 1U);
 
         if (newline == nullptr) {
             break;
@@ -1230,6 +1253,9 @@ static void session_clear_screen(session_ctx_t *ctx)
 
     static const char kClearSequence[] = "\033[2J\033[H";
     session_channel_write(ctx, kClearSequence, sizeof(kClearSequence) - 1U);
+
+    ctx->output_lines_since_prompt = 0U;
+    ctx->prompt_needs_padding = false;
 }
 
 static void session_bbs_prepare_canvas(session_ctx_t *ctx)
@@ -2372,6 +2398,39 @@ static void session_render_banner(session_ctx_t *ctx)
     session_render_separator(ctx, "Chatroom");
 }
 
+static void session_pad_prompt_to_terminal(session_ctx_t *ctx,
+                                           bool include_separator)
+{
+    if (ctx == nullptr || !ctx->prompt_needs_padding) {
+        return;
+    }
+
+    unsigned int height = ctx->terminal_height;
+    if (height == 0U) {
+        return;
+    }
+
+    unsigned int reserved = 1U + (include_separator ? 1U : 0U);
+    if (height <= reserved) {
+        return;
+    }
+
+    unsigned int max_content = height - reserved;
+    unsigned int used = ctx->output_lines_since_prompt;
+    if (used >= max_content) {
+        ctx->output_lines_since_prompt = max_content;
+        return;
+    }
+
+    unsigned int blanks = max_content - used;
+    for (unsigned int idx = 0U; idx < blanks; ++idx) {
+        session_fill_line_with_theme(ctx);
+        session_channel_write(ctx, "\r\n", 2U);
+    }
+
+    session_note_output_lines(ctx, blanks);
+}
+
 static void session_fill_prompt_line(session_ctx_t *ctx)
 {
     const char *bg = ctx->system_bg_code != nullptr ? ctx->system_bg_code : "";
@@ -2413,6 +2472,8 @@ static void session_render_prompt_internal(session_ctx_t *ctx,
         return;
     }
 
+    session_pad_prompt_to_terminal(ctx, include_separator);
+
     if (include_separator) {
         session_render_separator(ctx, "Input");
     }
@@ -2449,6 +2510,9 @@ static void session_render_prompt_internal(session_ctx_t *ctx,
     if (ctx->input_length > 0U) {
         session_channel_write(ctx, ctx->input_buffer, ctx->input_length);
     }
+
+    ctx->output_lines_since_prompt = 0U;
+    ctx->prompt_needs_padding = false;
 }
 
 static void session_render_prompt(session_ctx_t *ctx, bool include_separator)

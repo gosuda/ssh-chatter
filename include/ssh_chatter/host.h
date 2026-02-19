@@ -638,6 +638,8 @@ typedef struct session_ctx {
     char system_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
     unsigned int terminal_width;
     unsigned int terminal_height;
+    unsigned int output_lines_since_prompt;
+    bool prompt_needs_padding;
     int exit_status;
     bool should_exit;
     bool exit_notice_sent;

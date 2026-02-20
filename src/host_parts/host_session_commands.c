@@ -4278,26 +4278,32 @@ static void session_rss_list(session_ctx_t *ctx)
         return;
     }
 
-    rss_feed_t snapshot[SSH_CHATTER_RSS_MAX_FEEDS];
+    rss_feed_t *snapshot = (rss_feed_t *)sshc_gc_malloc(
+        sizeof(rss_feed_t) * SSH_CHATTER_RSS_MAX_FEEDS);
     size_t count = 0U;
 
-    ttak_mutex_lock(&ctx->owner->lock);
-    for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
-        if (!ctx->owner->rss_feeds[idx].in_use) {
-            continue;
+    if (snapshot != nullptr) {
+        ttak_mutex_lock(&ctx->owner->lock);
+        for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
+            if (!ctx->owner->rss_feeds[idx].in_use) {
+                continue;
+            }
+            snapshot[count++] = ctx->owner->rss_feeds[idx];
+            if (count >= SSH_CHATTER_RSS_MAX_FEEDS) {
+                break;
+            }
         }
-        snapshot[count++] = ctx->owner->rss_feeds[idx];
-        if (count >= SSH_CHATTER_RSS_MAX_FEEDS) {
-            break;
-        }
+        ttak_mutex_unlock(&ctx->owner->lock);
     }
-    ttak_mutex_unlock(&ctx->owner->lock);
 
     session_render_separator(ctx, "RSS Feeds");
     if (count == 0U) {
         session_send_system_line(ctx,
                                  "No RSS feeds registered. Operators can add "
                                  "one with /rss add <url> <tag>.");
+        if (snapshot != nullptr) {
+            sshc_gc_free(snapshot);
+        }
         return;
     }
 
@@ -4313,6 +4319,10 @@ static void session_rss_list(session_ctx_t *ctx)
             snprintf(line, sizeof(line), "[%s] %s", entry->tag, entry->url);
         }
         session_send_system_line(ctx, line);
+    }
+
+    if (snapshot != nullptr) {
+        sshc_gc_free(snapshot);
     }
 }
 
@@ -4333,30 +4343,42 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
         return;
     }
 
-    rss_feed_t feed_snapshot = {0};
-    rss_session_item_t items[SSH_CHATTER_RSS_MAX_ITEMS];
+    rss_feed_t *feed_snapshot = (rss_feed_t *)sshc_gc_malloc(sizeof(rss_feed_t));
+    rss_session_item_t *items = (rss_session_item_t *)sshc_gc_malloc(
+        sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS);
     size_t item_count = 0U;
 
-    ttak_mutex_lock(&ctx->owner->lock);
-    rss_feed_t *entry = host_find_rss_feed_locked(ctx->owner, working);
-    if (entry != nullptr && entry->in_use) {
-        feed_snapshot = *entry;
-        item_count = entry->stored_item_count;
-        if (item_count > SSH_CHATTER_RSS_MAX_ITEMS) {
-            item_count = SSH_CHATTER_RSS_MAX_ITEMS;
-        }
-        if (item_count > 0U) {
-            memcpy(items, entry->stored_items,
-                   item_count * sizeof(rss_session_item_t));
-        }
-    }
-    ttak_mutex_unlock(&ctx->owner->lock);
+    if (feed_snapshot != nullptr && items != nullptr) {
+        memset(feed_snapshot, 0, sizeof(rss_feed_t));
+        memset(items, 0, sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS);
 
-    if (feed_snapshot.tag[0] == '\0') {
+        ttak_mutex_lock(&ctx->owner->lock);
+        rss_feed_t *entry = host_find_rss_feed_locked(ctx->owner, working);
+        if (entry != nullptr && entry->in_use) {
+            *feed_snapshot = *entry;
+            item_count = entry->stored_item_count;
+            if (item_count > SSH_CHATTER_RSS_MAX_ITEMS) {
+                item_count = SSH_CHATTER_RSS_MAX_ITEMS;
+            }
+            if (item_count > 0U) {
+                memcpy(items, entry->stored_items,
+                       item_count * sizeof(rss_session_item_t));
+            }
+        }
+        ttak_mutex_unlock(&ctx->owner->lock);
+    }
+
+    if (feed_snapshot == nullptr || feed_snapshot->tag[0] == '\0') {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(message, sizeof(message), "No RSS feed found for tag '%s'.",
                  working);
         session_send_system_line(ctx, message);
+        if (feed_snapshot != nullptr) {
+            sshc_gc_free(feed_snapshot);
+        }
+        if (items != nullptr) {
+            sshc_gc_free(items);
+        }
         return;
     }
 
@@ -4364,10 +4386,14 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
         session_send_system_line(
             ctx,
             "The feed does not contain any entries for the current window yet.");
+        sshc_gc_free(feed_snapshot);
+        sshc_gc_free(items);
         return;
     }
 
-    session_rss_begin(ctx, feed_snapshot.tag, items, item_count);
+    session_rss_begin(ctx, feed_snapshot->tag, items, item_count);
+    sshc_gc_free(feed_snapshot);
+    sshc_gc_free(items);
 }
 
 static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
@@ -4413,18 +4439,32 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
             return;
         }
 
-        char *url = strtok_r(nullptr, " \t", &saveptr);
-        char *tag = strtok_r(nullptr, " \t", &saveptr);
-        if (url == nullptr || tag == nullptr) {
+        char *arg1 = strtok_r(nullptr, " \t", &saveptr);
+        char *arg2 = strtok_r(nullptr, " \t", &saveptr);
+        if (arg1 == nullptr || arg2 == nullptr) {
             session_send_system_line(ctx, "Usage: /rss add <url> <tag>");
             return;
         }
 
-        rss_trim_whitespace(url);
-        rss_trim_whitespace(tag);
-        if (url[0] == '\0' || tag[0] == '\0') {
+        rss_trim_whitespace(arg1);
+        rss_trim_whitespace(arg2);
+        if (arg1[0] == '\0' || arg2[0] == '\0') {
             session_send_system_line(ctx, "Usage: /rss add <url> <tag>");
             return;
+        }
+
+        char *url = arg1;
+        char *tag = arg2;
+
+        // Auto-correction: if arg2 looks like a URL and arg1 does not, swap them.
+        bool arg1_is_url = (strncasecmp(arg1, "http://", 7) == 0 ||
+                            strncasecmp(arg1, "https://", 8) == 0);
+        bool arg2_is_url = (strncasecmp(arg2, "http://", 7) == 0 ||
+                            strncasecmp(arg2, "https://", 8) == 0);
+
+        if (arg2_is_url && !arg1_is_url) {
+            url = arg2;
+            tag = arg1;
         }
 
         char error[128];

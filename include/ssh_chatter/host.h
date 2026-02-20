@@ -553,6 +553,13 @@ typedef enum session_editor_mode {
     SESSION_EDITOR_MODE_ASCIIART,
 } session_editor_mode_t;
 
+typedef struct rss_session_item {
+    char id[SSH_CHATTER_RSS_ITEM_KEY_LEN];
+    char title[SSH_CHATTER_RSS_TITLE_LEN];
+    char link[SSH_CHATTER_RSS_LINK_LEN];
+    char summary[SSH_CHATTER_RSS_SUMMARY_LEN];
+} rss_session_item_t;
+
 typedef struct rss_feed {
     bool in_use;
     char tag[SSH_CHATTER_RSS_TAG_LEN];
@@ -561,14 +568,10 @@ typedef struct rss_feed {
     char last_title[SSH_CHATTER_RSS_TITLE_LEN];
     char last_link[SSH_CHATTER_RSS_LINK_LEN];
     time_t last_checked;
+    uint8_t window_id;
+    size_t stored_item_count;
+    rss_session_item_t stored_items[SSH_CHATTER_RSS_MAX_ITEMS];
 } rss_feed_t;
-
-typedef struct rss_session_item {
-    char id[SSH_CHATTER_RSS_ITEM_KEY_LEN];
-    char title[SSH_CHATTER_RSS_TITLE_LEN];
-    char link[SSH_CHATTER_RSS_LINK_LEN];
-    char summary[SSH_CHATTER_RSS_SUMMARY_LEN];
-} rss_session_item_t;
 
 typedef struct session_rss_view {
     bool active;
@@ -979,6 +982,7 @@ typedef struct host {
     uint64_t next_bbs_id;
     rss_feed_t rss_feeds[SSH_CHATTER_RSS_MAX_FEEDS];
     size_t rss_feed_count;
+    uint8_t rss_current_window_id;
     othello_multiplayer_slot_t othello_games[SSH_CHATTER_OTHELLO_MAX_SLOTS];
     gonu_multiplayer_slot_t gonu_games[SSH_CHATTER_GONU_MAX_SLOTS];
     bool random_seeded;

@@ -3965,6 +3965,150 @@ static void host_ui_language_state_load(host_t *host)
     fclose(fp);
 }
 
+static const uint32_t RSS_STATE_MAGIC = 0x52535331U; /* 'RSS1' */
+static const uint32_t RSS_STATE_VERSION = 2U;
+
+typedef struct rss_state_header {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t feed_count;
+    uint32_t reserved;
+} rss_state_header_t;
+
+typedef struct rss_state_entry_legacy_v1 {
+    char tag[SSH_CHATTER_RSS_TAG_LEN];
+    char url[SSH_CHATTER_RSS_URL_LEN];
+    char last_item_key[SSH_CHATTER_RSS_ITEM_KEY_LEN];
+} rss_state_entry_legacy_v1_t;
+
+typedef struct rss_state_entry {
+    char tag[SSH_CHATTER_RSS_TAG_LEN];
+    char url[SSH_CHATTER_RSS_URL_LEN];
+    char last_item_key[SSH_CHATTER_RSS_ITEM_KEY_LEN];
+    uint8_t window_id;
+    uint8_t reserved[3];
+    uint32_t item_count;
+    rss_session_item_t items[SSH_CHATTER_RSS_MAX_ITEMS];
+} rss_state_entry_t;
+
+static uint8_t host_rss_current_window_id(void)
+{
+    time_t now = time(nullptr);
+    if (now == (time_t)-1) {
+        return 0U;
+    }
+
+    time_t adjusted = now - (time_t)(3 * 60 * 60);
+    struct tm utc_snapshot;
+    if (gmtime_r(&adjusted, &utc_snapshot) == nullptr) {
+        return 0U;
+    }
+
+    switch (utc_snapshot.tm_wday) {
+    case 1: /* Monday */
+    case 2: /* Tuesday */
+        return 0U;
+    case 3: /* Wednesday */
+    case 4: /* Thursday */
+        return 1U;
+    default: /* Friday, Saturday, Sunday */
+        return 2U;
+    }
+}
+
+static void host_rss_reset_feed_window_locked(rss_feed_t *feed,
+                                              uint8_t window_id)
+{
+    if (feed == nullptr) {
+        return;
+    }
+    feed->window_id = window_id;
+    feed->stored_item_count = 0U;
+    memset(feed->stored_items, 0, sizeof(feed->stored_items));
+}
+
+static bool host_rss_handle_window_rollover_locked(host_t *host,
+                                                   uint8_t new_window_id)
+{
+    if (host == nullptr) {
+        return false;
+    }
+
+    if (host->rss_current_window_id == new_window_id) {
+        return false;
+    }
+
+    bool cleared = false;
+    for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
+        rss_feed_t *entry = &host->rss_feeds[idx];
+        if (!entry->in_use) {
+            entry->window_id = new_window_id;
+            entry->stored_item_count = 0U;
+            continue;
+        }
+
+        bool had_items = entry->stored_item_count > 0U;
+        if (had_items || entry->window_id != new_window_id) {
+            host_rss_reset_feed_window_locked(entry, new_window_id);
+            if (had_items) {
+                cleared = true;
+            }
+        } else {
+            entry->window_id = new_window_id;
+        }
+    }
+
+    host->rss_current_window_id = new_window_id;
+    return cleared;
+}
+
+static bool host_rss_store_item_locked(rss_feed_t *entry,
+                                       const rss_session_item_t *item)
+{
+    if (entry == nullptr || item == nullptr) {
+        return false;
+    }
+
+    const char *candidate = item->id;
+    if (candidate[0] == '\0') {
+        candidate = item->link;
+    }
+    if (candidate[0] == '\0') {
+        candidate = item->title;
+    }
+
+    if (candidate[0] != '\0') {
+        for (size_t idx = 0U; idx < entry->stored_item_count; ++idx) {
+            const rss_session_item_t *existing = &entry->stored_items[idx];
+            const char *existing_key = existing->id;
+            if (existing_key[0] == '\0') {
+                existing_key = existing->link;
+            }
+            if (existing_key[0] == '\0') {
+                existing_key = existing->title;
+            }
+            if (existing_key[0] != '\0' &&
+                strcmp(existing_key, candidate) == 0) {
+                return false;
+            }
+        }
+    }
+
+    size_t preserved =
+        entry->stored_item_count >= SSH_CHATTER_RSS_MAX_ITEMS
+            ? SSH_CHATTER_RSS_MAX_ITEMS - 1U
+            : entry->stored_item_count;
+    if (preserved > 0U) {
+        memmove(&entry->stored_items[1], &entry->stored_items[0],
+                preserved * sizeof(entry->stored_items[0]));
+    }
+    entry->stored_items[0] = *item;
+    if (entry->stored_item_count < SSH_CHATTER_RSS_MAX_ITEMS) {
+        ++entry->stored_item_count;
+    }
+    return true;
+}
+
 static void host_clear_rss_feed(rss_feed_t *feed)
 {
     if (feed == nullptr) {
@@ -4006,6 +4150,37 @@ static rss_feed_t *host_find_rss_feed_locked(host_t *host, const char *tag)
     }
     return nullptr;
 }
+
+static bool rss_tag_is_valid(const char *tag)
+{
+    if (tag == nullptr || tag[0] == '\0') {
+        return false;
+    }
+
+    for (const char *cursor = tag; *cursor != '\0'; ++cursor) {
+        const char ch = *cursor;
+        if (!(isalnum((unsigned char)ch) || ch == '-' || ch == '_' ||
+              ch == '.')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void host_rss_state_save_locked(host_t *host);
+static uint8_t host_rss_current_window_id(void);
+static void host_rss_reset_feed_window_locked(rss_feed_t *feed,
+                                              uint8_t window_id);
+static bool host_rss_handle_window_rollover_locked(host_t *host,
+                                                   uint8_t new_window_id);
+static bool host_rss_store_item_locked(rss_feed_t *entry,
+                                       const rss_session_item_t *item);
+static rss_feed_t *host_find_rss_feed_locked(host_t *host, const char *tag);
+static void host_clear_rss_feed(rss_feed_t *feed);
+static void host_rss_recount_locked(host_t *host);
+static bool host_rss_fetch_items(const rss_feed_t *feed,
+                                 rss_session_item_t *items, size_t max_items,
+                                 size_t *out_count);
 
 static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
                               char *error, size_t error_length)
@@ -4228,6 +4403,18 @@ static void host_rss_state_save_locked(host_t *host)
         snprintf(record.url, sizeof(record.url), "%s", entry->url);
         snprintf(record.last_item_key, sizeof(record.last_item_key), "%s",
                  entry->last_item_key);
+        record.window_id = entry->window_id;
+        record.item_count = (uint32_t)entry->stored_item_count;
+
+        size_t items_to_copy = entry->stored_item_count;
+        if (items_to_copy > SSH_CHATTER_RSS_MAX_ITEMS) {
+            items_to_copy = SSH_CHATTER_RSS_MAX_ITEMS;
+        }
+
+        if (items_to_copy > 0U) {
+            memcpy(record.items, entry->stored_items,
+                   items_to_copy * sizeof(rss_session_item_t));
+        }
 
         if (fwrite(&record, sizeof(record), 1U, fp) != 1U) {
             success = false;
@@ -4317,9 +4504,23 @@ static void host_rss_state_load(host_t *host)
     bool success = true;
     for (uint32_t idx = 0U; idx < header.feed_count; ++idx) {
         rss_state_entry_t record = {0};
-        if (fread(&record, sizeof(record), 1U, fp) != 1U) {
-            success = false;
-            break;
+        if (header.version == 1U) {
+            rss_state_entry_legacy_v1_t v1_record = {0};
+            if (fread(&v1_record, sizeof(v1_record), 1U, fp) != 1U) {
+                success = false;
+                break;
+            }
+            snprintf(record.tag, sizeof(record.tag), "%s", v1_record.tag);
+            snprintf(record.url, sizeof(record.url), "%s", v1_record.url);
+            snprintf(record.last_item_key, sizeof(record.last_item_key), "%s",
+                     v1_record.last_item_key);
+            record.window_id = host_rss_current_window_id();
+            record.item_count = 0U;
+        } else {
+            if (fread(&record, sizeof(record), 1U, fp) != 1U) {
+                success = false;
+                break;
+            }
         }
 
         rss_trim_whitespace(record.tag);
@@ -4349,6 +4550,18 @@ static void host_rss_state_load(host_t *host)
         snprintf(slot->last_item_key, sizeof(slot->last_item_key), "%s",
                  record.last_item_key);
         slot->last_checked = 0;
+        slot->window_id = record.window_id;
+        slot->stored_item_count = (size_t)record.item_count;
+
+        size_t items_to_copy = slot->stored_item_count;
+        if (items_to_copy > SSH_CHATTER_RSS_MAX_ITEMS) {
+            items_to_copy = SSH_CHATTER_RSS_MAX_ITEMS;
+        }
+
+        if (items_to_copy > 0U) {
+            memcpy(slot->stored_items, record.items,
+                   items_to_copy * sizeof(rss_session_item_t));
+        }
     }
 
     if (success) {
@@ -4435,7 +4648,8 @@ static bool host_rss_download(const char *url, char **payload, size_t *length)
         }
     }
 
-    if (!success) {
+    if (!success && buffer.data != nullptr) {
+        sshc_gc_free(buffer.data);
     }
 
     curl_easy_cleanup(curl);
@@ -4638,6 +4852,7 @@ static size_t host_rss_parse_items(const char *payload,
         }
 
         ++count;
+        sshc_gc_free(block);
         cursor = end;
     }
 
@@ -4665,6 +4880,10 @@ static bool host_rss_fetch_items(const rss_feed_t *feed,
     size_t count = host_rss_parse_items(payload, items, max_items);
     if (out_count != nullptr) {
         *out_count = count;
+    }
+
+    if (payload != nullptr) {
+        sshc_gc_free(payload);
     }
 
     return true;
@@ -4718,10 +4937,16 @@ static void *host_rss_backend(void *arg)
            (unsigned int)SSH_CHATTER_RSS_REFRESH_SECONDS);
 
     while (!atomic_load(&host->rss_thread_stop)) {
+        // Window check
+        uint8_t current_window = host_rss_current_window_id();
+        ttak_mutex_lock(&host->lock);
+        if (host_rss_handle_window_rollover_locked(host, current_window)) {
+            host_rss_state_save_locked(host);
+        }
+
         rss_feed_t feed_snapshots[SSH_CHATTER_RSS_MAX_FEEDS];
         size_t snapshot_count = 0U;
 
-        ttak_mutex_lock(&host->lock);
         for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
             if (!host->rss_feeds[idx].in_use) {
                 continue;
@@ -4750,11 +4975,11 @@ static void *host_rss_backend(void *arg)
                 size_t new_item_count = 0U;
                 if (item_count > 0U) {
                     if (feed_snapshot.last_item_key[0] == '\0') {
-                        new_item_count = 0U;
+                        new_item_count = item_count; // First time? Let's take them all.
                     } else {
                         bool found_marker = false;
                         for (size_t idx = 0U; idx < item_count; ++idx) {
-                            if (items[idx].id[0] == '\0' ||
+                            if (items[idx].id[0] == '\0' &&
                                 feed_snapshot.last_item_key[0] == '\0') {
                                 continue;
                             }
@@ -4772,7 +4997,7 @@ static void *host_rss_backend(void *arg)
                 }
 
                 bool feed_active = false;
-                bool key_changed = false;
+                bool state_changed = false;
                 time_t now = time(nullptr);
 
                 ttak_mutex_lock(&host->lock);
@@ -4781,6 +5006,15 @@ static void *host_rss_backend(void *arg)
                 if (entry != nullptr && entry->in_use) {
                     feed_active = true;
                     entry->last_checked = now;
+
+                    // Store new items in the sliding window
+                    for (size_t idx = item_count; idx > 0U; --idx) {
+                        if (host_rss_store_item_locked(entry,
+                                                       &items[idx - 1U])) {
+                            state_changed = true;
+                        }
+                    }
+
                     if (item_count > 0U) {
                         const rss_session_item_t *latest = &items[0U];
                         char new_key[SSH_CHATTER_RSS_ITEM_KEY_LEN];
@@ -4801,7 +5035,7 @@ static void *host_rss_backend(void *arg)
                             snprintf(entry->last_item_key,
                                      sizeof(entry->last_item_key), "%s",
                                      new_key);
-                            key_changed = true;
+                            state_changed = true;
                         }
 
                         if (latest->title[0] != '\0') {
@@ -4820,7 +5054,7 @@ static void *host_rss_backend(void *arg)
                         }
                     }
 
-                    if (key_changed) {
+                    if (state_changed) {
                         host_rss_state_save_locked(host);
                     }
                 }
@@ -4943,6 +5177,7 @@ static void host_rss_start_backend(host_t *host)
     }
 
     ttak_mutex_lock(&host->lock);
+    host->rss_current_window_id = host_rss_current_window_id();
     bool has_feeds = host->rss_feed_count > 0U;
     ttak_mutex_unlock(&host->lock);
 

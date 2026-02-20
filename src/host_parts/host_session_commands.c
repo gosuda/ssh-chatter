@@ -4334,10 +4334,21 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
     }
 
     rss_feed_t feed_snapshot = {0};
+    rss_session_item_t items[SSH_CHATTER_RSS_MAX_ITEMS];
+    size_t item_count = 0U;
+
     ttak_mutex_lock(&ctx->owner->lock);
     rss_feed_t *entry = host_find_rss_feed_locked(ctx->owner, working);
-    if (entry != nullptr) {
+    if (entry != nullptr && entry->in_use) {
         feed_snapshot = *entry;
+        item_count = entry->stored_item_count;
+        if (item_count > SSH_CHATTER_RSS_MAX_ITEMS) {
+            item_count = SSH_CHATTER_RSS_MAX_ITEMS;
+        }
+        if (item_count > 0U) {
+            memcpy(items, entry->stored_items,
+                   item_count * sizeof(rss_session_item_t));
+        }
     }
     ttak_mutex_unlock(&ctx->owner->lock);
 
@@ -4349,33 +4360,12 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
         return;
     }
 
-    rss_session_item_t items[SSH_CHATTER_RSS_MAX_ITEMS];
-    size_t item_count = 0U;
-    if (!host_rss_fetch_items(&feed_snapshot, items, SSH_CHATTER_RSS_MAX_ITEMS,
-                              &item_count)) {
-        session_send_system_line(ctx,
-                                 "Failed to fetch RSS feed. Try again later.");
-        return;
-    }
-
     if (item_count == 0U) {
         session_send_system_line(
-            ctx, "The feed does not contain any recent entries.");
+            ctx,
+            "The feed does not contain any entries for the current window yet.");
         return;
     }
-
-    time_t now = time(nullptr);
-    ttak_mutex_lock(&ctx->owner->lock);
-    entry = host_find_rss_feed_locked(ctx->owner, working);
-    if (entry != nullptr) {
-        entry->last_checked = now;
-        snprintf(entry->last_title, sizeof(entry->last_title), "%s",
-                 items[0].title);
-        snprintf(entry->last_link, sizeof(entry->last_link), "%s",
-                 items[0].link);
-        host_rss_state_save_locked(ctx->owner);
-    }
-    ttak_mutex_unlock(&ctx->owner->lock);
 
     session_rss_begin(ctx, feed_snapshot.tag, items, item_count);
 }

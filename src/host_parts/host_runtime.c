@@ -2887,22 +2887,6 @@ static void rss_decode_entities(char *text)
     *dst = '\0';
 }
 
-static bool rss_tag_is_valid(const char *tag)
-{
-    if (tag == nullptr || tag[0] == '\0') {
-        return false;
-    }
-
-    for (const char *cursor = tag; *cursor != '\0'; ++cursor) {
-        const char ch = *cursor;
-        if (!(isalnum((unsigned char)ch) || ch == '-' || ch == '_' ||
-              ch == '.')) {
-            return false;
-        }
-    }
-    return true;
-}
-
 // Reset a poll structure to a neutral inactive state.
 static void poll_state_reset(poll_state_t *poll)
 {

@@ -2668,32 +2668,6 @@ session_parse_localized_command(session_ctx_t *ctx,
 static void rss_strip_html(char *text);
 static void rss_decode_entities(char *text);
 static void rss_trim_whitespace(char *text);
-static bool rss_tag_is_valid(const char *tag);
-static rss_feed_t *host_find_rss_feed_locked(host_t *host, const char *tag);
-static void host_clear_rss_feed(rss_feed_t *feed);
-static void host_rss_recount_locked(host_t *host);
-static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
-                              char *error, size_t error_length);
-static bool host_rss_remove_feed(host_t *host, const char *tag, char *error,
-                                 size_t error_length);
-static void host_rss_resolve_path(host_t *host);
-static void host_rss_state_load(host_t *host);
-static void host_rss_state_save_locked(host_t *host);
-static size_t host_rss_write_callback(void *contents, size_t size, size_t nmemb,
-                                      void *userp);
-static bool host_rss_download(const char *url, char **payload, size_t *length);
-static bool host_rss_extract_tag(const char *block, const char *tag, char *out,
-                                 size_t out_len);
-static bool host_rss_extract_atom_link(const char *block, char *out,
-                                       size_t out_len);
-static size_t host_rss_parse_items(const char *payload,
-                                   rss_session_item_t *items, size_t max_items);
-static bool host_rss_fetch_items(const rss_feed_t *feed,
-                                 rss_session_item_t *items, size_t max_items,
-                                 size_t *out_count);
-static void host_rss_start_backend(host_t *host);
-static void *host_rss_backend(void *arg);
-static bool host_rss_should_broadcast_breaking(const rss_session_item_t *item);
 static bool host_asciiart_cooldown_active(host_t *host, const char *ip,
                                           const struct timespec *now,
                                           long *remaining_seconds);
@@ -3512,22 +3486,6 @@ typedef struct bbs_state_post_entry_v3 {
     char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
     bbs_state_comment_entry_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
 } bbs_state_post_entry_v3_t;
-
-static const uint32_t RSS_STATE_MAGIC = 0x52535331U; /* 'RSS1' */
-static const uint32_t RSS_STATE_VERSION = 1U;
-
-typedef struct rss_state_header {
-    uint32_t magic;
-    uint32_t version;
-    uint32_t feed_count;
-    uint32_t reserved;
-} rss_state_header_t;
-
-typedef struct rss_state_entry {
-    char tag[SSH_CHATTER_RSS_TAG_LEN];
-    char url[SSH_CHATTER_RSS_URL_LEN];
-    char last_item_key[SSH_CHATTER_RSS_ITEM_KEY_LEN];
-} rss_state_entry_t;
 
 static const uint32_t ALPHA_LANDERS_STATE_MAGIC = 0x464C4147U; /* 'FLAG' */
 static const uint32_t ALPHA_LANDERS_STATE_VERSION = 1U;

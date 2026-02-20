@@ -4239,53 +4239,6 @@ static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
         }
     }
 
-    ttak_mutex_unlock(&host->lock);
-
-    // Auto-retrieve verification: try to fetch the feed before adding it.
-    rss_feed_t tmp_feed = {0};
-    snprintf(tmp_feed.url, sizeof(tmp_feed.url), "%s", url);
-    snprintf(tmp_feed.tag, sizeof(tmp_feed.tag), "%s", tag);
-
-    rss_session_item_t *items = (rss_session_item_t *)sshc_gc_malloc(
-        sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS);
-    size_t count = 0;
-    bool fetch_success = false;
-    if (items != nullptr) {
-        memset(items, 0,
-               sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS);
-        fetch_success = host_rss_fetch_items(&tmp_feed, items,
-                                             SSH_CHATTER_RSS_MAX_ITEMS, &count);
-    }
-
-    if (!fetch_success) {
-        if (error != nullptr && error_length > 0U) {
-            snprintf(error, error_length,
-                     "Failed to retrieve RSS feed from '%s'.", url);
-        }
-        if (items != nullptr) {
-            sshc_gc_free(items);
-        }
-        return false;
-    }
-    sshc_gc_free(items);
-
-    ttak_mutex_lock(&host->lock);
-
-    // Re-check capacity and tag existence as we released the lock
-    if (host->rss_feed_count >= SSH_CHATTER_RSS_MAX_FEEDS) {
-        if (error != nullptr && error_length > 0U) {
-            snprintf(error, error_length, "Maximum RSS feed capacity reached.");
-        }
-        goto cleanup;
-    }
-    if (host_find_rss_feed_locked(host, tag) != nullptr) {
-        if (error != nullptr && error_length > 0U) {
-            snprintf(error, error_length,
-                     "Tag '%s' is already assigned to another feed.", tag);
-        }
-        goto cleanup;
-    }
-
     rss_feed_t *slot = nullptr;
     for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
         if (!host->rss_feeds[idx].in_use) {
@@ -4439,44 +4392,47 @@ static void host_rss_state_save_locked(host_t *host)
 
     bool success = fwrite(&header, sizeof(header), 1U, fp) == 1U;
 
-    for (size_t idx = 0U; success && idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
-        const rss_feed_t *entry = &host->rss_feeds[idx];
-        if (!entry->in_use) {
-            continue;
+        for (size_t idx = 0U; success && idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
+            const rss_feed_t *entry = &host->rss_feeds[idx];
+            if (!entry->in_use) {
+                continue;
+            }
+    
+            rss_state_entry_t *record =
+                (rss_state_entry_t *)ttak_mem_alloc(sizeof(rss_state_entry_t),
+                                                    __TTAK_UNSAFE_MEM_FOREVER__,
+                                                    ttak_get_tick_count());
+            if (record == nullptr) {
+                success = false;
+                break;
+            }
+            memset(record, 0, sizeof(rss_state_entry_t));
+    
+            snprintf(record->tag, sizeof(record->tag), "%s", entry->tag);
+            snprintf(record->url, sizeof(record->url), "%s", entry->url);
+            snprintf(record->last_item_key, sizeof(record->last_item_key), "%s",
+                     entry->last_item_key);
+            record->window_id = entry->window_id;
+            record->item_count = (uint32_t)entry->stored_item_count;
+    
+            size_t items_to_copy = entry->stored_item_count;
+            if (items_to_copy > SSH_CHATTER_RSS_MAX_ITEMS) {
+                items_to_copy = SSH_CHATTER_RSS_MAX_ITEMS;
+            }
+    
+            if (items_to_copy > 0U) {
+                memcpy(record->items, entry->stored_items,
+                       items_to_copy * sizeof(rss_session_item_t));
+            }
+    
+            if (fwrite(record, sizeof(rss_state_entry_t), 1U, fp) != 1U) {
+                success = false;
+                ttak_mem_free(record);
+                break;
+            }
+    
+            ttak_mem_free(record);
         }
-
-        rss_state_entry_t *record =
-            (rss_state_entry_t *)sshc_gc_malloc(sizeof(rss_state_entry_t));
-        if (record == nullptr) {
-            success = false;
-            break;
-        }
-        memset(record, 0, sizeof(rss_state_entry_t));
-
-        snprintf(record->tag, sizeof(record->tag), "%s", entry->tag);
-        snprintf(record->url, sizeof(record->url), "%s", entry->url);
-        snprintf(record->last_item_key, sizeof(record->last_item_key), "%s",
-                 entry->last_item_key);
-        record->window_id = entry->window_id;
-        record->item_count = (uint32_t)entry->stored_item_count;
-
-        size_t items_to_copy = entry->stored_item_count;
-        if (items_to_copy > SSH_CHATTER_RSS_MAX_ITEMS) {
-            items_to_copy = SSH_CHATTER_RSS_MAX_ITEMS;
-        }
-
-        if (items_to_copy > 0U) {
-            memcpy(record->items, entry->stored_items,
-                   items_to_copy * sizeof(rss_session_item_t));
-        }
-
-        if (fwrite(record, sizeof(rss_state_entry_t), 1U, fp) != 1U) {
-            success = false;
-            sshc_gc_free(record);
-            break;
-        }
-        sshc_gc_free(record);
-    }
 
     if (success && fflush(fp) != 0) {
         success = false;
@@ -4560,7 +4516,9 @@ static void host_rss_state_load(host_t *host)
     bool success = true;
     for (uint32_t idx = 0U; idx < header.feed_count; ++idx) {
         rss_state_entry_t *record =
-            (rss_state_entry_t *)sshc_gc_malloc(sizeof(rss_state_entry_t));
+            (rss_state_entry_t *)ttak_mem_alloc(sizeof(rss_state_entry_t),
+                                                __TTAK_UNSAFE_MEM_FOREVER__,
+                                                ttak_get_tick_count());
         if (record == nullptr) {
             success = false;
             break;
@@ -4571,7 +4529,7 @@ static void host_rss_state_load(host_t *host)
             rss_state_entry_legacy_v1_t v1_record = {0};
             if (fread(&v1_record, sizeof(v1_record), 1U, fp) != 1U) {
                 success = false;
-                sshc_gc_free(record);
+                ttak_mem_free(record);
                 break;
             }
             snprintf(record->tag, sizeof(record->tag), "%s", v1_record.tag);
@@ -4583,7 +4541,7 @@ static void host_rss_state_load(host_t *host)
         } else {
             if (fread(record, sizeof(rss_state_entry_t), 1U, fp) != 1U) {
                 success = false;
-                sshc_gc_free(record);
+                ttak_mem_free(record);
                 break;
             }
         }
@@ -4593,7 +4551,7 @@ static void host_rss_state_load(host_t *host)
         rss_trim_whitespace(record->last_item_key);
 
         if (!rss_tag_is_valid(record->tag) || record->url[0] == '\0') {
-            sshc_gc_free(record);
+            ttak_mem_free(record);
             continue;
         }
 
@@ -4606,7 +4564,7 @@ static void host_rss_state_load(host_t *host)
         }
 
         if (slot == nullptr) {
-            sshc_gc_free(record);
+            ttak_mem_free(record);
             continue;
         }
 
@@ -4629,7 +4587,7 @@ static void host_rss_state_load(host_t *host)
             memcpy(slot->stored_items, record->items,
                    items_to_copy * sizeof(rss_session_item_t));
         }
-        sshc_gc_free(record);
+        ttak_mem_free(record);
     }
 
     if (success) {
@@ -4659,7 +4617,9 @@ static size_t host_rss_write_callback(void *contents, size_t size, size_t nmemb,
         return 0U;
     }
 
-    char *resized = sshc_gc_realloc(buffer->data, buffer->length + total + 1U);
+    char *resized = ttak_mem_realloc(buffer->data, buffer->length + total + 1U,
+                                     __TTAK_UNSAFE_MEM_FOREVER__,
+                                     ttak_get_tick_count());
     if (resized == nullptr) {
         return 0U;
     }
@@ -4717,7 +4677,7 @@ static bool host_rss_download(const char *url, char **payload, size_t *length)
     }
 
     if (!success && buffer.data != nullptr) {
-        sshc_gc_free(buffer.data);
+        ttak_mem_free(buffer.data);
     }
 
     curl_easy_cleanup(curl);
@@ -4854,7 +4814,9 @@ static size_t host_rss_parse_items(const char *payload,
         end += strlen(close_tag);
 
         size_t block_len = (size_t)(end - start);
-        char *block = (char *)sshc_gc_malloc(block_len + 1U);
+        char *block = (char *)ttak_mem_alloc(block_len + 1U,
+                                             __TTAK_UNSAFE_MEM_FOREVER__,
+                                             ttak_get_tick_count());
         if (block == nullptr) {
             break;
         }
@@ -4920,7 +4882,7 @@ static size_t host_rss_parse_items(const char *payload,
         }
 
         ++count;
-        sshc_gc_free(block);
+        ttak_mem_free(block);
         cursor = end;
     }
 
@@ -4951,7 +4913,7 @@ static bool host_rss_fetch_items(const rss_feed_t *feed,
     }
 
     if (payload != nullptr) {
-        sshc_gc_free(payload);
+        ttak_mem_free(payload);
     }
 
     return true;
@@ -4999,7 +4961,6 @@ static void *host_rss_backend(void *arg)
         return nullptr;
     }
 
-    sshc_epoch_thread_enter();
     atomic_store(&host->rss_thread_running, true);
     printf("[rss] backend thread started (interval: %u seconds)\n",
            (unsigned int)SSH_CHATTER_RSS_REFRESH_SECONDS);
@@ -5012,11 +4973,13 @@ static void *host_rss_backend(void *arg)
             host_rss_state_save_locked(host);
         }
 
-        rss_feed_t *feed_snapshots = (rss_feed_t *)sshc_gc_malloc(
-            sizeof(rss_feed_t) * SSH_CHATTER_RSS_MAX_FEEDS);
+        rss_feed_t *feed_snapshots = (rss_feed_t *)ttak_mem_alloc(
+            sizeof(rss_feed_t) * SSH_CHATTER_RSS_MAX_FEEDS,
+            __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
         size_t snapshot_count = 0U;
 
         if (feed_snapshots != nullptr) {
+            memset(feed_snapshots, 0, sizeof(rss_feed_t) * SSH_CHATTER_RSS_MAX_FEEDS);
             for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
                 if (!host->rss_feeds[idx].in_use) {
                     continue;
@@ -5033,8 +4996,9 @@ static void *host_rss_backend(void *arg)
                  ++snapshot_index) {
                 const rss_feed_t *feed_snapshot = &feed_snapshots[snapshot_index];
 
-                rss_session_item_t *items = (rss_session_item_t *)sshc_gc_malloc(
-                    sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS);
+                rss_session_item_t *items = (rss_session_item_t *)ttak_mem_alloc(
+                    sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS,
+                    __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
                 if (items == nullptr) {
                     continue;
                 }
@@ -5047,7 +5011,7 @@ static void *host_rss_backend(void *arg)
                                           &item_count)) {
                     printf("[rss] failed to refresh feed '%s' (%s)\n",
                            feed_snapshot->tag, feed_snapshot->url);
-                    sshc_gc_free(items);
+                    ttak_mem_free(items);
                     continue;
                 }
 
@@ -5212,12 +5176,12 @@ static void *host_rss_backend(void *arg)
                     }
                     ttak_mutex_unlock(&host->room.lock);
                 }
-                sshc_gc_free(items);
+                ttak_mem_free(items);
             }
         }
 
         if (feed_snapshots != nullptr) {
-            sshc_gc_free(feed_snapshots);
+            ttak_mem_free(feed_snapshots);
         }
 
         struct timespec mark;
@@ -5250,7 +5214,6 @@ static void *host_rss_backend(void *arg)
 
     atomic_store(&host->rss_thread_running, false);
     printf("[rss] backend thread stopped\n");
-    sshc_epoch_thread_exit();
     return nullptr;
 }
 

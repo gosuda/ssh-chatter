@@ -2301,15 +2301,25 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
         return false;
     }
 
+    bool success = false;
+    char *url = nullptr;
+    char *prompt_buffer = nullptr;
+    char *escaped_prompt = nullptr;
+    char *escaped_system = nullptr;
+    char *body = nullptr;
+    CURL *curl = nullptr;
+    translator_buffer_t buffer = {0};
+    long status = 0L;
+
     const char *model_name =
         candidate->model != nullptr && candidate->model[0] != '\0'
             ? candidate->model
             : "gemma2:2b";
     const char *address = getenv("OLLAMA_ADDRESS");
-    char *url = translator_build_ollama_url(address);
+    url = translator_build_ollama_url(address);
     if (url == nullptr) {
         translator_set_error("Failed to build Ollama endpoint URL.");
-        return false;
+        goto cleanup_translator_try_ollama;
     }
 
     static const char *system_prompt =
@@ -2327,23 +2337,22 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
         snprintf(nullptr, 0, prompt_format, target_language, text);
     if (prompt_length < 0) {
         translator_set_error("Failed to prepare translation prompt.");
-        return false;
+        goto cleanup_translator_try_ollama;
     }
 
     size_t prompt_size = (size_t)prompt_length + 1U;
-    char *prompt_buffer = sshc_gc_malloc(prompt_size);
+    prompt_buffer = sshc_gc_malloc(prompt_size);
     if (prompt_buffer == nullptr) {
         translator_set_error("Failed to allocate translation prompt.");
-        return false;
+        goto cleanup_translator_try_ollama;
     }
     snprintf(prompt_buffer, prompt_size, prompt_format, target_language, text);
 
-    char *escaped_prompt = translator_escape_string(prompt_buffer);
-    char *escaped_system = translator_escape_string(system_prompt);
-
+    escaped_prompt = translator_escape_string(prompt_buffer);
+    escaped_system = translator_escape_string(system_prompt);
     if (escaped_prompt == nullptr || escaped_system == nullptr) {
         translator_set_error("Failed to prepare translation payload.");
-        return false;
+        goto cleanup_translator_try_ollama;
     }
 
     static const char body_format[] = "{"
@@ -2357,32 +2366,29 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
                                escaped_prompt, escaped_system);
     if (body_length < 0) {
         translator_set_error("Failed to prepare translation request.");
-        return false;
+        goto cleanup_translator_try_ollama;
     }
 
     size_t body_size = (size_t)body_length + 1U;
-    char *body = sshc_gc_malloc(body_size);
+    body = sshc_gc_malloc(body_size);
     if (body == nullptr) {
         translator_set_error("Failed to prepare translation request.");
-        return false;
+        goto cleanup_translator_try_ollama;
     }
 
     snprintf(body, body_size, body_format, model_name, escaped_prompt,
              escaped_system);
 
-    CURL *curl = curl_easy_init();
+    curl = curl_easy_init();
     if (curl == nullptr) {
         translator_set_error("Failed to initialise HTTP client.");
-        return false;
+        goto cleanup_translator_try_ollama;
     }
 
-    translator_buffer_t buffer = {0};
-    long status = 0L;
     CURLcode result =
         translator_issue_json_post(curl, url, body, nullptr, nullptr, nullptr,
                                    cancel_flag, &buffer, &status);
 
-    bool success = false;
     if (result == CURLE_ABORTED_BY_CALLBACK ||
         translator_cancel_requested(cancel_flag)) {
         translator_set_error("Translation canceled.");
@@ -2449,10 +2455,28 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
         }
     }
 
+cleanup_translator_try_ollama:
     if (buffer.data != nullptr) {
         sshc_gc_free(buffer.data);
     }
-    curl_easy_cleanup(curl);
+    if (curl != nullptr) {
+        curl_easy_cleanup(curl);
+    }
+    if (body != nullptr) {
+        sshc_gc_free(body);
+    }
+    if (escaped_prompt != nullptr) {
+        sshc_gc_free(escaped_prompt);
+    }
+    if (escaped_system != nullptr) {
+        sshc_gc_free(escaped_system);
+    }
+    if (prompt_buffer != nullptr) {
+        sshc_gc_free(prompt_buffer);
+    }
+    if (url != nullptr) {
+        sshc_gc_free(url);
+    }
 
     return success;
 }
@@ -2475,15 +2499,23 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
         return false;
     }
 
+    bool success = false;
+    char *url = nullptr;
+    char *escaped_prompt = nullptr;
+    char *escaped_system = nullptr;
+    char *body = nullptr;
+    CURL *curl = nullptr;
+    translator_buffer_t buffer = {0};
+
     const char *model_name =
         candidate->model != nullptr && candidate->model[0] != '\0'
             ? candidate->model
             : "gemma2:2b";
     const char *address = getenv("OLLAMA_ADDRESS");
-    char *url = translator_build_ollama_url(address);
+    url = translator_build_ollama_url(address);
     if (url == nullptr) {
         translator_set_error("Failed to build Ollama endpoint URL.");
-        return false;
+        goto cleanup_translator_try_ollama_eliza;
     }
 
     static const char *system_prompt =
@@ -2493,11 +2525,11 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
         "answer using the same language as the user."
         " Keep replies under three sentences.";
 
-    char *escaped_prompt = translator_escape_string(prompt);
-    char *escaped_system = translator_escape_string(system_prompt);
+    escaped_prompt = translator_escape_string(prompt);
+    escaped_system = translator_escape_string(system_prompt);
     if (escaped_prompt == nullptr || escaped_system == nullptr) {
         translator_set_error("Failed to prepare eliza request.");
-        return false;
+        goto cleanup_translator_try_ollama_eliza;
     }
 
     static const char body_format[] = "{"
@@ -2511,31 +2543,29 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
                             escaped_system);
     if (computed < 0) {
         translator_set_error("Failed to prepare eliza request.");
-        return false;
+        goto cleanup_translator_try_ollama_eliza;
     }
 
     size_t body_len = (size_t)computed + 1U;
-    char *body = sshc_gc_malloc(body_len);
+    body = sshc_gc_malloc(body_len);
     if (body == nullptr) {
         translator_set_error("Failed to prepare eliza request.");
-        return false;
+        goto cleanup_translator_try_ollama_eliza;
     }
 
     snprintf(body, body_len, body_format, model_name, escaped_prompt,
              escaped_system);
 
-    CURL *curl = curl_easy_init();
+    curl = curl_easy_init();
     if (curl == nullptr) {
         translator_set_error("Failed to initialise HTTP client.");
-        return false;
+        goto cleanup_translator_try_ollama_eliza;
     }
 
-    translator_buffer_t buffer = {0};
     long status = 0L;
     CURLcode result = translator_issue_json_post(
         curl, url, body, nullptr, nullptr, nullptr, nullptr, &buffer, &status);
 
-    bool success = false;
     if (result != CURLE_OK) {
         translator_set_error("Failed to contact Ollama API: %s",
                              curl_easy_strerror(result));
@@ -2579,10 +2609,25 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
         }
     }
 
+cleanup_translator_try_ollama_eliza:
     if (buffer.data != nullptr) {
         sshc_gc_free(buffer.data);
     }
-    curl_easy_cleanup(curl);
+    if (curl != nullptr) {
+        curl_easy_cleanup(curl);
+    }
+    if (body != nullptr) {
+        sshc_gc_free(body);
+    }
+    if (escaped_prompt != nullptr) {
+        sshc_gc_free(escaped_prompt);
+    }
+    if (escaped_system != nullptr) {
+        sshc_gc_free(escaped_system);
+    }
+    if (url != nullptr) {
+        sshc_gc_free(url);
+    }
 
     return success;
 }
@@ -2602,15 +2647,24 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
         return false;
     }
 
+    bool success = false;
+    char *url = nullptr;
+    char *prompt_buffer = nullptr;
+    char *escaped_prompt = nullptr;
+    char *escaped_system = nullptr;
+    char *body = nullptr;
+    CURL *curl = nullptr;
+    translator_buffer_t buffer = {0};
+
     const char *model_name =
         candidate->model != nullptr && candidate->model[0] != '\0'
             ? candidate->model
             : "gemma2:2b";
     const char *address = getenv("OLLAMA_ADDRESS");
-    char *url = translator_build_ollama_url(address);
+    url = translator_build_ollama_url(address);
     if (url == nullptr) {
         translator_set_error("Failed to build Ollama endpoint URL.");
-        return false;
+        goto cleanup_translator_try_ollama_moderation;
     }
 
     const char *label =
@@ -2630,24 +2684,24 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
                                  content != nullptr ? content : "");
     if (prompt_length < 0) {
         translator_set_error("Failed to prepare moderation prompt.");
-        return false;
+        goto cleanup_translator_try_ollama_moderation;
     }
 
     size_t prompt_size = (size_t)prompt_length + 1U;
-    char *prompt_buffer = sshc_gc_malloc(prompt_size);
+    prompt_buffer = sshc_gc_malloc(prompt_size);
     if (prompt_buffer == nullptr) {
         translator_set_error("Failed to allocate moderation prompt.");
-        return false;
+        goto cleanup_translator_try_ollama_moderation;
     }
     snprintf(prompt_buffer, prompt_size, prompt_format, label,
              content != nullptr ? content : "");
 
-    char *escaped_prompt = translator_escape_string(prompt_buffer);
-    char *escaped_system = translator_escape_string(system_prompt);
+    escaped_prompt = translator_escape_string(prompt_buffer);
+    escaped_system = translator_escape_string(system_prompt);
 
     if (escaped_prompt == nullptr || escaped_system == nullptr) {
         translator_set_error("Failed to prepare moderation payload.");
-        return false;
+        goto cleanup_translator_try_ollama_moderation;
     }
 
     static const char body_format[] = "{"
@@ -2661,31 +2715,29 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
                                escaped_prompt, escaped_system);
     if (body_length < 0) {
         translator_set_error("Failed to prepare moderation request.");
-        return false;
+        goto cleanup_translator_try_ollama_moderation;
     }
 
     size_t body_size = (size_t)body_length + 1U;
-    char *body = sshc_gc_malloc(body_size);
+    body = sshc_gc_malloc(body_size);
     if (body == nullptr) {
         translator_set_error("Failed to prepare moderation request.");
-        return false;
+        goto cleanup_translator_try_ollama_moderation;
     }
 
     snprintf(body, body_size, body_format, model_name, escaped_prompt,
              escaped_system);
 
-    CURL *curl = curl_easy_init();
+    curl = curl_easy_init();
     if (curl == nullptr) {
         translator_set_error("Failed to initialise HTTP client.");
-        return false;
+        goto cleanup_translator_try_ollama_moderation;
     }
 
-    translator_buffer_t buffer = {0};
     long status = 0L;
     CURLcode result = translator_issue_json_post(
         curl, url, body, nullptr, nullptr, nullptr, nullptr, &buffer, &status);
 
-    bool success = false;
     if (result != CURLE_OK) {
         translator_set_error("Failed to contact Ollama API: %s",
                              curl_easy_strerror(result));
@@ -2733,10 +2785,28 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
         }
     }
 
+cleanup_translator_try_ollama_moderation:
     if (buffer.data != nullptr) {
         sshc_gc_free(buffer.data);
     }
-    curl_easy_cleanup(curl);
+    if (curl != nullptr) {
+        curl_easy_cleanup(curl);
+    }
+    if (body != nullptr) {
+        sshc_gc_free(body);
+    }
+    if (escaped_prompt != nullptr) {
+        sshc_gc_free(escaped_prompt);
+    }
+    if (escaped_system != nullptr) {
+        sshc_gc_free(escaped_system);
+    }
+    if (prompt_buffer != nullptr) {
+        sshc_gc_free(prompt_buffer);
+    }
+    if (url != nullptr) {
+        sshc_gc_free(url);
+    }
 
     return success;
 }

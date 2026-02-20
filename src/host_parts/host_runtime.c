@@ -31,6 +31,10 @@
 #define SESSION_LIFETIME_MIN_UNITS 1U
 #define SESSION_LIFETIME_INACTIVE_THRESHOLD (20 * 60)
 #define SESSION_LIFETIME_DECAY_INTERVAL (5 * 60)
+#define SSH_CHATTER_AI_MEMORY_CONTEXT_LIMIT 3U
+#define SSH_CHATTER_AI_MEMORY_TOKEN_LIMIT 12U
+#define SSH_CHATTER_AI_MEMORY_PREVIEW_LEN 160U
+#define SSH_CHATTER_AI_MEMORY_CONTEXT_BUFFER SSH_CHATTER_MESSAGE_LIMIT
 
 static inline void session_safe_free(void **ptr)
 {
@@ -5481,6 +5485,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->ai_chat_last_reply.tv_sec = 0;
     host->ai_chat_last_reply.tv_nsec = 0L;
     host->ai_chat_model[0] = '\0';
+    memset(host->ai_chat_memory, 0, sizeof(host->ai_chat_memory));
+    host->ai_chat_memory_count = 0U;
     const char *env_ollama_model = getenv("CHATTER_OLLAMA_MODEL");
     if (env_ollama_model != nullptr && env_ollama_model[0] != '\0') {
         snprintf(host->ai_chat_model, sizeof(host->ai_chat_model), "%s",
@@ -5975,6 +5981,296 @@ static void host_ai_chat_update_last_reply(host_t *host,
     ttak_mutex_unlock(&host->lock);
 }
 
+static size_t host_ai_chat_memory_collect_tokens(const char *prompt,
+                                                 char tokens[][32],
+                                                 size_t max_tokens)
+{
+    if (prompt == nullptr || tokens == nullptr || max_tokens == 0U) {
+        return 0U;
+    }
+
+    size_t count = 0U;
+    size_t length = strlen(prompt);
+    size_t idx = 0U;
+    while (idx < length && count < max_tokens) {
+        while (idx < length && isspace((unsigned char)prompt[idx])) {
+            ++idx;
+        }
+        if (idx >= length) {
+            break;
+        }
+
+        size_t token_idx = 0U;
+        char buffer[32];
+        while (idx < length && !isspace((unsigned char)prompt[idx])) {
+            unsigned char ch = (unsigned char)prompt[idx];
+            if (token_idx + 1U < sizeof(buffer)) {
+                buffer[token_idx++] =
+                    (ch < 0x80U) ? (char)tolower(ch) : (char)ch;
+            }
+            ++idx;
+        }
+        buffer[token_idx] = '\0';
+
+        if (token_idx == 0U) {
+            continue;
+        }
+        if (token_idx < 3U && (unsigned char)buffer[0] < 0x80U) {
+            continue;
+        }
+
+        bool duplicate = false;
+        for (size_t existing = 0U; existing < count; ++existing) {
+            if (strcmp(tokens[existing], buffer) == 0) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (duplicate) {
+            continue;
+        }
+
+        snprintf(tokens[count], 32U, "%s", buffer);
+        ++count;
+    }
+
+    return count;
+}
+
+static void host_ai_chat_memory_prepare_preview(const char *source, char *dest,
+                                                size_t dest_length)
+{
+    if (dest == nullptr || dest_length == 0U) {
+        return;
+    }
+
+    dest[0] = '\0';
+    if (source == nullptr || source[0] == '\0') {
+        return;
+    }
+
+    size_t copy_length = strnlen(source, dest_length);
+    bool truncated = false;
+    if (copy_length >= dest_length) {
+        copy_length = dest_length - 1U;
+        truncated = true;
+    }
+
+    memcpy(dest, source, copy_length);
+    dest[copy_length] = '\0';
+    trim_whitespace_inplace(dest);
+
+    if (truncated && dest_length > 4U) {
+        size_t length = strnlen(dest, dest_length);
+        if (length + 3U < dest_length) {
+            dest[length++] = '.';
+            dest[length++] = '.';
+            dest[length++] = '.';
+            dest[length] = '\0';
+        }
+    }
+}
+
+static size_t host_ai_chat_memory_collect_context(host_t *host,
+                                                  const char *prompt,
+                                                  char *context,
+                                                  size_t context_length)
+{
+    if (context == nullptr || context_length == 0U) {
+        return 0U;
+    }
+
+    context[0] = '\0';
+    if (host == nullptr || prompt == nullptr) {
+        return 0U;
+    }
+
+    ai_chat_memory_entry_t snapshot[SSH_CHATTER_AI_MEMORY_MAX];
+    size_t snapshot_count = 0U;
+
+    ttak_mutex_lock(&host->lock);
+    snapshot_count = host->ai_chat_memory_count;
+    if (snapshot_count > SSH_CHATTER_AI_MEMORY_MAX) {
+        snapshot_count = SSH_CHATTER_AI_MEMORY_MAX;
+    }
+    if (snapshot_count > 0U) {
+        memcpy(snapshot, host->ai_chat_memory,
+               snapshot_count * sizeof(snapshot[0]));
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (snapshot_count == 0U) {
+        return 0U;
+    }
+
+    char tokens[SSH_CHATTER_AI_MEMORY_TOKEN_LIMIT][32];
+    size_t token_count = host_ai_chat_memory_collect_tokens(
+        prompt, tokens, SSH_CHATTER_AI_MEMORY_TOKEN_LIMIT);
+
+    size_t best_indices[SSH_CHATTER_AI_MEMORY_CONTEXT_LIMIT] = {0U};
+    size_t best_scores[SSH_CHATTER_AI_MEMORY_CONTEXT_LIMIT] = {0U};
+    size_t best_count = 0U;
+
+    for (size_t idx = 0U; idx < snapshot_count; ++idx) {
+        const ai_chat_memory_entry_t *entry = &snapshot[idx];
+        size_t score = 0U;
+        if (token_count > 0U) {
+            for (size_t token_idx = 0U; token_idx < token_count; ++token_idx) {
+                if (tokens[token_idx][0] == '\0') {
+                    continue;
+                }
+                if (string_contains_case_insensitive(entry->prompt,
+                                                     tokens[token_idx]) ||
+                    string_contains_case_insensitive(entry->reply,
+                                                     tokens[token_idx])) {
+                    ++score;
+                }
+            }
+            if (score == 0U) {
+                continue;
+            }
+        }
+
+        size_t recency_bonus = snapshot_count - idx;
+        if (recency_bonus > 4U) {
+            recency_bonus = 4U;
+        }
+        score += recency_bonus;
+
+        size_t insert_pos = best_count;
+        if (best_count < SSH_CHATTER_AI_MEMORY_CONTEXT_LIMIT) {
+            ++best_count;
+        } else if (score <=
+                   best_scores[SSH_CHATTER_AI_MEMORY_CONTEXT_LIMIT - 1U]) {
+            continue;
+        } else {
+            insert_pos = SSH_CHATTER_AI_MEMORY_CONTEXT_LIMIT - 1U;
+        }
+
+        while (insert_pos > 0U && score > best_scores[insert_pos - 1U]) {
+            if (insert_pos < SSH_CHATTER_AI_MEMORY_CONTEXT_LIMIT) {
+                best_scores[insert_pos] = best_scores[insert_pos - 1U];
+                best_indices[insert_pos] = best_indices[insert_pos - 1U];
+            }
+            --insert_pos;
+        }
+
+        best_scores[insert_pos] = score;
+        best_indices[insert_pos] = idx;
+    }
+
+    if (best_count == 0U && token_count == 0U) {
+        size_t fallback = snapshot_count < SSH_CHATTER_AI_MEMORY_CONTEXT_LIMIT
+                              ? snapshot_count
+                              : SSH_CHATTER_AI_MEMORY_CONTEXT_LIMIT;
+        for (size_t idx = 0U; idx < fallback; ++idx) {
+            best_indices[idx] = snapshot_count - idx - 1U;
+        }
+        best_count = fallback;
+    }
+
+    if (best_count == 0U) {
+        return 0U;
+    }
+
+    size_t offset = 0U;
+    for (size_t idx = 0U; idx < best_count; ++idx) {
+        const ai_chat_memory_entry_t *entry = &snapshot[best_indices[idx]];
+        char time_buffer[32];
+        time_buffer[0] = '\0';
+        if (entry->stored_at != 0) {
+            struct tm tm_value;
+            if (localtime_r(&entry->stored_at, &tm_value) != nullptr) {
+                strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M",
+                         &tm_value);
+            }
+        }
+        if (time_buffer[0] == '\0') {
+            snprintf(time_buffer, sizeof(time_buffer), "-");
+        }
+
+        char prompt_preview[SSH_CHATTER_AI_MEMORY_PREVIEW_LEN];
+        char reply_preview[SSH_CHATTER_AI_MEMORY_PREVIEW_LEN];
+        host_ai_chat_memory_prepare_preview(entry->prompt, prompt_preview,
+                                            sizeof(prompt_preview));
+        host_ai_chat_memory_prepare_preview(entry->reply, reply_preview,
+                                            sizeof(reply_preview));
+
+        char block[SSH_CHATTER_AI_MEMORY_PREVIEW_LEN * 4U];
+        int written = snprintf(
+            block, sizeof(block),
+            "%s- [%s] %s said: %s\n  ai-eliza replied: %s",
+            idx == 0U ? "" : "\n", time_buffer,
+            entry->username[0] != '\0' ? entry->username : "user",
+            prompt_preview[0] != '\0' ? prompt_preview : "(empty)",
+            reply_preview[0] != '\0' ? reply_preview : "(empty)");
+        if (written < 0) {
+            continue;
+        }
+
+        size_t block_len = (size_t)written;
+        if (block_len >= sizeof(block)) {
+            block_len = sizeof(block) - 1U;
+            block[block_len] = '\0';
+        }
+
+        if (offset + block_len >= context_length) {
+            size_t available =
+                (offset < context_length) ? context_length - offset - 1U : 0U;
+            if (available > 0U) {
+                memcpy(context + offset, block, available);
+                offset += available;
+                context[offset] = '\0';
+            }
+            break;
+        }
+
+        memcpy(context + offset, block, block_len);
+        offset += block_len;
+        context[offset] = '\0';
+    }
+
+    return best_count;
+}
+
+static void host_ai_chat_memory_store(host_t *host, const char *username,
+                                      const char *prompt, const char *reply)
+{
+    if (host == nullptr || prompt == nullptr || reply == nullptr) {
+        return;
+    }
+
+    char clean_prompt[SSH_CHATTER_MESSAGE_LIMIT];
+    char clean_reply[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(clean_prompt, sizeof(clean_prompt), "%s", prompt);
+    snprintf(clean_reply, sizeof(clean_reply), "%s", reply);
+    trim_whitespace_inplace(clean_prompt);
+    trim_whitespace_inplace(clean_reply);
+
+    char clean_username[SSH_CHATTER_USERNAME_LEN];
+    if (username != nullptr && username[0] != '\0') {
+        snprintf(clean_username, sizeof(clean_username), "%s", username);
+    } else {
+        snprintf(clean_username, sizeof(clean_username), "%s", "user");
+    }
+
+    ttak_mutex_lock(&host->lock);
+    if (host->ai_chat_memory_count >= SSH_CHATTER_AI_MEMORY_MAX) {
+        memmove(host->ai_chat_memory, host->ai_chat_memory + 1,
+                (SSH_CHATTER_AI_MEMORY_MAX - 1U) *
+                    sizeof(host->ai_chat_memory[0]));
+        host->ai_chat_memory_count = SSH_CHATTER_AI_MEMORY_MAX - 1U;
+    }
+
+    ai_chat_memory_entry_t *entry =
+        &host->ai_chat_memory[host->ai_chat_memory_count++];
+    entry->stored_at = time(nullptr);
+    snprintf(entry->username, sizeof(entry->username), "%s", clean_username);
+    snprintf(entry->prompt, sizeof(entry->prompt), "%s", clean_prompt);
+    snprintf(entry->reply, sizeof(entry->reply), "%s", clean_reply);
+    ttak_mutex_unlock(&host->lock);
+}
+
 static void host_ai_chat_consider_reply(host_t *host,
                                         const chat_history_entry_t *entry)
 {
@@ -5999,12 +6295,24 @@ static void host_ai_chat_consider_reply(host_t *host,
     }
 
     char prompt[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-    snprintf(prompt, sizeof(prompt),
-             "User %s says: %s\n"
-             "Respond as ai-eliza, a friendly retro terminal chatter focused "
-             "on light conversation. Keep replies under three sentences and "
-             "avoid moderation or BBS topics.",
-             entry->username, entry->message);
+    char context[SSH_CHATTER_AI_MEMORY_CONTEXT_BUFFER];
+    size_t context_matches = host_ai_chat_memory_collect_context(
+        host, entry->message, context, sizeof(context));
+    if (context_matches > 0U && context[0] != '\0') {
+        snprintf(prompt, sizeof(prompt),
+                 "Memory context:\n%s\n\nUser %s says: %s\n"
+                 "Respond as ai-eliza, a friendly retro terminal chatter "
+                 "focused on light conversation. Keep replies under three "
+                 "sentences and avoid moderation or BBS topics.",
+                 context, entry->username, entry->message);
+    } else {
+        snprintf(prompt, sizeof(prompt),
+                 "User %s says: %s\n"
+                 "Respond as ai-eliza, a friendly retro terminal chatter "
+                 "focused on light conversation. Keep replies under three "
+                 "sentences and avoid moderation or BBS topics.",
+                 entry->username, entry->message);
+    }
 
     char reply[SSH_CHATTER_MESSAGE_LIMIT];
     const char *default_model = host_ai_chat_default_model();
@@ -6040,7 +6348,12 @@ static void host_ai_chat_consider_reply(host_t *host,
         return;
     }
 
-    host_post_client_message(host, "ai-eliza", reply, nullptr, nullptr, false);
+    if (!host_post_client_message(host, "ai-eliza", reply, nullptr, nullptr,
+                                  false)) {
+        return;
+    }
+
+    host_ai_chat_memory_store(host, entry->username, entry->message, reply);
     host_ai_chat_update_last_reply(host, &now);
 }
 

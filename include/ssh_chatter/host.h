@@ -92,6 +92,7 @@
 #define SSH_CHATTER_ASCIIART_BUFFER_LEN SSH_CHATTER_BBS_BODY_LEN
 #define SSH_CHATTER_ASCIIART_COOLDOWN_SECONDS 600
 #define SSH_CHATTER_ELIZA_MEMORY_MAX 128
+#define SSH_CHATTER_AI_MEMORY_MAX 64
 #define SSH_CHATTER_TETRIS_WIDTH 15
 #define SSH_CHATTER_TETRIS_HEIGHT 20
 #define SSH_CHATTER_TETRIS_GRAVITY_THRESHOLD 5U
@@ -267,6 +268,13 @@ typedef struct eliza_memory_entry {
     char prompt[SSH_CHATTER_MESSAGE_LIMIT];
     char reply[SSH_CHATTER_MESSAGE_LIMIT];
 } eliza_memory_entry_t;
+
+typedef struct ai_chat_memory_entry {
+    time_t stored_at;
+    char username[SSH_CHATTER_USERNAME_LEN];
+    char prompt[SSH_CHATTER_MESSAGE_LIMIT];
+    char reply[SSH_CHATTER_MESSAGE_LIMIT];
+} ai_chat_memory_entry_t;
 
 typedef enum version_pattern_match {
     VERSION_PATTERN_MATCH_ANY = 0,
@@ -993,6 +1001,8 @@ typedef struct host {
     _Atomic bool ai_chat_enabled;
     char ai_chat_model[64];
     struct timespec ai_chat_last_reply;
+    ai_chat_memory_entry_t ai_chat_memory[SSH_CHATTER_AI_MEMORY_MAX];
+    size_t ai_chat_memory_count;
     char rss_state_file_path[PATH_MAX];
     eliza_memory_entry_t eliza_memory[SSH_CHATTER_ELIZA_MEMORY_MAX];
     size_t eliza_memory_count;

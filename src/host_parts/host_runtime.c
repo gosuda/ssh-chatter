@@ -4411,7 +4411,7 @@ static void *session_thread(void *arg)
             ctx, "Note: I recommend UTF-8 for elegant multilingual support.");
         session_send_system_line(
             ctx, "~~~ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ~~~");
-	/* Duplicate the MOTD string because strtok_r modifies the source string */
+    /* Duplicate the MOTD string because strtok_r modifies the source string */
         char *motd_copy = sshc_strdup(ctx->owner->motd);
         if (motd_copy != NULL) {
             char *saveptr;

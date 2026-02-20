@@ -2196,7 +2196,12 @@ static void host_user_data_bootstrap(host_t *host)
         }
     }
 
-    for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+    if (!host_bbs_storage_ready(host)) {
+        return;
+    }
+
+    size_t capacity = host_bbs_loop_limit(host);
+    for (size_t idx = 0U; idx < capacity; ++idx) {
         const bbs_post_t *post = &host->bbs_posts[idx];
         if (!post->in_use) {
             continue;

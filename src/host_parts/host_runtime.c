@@ -5439,22 +5439,31 @@ void host_init(host_t *host, auth_profile_t *auth)
         named_poll_reset(&host->named_polls[idx]);
     }
     host->named_poll_count = 0U;
-    for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
-        host->bbs_posts[idx].in_use = false;
-        host->bbs_posts[idx].id = 0U;
-        host->bbs_posts[idx].author[0] = '\0';
-        host->bbs_posts[idx].title[0] = '\0';
-        host->bbs_posts[idx].body[0] = '\0';
-        host->bbs_posts[idx].tag_count = 0U;
-        host->bbs_posts[idx].created_at = 0;
-        host->bbs_posts[idx].bumped_at = 0;
-        host->bbs_posts[idx].comment_count = 0U;
-        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
-             ++comment) {
-            host->bbs_posts[idx].comments[comment].author[0] = '\0';
-            host->bbs_posts[idx].comments[comment].text[0] = '\0';
-            host->bbs_posts[idx].comments[comment].created_at = 0;
+    host->bbs_posts = (bbs_post_t *)sshc_gc_calloc(
+        SSH_CHATTER_BBS_MAX_POSTS, sizeof(host->bbs_posts[0]));
+    if (host->bbs_posts != nullptr) {
+        host->bbs_post_capacity = SSH_CHATTER_BBS_MAX_POSTS;
+        for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
+            host->bbs_posts[idx].in_use = false;
+            host->bbs_posts[idx].id = 0U;
+            host->bbs_posts[idx].author[0] = '\0';
+            host->bbs_posts[idx].title[0] = '\0';
+            host->bbs_posts[idx].body[0] = '\0';
+            host->bbs_posts[idx].tag_count = 0U;
+            host->bbs_posts[idx].created_at = 0;
+            host->bbs_posts[idx].bumped_at = 0;
+            host->bbs_posts[idx].comment_count = 0U;
+            for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
+                 ++comment) {
+                host->bbs_posts[idx].comments[comment].author[0] = '\0';
+                host->bbs_posts[idx].comments[comment].text[0] = '\0';
+                host->bbs_posts[idx].comments[comment].created_at = 0;
+            }
         }
+    } else {
+        host->bbs_post_capacity = 0U;
+        humanized_log_error("bbs", "failed to allocate post cache",
+                            errno != 0 ? errno : ENOMEM);
     }
     host->bbs_post_count = 0U;
     host->next_bbs_id = 1U;

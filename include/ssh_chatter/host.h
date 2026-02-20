@@ -973,8 +973,9 @@ typedef struct host {
     poll_state_t poll;
     named_poll_state_t named_polls[SSH_CHATTER_MAX_NAMED_POLLS];
     size_t named_poll_count;
-    bbs_post_t bbs_posts[SSH_CHATTER_BBS_MAX_POSTS];
+    bbs_post_t *bbs_posts;
     size_t bbs_post_count;
+    size_t bbs_post_capacity;
     uint64_t next_bbs_id;
     rss_feed_t rss_feeds[SSH_CHATTER_RSS_MAX_FEEDS];
     size_t rss_feed_count;

@@ -122,6 +122,17 @@ session_output_restore_kind(session_ctx_t *ctx,
     ctx->output_kind = previous_kind;
 }
 
+static inline bool host_bbs_storage_ready(const host_t *host)
+{
+    return host != nullptr && host->bbs_posts != nullptr &&
+           host->bbs_post_capacity > 0U;
+}
+
+static inline size_t host_bbs_loop_limit(const host_t *host)
+{
+    return host_bbs_storage_ready(host) ? host->bbs_post_capacity : 0U;
+}
+
 static inline bool session_output_should_use_retro_encoding(
     const session_ctx_t *ctx, session_output_kind_t kind)
 {

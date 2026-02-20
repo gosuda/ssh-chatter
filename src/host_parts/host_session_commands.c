@@ -2733,10 +2733,10 @@ static void bbs_format_time(time_t value, char *buffer, size_t length)
 // Return a post by identifier while the host lock is held.
 static bbs_post_t *host_find_bbs_post_locked(host_t *host, uint64_t id)
 {
-    if (host == nullptr || id == 0U) {
+    if (!host_bbs_storage_ready(host) || id == 0U) {
         return nullptr;
     }
-    for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+    for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
         if (!host->bbs_posts[idx].in_use) {
             continue;
         }
@@ -2750,10 +2750,10 @@ static bbs_post_t *host_find_bbs_post_locked(host_t *host, uint64_t id)
 // Allocate a new post slot, returning nullptr if capacity has been reached.
 static bbs_post_t *host_allocate_bbs_post_locked(host_t *host)
 {
-    if (host == nullptr) {
+    if (!host_bbs_storage_ready(host)) {
         return nullptr;
     }
-    for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+    for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
         if (host->bbs_posts[idx].in_use) {
             continue;
         }
@@ -2812,14 +2812,14 @@ static void host_reset_bbs_post(bbs_post_t *post)
 
 static void host_clear_bbs_post_locked(host_t *host, bbs_post_t *post)
 {
-    if (host == nullptr || post == nullptr) {
+    if (!host_bbs_storage_ready(host) || post == nullptr) {
         return;
     }
 
     host_reset_bbs_post(post);
 
     size_t write_index = 0U;
-    for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+    for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
         if (!host->bbs_posts[idx].in_use) {
             continue;
         }
@@ -2831,7 +2831,7 @@ static void host_clear_bbs_post_locked(host_t *host, bbs_post_t *post)
         ++write_index;
     }
 
-    for (size_t idx = write_index; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+    for (size_t idx = write_index; idx < host->bbs_post_capacity; ++idx) {
         host_reset_bbs_post(&host->bbs_posts[idx]);
     }
 
@@ -2848,6 +2848,10 @@ static bool session_bbs_refresh_view(session_ctx_t *ctx)
     }
 
     host_t *host = ctx->owner;
+    if (!host_bbs_storage_ready(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return false;
+    }
     ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, ctx->bbs_view_post_id);
     bbs_post_t snapshot = {0};
@@ -2987,8 +2991,14 @@ static void session_bbs_list(session_ctx_t *ctx)
     size_t count = 0U;
 
     host_t *host = ctx->owner;
+    if (!host_bbs_storage_ready(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
     ttak_mutex_lock(&host->lock);
-    for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+    size_t capacity = host_bbs_loop_limit(host);
+    for (size_t idx = 0U; idx < capacity; ++idx) {
         const bbs_post_t *post = &host->bbs_posts[idx];
         if (!post->in_use) {
             continue;
@@ -3176,8 +3186,14 @@ static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
     size_t count = 0U;
 
     host_t *host = ctx->owner;
+    if (!host_bbs_storage_ready(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
     ttak_mutex_lock(&host->lock);
-    for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+    size_t capacity = host_bbs_loop_limit(host);
+    for (size_t idx = 0U; idx < capacity; ++idx) {
         const bbs_post_t *post = &host->bbs_posts[idx];
         if (!post->in_use) {
             continue;
@@ -3304,6 +3320,10 @@ static void session_bbs_read(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
+    if (!host_bbs_storage_ready(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
     ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     bbs_post_t snapshot = {0};

@@ -498,7 +498,8 @@ host_eliza_bbs_collect_context(host_t *host, char *context,
     size_t snapshot_count = 0U;
 
     ttak_mutex_lock(&host->lock);
-    for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+    size_t capacity = host_bbs_loop_limit(host);
+    for (size_t idx = 0U; idx < capacity; ++idx) {
         if (!host->bbs_posts[idx].in_use) {
             continue;
         }
@@ -753,7 +754,7 @@ static void host_strip_column_reset(char *text)
 
 static void host_bbs_state_save_locked(host_t *host)
 {
-    if (host == nullptr) {
+    if (!host_bbs_storage_ready(host)) {
         return;
     }
 
@@ -792,8 +793,9 @@ static void host_bbs_state_save_locked(host_t *host)
         return;
     }
 
+    size_t capacity = host_bbs_loop_limit(host);
     uint32_t post_count = 0U;
-    for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+    for (size_t idx = 0U; idx < capacity; ++idx) {
         if (host->bbs_posts[idx].in_use) {
             ++post_count;
         }
@@ -807,7 +809,7 @@ static void host_bbs_state_save_locked(host_t *host)
 
     bool success = fwrite(&header, sizeof(header), 1U, fp) == 1U;
 
-    for (size_t idx = 0U; success && idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+    for (size_t idx = 0U; success && idx < capacity; ++idx) {
         const bbs_post_t *post = &host->bbs_posts[idx];
         if (!post->in_use) {
             continue;
@@ -894,7 +896,7 @@ static void host_bbs_state_save_locked(host_t *host)
 
 static void host_bbs_state_load(host_t *host)
 {
-    if (host == nullptr) {
+    if (!host_bbs_storage_ready(host)) {
         return;
     }
 
@@ -930,7 +932,8 @@ static void host_bbs_state_load(host_t *host)
 
     ttak_mutex_lock(&host->lock);
 
-    for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+    size_t capacity = host_bbs_loop_limit(host);
+    for (size_t idx = 0U; idx < capacity; ++idx) {
         host->bbs_posts[idx].in_use = false;
         host->bbs_posts[idx].id = 0U;
         host->bbs_posts[idx].author[0] = '\0';
@@ -1064,7 +1067,7 @@ static void host_bbs_state_load(host_t *host)
             max_id = serialized.id;
         }
 
-        if (idx >= SSH_CHATTER_BBS_MAX_POSTS) {
+        if (idx >= host->bbs_post_capacity) {
             continue;
         }
 
@@ -1119,7 +1122,7 @@ static void host_bbs_state_load(host_t *host)
             host->next_bbs_id = max_id + 1U;
         }
     } else {
-        for (size_t idx = 0U; idx < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+        for (size_t idx = 0U; idx < capacity; ++idx) {
             host->bbs_posts[idx].in_use = false;
             host->bbs_posts[idx].id = 0U;
             host->bbs_posts[idx].author[0] = '\0';
@@ -1146,7 +1149,7 @@ static void host_bbs_state_load(host_t *host)
 
 static void host_bbs_watchdog_scan(host_t *host)
 {
-    if (host == nullptr) {
+    if (!host_bbs_storage_ready(host)) {
         return;
     }
 

@@ -72,16 +72,25 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
     ctx->label = label;
     ctx->next = nullptr;
 
-    /* Owner: governs resource provenance for this context. */
-    ctx->owner = ttak_owner_create(TTAK_OWNER_SAFE_DEFAULT);
+    /* Owner: Maximum restriction. Deny threading and dangerous memory for strict verticality. */
+    ctx->owner = ttak_owner_create(TTAK_OWNER_DENY_DANGEROUS_MEM | 
+                                   TTAK_OWNER_STRICT_ISOLATION |
+                                   TTAK_OWNER_DENY_THREADING);
 
-    /* EpochGC: generational collector -- rotated periodically by the caller. */
+    /* EpochGC: generational collector. */
     ttak_epoch_gc_init(&ctx->epoch_gc);
 
-    /* Detachable arena: fast alloc/free with epoch protection and LRU cache.
-     * TTAK_ARENA_HAS_EPOCH_RECLAMATION  -- freed blocks go through EBR.
-     * TTAK_ARENA_HAS_DEFAULT_EPOCH_GC   -- epoch delay defaults to 2.
-     * TTAK_ARENA_USE_LOCKED_ACCESS      -- safe for multi-threaded sessions. */
+    /* Ultra-Extreme Aggressive Reclamation: 100 microseconds to 1 millisecond. 
+     * This pushes the CPU to reclaim memory almost immediately after release. */
+    ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
+    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree, 
+                                         TT_MICRO_SECOND(100), 
+                                         TT_MILLI_SECOND(1));
+    
+    /* Zero-Tolerance Pressure: Even 1 byte of garbage triggers a signal. */
+    ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 1);
+
+    /* Detachable arena: fast alloc/free with EBR. */
     ttak_detachable_context_init(
         &ctx->detachable,
         TTAK_ARENA_HAS_EPOCH_RECLAMATION | TTAK_ARENA_HAS_DEFAULT_EPOCH_GC |
@@ -98,23 +107,33 @@ void sshc_memory_runtime_init(void)
     pthread_mutex_lock(&sshc_registry_mutex);
     if (!sshc_runtime_initialised) {
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
-        // Boehm GC Tuning: Reduce stop-the-world frequency by allowing more free space
-        // and setting a moderate free space divisor.
         GC_set_free_space_divisor(10); 
-        GC_init(); // Call libgc's init
+        GC_init(); 
 #endif
-        // Initialize ttak memory system
-        ttak_mem_set_trace(0); // Disable tracing by default for performance
-        
-        // Configure ttak's background cleaning: 100ms min, 1s max, 100MB pressure
-        ttak_mem_configure_gc(TT_MILLI_SECOND(100), TT_SECOND(1), 100 * 1024 * 1024);
+        // Global TTAK tuning: 100us min, 500us max for constant background rotation
+        ttak_mem_set_trace(0);
+        ttak_mem_configure_gc(TT_MICRO_SECOND(100), TT_MICRO_SECOND(500), 1);
 
         sshc_memory_context_init(&sshc_global_context, "global");
+        
         sshc_global_context.next = nullptr;
         sshc_contexts = sshc_memory_context_global();
         sshc_runtime_initialised = true;
     }
     pthread_mutex_unlock(&sshc_registry_mutex);
+}
+
+static void sshc_memory_registry_remove_locked(sshc_memory_allocation_t *allocation)
+{
+    // Internal helper that assumes sshc_registry_mutex is already held
+    sshc_memory_allocation_t **prev = &sshc_allocations;
+    while (*prev != nullptr) {
+        if (*prev == allocation) {
+            *prev = allocation->next_global;
+            break;
+        }
+        prev = &(*prev)->next_global;
+    }
 }
 
 void sshc_memory_runtime_shutdown(void)
@@ -125,16 +144,31 @@ void sshc_memory_runtime_shutdown(void)
         return;
     }
 
-    // Final EBR reclaim pass before tearing down contexts
+    // Final EBR reclaim pass
     ttak_epoch_reclaim();
 
     sshc_memory_context_t *ctx = sshc_contexts;
     while (ctx != nullptr) {
         sshc_memory_context_t *next = ctx->next;
         if (ctx != sshc_memory_context_global()) {
-            // We can't call sshc_memory_context_destroy here because it locks registry
-            // So we do manual cleanup
-            sshc_memory_context_reset(ctx);
+            // Manual cleanup of session contexts
+            pthread_mutex_lock(&ctx->mutex);
+            sshc_memory_allocation_t *allocation = ctx->allocations;
+            ctx->allocations = nullptr;
+            pthread_mutex_unlock(&ctx->mutex);
+
+            while (allocation != nullptr) {
+                sshc_memory_allocation_t *next_alloc = allocation->next_in_context;
+                sshc_memory_registry_remove_locked(allocation);
+#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
+                GC_remove_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
+#endif
+                // We don't manually free ptr here because it's in the epoch_gc tree
+                // and ttak_epoch_gc_destroy will handle it.
+                ttak_mem_free(allocation);
+                allocation = next_alloc;
+            }
+
             ttak_detachable_context_destroy(&ctx->detachable);
             ttak_epoch_gc_destroy(&ctx->epoch_gc);
             if (ctx->owner) ttak_owner_destroy(ctx->owner);
@@ -143,8 +177,20 @@ void sshc_memory_runtime_shutdown(void)
         }
         ctx = next;
     }
-    // Clean up the global context's allocations
-    sshc_memory_context_reset(sshc_memory_context_global());
+    
+    // Clean up the global context
+    pthread_mutex_lock(&sshc_global_context.mutex);
+    sshc_memory_allocation_t *allocation = sshc_global_context.allocations;
+    sshc_global_context.allocations = nullptr;
+    pthread_mutex_unlock(&sshc_global_context.mutex);
+
+    while (allocation != nullptr) {
+        sshc_memory_allocation_t *next_alloc = allocation->next_in_context;
+        sshc_memory_registry_remove_locked(allocation);
+        ttak_mem_free(allocation);
+        allocation = next_alloc;
+    }
+
     ttak_detachable_context_destroy(&sshc_global_context.detachable);
     ttak_epoch_gc_destroy(&sshc_global_context.epoch_gc);
     if (sshc_global_context.owner) ttak_owner_destroy(sshc_global_context.owner);
@@ -167,6 +213,18 @@ sshc_memory_context_t *sshc_memory_context_create(const char *label)
         return nullptr;
     }
     sshc_memory_context_init(ctx, label);
+    
+    /* Session Context Ultra-Extreme Tuning: 100us to 1ms. 
+     * Forced near-instant background cleanup for every session. */
+    ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
+    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree, 
+                                         TT_MICRO_SECOND(100), 
+                                         TT_MILLI_SECOND(1));
+    ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 1);
+
+    /* Vertical Hierarchy: Register this session owner as a child of the global owner.
+     * This ensures that if the global context is destroyed, all session contexts are audited. */
+    ttak_owner_register_resource(sshc_global_context.owner, label, ctx->owner);
 
     pthread_mutex_lock(&sshc_registry_mutex);
     ctx->next = sshc_contexts;
@@ -178,14 +236,7 @@ sshc_memory_context_t *sshc_memory_context_create(const char *label)
 static void sshc_memory_registry_remove(sshc_memory_allocation_t *allocation)
 {
     pthread_mutex_lock(&sshc_registry_mutex);
-    sshc_memory_allocation_t **prev = &sshc_allocations;
-    while (*prev != nullptr) {
-        if (*prev == allocation) {
-            *prev = allocation->next_global;
-            break;
-        }
-        prev = &(*prev)->next_global;
-    }
+    sshc_memory_registry_remove_locked(allocation);
     pthread_mutex_unlock(&sshc_registry_mutex);
 }
 
@@ -277,7 +328,7 @@ sshc_memory_context_register_allocation(sshc_memory_context_t *ctx,
     ctx->allocations = allocation;
     pthread_mutex_unlock(&ctx->mutex);
     
-    // Register with EpochGC for generational tracking
+    // Register with EpochGC. This adds it to the tree with ref_count=1.
     ttak_epoch_gc_register(&ctx->epoch_gc, allocation->ptr, allocation->size);
 
     // Also register with ttak owner if available
@@ -298,9 +349,7 @@ void *sshc_gc_malloc(size_t size)
     sshc_memory_context_t *ctx = sshc_memory_context_current();
     if (size == 0U) size = 1U;
 
-    void *ptr = nullptr;
-    ptr = ttak_mem_alloc(size, __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
-
+    void *ptr = ttak_mem_alloc(size, __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
     if (ptr == nullptr) return nullptr;
 
     sshc_memory_allocation_t *allocation =
@@ -358,12 +407,16 @@ void *sshc_gc_realloc(void *ptr, size_t size)
             sizeof(*allocation), __TTAK_UNSAFE_MEM_FOREVER__,
             ttak_get_tick_count());
     if (allocation == nullptr) {
-        // We reallocated but can't track. This is bad.
         if (old_allocation) {
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
             GC_remove_roots(old_allocation->ptr, (char *)old_allocation->ptr + old_allocation->size);
 #endif
             sshc_memory_context_remove_allocation(old_allocation->context, ptr);
+            
+            // Safe release via mem_tree
+            ttak_mem_node_t *node = ttak_mem_tree_find_node(&old_allocation->context->epoch_gc.tree, ptr);
+            if (node) ttak_mem_node_release(node);
+            
             ttak_mem_free(old_allocation);
         }
         return new_ptr;
@@ -378,6 +431,11 @@ void *sshc_gc_realloc(void *ptr, size_t size)
         GC_remove_roots(old_allocation->ptr, (char *)old_allocation->ptr + old_allocation->size);
 #endif
         sshc_memory_context_remove_allocation(old_allocation->context, ptr);
+        
+        // Safe release
+        ttak_mem_node_t *node = ttak_mem_tree_find_node(&old_allocation->context->epoch_gc.tree, ptr);
+        if (node) ttak_mem_node_release(node);
+        
         ttak_mem_free(old_allocation);
     }
 
@@ -417,10 +475,20 @@ void sshc_gc_free(void *ptr)
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
         GC_remove_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
 #endif
+        // Release reference in EpochGC tree. 
+        // Background thread will then free ptr safely.
+        ttak_mem_node_t *node = ttak_mem_tree_find_node(&allocation->context->epoch_gc.tree, ptr);
+        if (node) {
+            ttak_mem_node_release(node);
+        } else {
+            // Fallback if not in tree for some reason
+            ttak_mem_free(ptr);
+        }
         ttak_mem_free(allocation);
+    } else {
+        // Not tracked by our registry? Use direct free
+        ttak_mem_free(ptr);
     }
-
-    ttak_mem_free(ptr);
 }
 
 void sshc_memory_context_reset(sshc_memory_context_t *ctx)
@@ -438,12 +506,15 @@ void sshc_memory_context_reset(sshc_memory_context_t *ctx)
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
         GC_remove_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
 #endif
-        ttak_mem_free(allocation->ptr);
+        // Safe release. Let background thread handle the actual free.
+        ttak_mem_node_t *node = ttak_mem_tree_find_node(&ctx->epoch_gc.tree, allocation->ptr);
+        if (node) ttak_mem_node_release(node);
+        
         ttak_mem_free(allocation);
         allocation = next;
     }
 
-    // Rotate the epoch GC to free expired blocks tracked by the tree
+    // Force rotation and cleanup pass
     ttak_epoch_gc_rotate(&ctx->epoch_gc);
 }
 

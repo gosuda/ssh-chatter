@@ -142,58 +142,6 @@ static void morse_client_broadcast(morse_client_t *client, const char *line)
         return;
     }
 
-    /* Guard for line length to prevent out-of-bounds access on line + 6 */
-    if (strlen(line) < 13) {
-        return;
-    }
-
-    session_ctx_t **targets = nullptr;
-    size_t target_count = 0U;
-    morse_client_collect_targets(client->host, &targets, &target_count);
-
-    if (targets == nullptr) {
-        return;
-    }
-
-    char translated[SSH_CHATTER_MESSAGE_LIMIT];
-    morse_to_text(line, translated, sizeof(translated));
-
-    /* Use stack buffer with explicit null terminator to prevent strcasestr overrun */
-    char country_flag[8];
-    memcpy(country_flag, line + 6, 7);
-    country_flag[7] = '\0';
-
-    for (size_t idx = 0; idx < target_count; ++idx) {
-        session_ctx_t *target = targets[idx];
-        if (target == nullptr) {
-            continue;
-        }
-
-        if (target->morse_filter[0] != '\0') {
-            if (strcasestr(country_flag, target->morse_filter) == nullptr) {
-                continue;
-            }
-        }
-
-        char formatted[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(formatted, sizeof(formatted), "[MORSE] %s", line);
-        session_send_raw_text(target, formatted);
-
-        if (translated[0] != '\0') {
-            snprintf(formatted, sizeof(formatted), "-> %s", translated);
-            session_send_raw_text(target, formatted);
-        }
-    }
-
-    sshc_gc_free(targets);
-}
-
-static void morse_client_broadcast(morse_client_t *client, const char *line)
-{
-    if (client == nullptr || client->host == nullptr || line == nullptr) {
-        return;
-    }
-
     /* Prevent out-of-bounds access by validating minimum line length */
     if (strlen(line) < 13) {
         return;

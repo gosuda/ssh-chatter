@@ -80,21 +80,17 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
     /* EpochGC: generational collector. */
     ttak_epoch_gc_init(&ctx->epoch_gc);
 
-    /* Ultra-Extreme Aggressive Reclamation: 1 ms. 
-     * This pushes the CPU to reclaim memory almost immediately after release. */
+    /* Reclamation: 50ms. */
     ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
     ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree, 
-                                         TT_MILLI_SECOND(1), 
-                                         TT_MILLI_SECOND(1));
+                                         TT_MILLI_SECOND(50), 
+                                         TT_MILLI_SECOND(50));
     
-    /* Zero-Tolerance Pressure: Even 1 byte of garbage triggers a signal. */
-    ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 1);
-
     /* Detachable arena: fast alloc/free with EBR. */
     ttak_detachable_context_init(
         &ctx->detachable,
-        TTAK_ARENA_HAS_OWNER | TTAK_ARENA_HAS_EPOCH_RECLAMATION | TTAK_ARENA_HAS_DEFAULT_EPOCH_GC |
-        TTAK_ARENA_USE_ASYNC_OPT | TTAK_ARENA_IS_URGENT_TASK);
+        TTAK_ARENA_HAS_EPOCH_RECLAMATION | TTAK_ARENA_HAS_DEFAULT_EPOCH_GC
+        | TTAK_ARENA_HAS_DEFAULT_EPOCH_GC);
 }
 
 static sshc_memory_context_t *sshc_memory_context_global(void)
@@ -110,9 +106,9 @@ void sshc_memory_runtime_init(void)
         GC_set_free_space_divisor(10); 
         GC_init(); 
 #endif
-        // Global TTAK tuning: 1 ms
+        // Global TTAK tuning: 50ms
         ttak_mem_set_trace(1);
-        ttak_mem_configure_gc(TT_MILLI_SECOND(1), TT_MILLI_SECOND(1), 1);
+        ttak_mem_configure_gc(TT_MILLI_SECOND(50), TT_MILLI_SECOND(50), 1);
 
         sshc_memory_context_init(&sshc_global_context, "global");
         
@@ -214,12 +210,11 @@ sshc_memory_context_t *sshc_memory_context_create(const char *label)
     }
     sshc_memory_context_init(ctx, label);
     
-    /* Session Context Ultra-Extreme Tuning: 1 ms. 
-     * Forced near-instant background cleanup for every session. */
+    /* Session Context Tuning: 50ms.  */
     ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
     ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree, 
-                                         TT_MILLI_SECOND(1), 
-                                         TT_MILLI_SECOND(1));
+                                         TT_MILLI_SECOND(50), 
+                                         TT_MILLI_SECOND(50));
     ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 1);
 
     /* Vertical Hierarchy: Register this session owner as a child of the global owner.

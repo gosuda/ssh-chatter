@@ -188,6 +188,117 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
     chat_room_broadcast_entry(&ctx->owner->room, &reply_entry, ctx);
 }
 
+static void session_handle_filestore(session_ctx_t *ctx, const char *arguments)
+{
+    (void)arguments;
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    char listing[SSH_CHATTER_MESSAGE_LIMIT];
+    if (!host_file_storage_list(ctx->owner, listing, sizeof(listing))) {
+        session_send_system_line(ctx, listing);
+    } else {
+        session_send_system_line(ctx, listing);
+    }
+
+    session_send_system_line(
+        ctx, "SSH/SCP users: scp <file> user@host:/name | TELNET users: "
+             "/filestore-upload [/<path>] or /filestore-download <name>");
+}
+
+static void session_handle_filestore_upload(session_ctx_t *ctx,
+                                            const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    if (ctx->transport_kind != SESSION_TRANSPORT_TELNET) {
+        session_send_system_line(
+            ctx, "Uploads over SSH should use scp: scp file "
+                 "user@host:/name");
+        return;
+    }
+
+    bool has_target = false;
+    char resolved[PATH_MAX];
+    char display[PATH_MAX];
+    resolved[0] = '\0';
+    display[0] = '\0';
+
+    if (arguments != nullptr) {
+        char working[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(working, sizeof(working), "%s", arguments);
+        trim_whitespace_inplace(working);
+        if (working[0] != '\0') {
+            if (!file_transfer_resolve_path(ctx->owner, working, resolved,
+                                            sizeof(resolved), display,
+                                            sizeof(display))) {
+                session_send_system_line(
+                    ctx,
+                    "Invalid destination. Use paths under / without ..");
+                return;
+            }
+            has_target = true;
+        }
+    }
+
+    if (has_target) {
+        char notice[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(notice, sizeof(notice),
+                 "* Ready to receive file into %s. Start ZMODEM SEND now.",
+                 display);
+        session_send_system_line(ctx, notice);
+    } else {
+        session_send_system_line(
+            ctx, "* Ready to receive file. Start ZMODEM SEND now.");
+    }
+
+    if (!file_transfer_telnet_receive(ctx, has_target ? resolved : nullptr)) {
+        session_send_system_line(ctx, "Upload failed.");
+        return;
+    }
+
+    if (has_target) {
+        char success[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(success, sizeof(success), "* Upload stored at %s.", display);
+        session_send_system_line(ctx, success);
+    } else {
+        session_send_system_line(ctx, "* Upload complete.");
+    }
+}
+
+static void session_handle_filestore_download(session_ctx_t *ctx,
+                                              const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    if (ctx->transport_kind != SESSION_TRANSPORT_TELNET) {
+        session_send_system_line(
+            ctx, "Downloads over SSH should use scp: scp "
+                 "user@host:/name ./");
+        return;
+    }
+
+    if (arguments == nullptr) {
+        session_send_system_line(ctx, "Usage: /filestore-download <name>");
+        return;
+    }
+
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(working, sizeof(working), "%s", arguments);
+    trim_whitespace_inplace(working);
+    if (working[0] == '\0') {
+        session_send_system_line(ctx, "Usage: /filestore-download <name>");
+        return;
+    }
+
+    file_transfer_telnet_send(ctx, working);
+}
+
 static void session_handle_image(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage = "Usage: /image <url> [caption]";

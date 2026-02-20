@@ -1,0 +1,1277 @@
+#include "host_parts/host_internal.h"
+
+#include <sys/stat.h>
+#include <sys/uio.h>
+#include <fcntl.h>
+#include <poll.h>
+
+#define FILE_STORAGE_LIST_LIMIT 64
+#define FILE_TRANSFER_BUFFER 65536
+#define ZMODEM_IO_CHUNK 4096
+#define ZMODEM_POLL_TIMEOUT_MS 200
+
+typedef enum {
+    SCP_MODE_UPLOAD,
+    SCP_MODE_DOWNLOAD,
+} scp_mode_t;
+
+static bool file_storage_ensure_directory(const char *path);
+static bool file_storage_ensure_parent(const char *path);
+static bool file_storage_prepare_staging(host_t *host, char *directory,
+                                         size_t length);
+static bool file_storage_locate_single_file(const char *root,
+                                            char *absolute_path,
+                                            size_t length);
+static void file_storage_remove_tree(const char *root);
+static bool file_storage_is_ready(host_t *host, session_ctx_t *ctx);
+
+static bool scp_parse_command(const char *command, scp_mode_t *mode,
+                              char *virtual_path, size_t path_length);
+static bool scp_send_status(session_ctx_t *ctx, unsigned char code,
+                            const char *message);
+static int scp_expect_byte(session_ctx_t *ctx);
+static bool scp_expect_ok(session_ctx_t *ctx);
+static bool scp_send_ok(session_ctx_t *ctx);
+static ssize_t scp_channel_read(session_ctx_t *ctx, void *buffer,
+                                size_t length);
+static bool scp_channel_write_all(session_ctx_t *ctx, const void *buffer,
+                                  size_t length);
+static int scp_handle_upload(session_ctx_t *ctx, const char *virtual_path);
+static int scp_handle_download(session_ctx_t *ctx, const char *virtual_path);
+
+static void telnet_force_binary(session_ctx_t *ctx);
+static bool telnet_binary_write(session_ctx_t *ctx, const unsigned char *data,
+                                size_t length);
+static ssize_t telnet_binary_read(session_ctx_t *ctx, unsigned char *buffer,
+                                  size_t length);
+static bool telnet_spawn_zmodem(session_ctx_t *ctx, char *const argv[],
+                                const char *working_dir,
+                                const char *label);
+
+bool host_file_storage_init(host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+
+    const char *override = getenv("CHATTER_FILE_STORAGE_ROOT");
+    const char *root = (override != nullptr && override[0] != '\0')
+                           ? override
+                           : SSH_CHATTER_FILE_STORAGE_ROOT;
+
+    if (root[0] != '/') {
+        humanized_log_error("files", "file storage path must be absolute",
+                            EINVAL);
+        host->file_storage_ready = false;
+        host->file_storage_root[0] = '\0';
+        return false;
+    }
+
+    if (snprintf(host->file_storage_root, sizeof(host->file_storage_root), "%s",
+                 root) >= (int)sizeof(host->file_storage_root)) {
+        humanized_log_error("files", "file storage path is too long", ENAMETOOLONG);
+        host->file_storage_ready = false;
+        host->file_storage_root[0] = '\0';
+        return false;
+    }
+
+    if (!file_storage_ensure_directory(host->file_storage_root)) {
+        humanized_log_error("files", "unable to prepare storage directory",
+                            errno != 0 ? errno : EIO);
+        host->file_storage_ready = false;
+        return false;
+    }
+
+    host->file_storage_ready = true;
+    return true;
+}
+
+bool host_file_storage_list(host_t *host, char *buffer, size_t length)
+{
+    if (buffer == nullptr || length == 0U) {
+        return false;
+    }
+    buffer[0] = '\0';
+
+    if (host == nullptr || !host->file_storage_ready ||
+        host->file_storage_root[0] == '\0') {
+        snprintf(buffer, length,
+                 "File storage is unavailable. Please contact the operator.");
+        return false;
+    }
+
+    DIR *dir = opendir(host->file_storage_root);
+    if (dir == nullptr) {
+        snprintf(buffer, length,
+                 "Unable to open %s for listing (%s).",
+                 host->file_storage_root, strerror(errno));
+        return false;
+    }
+
+    size_t written = 0U;
+    size_t count = 0U;
+    struct dirent *entry = nullptr;
+    while ((entry = readdir(dir)) != nullptr && count < FILE_STORAGE_LIST_LIMIT) {
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
+
+        char resolved[PATH_MAX];
+        if (snprintf(resolved, sizeof(resolved), "%s/%s",
+                     host->file_storage_root, entry->d_name) >=
+            (int)sizeof(resolved)) {
+            continue;
+        }
+
+        struct stat st;
+        if (stat(resolved, &st) != 0) {
+            continue;
+        }
+
+        if (!S_ISREG(st.st_mode)) {
+            continue;
+        }
+
+        char line[256];
+        int line_len = snprintf(line, sizeof(line), " /%s (%lld bytes)\n",
+                                entry->d_name,
+                                (long long)st.st_size);
+        if (line_len <= 0) {
+            continue;
+        }
+
+        if ((size_t)line_len >= length - written) {
+            break;
+        }
+
+        memcpy(buffer + written, line, (size_t)line_len);
+        written += (size_t)line_len;
+        buffer[written] = '\0';
+        ++count;
+    }
+
+    closedir(dir);
+
+    if (written == 0U) {
+        snprintf(buffer, length, "Storage is empty. Upload something first!");
+    }
+
+    return true;
+}
+
+static bool file_storage_is_ready(host_t *host, session_ctx_t *ctx)
+{
+    if (host == nullptr || !host->file_storage_ready ||
+        host->file_storage_root[0] == '\0') {
+        if (ctx != nullptr) {
+            session_send_system_line(
+                ctx, "File storage is unavailable. Please contact an operator.");
+        }
+        return false;
+    }
+    return true;
+}
+
+static bool file_storage_ensure_directory(const char *path)
+{
+    struct stat st;
+    if (stat(path, &st) == 0) {
+        return S_ISDIR(st.st_mode);
+    }
+
+    if (errno != ENOENT) {
+        return false;
+    }
+
+    if (!file_storage_ensure_parent(path)) {
+        return false;
+    }
+
+    if (mkdir(path, 0750) == 0) {
+        return true;
+    }
+
+    if (errno == EEXIST) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool file_storage_ensure_parent(const char *path)
+{
+    if (path == nullptr || path[0] == '\0') {
+        return false;
+    }
+
+    char copy[PATH_MAX];
+    snprintf(copy, sizeof(copy), "%s", path);
+    char *parent = dirname(copy);
+    if (parent == nullptr || parent[0] == '\0' || strcmp(parent, "/") == 0) {
+        return true;
+    }
+
+    struct stat st;
+    if (stat(parent, &st) == 0) {
+        return S_ISDIR(st.st_mode);
+    }
+
+    if (errno != ENOENT) {
+        return false;
+    }
+
+    if (!file_storage_ensure_parent(parent)) {
+        return false;
+    }
+
+    if (mkdir(parent, 0750) == 0) {
+        return true;
+    }
+
+    if (errno == EEXIST) {
+        return true;
+    }
+
+    return false;
+}
+
+bool file_transfer_resolve_path(host_t *host, const char *virtual_path,
+                                char *resolved, size_t resolved_len,
+                                char *display, size_t display_len)
+{
+    if (host == nullptr || resolved == nullptr || resolved_len == 0U ||
+        virtual_path == nullptr) {
+        return false;
+    }
+
+    if (!file_storage_is_ready(host, nullptr)) {
+        return false;
+    }
+
+    while (*virtual_path == ' ' || *virtual_path == '\t') {
+        ++virtual_path;
+    }
+
+    char working[PATH_MAX];
+    snprintf(working, sizeof(working), "%s", virtual_path);
+    trim_whitespace_inplace(working);
+    if (working[0] == '\0') {
+        return false;
+    }
+
+    char sanitized[PATH_MAX];
+    sanitized[0] = '\0';
+    size_t sanitized_len = 0U;
+
+    const char *cursor = working;
+    while (*cursor != '\0') {
+        char component[NAME_MAX + 1];
+        size_t comp_len = 0U;
+
+        while (*cursor == '/') {
+            ++cursor;
+        }
+        if (*cursor == '\0') {
+            break;
+        }
+
+        while (*cursor != '/' && *cursor != '\0') {
+            if (comp_len + 1U >= sizeof(component)) {
+                return false;
+            }
+            component[comp_len++] = *cursor++;
+        }
+        component[comp_len] = '\0';
+
+        if (comp_len == 0U || strcmp(component, ".") == 0) {
+            continue;
+        }
+        if (strcmp(component, "..") == 0) {
+            return false;
+        }
+
+        if (sanitized_len + comp_len + 2U >= sizeof(sanitized)) {
+            return false;
+        }
+        if (sanitized_len > 0U) {
+            sanitized[sanitized_len++] = '/';
+        }
+        memcpy(sanitized + sanitized_len, component, comp_len);
+        sanitized_len += comp_len;
+        sanitized[sanitized_len] = '\0';
+    }
+
+    if (sanitized_len == 0U) {
+        return false;
+    }
+
+    if (snprintf(resolved, resolved_len, "%s/%s", host->file_storage_root,
+                 sanitized) >= (int)resolved_len) {
+        return false;
+    }
+
+    if (display != nullptr && display_len > 0U) {
+        if (snprintf(display, display_len, "/%s", sanitized) >=
+            (int)display_len) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool file_transfer_telnet_receive(session_ctx_t *ctx,
+                                  const char *resolved_target)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return false;
+    }
+
+    if (ctx->transport_kind != SESSION_TRANSPORT_TELNET ||
+        ctx->telnet_fd < 0) {
+        session_send_system_line(
+            ctx, "ZMODEM upload is only available for TELNET sessions.");
+        return false;
+    }
+
+    if (!file_storage_is_ready(ctx->owner, ctx)) {
+        return false;
+    }
+
+    ctx->telnet_pending_valid = false;
+    ctx->telnet_consume_next_lf = false;
+    telnet_force_binary(ctx);
+
+    bool has_target = resolved_target != nullptr && resolved_target[0] != '\0';
+    char staging_dir[PATH_MAX];
+    staging_dir[0] = '\0';
+    const char *working_dir = ctx->owner->file_storage_root;
+
+    if (has_target) {
+        if (!file_storage_ensure_parent(resolved_target)) {
+            session_send_system_line(ctx,
+                                     "Unable to prepare target directory.");
+            return false;
+        }
+        if (!file_storage_prepare_staging(ctx->owner, staging_dir,
+                                          sizeof(staging_dir))) {
+            session_send_system_line(
+                ctx, "Unable to prepare staging directory for upload.");
+            return false;
+        }
+        working_dir = staging_dir;
+    }
+
+    char *argv[] = {"rz", "-y", "-q", "--binary", "--escape", nullptr};
+    if (!telnet_spawn_zmodem(ctx, argv, working_dir, "rz")) {
+        session_send_system_line(
+            ctx, "Failed to start rz. Install lrzsz on the server.");
+        if (has_target) {
+            file_storage_remove_tree(staging_dir);
+        }
+        return false;
+    }
+
+    if (has_target) {
+        char staged_file[PATH_MAX];
+        if (!file_storage_locate_single_file(staging_dir, staged_file,
+                                             sizeof(staged_file))) {
+            session_send_system_line(
+                ctx,
+                "Unable to identify uploaded file in staging directory.");
+            file_storage_remove_tree(staging_dir);
+            return false;
+        }
+
+        if (!file_storage_ensure_parent(resolved_target)) {
+            session_send_system_line(ctx,
+                                     "Unable to create target directories.");
+            file_storage_remove_tree(staging_dir);
+            return false;
+        }
+
+        if (rename(staged_file, resolved_target) != 0) {
+            session_send_system_line(
+                ctx, "Failed to move uploaded file to the destination.");
+            file_storage_remove_tree(staging_dir);
+            return false;
+        }
+
+        file_storage_remove_tree(staging_dir);
+    }
+
+    return true;
+}
+
+bool file_transfer_telnet_send(session_ctx_t *ctx, const char *virtual_path)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return false;
+    }
+
+    if (ctx->transport_kind != SESSION_TRANSPORT_TELNET ||
+        ctx->telnet_fd < 0) {
+        session_send_system_line(
+            ctx, "ZMODEM download is only available for TELNET sessions.");
+        return false;
+    }
+
+    if (!file_storage_is_ready(ctx->owner, ctx)) {
+        return false;
+    }
+
+    char resolved[PATH_MAX];
+    char display[PATH_MAX];
+    if (!file_transfer_resolve_path(ctx->owner, virtual_path, resolved,
+                                    sizeof(resolved), display,
+                                    sizeof(display))) {
+        session_send_system_line(ctx,
+                                 "Invalid path. Use /filestore to inspect names.");
+        return false;
+    }
+
+    struct stat st;
+    if (stat(resolved, &st) != 0 || !S_ISREG(st.st_mode)) {
+        session_send_system_line(ctx, "File not found. Use /filestore first.");
+        return false;
+    }
+
+    session_send_system_line(
+        ctx, "Starting ZMODEM download. Trigger your client's RECEIVE now.");
+
+    ctx->telnet_pending_valid = false;
+    ctx->telnet_consume_next_lf = false;
+    telnet_force_binary(ctx);
+
+    char relative[PATH_MAX];
+    snprintf(relative, sizeof(relative), "%s",
+             resolved + strlen(ctx->owner->file_storage_root));
+    char *relative_ptr = relative;
+    while (*relative_ptr == '/') {
+        ++relative_ptr;
+    }
+    if (relative_ptr[0] == '\0') {
+        snprintf(relative, sizeof(relative), "%s", basename(resolved));
+        relative_ptr = relative;
+    }
+
+    char *argv[] = {"sz", "-q", "--binary", "--escape", relative_ptr,
+                    nullptr};
+    if (!telnet_spawn_zmodem(ctx, argv, ctx->owner->file_storage_root,
+                             "sz")) {
+        session_send_system_line(
+            ctx, "Failed to start sz. Install lrzsz on the server.");
+        return false;
+    }
+
+    session_send_system_line(ctx, "Download session finished.");
+    return true;
+}
+
+static bool file_storage_prepare_staging(host_t *host, char *directory,
+                                         size_t length)
+{
+    if (host == nullptr || directory == nullptr || length == 0U) {
+        return false;
+    }
+
+    char incoming_root[PATH_MAX];
+    if (snprintf(incoming_root, sizeof(incoming_root), "%s/.incoming",
+                 host->file_storage_root) >= (int)sizeof(incoming_root)) {
+        return false;
+    }
+
+    if (!file_storage_ensure_directory(incoming_root)) {
+        return false;
+    }
+
+    struct timespec now;
+    if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
+        now.tv_sec = time(nullptr);
+        now.tv_nsec = 0;
+    }
+
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        if (snprintf(directory, length, "%s/session_%ld_%ld_%p_%d",
+                     incoming_root, (long)now.tv_sec, (long)now.tv_nsec,
+                     (void *)host, attempt) >= (int)length) {
+            return false;
+        }
+        if (mkdir(directory, 0750) == 0) {
+            return true;
+        }
+        if (errno != EEXIST) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+static bool file_storage_locate_single_file_recursive(const char *root,
+                                                      char *absolute_path,
+                                                      size_t length,
+                                                      size_t *count)
+{
+    DIR *dir = opendir(root);
+    if (dir == nullptr) {
+        return false;
+    }
+
+    bool ok = true;
+    struct dirent *entry = nullptr;
+    while (ok && (entry = readdir(dir)) != nullptr) {
+        if (strcmp(entry->d_name, ".") == 0 ||
+            strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        char path[PATH_MAX];
+        if (snprintf(path, sizeof(path), "%s/%s", root, entry->d_name) >=
+            (int)sizeof(path)) {
+            ok = false;
+            break;
+        }
+
+        struct stat st;
+        if (stat(path, &st) != 0) {
+            ok = false;
+            break;
+        }
+
+        if (S_ISDIR(st.st_mode)) {
+            ok = file_storage_locate_single_file_recursive(path, absolute_path,
+                                                           length, count);
+        } else if (S_ISREG(st.st_mode)) {
+            if (*count == 0U) {
+                if (snprintf(absolute_path, length, "%s", path) >=
+                    (int)length) {
+                    ok = false;
+                    break;
+                }
+            }
+            *count += 1U;
+        }
+
+        if (*count > 1U) {
+            ok = false;
+            break;
+        }
+    }
+
+    closedir(dir);
+    return ok;
+}
+
+static bool file_storage_locate_single_file(const char *root,
+                                            char *absolute_path,
+                                            size_t length)
+{
+    if (root == nullptr || absolute_path == nullptr || length == 0U) {
+        return false;
+    }
+
+    size_t count = 0U;
+    if (!file_storage_locate_single_file_recursive(root, absolute_path, length,
+                                                   &count)) {
+        return false;
+    }
+
+    return count == 1U;
+}
+
+static void file_storage_remove_tree(const char *root)
+{
+    if (root == nullptr || root[0] == '\0') {
+        return;
+    }
+
+    DIR *dir = opendir(root);
+    if (dir == nullptr) {
+        unlink(root);
+        return;
+    }
+
+    struct dirent *entry = nullptr;
+    while ((entry = readdir(dir)) != nullptr) {
+        if (strcmp(entry->d_name, ".") == 0 ||
+            strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        char path[PATH_MAX];
+        if (snprintf(path, sizeof(path), "%s/%s", root, entry->d_name) >=
+            (int)sizeof(path)) {
+            continue;
+        }
+
+        struct stat st;
+        if (lstat(path, &st) != 0) {
+            continue;
+        }
+
+        if (S_ISDIR(st.st_mode)) {
+            file_storage_remove_tree(path);
+        } else {
+            unlink(path);
+        }
+    }
+
+    closedir(dir);
+    rmdir(root);
+}
+
+static bool scp_parse_command(const char *command, scp_mode_t *mode,
+                              char *virtual_path, size_t path_length)
+{
+    if (command == nullptr || mode == nullptr || virtual_path == nullptr ||
+        path_length == 0U) {
+        return false;
+    }
+
+    const char *cursor = command;
+    while (*cursor == ' ' || *cursor == '\t') {
+        ++cursor;
+    }
+
+    if (strncmp(cursor, "scp", 3) != 0) {
+        return false;
+    }
+
+    cursor += 3;
+    bool end_of_options = false;
+    bool mode_set = false;
+    bool path_set = false;
+
+    while (*cursor != '\0') {
+        while (*cursor == ' ' || *cursor == '\t') {
+            ++cursor;
+        }
+
+        if (*cursor == '\0') {
+            break;
+        }
+
+        if (!end_of_options && *cursor == '-') {
+            ++cursor;
+            if (*cursor == '-') {
+                ++cursor;
+                end_of_options = true;
+                continue;
+            }
+
+            while (*cursor != '\0' && *cursor != ' ' && *cursor != '\t') {
+                char opt = *cursor++;
+                if (opt == 't') {
+                    *mode = SCP_MODE_UPLOAD;
+                    mode_set = true;
+                } else if (opt == 'f') {
+                    *mode = SCP_MODE_DOWNLOAD;
+                    mode_set = true;
+                } else if (opt == 'd' || opt == 'p' || opt == 'r' ||
+                           opt == 'v') {
+                    // Ignore unsupported but harmless flags.
+                    continue;
+                } else {
+                    return false;
+                }
+            }
+            continue;
+        }
+
+        if (path_set) {
+            return false;
+        }
+
+        char token[PATH_MAX];
+        size_t length = 0U;
+        char quote = '\0';
+        if (*cursor == '\'' || *cursor == '"') {
+            quote = *cursor++;
+        }
+
+        while (*cursor != '\0') {
+            if (quote != '\0') {
+                if (*cursor == quote) {
+                    ++cursor;
+                    break;
+                }
+            } else if (*cursor == ' ' || *cursor == '\t') {
+                break;
+            }
+
+            if (length + 1U >= sizeof(token)) {
+                return false;
+            }
+            token[length++] = *cursor++;
+        }
+        token[length] = '\0';
+
+        if (length == 0U) {
+            continue;
+        }
+
+        if (snprintf(virtual_path, path_length, "%s", token) >=
+            (int)path_length) {
+            return false;
+        }
+        path_set = true;
+        end_of_options = true;
+    }
+
+    return mode_set && path_set;
+}
+
+int file_transfer_handle_scp_exec(session_ctx_t *ctx, const char *command)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || ctx->channel == nullptr) {
+        return -1;
+    }
+
+    char path[PATH_MAX];
+    scp_mode_t mode = SCP_MODE_DOWNLOAD;
+    if (!scp_parse_command(command, &mode, path, sizeof(path))) {
+        scp_send_status(ctx, 2, "Unsupported SCP command.");
+        return -1;
+    }
+
+    char resolved[PATH_MAX];
+    char display[PATH_MAX];
+    if (!file_transfer_resolve_path(ctx->owner, path, resolved,
+                                    sizeof(resolved), display,
+                                    sizeof(display))) {
+        scp_send_status(ctx, 2,
+                        "Invalid target path or directory traversal attempt.");
+        return -1;
+    }
+
+    int result = -1;
+    switch (mode) {
+    case SCP_MODE_UPLOAD:
+        result = scp_handle_upload(ctx, resolved);
+        break;
+    case SCP_MODE_DOWNLOAD:
+        result = scp_handle_download(ctx, resolved);
+        break;
+    }
+
+    if (result == 0) {
+        scp_send_status(ctx, 0, nullptr);
+    }
+    return result;
+}
+
+static bool scp_send_status(session_ctx_t *ctx, unsigned char code,
+                            const char *message)
+{
+    if (ctx == nullptr || ctx->channel == nullptr) {
+        return false;
+    }
+
+    unsigned char header = code;
+    if (ssh_channel_write(ctx->channel, &header, 1) != 1) {
+        return false;
+    }
+
+    if (message != nullptr && message[0] != '\0') {
+        size_t length = strnlen(message, SSH_CHATTER_MESSAGE_LIMIT - 1U);
+        if (!scp_channel_write_all(ctx, message, length)) {
+            return false;
+        }
+        const char newline = '\n';
+        if (!scp_channel_write_all(ctx, &newline, 1)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int scp_expect_byte(session_ctx_t *ctx)
+{
+    unsigned char byte = 0U;
+    ssize_t read_len = scp_channel_read(ctx, &byte, 1);
+    if (read_len <= 0) {
+        return -1;
+    }
+    return (int)byte;
+}
+
+static bool scp_expect_ok(session_ctx_t *ctx)
+{
+    int status = scp_expect_byte(ctx);
+    return status == 0;
+}
+
+static bool scp_send_ok(session_ctx_t *ctx)
+{
+    const unsigned char ok = 0U;
+    return scp_channel_write_all(ctx, &ok, 1);
+}
+
+static ssize_t scp_channel_read(session_ctx_t *ctx, void *buffer,
+                                size_t length)
+{
+    if (ctx == nullptr || ctx->channel == nullptr || buffer == nullptr ||
+        length == 0U) {
+        return -1;
+    }
+
+    uint32_t chunk =
+        (length > UINT32_MAX) ? UINT32_MAX : (uint32_t)length;
+    return ssh_channel_read(ctx->channel, buffer, chunk, 0);
+}
+
+static bool scp_channel_write_all(session_ctx_t *ctx, const void *buffer,
+                                  size_t length)
+{
+    if (ctx == nullptr || ctx->channel == nullptr || buffer == nullptr) {
+        return false;
+    }
+
+    const unsigned char *cursor = (const unsigned char *)buffer;
+    size_t remaining = length;
+    while (remaining > 0U) {
+        int written =
+            ssh_channel_write(ctx->channel, cursor, (uint32_t)remaining);
+        if (written <= 0) {
+            return false;
+        }
+        cursor += (size_t)written;
+        remaining -= (size_t)written;
+    }
+    return true;
+}
+
+static int scp_handle_upload(session_ctx_t *ctx, const char *real_path)
+{
+    if (!file_storage_is_ready(ctx->owner, nullptr)) {
+        scp_send_status(ctx, 2, "File storage unavailable.");
+        return -1;
+    }
+
+    if (!file_storage_ensure_parent(real_path)) {
+        scp_send_status(ctx, 2, "Unable to create destination directory.");
+        return -1;
+    }
+
+    if (!scp_send_ok(ctx)) {
+        return -1;
+    }
+
+    char header[PATH_MAX];
+    size_t header_len = 0U;
+    while (header_len + 1U < sizeof(header)) {
+        int byte = scp_expect_byte(ctx);
+        if (byte < 0) {
+            return -1;
+        }
+        if (byte == '\n') {
+            break;
+        }
+        header[header_len++] = (char)byte;
+    }
+    header[header_len] = '\0';
+
+    if (header[0] != 'C') {
+        scp_send_status(ctx, 2, "Only regular file uploads are supported.");
+        return -1;
+    }
+
+    char mode[8];
+    unsigned long long size = 0ULL;
+    char filename[PATH_MAX];
+    if (sscanf(header, "C%7s %llu %1023s", mode, &size, filename) != 3) {
+        scp_send_status(ctx, 2, "Malformed SCP header.");
+        return -1;
+    }
+
+    int fd = open(real_path, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+    if (fd < 0) {
+        scp_send_status(ctx, 2, "Unable to open target for writing.");
+        return -1;
+    }
+
+    if (!scp_send_ok(ctx)) {
+        close(fd);
+        return -1;
+    }
+
+    unsigned char buffer[FILE_TRANSFER_BUFFER];
+    unsigned long long remaining = size;
+    while (remaining > 0ULL) {
+        size_t chunk = remaining > sizeof(buffer) ? sizeof(buffer)
+                                                  : (size_t)remaining;
+        ssize_t read_len = scp_channel_read(ctx, buffer, chunk);
+        if (read_len <= 0) {
+            close(fd);
+            return -1;
+        }
+        if (write(fd, buffer, (size_t)read_len) != read_len) {
+            close(fd);
+            scp_send_status(ctx, 2, "Failed writing destination file.");
+            return -1;
+        }
+        remaining -= (unsigned long long)read_len;
+    }
+    close(fd);
+
+    if (!scp_expect_ok(ctx)) {
+        scp_send_status(ctx, 2, "Sender aborted transfer.");
+        return -1;
+    }
+
+    return 0;
+}
+
+static int scp_handle_download(session_ctx_t *ctx, const char *real_path)
+{
+    struct stat st;
+    if (stat(real_path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        scp_send_status(ctx, 2, "File not found.");
+        return -1;
+    }
+
+    if (!scp_expect_ok(ctx)) {
+        return -1;
+    }
+
+    const char *basename_ptr = strrchr(real_path, '/');
+    basename_ptr = (basename_ptr != nullptr) ? basename_ptr + 1 : real_path;
+
+    char header[PATH_MAX + 32];
+    int header_len = snprintf(header, sizeof(header), "C%04o %lld %s\n",
+                              (int)(st.st_mode & 0777),
+                              (long long)st.st_size, basename_ptr);
+    if (header_len <= 0 ||
+        !scp_channel_write_all(ctx, header, (size_t)header_len)) {
+        return -1;
+    }
+
+    if (!scp_expect_ok(ctx)) {
+        return -1;
+    }
+
+    int fd = open(real_path, O_RDONLY);
+    if (fd < 0) {
+        scp_send_status(ctx, 2, "Unable to read file.");
+        return -1;
+    }
+
+    unsigned char buffer[FILE_TRANSFER_BUFFER];
+    ssize_t read_len = 0;
+    while ((read_len = read(fd, buffer, sizeof(buffer))) > 0) {
+        if (!scp_channel_write_all(ctx, buffer, (size_t)read_len)) {
+            close(fd);
+            return -1;
+        }
+    }
+    close(fd);
+
+    if (read_len < 0) {
+        scp_send_status(ctx, 2, "Failed reading file.");
+        return -1;
+    }
+
+    if (!scp_send_ok(ctx)) {
+        return -1;
+    }
+
+    return scp_expect_ok(ctx) ? 0 : -1;
+}
+
+static void telnet_force_binary(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->telnet_fd < 0) {
+        return;
+    }
+    unsigned char payload[] = {
+        TELNET_IAC, TELNET_CMD_WILL, TELNET_OPT_BINARY,
+        TELNET_IAC, TELNET_CMD_DO,   TELNET_OPT_BINARY,
+        TELNET_IAC, TELNET_CMD_WILL, TELNET_OPT_SUPPRESS_GO_AHEAD,
+        TELNET_IAC, TELNET_CMD_DO,   TELNET_OPT_SUPPRESS_GO_AHEAD,
+    };
+    send(ctx->telnet_fd, payload, sizeof(payload), MSG_NOSIGNAL);
+}
+
+static bool telnet_binary_write(session_ctx_t *ctx, const unsigned char *data,
+                                size_t length)
+{
+    if (ctx == nullptr || ctx->telnet_fd < 0 || data == nullptr) {
+        return false;
+    }
+
+    for (size_t idx = 0; idx < length; ++idx) {
+        unsigned char byte = data[idx];
+        if (send(ctx->telnet_fd, &byte, 1, MSG_NOSIGNAL) != 1) {
+            return false;
+        }
+        if (byte == TELNET_IAC) {
+            if (send(ctx->telnet_fd, &byte, 1, MSG_NOSIGNAL) != 1) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static ssize_t telnet_binary_read(session_ctx_t *ctx, unsigned char *buffer,
+                                  size_t length)
+{
+    if (ctx == nullptr || ctx->telnet_fd < 0 || buffer == nullptr ||
+        length == 0U) {
+        return -1;
+    }
+
+    size_t produced = 0U;
+    while (produced < length) {
+        struct pollfd pfd = {
+            .fd = ctx->telnet_fd,
+            .events = POLLIN,
+            .revents = 0,
+        };
+        int poll_result = poll(&pfd, 1, ZMODEM_POLL_TIMEOUT_MS);
+        if (poll_result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        if (poll_result == 0) {
+            if (produced > 0U) {
+                return (ssize_t)produced;
+            }
+            continue;
+        }
+        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            return -1;
+        }
+
+        unsigned char byte = 0U;
+        ssize_t read_len = recv(ctx->telnet_fd, &byte, 1, 0);
+        if (read_len <= 0) {
+            return -1;
+        }
+
+        if (byte == TELNET_IAC) {
+            unsigned char command = 0U;
+            if (recv(ctx->telnet_fd, &command, 1, 0) <= 0) {
+                return -1;
+            }
+            if (command == TELNET_IAC) {
+                buffer[produced++] = TELNET_IAC;
+                break;
+            }
+            unsigned char option = 0U;
+            switch (command) {
+            case TELNET_CMD_DO:
+                if (recv(ctx->telnet_fd, &option, 1, 0) <= 0) {
+                    return -1;
+                }
+                if (option == TELNET_OPT_BINARY ||
+                    option == TELNET_OPT_SUPPRESS_GO_AHEAD) {
+                    unsigned char response[] = {TELNET_IAC, TELNET_CMD_WILL,
+                                                option};
+                    send(ctx->telnet_fd, response, sizeof(response),
+                         MSG_NOSIGNAL);
+                } else {
+                    unsigned char response[] = {TELNET_IAC, TELNET_CMD_WONT,
+                                                option};
+                    send(ctx->telnet_fd, response, sizeof(response),
+                         MSG_NOSIGNAL);
+                }
+                break;
+            case TELNET_CMD_DONT:
+                if (recv(ctx->telnet_fd, &option, 1, 0) <= 0) {
+                    return -1;
+                }
+                {
+                    unsigned char response[] = {TELNET_IAC, TELNET_CMD_WONT,
+                                                option};
+                    send(ctx->telnet_fd, response, sizeof(response),
+                         MSG_NOSIGNAL);
+                }
+                break;
+            case TELNET_CMD_WILL:
+                if (recv(ctx->telnet_fd, &option, 1, 0) <= 0) {
+                    return -1;
+                }
+                if (option == TELNET_OPT_BINARY ||
+                    option == TELNET_OPT_SUPPRESS_GO_AHEAD) {
+                    unsigned char response[] = {TELNET_IAC, TELNET_CMD_DO,
+                                                option};
+                    send(ctx->telnet_fd, response, sizeof(response),
+                         MSG_NOSIGNAL);
+                } else {
+                    unsigned char response[] = {TELNET_IAC, TELNET_CMD_DONT,
+                                                option};
+                    send(ctx->telnet_fd, response, sizeof(response),
+                         MSG_NOSIGNAL);
+                }
+                break;
+            case TELNET_CMD_SB: {
+                // Consume until IAC SE
+                unsigned char prev = 0U;
+                unsigned char chunk = 0U;
+                while (recv(ctx->telnet_fd, &chunk, 1, 0) > 0) {
+                    if (prev == TELNET_IAC && chunk == TELNET_CMD_SE) {
+                        break;
+                    }
+                    prev = (chunk == TELNET_IAC) ? TELNET_IAC : 0U;
+                }
+                break;
+            }
+            default:
+                break;
+            }
+            continue;
+        }
+
+        buffer[produced++] = byte;
+        break;
+    }
+
+    return (ssize_t)produced;
+}
+
+static bool telnet_spawn_zmodem(session_ctx_t *ctx, char *const argv[],
+                                const char *working_dir, const char *label)
+{
+    if (ctx == nullptr || ctx->telnet_fd < 0) {
+        return false;
+    }
+
+    int stdin_pipe[2];
+    int stdout_pipe[2];
+    if (pipe(stdin_pipe) != 0) {
+        return false;
+    }
+    if (pipe(stdout_pipe) != 0) {
+        close(stdin_pipe[0]);
+        close(stdin_pipe[1]);
+        return false;
+    }
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        close(stdin_pipe[0]);
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
+        return false;
+    }
+
+    if (pid == 0) {
+        if (working_dir != nullptr) {
+            if (chdir(working_dir) != 0) {
+                fprintf(stderr, "[filestore] chdir(%s) failed: %s\n",
+                        working_dir, strerror(errno));
+                _exit(127);
+            }
+        }
+        dup2(stdin_pipe[0], STDIN_FILENO);
+        dup2(stdout_pipe[1], STDOUT_FILENO);
+        dup2(stdout_pipe[1], STDERR_FILENO);
+        close(stdin_pipe[0]);
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
+        execvp(argv[0], argv);
+        _exit(127);
+    }
+
+    close(stdin_pipe[0]);
+    close(stdout_pipe[1]);
+
+    bool stdin_open = true;
+    bool stdout_open = true;
+
+    while (stdin_open || stdout_open) {
+        struct pollfd fds[2];
+        nfds_t nfds = 0U;
+        if (stdin_open) {
+            fds[nfds++] = (struct pollfd){.fd = ctx->telnet_fd, .events = POLLIN};
+        }
+        if (stdout_open) {
+            fds[nfds++] = (struct pollfd){.fd = stdout_pipe[0], .events = POLLIN};
+        }
+
+        int poll_result = poll(fds, nfds, ZMODEM_POLL_TIMEOUT_MS);
+        if (poll_result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            break;
+        }
+
+        if (poll_result == 0) {
+            continue;
+        }
+
+        nfds_t index = 0U;
+        if (stdin_open) {
+            struct pollfd telnet_pfd = fds[index++];
+            if (telnet_pfd.revents & POLLIN) {
+                unsigned char buffer[ZMODEM_IO_CHUNK];
+                ssize_t read_len = telnet_binary_read(ctx, buffer,
+                                                      sizeof(buffer));
+                if (read_len <= 0) {
+                    stdin_open = false;
+                    shutdown(stdin_pipe[1], SHUT_WR);
+                    close(stdin_pipe[1]);
+                } else {
+                    ssize_t written =
+                        write(stdin_pipe[1], buffer, (size_t)read_len);
+                    if (written != read_len) {
+                        stdin_open = false;
+                        shutdown(stdin_pipe[1], SHUT_WR);
+                        close(stdin_pipe[1]);
+                    }
+                }
+            } else if (telnet_pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                stdin_open = false;
+                shutdown(stdin_pipe[1], SHUT_WR);
+                close(stdin_pipe[1]);
+            }
+        }
+
+        if (stdout_open) {
+            struct pollfd child_pfd = fds[index];
+            if (child_pfd.revents & POLLIN) {
+                unsigned char buffer[ZMODEM_IO_CHUNK];
+                ssize_t read_len = read(stdout_pipe[0], buffer,
+                                        sizeof(buffer));
+                if (read_len <= 0) {
+                    stdout_open = false;
+                    close(stdout_pipe[0]);
+                } else {
+                    if (!telnet_binary_write(ctx, buffer, (size_t)read_len)) {
+                        stdout_open = false;
+                        close(stdout_pipe[0]);
+                    }
+                }
+            } else if (child_pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                stdout_open = false;
+                close(stdout_pipe[0]);
+            }
+        }
+    }
+
+    if (stdin_open) {
+        close(stdin_pipe[1]);
+    }
+    if (stdout_open) {
+        close(stdout_pipe[0]);
+    }
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        char message[128];
+        snprintf(message, sizeof(message), "%s exited with code %d.", label,
+                 WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+        session_send_system_line(ctx, message);
+        return false;
+    }
+
+    return true;
+}

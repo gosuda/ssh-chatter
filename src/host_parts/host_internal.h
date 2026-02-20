@@ -15,6 +15,26 @@
 #include "ssh_chatter/morse_client.h"
 #include "ssh_chatter/translator.h"
 #include "ssh_chatter/translation_helpers.h"
+#include "ssh_chatter/file_transfer.h"
+
+#define TELNET_IAC 255
+#define TELNET_CMD_SE 240
+#define TELNET_CMD_NOP 241
+#define TELNET_CMD_DM 242
+#define TELNET_CMD_BREAK 243
+#define TELNET_CMD_WILL 251
+#define TELNET_CMD_WONT 252
+#define TELNET_CMD_DO 253
+#define TELNET_CMD_DONT 254
+#define TELNET_CMD_SB 250
+#define TELNET_OPT_BINARY 0
+#define TELNET_OPT_ECHO 1
+#define TELNET_OPT_SUPPRESS_GO_AHEAD 3
+#define TELNET_OPT_STATUS 5
+#define TELNET_OPT_TERMINAL_TYPE 24
+#define TELNET_OPT_NAWS 31
+#define TELNET_OPT_TERMINAL_SPEED 32
+#define TELNET_OPT_LINEMODE 34
 
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -136,6 +156,7 @@ void session_process_pending_sink(session_ctx_t *ctx);
 void session_flag_should_sink(session_ctx_t *ctx);
 void session_mark_should_sink(session_ctx_t *ctx);
 void session_clear_pending_sink(session_ctx_t *ctx);
+void session_send_system_line(session_ctx_t *ctx, const char *message);
 
 session_ui_language_t session_ui_language_from_code(const char *code);
 void host_store_ui_language(host_t *host, const session_ctx_t *ctx);

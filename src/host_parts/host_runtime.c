@@ -2015,6 +2015,24 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         return;
     }
 
+    else if (session_parse_command_any(ctx, "/filestore", effective_line,
+                                       &args)) {
+        session_handle_filestore(ctx, args);
+        return;
+    }
+
+    else if (session_parse_command_any(ctx, "/filestore-upload",
+                                       effective_line, &args)) {
+        session_handle_filestore_upload(ctx, args);
+        return;
+    }
+
+    else if (session_parse_command_any(ctx, "/filestore-download",
+                                       effective_line, &args)) {
+        session_handle_filestore_download(ctx, args);
+        return;
+    }
+
     else if (session_parse_command_any(ctx, "/grant", effective_line, &args)) {
         session_handle_grant(ctx, args);
         return;
@@ -4226,11 +4244,15 @@ static void *session_thread(void *arg)
             SESSION_THREAD_RETURN(nullptr);
         }
 
-        if (session_prepare_shell(ctx) != 0) {
+        int shell_result = session_prepare_shell(ctx);
+        if (shell_result < 0) {
             humanized_log_error("session", "shell negotiation failed", EPROTO);
             if (session_attempt_handshake_restart(ctx, &handshake_retries)) {
                 continue;
             }
+            session_destroy(ctx);
+            SESSION_THREAD_RETURN(nullptr);
+        } else if (shell_result > 0) {
             session_destroy(ctx);
             SESSION_THREAD_RETURN(nullptr);
         }
@@ -5377,17 +5399,13 @@ void host_init(host_t *host, auth_profile_t *auth)
                             errno != 0 ? errno : ENOMEM);
         host->alpha_landers_lock_initialized = false;
     }
+    host->file_storage_ready = host_file_storage_init(host);
     host->rss_state_file_path[0] = '\0';
     host_rss_resolve_path(host);
     host->eliza_memory_file_path[0] = '\0';
     host_eliza_memory_resolve_path(host);
     host->eliza_state_file_path[0] = '\0';
     host_eliza_state_resolve_path(host);
-    host->security_clamav_thread_initialized = false;
-    atomic_store(&host->security_clamav_thread_running, false);
-    atomic_store(&host->security_clamav_thread_stop, false);
-    host->security_clamav_last_run.tv_sec = 0;
-    host->security_clamav_last_run.tv_nsec = 0;
     host->bbs_watchdog_thread_initialized = false;
     atomic_store(&host->bbs_watchdog_thread_running, false);
     atomic_store(&host->bbs_watchdog_thread_stop, false);
@@ -5520,7 +5538,6 @@ void host_init(host_t *host, auth_profile_t *auth)
             printf("[morse] relay inactive; connection will not start.\n");
         }
     }
-    host_security_start_clamav_backend(host);
     host_bbs_start_watchdog(host);
     host_rss_start_backend(host);
     host_archive_start_backend(host);
@@ -6573,12 +6590,6 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         atomic_store(&host->archive_thread_running, false);
     }
 
-    if (host->security_clamav_thread_initialized) {
-        atomic_store(&host->security_clamav_thread_stop, true);
-        pthread_join(host->security_clamav_thread, nullptr);
-        host->security_clamav_thread_initialized = false;
-        atomic_store(&host->security_clamav_thread_running, false);
-    }
 
     if (host->bbs_watchdog_thread_initialized) {
         atomic_store(&host->bbs_watchdog_thread_stop, true);

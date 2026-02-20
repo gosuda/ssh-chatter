@@ -1084,7 +1084,7 @@ static bool session_should_hide_entry(session_ctx_t *ctx,
 }
 
 // this displays a message to a chatting room.
-static void session_send_system_line(session_ctx_t *ctx, const char *message)
+void session_send_system_line(session_ctx_t *ctx, const char *message)
 {
     if (ctx == nullptr || !session_transport_active(ctx) ||
         message == nullptr) {
@@ -4483,7 +4483,8 @@ static int session_prepare_shell(session_ctx_t *ctx)
         if (ssh_message_type(message) == SSH_REQUEST_CHANNEL) {
             const int subtype = ssh_message_subtype(message);
             if (subtype == SSH_CHANNEL_REQUEST_PTY ||
-                subtype == SSH_CHANNEL_REQUEST_SHELL) {
+                subtype == SSH_CHANNEL_REQUEST_SHELL ||
+                subtype == SSH_CHANNEL_REQUEST_EXEC) {
                 if (subtype == SSH_CHANNEL_REQUEST_PTY) {
                     const int raw_width =
                         ssh_message_channel_request_pty_width(message);
@@ -4501,7 +4502,28 @@ static int session_prepare_shell(session_ctx_t *ctx)
                         ctx->terminal_height = height > 0 ? (unsigned)height: 0;
                     }
                 }
-                ssh_message_channel_request_reply_success(message);
+                if (subtype == SSH_CHANNEL_REQUEST_EXEC) {
+                    const char *command =
+                        ssh_message_channel_request_command(message);
+                    ssh_message_channel_request_reply_success(message);
+                    if (command != nullptr &&
+                        strncmp(command, "scp", 3) == 0 &&
+                        ctx->owner != nullptr &&
+                        ctx->owner->file_storage_ready) {
+                        int result =
+                            file_transfer_handle_scp_exec(ctx, command);
+                        ctx->exit_status =
+                            (result == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+                        ssh_channel_request_send_exit_status(
+                            ctx->channel, ctx->exit_status);
+                        ssh_channel_send_eof(ctx->channel);
+                        ssh_channel_close(ctx->channel);
+                        ssh_message_free(message);
+                        return 1;
+                    }
+                } else {
+                    ssh_message_channel_request_reply_success(message);
+                }
                 if (subtype == SSH_CHANNEL_REQUEST_SHELL) {
                     shell_ready = true;
                 }

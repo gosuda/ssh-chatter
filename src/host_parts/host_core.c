@@ -554,10 +554,7 @@ typedef struct {
 #define SSH_CHATTER_ERROR_BACKOFF_STABLE_NS 10000000000LL
 #define SSH_CHATTER_SUSPICIOUS_EVENT_WINDOW_NS 300000000000LL
 #define SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD 2U
-#define SSH_CHATTER_CLAMAV_SCAN_INTERVAL_SECONDS (5 * 60 * 60)
-#define SSH_CHATTER_CLAMAV_SLEEP_CHUNK_SECONDS 30U
 #define SSH_CHATTER_BBS_WATCHDOG_SLEEP_SECONDS 5U
-#define SSH_CHATTER_CLAMAV_OUTPUT_LIMIT 512U
 #define SSH_CHATTER_BBS_REVIEW_INTERVAL_SECONDS 120U
 #define ELIZA_MEMORY_MAGIC 0x454C5A41U
 #define ELIZA_MEMORY_VERSION 1U
@@ -599,25 +596,6 @@ static const char *const kAlphaWaystationNames[] = {
     "Refuel Vesper",
     "Outpost Helion",
 };
-
-#define TELNET_IAC 255
-#define TELNET_CMD_SE 240
-#define TELNET_CMD_NOP 241
-#define TELNET_CMD_DM 242
-#define TELNET_CMD_BREAK 243
-#define TELNET_CMD_WILL 251
-#define TELNET_CMD_WONT 252
-#define TELNET_CMD_DO 253
-#define TELNET_CMD_DONT 254
-#define TELNET_CMD_SB 250
-#define TELNET_OPT_BINARY 0
-#define TELNET_OPT_ECHO 1
-#define TELNET_OPT_SUPPRESS_GO_AHEAD 3
-#define TELNET_OPT_STATUS 5
-#define TELNET_OPT_TERMINAL_TYPE 24
-#define TELNET_OPT_NAWS 31
-#define TELNET_OPT_TERMINAL_SPEED 32
-#define TELNET_OPT_LINEMODE 34
 
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
@@ -2153,6 +2131,36 @@ static const session_command_alias_t kSessionCommandAliases[] = {
             },
     },
     {
+        .canonical = "/filestore",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "/filestore",
+                [SESSION_UI_LANGUAGE_JP] = "/filestore",
+                [SESSION_UI_LANGUAGE_ZH] = "/filestore",
+                [SESSION_UI_LANGUAGE_RU] = "/filestore",
+            },
+    },
+    {
+        .canonical = "/filestore-upload",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "/filestore-upload",
+                [SESSION_UI_LANGUAGE_JP] = "/filestore-upload",
+                [SESSION_UI_LANGUAGE_ZH] = "/filestore-upload",
+                [SESSION_UI_LANGUAGE_RU] = "/filestore-upload",
+            },
+    },
+    {
+        .canonical = "/filestore-download",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "/filestore-download",
+                [SESSION_UI_LANGUAGE_JP] = "/filestore-download",
+                [SESSION_UI_LANGUAGE_ZH] = "/filestore-download",
+                [SESSION_UI_LANGUAGE_RU] = "/filestore-download",
+            },
+    },
+    {
         .canonical = "/mail",
         .localized =
             {
@@ -2914,6 +2922,48 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 [SESSION_UI_LANGUAGE_JP] = "ファイル <url> [キャプション]",
                 [SESSION_UI_LANGUAGE_ZH] = "文件 <url> [标题]",
                 [SESSION_UI_LANGUAGE_RU] = "файлы <url> [подпись]",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "filestore",
+        .description =
+            {
+                "List managed storage files.",
+                "저장소 파일을 나열합니다.",
+                "ストレージのファイル一覧を表示します。",
+                "列出存储区中的文件。",
+                "Показать список файлов в хранилище.",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "filestore-upload",
+        .description =
+            {
+                "Start a TELNET ZMODEM upload into /etc/ssh-chatter/user-files.",
+                "TELNET ZMODEM 업로드를 시작합니다.",
+                "TELNET ZMODEM アップロードを開始します。",
+                "启动 TELNET ZMODEM 上传。",
+                "Запустить загрузку через ZMODEM для TELNET.",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "filestore-download <name>",
+        .description =
+            {
+                "Start a TELNET ZMODEM download of the named file.",
+                "지정한 파일을 TELNET ZMODEM으로 내려받습니다.",
+                "指定したファイルを TELNET ZMODEM でダウンロードします。",
+                "以 TELNET ZMODEM 下载指定文件。",
+                "Загрузить указанный файл через ZMODEM (TELNET).",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -4131,7 +4181,6 @@ static bool session_bbs_matches_terminator(const char *line)
 static const char *
 session_command_alias_preferred_by_canonical(const session_ctx_t *ctx,
                                              const char *canonical);
-static void session_send_system_line(session_ctx_t *ctx, const char *message);
 
 static const session_bbs_subcommand_alias_t *
 session_bbs_subcommand_lookup(const char *canonical)
@@ -4508,7 +4557,6 @@ static int session_utf8_display_width(const char *text)
     return width;
 }
 
-static void session_send_system_line(session_ctx_t *ctx, const char *message);
 
 static void session_format_template(const char *format, const char *const *args,
                                     size_t arg_count, char *buffer,

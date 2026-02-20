@@ -78,6 +78,7 @@
 #define SSH_CHATTER_JOIN_BAR_MAX 17
 #define SSH_CHATTER_LANG_NAME_LEN 64
 #define SSH_CHATTER_STATUS_LEN 128
+#define SSH_CHATTER_FILE_STORAGE_ROOT "/etc/ssh-chatter/user-files"
 #define SSH_CHATTER_PROVIDER_LABEL_LEN 64
 #define SSH_CHATTER_CLIENT_BANNER_LEN 128
 #define SSH_CHATTER_TERMINAL_TYPE_LEN 64
@@ -961,15 +962,7 @@ typedef struct host {
     _Atomic bool security_filter_enabled;
     _Atomic bool security_filter_failure_logged;
     _Atomic bool security_ai_enabled;
-    _Atomic bool security_clamav_enabled;
-    _Atomic bool security_clamav_failure_logged;
     _Atomic bool geo_language_enabled;
-    char security_clamav_command[PATH_MAX];
-    pthread_t security_clamav_thread;
-    bool security_clamav_thread_initialized;
-    _Atomic bool security_clamav_thread_running;
-    _Atomic bool security_clamav_thread_stop;
-    struct timespec security_clamav_last_run;
     host_moderation_state_t moderation;
     host_eliza_worker_state_t eliza_worker;
     pthread_t bbs_watchdog_thread;
@@ -993,6 +986,8 @@ typedef struct host {
     struct morse_client *morse_client;
     security_layer_t security_layer;
     bool security_layer_initialized;
+    bool file_storage_ready;
+    char file_storage_root[PATH_MAX];
     _Atomic bool eliza_enabled;
     _Atomic bool eliza_announced;
     struct timespec eliza_last_action;

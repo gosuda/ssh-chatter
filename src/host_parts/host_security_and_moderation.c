@@ -45,20 +45,10 @@ static bool host_security_moderation_available(host_t *host)
         return false;
     }
 
-    bool clamav_active = atomic_load(&host->security_clamav_enabled);
     bool ai_active = atomic_load(&host->security_ai_enabled);
 
-    if (!clamav_active && !ai_active) {
+    if (!ai_active) {
         atomic_store(&host->security_filter_enabled, false);
-        return false;
-    }
-
-    if (clamav_active) {
-        // ClamAV scans now run asynchronously in the scheduled backend thread.
-        clamav_active = false;
-    }
-
-    if (!atomic_load(&host->security_ai_enabled)) {
         return false;
     }
 
@@ -1096,14 +1086,9 @@ static bool host_moderation_queue_chat(session_ctx_t *ctx, const char *message,
         return false;
     }
 
-    bool clamav_active = atomic_load(&host->security_clamav_enabled);
     bool ai_active = atomic_load(&host->security_ai_enabled);
-    if (!clamav_active && !ai_active) {
-        atomic_store(&host->security_filter_enabled, false);
-        return false;
-    }
-
     if (!ai_active) {
+        atomic_store(&host->security_filter_enabled, false);
         return false;
     }
 

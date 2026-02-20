@@ -69,10 +69,18 @@ confirm the build still succeeds before pushing the result.
 
 - `scripts/safe_permission.sh` tightens the ownership and mode on runtime data files (BBS state, vote state, cooldown snapshots, and general chatter state). Run it after deployment to confine the data directory to `ssh-chatter` and to ensure each file is set to `0600`. Override the targets by passing explicit paths or by exporting `STATE_ROOT` or the corresponding `CHATTER_*_FILE` environment variables before execution.
 - A background BBS watchdog periodically feeds posts and comments through the AI moderation pipeline (Gemini primary with Ollama fallback). Flagged posts are removed automatically and a notice is broadcast to the room.
-- Chat messages, ASCII art, and BBS posts/comments flow through a layered security filter. ClamAV scans the payload first (defaulting to `clamscan --no-summary --stdout -`, overridable with `CHATTER_CLAMAV_COMMAND` or disabled with `CHATTER_CLAMAV=off`). AI-based moderation is now opt-in—enable it with `CHATTER_SECURITY_AI=on` to query Gemini (`GEMINI_API_KEY`) with an automatic Ollama fallback (`http://127.0.0.1:11434` by default). Disable the entire feature with `CHATTER_SECURITY_FILTER=off`. If every provider fails, the filter automatically disables itself to avoid blocking conversations while misconfigured.
+- Chat messages, ASCII art, and BBS posts/comments flow through an AI moderation pipeline. Enable it with `CHATTER_SECURITY_AI=on` (set `GEMINI_API_KEY` for Gemini; the daemon automatically falls back to the local Ollama endpoint at `http://127.0.0.1:11434`). Disable everything with `CHATTER_SECURITY_FILTER=off`. If every provider fails, the filter automatically disables itself to keep conversations flowing instead of silently dropping content.
 - SSH transport is pinned to modern key exchanges, ciphers, and MACs, and every bridge payload is wrapped in a triple AES-256-GCM onion so relays only see ciphertext.
 - Suspicious submissions that trip the layered filter are now tracked per-IP; repeated hits trigger an automatic kick and ban when enabled, while the rapid reconnect detector allows longer recovery windows so unstable network sessions can rejoin without being penalized. Automatic ban entries are **off by default**; set `CHATTER_AUTO_BAN=on` (or `true`/`1`) to enable them, or leave the variable unset to keep warnings and throttling without writing automatic ban entries.
 - Operators can mark trusted ingress points (VPN exits, reverse proxies, localhost) with `CHATTER_PROTECTED_IPS` (comma-separated, defaults to `127.0.0.1,::1,192.168.0.1`) so emergency bans never lock the daemon out of its own control plane.
+
+## File storage and transfers
+
+- All user-managed files now live under `/etc/ssh-chatter/user-files` (override with `CHATTER_FILE_STORAGE_ROOT`). The daemon creates the directory if needed and keeps uploads confined to it.
+- SSH clients use standard `scp` without any custom wrapper. Treat `/name.ext` as the root of the storage tree: `scp my.zip user@host:/demos/my.zip` writes to `/etc/ssh-chatter/user-files/demos/my.zip` while `scp user@host:/readme.txt ./` downloads `/etc/ssh-chatter/user-files/readme.txt`.
+- TELNET clients use the new `/filestore` commands. `/filestore` lists available files, `/filestore-upload` starts an `rz` session, and `/filestore-download <name>` starts an `sz` session. Install `lrzsz` (or any package that provides `rz`/`sz`) on the server so the ZMODEM backend can spawn those helpers.
+- `/filestore-upload` accepts an optional destination (for example `/filestore-upload /kitten/meow.png`). SSH-Chatter creates the `/kitten` directory automatically and places the uploaded file there, mirroring how SCP uses paths like `user@host:/kitten/meow.png`.
+- Both transports can mix and match: SSH for unattended scripted transfers, TELNET for nostalgic BBS clients with built-in ZMODEM tooling.
 
 ## Morse Relay
 SSH-Chatter supports amateur ham radio relay.
@@ -273,8 +281,7 @@ Supported environment variables include:
 - `CHATTER_GEMINI_COOLDOWN_FILE` – Path to the Gemini cooldown state file (default `gemini_cooldown.dat`).
 - `CHATTER_SECURITY_FILTER` – Set to `off`/`false`/`0` to disable the layered security filter (enabled by default).
 - `CHATTER_SECURITY_AI` – Set to `on`/`true`/`1` to enable AI moderation (disabled by default).
-- `CHATTER_CLAMAV` – Set to `off`/`false`/`0` to disable ClamAV scanning (enabled by default when `clamscan` is available).
-- `CHATTER_CLAMAV_COMMAND` – Override the command used to feed payloads into ClamAV (default `clamscan --no-summary --stdout -`).
+- `CHATTER_FILE_STORAGE_ROOT` – Override the managed file storage path (default `/etc/ssh-chatter/user-files`).
 
 **Camouflage Code Snippets:**
 For the Tetris camouflage feature, you need to manually create code snippet files in `/var/lib/ssh-chatter/`.

@@ -990,6 +990,9 @@ typedef struct host {
     struct timespec eliza_last_action;
     char eliza_state_file_path[PATH_MAX];
     char eliza_memory_file_path[PATH_MAX];
+    _Atomic bool ai_chat_enabled;
+    char ai_chat_model[64];
+    struct timespec ai_chat_last_reply;
     char rss_state_file_path[PATH_MAX];
     eliza_memory_entry_t eliza_memory[SSH_CHATTER_ELIZA_MEMORY_MAX];
     size_t eliza_memory_count;

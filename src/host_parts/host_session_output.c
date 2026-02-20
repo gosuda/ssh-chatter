@@ -6224,17 +6224,17 @@ void session_channel_write(session_ctx_t *ctx, const void *data,
         }
     }
 
-    const bool use_cp437_output =
-        session_output_should_use_cp437(ctx, ctx->output_kind);
+    const bool use_retro_output =
+        session_output_should_use_retro_encoding(ctx, ctx->output_kind);
 
     bool prefer_utf8_for_hybrid = false;
-    if (ctx->hybrid_output_mode && use_cp437_output &&
+    if (ctx->hybrid_output_mode && use_retro_output &&
         ctx->output_kind != SESSION_OUTPUT_KIND_SYSTEM) {
         prefer_utf8_for_hybrid =
             session_output_requires_utf8((const char *)data, length);
     }
 
-    if (use_cp437_output && !prefer_utf8_for_hybrid) {
+    if (use_retro_output && !prefer_utf8_for_hybrid) {
         /* Use the generic codepage conversion with the active codepage */
         success = session_channel_write_codepage(ctx, (const char *)data,
                                                  length, ctx->active_codepage);

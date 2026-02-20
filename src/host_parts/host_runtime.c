@@ -73,6 +73,15 @@ static void session_timespec_add_seconds(struct timespec *ts, time_t seconds)
     }
 }
 
+static bool host_ai_chat_enable(host_t *host);
+static bool host_ai_chat_disable(host_t *host);
+static void host_ai_chat_consider_reply(host_t *host,
+                                        const chat_history_entry_t *entry);
+static void host_ai_chat_snapshot_state(host_t *host, char *model,
+                                        size_t model_len,
+                                        struct timespec *last_reply);
+static const char *host_ai_chat_default_model(void);
+
 bool session_bbs_workspace_acquire(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {
@@ -1059,6 +1068,124 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
     }
 
     session_send_system_line(ctx, kUsage);
+}
+
+static void session_handle_ai_chat(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(ctx,
+                                 "Only operators may control ai-eliza.");
+        return;
+    }
+
+    char token[32];
+    if (arguments != nullptr) {
+        snprintf(token, sizeof(token), "%s", arguments);
+        trim_whitespace_inplace(token);
+    } else {
+        token[0] = '\0';
+    }
+
+    if (token[0] == '\0') {
+        bool enabled = atomic_load(&ctx->owner->ai_chat_enabled);
+        char status[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(status, sizeof(status), "ai-eliza is currently %s.",
+                 enabled ? "enabled" : "disabled");
+        session_send_system_line(ctx, status);
+        session_send_system_line(ctx, "Usage: /ai-chat <on|off>");
+        session_send_system_line(
+            ctx, "When enabled, mention \"ai-eliza\" in chat to start a "
+                 "conversation.");
+        return;
+    }
+
+    bool requested_enable = false;
+    bool recognized = false;
+    if (session_argument_is_disable(token)) {
+        recognized = true;
+        requested_enable = false;
+    } else {
+        recognized = parse_bool_token(token, &requested_enable);
+    }
+
+    if (!recognized) {
+        session_send_system_line(ctx, "Usage: /ai-chat <on|off>");
+        return;
+    }
+
+    if (requested_enable) {
+        if (host_ai_chat_enable(ctx->owner)) {
+            session_send_system_line(ctx,
+                                     "ai-eliza is now active for casual chat.");
+        } else {
+            session_send_system_line(ctx, "ai-eliza is already chatting.");
+        }
+        return;
+    }
+
+    if (host_ai_chat_disable(ctx->owner)) {
+        session_send_system_line(ctx, "ai-eliza has been muted.");
+    } else {
+        session_send_system_line(ctx, "ai-eliza is already inactive.");
+    }
+}
+
+static void session_handle_ollama_model(session_ctx_t *ctx,
+                                        const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(
+            ctx, "Only operators may configure the Ollama model.");
+        return;
+    }
+
+    char working[sizeof(ctx->owner->ai_chat_model)];
+    if (arguments != nullptr) {
+        snprintf(working, sizeof(working), "%s", arguments);
+        trim_whitespace_inplace(working);
+    } else {
+        working[0] = '\0';
+    }
+
+    host_t *host = ctx->owner;
+    if (working[0] == '\0') {
+        char model[sizeof(host->ai_chat_model)];
+        host_ai_chat_snapshot_state(host, model, sizeof(model), nullptr);
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message), "Current Ollama model: %s%s.",
+                 model,
+                 (strcasecmp(model, host_ai_chat_default_model()) == 0)
+                     ? " (default)"
+                     : "");
+        session_send_system_line(ctx, message);
+        session_send_system_line(ctx, "Usage: /ollama-model <model_name>");
+        return;
+    }
+
+    size_t length = strlen(working);
+    if (length >= sizeof(host->ai_chat_model)) {
+        session_send_system_line(ctx, "Model name is too long.");
+        return;
+    }
+
+    ttak_mutex_lock(&host->lock);
+    snprintf(host->ai_chat_model, sizeof(host->ai_chat_model), "%s", working);
+    ttak_mutex_unlock(&host->lock);
+
+    char message[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(message, sizeof(message),
+             "Ollama model updated to '%s'. ai-eliza will use it on the next "
+             "reply.",
+             working);
+    session_send_system_line(ctx, message);
 }
 
 static bool find_reserved_names(session_ctx_t *ctx, const char *nick)
@@ -2181,6 +2308,14 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     } else if (session_parse_command_any(ctx, "/eliza", effective_line,
                                          &args)) {
         session_handle_eliza(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/ai-chat", effective_line,
+                                         &args)) {
+        session_handle_ai_chat(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/ollama-model", effective_line,
+                                         &args)) {
+        session_handle_ollama_model(ctx, args);
         return;
     } else if (session_parse_command_any(ctx, "/breaking", effective_line,
                                          &args)) {
@@ -5342,6 +5477,15 @@ void host_init(host_t *host, auth_profile_t *auth)
     atomic_store(&host->eliza_announced, false);
     host->eliza_last_action.tv_sec = 0;
     host->eliza_last_action.tv_nsec = 0L;
+    atomic_store(&host->ai_chat_enabled, false);
+    host->ai_chat_last_reply.tv_sec = 0;
+    host->ai_chat_last_reply.tv_nsec = 0L;
+    host->ai_chat_model[0] = '\0';
+    const char *env_ollama_model = getenv("CHATTER_OLLAMA_MODEL");
+    if (env_ollama_model != nullptr && env_ollama_model[0] != '\0') {
+        snprintf(host->ai_chat_model, sizeof(host->ai_chat_model), "%s",
+                 env_ollama_model);
+    }
 
     (void)host_try_load_motd_from_path(host, "/etc/ssh-chatter/motd");
 
@@ -5764,6 +5908,182 @@ void host_append_sync_log(host_t *host, const char *source, const char *message)
     fclose(fp);
 }
 
+static const char *host_ai_chat_default_model(void)
+{
+    return "gemma2:2b";
+}
+
+static bool host_ai_chat_message_mentions_bot(const char *text)
+{
+    if (text == nullptr || text[0] == '\0') {
+        return false;
+    }
+    return string_contains_case_insensitive(text, "ai-eliza");
+}
+
+static bool host_ai_chat_should_respond(const chat_history_entry_t *entry)
+{
+    if (entry == nullptr || !entry->is_user_message) {
+        return false;
+    }
+    if (entry->message[0] == '\0' || entry->message[0] == '/') {
+        return false;
+    }
+    if (strncasecmp(entry->username, "ai-eliza",
+                    SSH_CHATTER_USERNAME_LEN) == 0) {
+        return false;
+    }
+    return host_ai_chat_message_mentions_bot(entry->message);
+}
+
+static void host_ai_chat_snapshot_state(host_t *host, char *model,
+                                        size_t model_len,
+                                        struct timespec *last_reply)
+{
+    if (host == nullptr) {
+        if (model != nullptr && model_len > 0U) {
+            snprintf(model, model_len, "%s", host_ai_chat_default_model());
+        }
+        if (last_reply != nullptr) {
+            last_reply->tv_sec = 0;
+            last_reply->tv_nsec = 0L;
+        }
+        return;
+    }
+
+    ttak_mutex_lock(&host->lock);
+    if (model != nullptr && model_len > 0U) {
+        const char *source = host->ai_chat_model[0] != '\0'
+                                 ? host->ai_chat_model
+                                 : host_ai_chat_default_model();
+        snprintf(model, model_len, "%s", source);
+    }
+    if (last_reply != nullptr) {
+        *last_reply = host->ai_chat_last_reply;
+    }
+    ttak_mutex_unlock(&host->lock);
+}
+
+static void host_ai_chat_update_last_reply(host_t *host,
+                                           const struct timespec *now)
+{
+    if (host == nullptr || now == nullptr) {
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    host->ai_chat_last_reply = *now;
+    ttak_mutex_unlock(&host->lock);
+}
+
+static void host_ai_chat_consider_reply(host_t *host,
+                                        const chat_history_entry_t *entry)
+{
+    if (host == nullptr || entry == nullptr) {
+        return;
+    }
+    if (!atomic_load(&host->ai_chat_enabled)) {
+        return;
+    }
+    if (!host_ai_chat_should_respond(entry)) {
+        return;
+    }
+
+    struct timespec now = session_now_monotonic();
+    struct timespec last_reply = {0, 0};
+    char model[sizeof(host->ai_chat_model)];
+    host_ai_chat_snapshot_state(host, model, sizeof(model), &last_reply);
+
+    double cooldown = session_timespec_elapsed_seconds(&now, &last_reply);
+    if (cooldown < 3.0) {
+        return;
+    }
+
+    char prompt[SSH_CHATTER_MESSAGE_LIMIT * 2U];
+    snprintf(prompt, sizeof(prompt),
+             "User %s says: %s\n"
+             "Respond as ai-eliza, a friendly retro terminal chatter focused "
+             "on light conversation. Keep replies under three sentences and "
+             "avoid moderation or BBS topics.",
+             entry->username, entry->message);
+
+    char reply[SSH_CHATTER_MESSAGE_LIMIT];
+    const char *default_model = host_ai_chat_default_model();
+    bool success =
+        translator_ollama_smalltalk(prompt, model, reply, sizeof(reply));
+    if (!success) {
+        const char *error = translator_last_error();
+        bool attempted_custom =
+            strcasecmp(model, default_model) != 0;
+        if (attempted_custom) {
+            printf("[ai-chat] model '%s' failed (%s); falling back to '%s'\n",
+                   model,
+                   (error != nullptr && error[0] != '\0') ? error
+                                                          : "unknown error",
+                   default_model);
+            ttak_mutex_lock(&host->lock);
+            snprintf(host->ai_chat_model, sizeof(host->ai_chat_model), "%s",
+                     default_model);
+            ttak_mutex_unlock(&host->lock);
+            success = translator_ollama_smalltalk(prompt, default_model, reply,
+                                                  sizeof(reply));
+        } else {
+            if (error != nullptr && error[0] != '\0') {
+                printf("[ai-chat] small-talk request failed: %s\n", error);
+            } else {
+                printf("[ai-chat] small-talk request failed.\n");
+            }
+            return;
+        }
+    }
+
+    if (!success || reply[0] == '\0') {
+        return;
+    }
+
+    host_post_client_message(host, "ai-eliza", reply, nullptr, nullptr, false);
+    host_ai_chat_update_last_reply(host, &now);
+}
+
+static bool host_ai_chat_enable(host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+    bool was_enabled = atomic_exchange(&host->ai_chat_enabled, true);
+    if (was_enabled) {
+        return false;
+    }
+
+    struct timespec reset_ts = {.tv_sec = 0, .tv_nsec = 0};
+    host_ai_chat_update_last_reply(host, &reset_ts);
+
+    host_history_record_system(
+        host, "* [ai-eliza] is now available for small talk.", nullptr);
+    host_post_client_message(
+        host, "ai-eliza",
+        "Hi! Mention me with \"ai-eliza\" if you want to chat.",
+        nullptr, nullptr, false);
+    return true;
+}
+
+static bool host_ai_chat_disable(host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+    bool was_enabled = atomic_exchange(&host->ai_chat_enabled, false);
+    if (!was_enabled) {
+        return false;
+    }
+
+    host_history_record_system(host,
+                               "* [ai-eliza] has signed off for now.", nullptr);
+    host_post_client_message(host, "ai-eliza",
+                             "I'm heading out. Ping me later!", nullptr, nullptr,
+                             false);
+    return true;
+}
+
 bool host_post_client_message(host_t *host, const char *username,
                               const char *message, const char *color_name,
                               const char *highlight_name, bool is_bold)
@@ -5787,6 +6107,9 @@ bool host_post_client_message(host_t *host, const char *username,
     chat_room_broadcast_entry(&host->room, &stored, nullptr);
     host_notify_external_clients(host, &stored);
     success = true;
+    if (success) {
+        host_ai_chat_consider_reply(host, &stored);
+    }
 
 exit_host_post_client_message:
     if (memory_scope != nullptr) {

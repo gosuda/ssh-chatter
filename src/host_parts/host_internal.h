@@ -102,8 +102,8 @@ session_output_restore_kind(session_ctx_t *ctx,
     ctx->output_kind = previous_kind;
 }
 
-static inline bool session_output_should_use_cp437(const session_ctx_t *ctx,
-                                                   session_output_kind_t kind)
+static inline bool session_output_should_use_retro_encoding(
+    const session_ctx_t *ctx, session_output_kind_t kind)
 {
     if (ctx == nullptr || !ctx->prefer_cp437_output) {
         return false;

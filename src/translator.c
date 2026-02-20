@@ -2918,6 +2918,35 @@ bool translator_eliza_respond(const char *prompt, char *reply, size_t reply_len)
     return false;
 }
 
+bool translator_ollama_smalltalk(const char *prompt, const char *model_name,
+                                 char *reply, size_t reply_len)
+{
+    if (reply != nullptr && reply_len > 0U) {
+        reply[0] = '\0';
+    }
+
+    if (prompt == nullptr || reply == nullptr || reply_len == 0U) {
+        translator_set_error("Invalid eliza prompt.");
+        return false;
+    }
+
+    translator_global_init();
+    translator_set_error(nullptr);
+
+    translator_candidate_t candidate = {
+        .provider = TRANSLATOR_PROVIDER_OLLAMA,
+        .model = (model_name != nullptr && model_name[0] != '\0')
+                     ? model_name
+                     : "gemma2:2b",
+        .api_key = nullptr,
+        .api_key_name = nullptr,
+    };
+
+    bool retryable = false;
+    return translator_try_ollama_eliza(&candidate, prompt, reply, reply_len,
+                                       &retryable);
+}
+
 bool translator_moderate_text(const char *category, const char *content,
                               bool *blocked, char *reason, size_t reason_len)
 {

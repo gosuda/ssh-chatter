@@ -2447,6 +2447,26 @@ static const session_command_alias_t kSessionCommandAliases[] = {
             },
     },
     {
+        .canonical = "/ai-chat",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "/ai-채팅",
+                [SESSION_UI_LANGUAGE_JP] = "/aiチャット",
+                [SESSION_UI_LANGUAGE_ZH] = "/ai聊天",
+                [SESSION_UI_LANGUAGE_RU] = "/ai-чат",
+            },
+    },
+    {
+        .canonical = "/ollama-model",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "/ollama-모델",
+                [SESSION_UI_LANGUAGE_JP] = "/ollamaモデル",
+                [SESSION_UI_LANGUAGE_ZH] = "/ollama模型",
+                [SESSION_UI_LANGUAGE_RU] = "/ollama-модель",
+            },
+    },
+    {
         .canonical = "/getaddr",
         .localized =
             {

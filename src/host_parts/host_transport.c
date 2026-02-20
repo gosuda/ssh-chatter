@@ -6675,9 +6675,21 @@ static bool host_security_execute_clamav_backend(host_t *host, char *notice,
         return true;
     }
 
-    char output[SSH_CHATTER_CLAMAV_OUTPUT_LIMIT];
+    // ClamAV ships with its own allocator hooks; keep its buffers on the
+    // system heap instead of the libttak arenas to avoid lifetime conflicts.
+    char *output = (char *)malloc(SSH_CHATTER_CLAMAV_OUTPUT_LIMIT);
+    if (output == nullptr) {
+        fclose(pipe);
+        snprintf(notice, notice_length,
+                 "* [security] Scheduled ClamAV scan aborted (memory "
+                 "allocation failed).");
+        host_security_disable_clamav(
+            host, "system allocator unavailable for ClamAV output");
+        return true;
+    }
     output[0] = '\0';
     size_t output_length = 0U;
+    const size_t output_capacity = SSH_CHATTER_CLAMAV_OUTPUT_LIMIT;
 
     char buffer[256];
     while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
@@ -6687,8 +6699,8 @@ static bool host_security_execute_clamav_backend(host_t *host, char *notice,
         }
 
         size_t available = 0U;
-        if (output_length < sizeof(output) - 1U) {
-            available = (sizeof(output) - 1U) - output_length;
+        if (output_length < output_capacity - 1U) {
+            available = (output_capacity - 1U) - output_length;
         }
 
         if (available == 0U) {
@@ -6737,6 +6749,7 @@ static bool host_security_execute_clamav_backend(host_t *host, char *notice,
         }
         host_security_disable_clamav(
             host, "unable to retrieve scheduled ClamAV status");
+        free(output);
         return true;
     }
 
@@ -6745,11 +6758,13 @@ static bool host_security_execute_clamav_backend(host_t *host, char *notice,
                  "* [security] Scheduled ClamAV scan terminated unexpectedly.");
         host_security_disable_clamav(
             host, "scheduled ClamAV scan terminated unexpectedly");
+        free(output);
         return true;
     }
 
     int exit_code = WEXITSTATUS(status);
     if (exit_code == 0) {
+        free(output);
         return true;
     }
 
@@ -6767,6 +6782,7 @@ static bool host_security_execute_clamav_backend(host_t *host, char *notice,
                 "found).",
                 seconds);
         }
+        free(output);
         return true;
     }
 
@@ -6783,6 +6799,7 @@ static bool host_security_execute_clamav_backend(host_t *host, char *notice,
     }
     host_security_disable_clamav(host,
                                  "scheduled ClamAV scan returned an error");
+    free(output);
     return true;
 }
 
@@ -6805,14 +6822,23 @@ static void *host_security_clamav_backend(void *arg)
     while (!atomic_load(&host->security_clamav_thread_stop)) {
         if (atomic_load(&host->security_clamav_enabled) &&
             host->security_clamav_command[0] != '\0') {
-            char notice[SSH_CHATTER_MESSAGE_LIMIT];
-            if (host_security_execute_clamav_backend(host, notice,
-                                                     sizeof(notice)) &&
+            char *notice = (char *)malloc(SSH_CHATTER_MESSAGE_LIMIT);
+            if (notice == nullptr) {
+                printf("[security] scheduled ClamAV backend disabled: unable "
+                       "to allocate notice buffer\n");
+                host_security_disable_clamav(
+                    host, "system allocator unavailable for ClamAV notice");
+                break;
+            }
+            notice[0] = '\0';
+            if (host_security_execute_clamav_backend(
+                    host, notice, SSH_CHATTER_MESSAGE_LIMIT) &&
                 notice[0] != '\0') {
                 printf("%s\n", notice);
                 host_history_record_system(host, notice, nullptr);
                 chat_room_broadcast(&host->room, notice, nullptr);
             }
+            free(notice);
         }
 
         unsigned int remaining = SSH_CHATTER_CLAMAV_SCAN_INTERVAL_SECONDS;

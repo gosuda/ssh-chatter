@@ -428,6 +428,8 @@ static void *morse_client_thread(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
+
     atomic_store(&client->thread_running, true);
     while (!atomic_load(&client->thread_stop)) {
         if (!atomic_load(&client->connected)) {
@@ -446,6 +448,7 @@ static void *morse_client_thread(void *arg)
     }
 
     atomic_store(&client->thread_running, false);
+    sshc_epoch_thread_exit();
     return nullptr;
 }
 

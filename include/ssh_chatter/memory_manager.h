@@ -151,6 +151,15 @@ void sshc_epoch_thread_exit(void);
 void sshc_epoch_retire(void *ptr);
 
 /**
+ * @brief Retire a pointer with a caller-specified cleanup routine.
+ *
+ * Useful for complex allocations (such as session_ctx_t) that need to
+ * run custom teardown logic or interact with sshc_gc_free before the
+ * underlying memory is released.
+ */
+void sshc_epoch_retire_with(void *ptr, void (*cleanup)(void *));
+
+/**
  * @brief Attempt to reclaim memory from safe epochs.
  *
  * Advances the global epoch and frees pointers that were retired in

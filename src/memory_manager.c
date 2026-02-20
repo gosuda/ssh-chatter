@@ -557,6 +557,14 @@ void sshc_epoch_retire(void *ptr)
     ttak_epoch_retire(ptr, sshc_epoch_free_callback);
 }
 
+void sshc_epoch_retire_with(void *ptr, void (*cleanup)(void *))
+{
+    if (ptr == nullptr || cleanup == nullptr) {
+        return;
+    }
+    ttak_epoch_retire(ptr, cleanup);
+}
+
 void sshc_epoch_reclaim(void)
 {
     ttak_epoch_reclaim();

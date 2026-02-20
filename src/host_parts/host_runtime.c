@@ -4088,6 +4088,14 @@ static void session_cleanup(session_ctx_t *ctx)
     }
 }
 
+static void session_epoch_free(void *ptr)
+{
+    if (ptr == nullptr) {
+        return;
+    }
+    sshc_gc_free(ptr);
+}
+
 static void session_destroy(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {
@@ -4096,7 +4104,7 @@ static void session_destroy(session_ctx_t *ctx)
 
     session_cleanup(ctx);
 
-    sshc_gc_free(ctx);
+    sshc_epoch_retire_with(ctx, session_epoch_free);
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,

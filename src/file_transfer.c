@@ -1602,7 +1602,10 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             ssh_string h_str = msg->handle;
             uint64_t offset = msg->offset;
             const char *data = sftp_client_message_get_data(msg);
-            uint32_t len = msg->len;
+            size_t len = 0;
+            if (msg->data != NULL) {
+                len = ssh_string_len(msg->data);
+            }
             sftp_handle_data_t *hdata = sftp_handle(sftp, h_str);
             if (hdata == nullptr || hdata->type != SFTP_HANDLE_FILE) {
                 sftp_reply_status(msg, SSH_FX_INVALID_HANDLE, "Invalid handle.");
@@ -1719,6 +1722,11 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             } else {
                 sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
             }
+            break;
+        }
+        case SSH_FXP_SETSTAT:
+        case SSH_FXP_FSETSTAT: {
+            sftp_reply_status(msg, SSH_FX_OK, "Success");
             break;
         }
         default:

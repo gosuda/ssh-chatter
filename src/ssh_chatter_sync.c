@@ -416,11 +416,14 @@ static void *read_channel_thread(void *arg)
                 char *trim = line;
                 while (*trim == ' ' || *trim == '\t' || *trim == '\r')
                     trim++;
-                char *end = trim + strlen(trim) - 1;
-                while (end > trim &&
-                       (*end == ' ' || *end == '\t' || *end == '\r')) {
-                    *end = '\0';
-                    end--;
+                size_t trimmed_len = strlen(trim);
+                while (trimmed_len > 0) {
+                    char last = trim[trimmed_len - 1];
+                    if (last != ' ' && last != '\t' && last != '\r') {
+                        break;
+                    }
+                    trim[trimmed_len - 1] = '\0';
+                    --trimmed_len;
                 }
 
                 if (*trim) {

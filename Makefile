@@ -14,8 +14,6 @@ NPROC := $(shell nproc)
 SRC_DIR := src
 INCLUDE_DIR := include
 BUILD_DIR := build
-TTAK_DIR := lib/libttak
-TTAK_LIB := $(TTAK_DIR)/lib/libttak.a
 
 CFLAGS = -std=c2x -Ofast \
               -Werror \
@@ -58,7 +56,7 @@ CFLAGS = -std=c2x -Ofast \
 # LINKER FLAGS (LDFLAGS) - Extreme Security and Optimization
 # ==============================================================================
 COMMON_LDFLAGS = \
-    -lpthread -ldl -lcurl -lm -lcrypto -lc \
+    -lpthread -ldl -lcurl -lm -lcrypto -lttak -lc \
     -flto=auto -fuse-linker-plugin \
     -fwhole-program \
     -Wl,-Ofast \

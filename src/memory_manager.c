@@ -80,12 +80,12 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
     /* EpochGC: generational collector. */
     ttak_epoch_gc_init(&ctx->epoch_gc);
 
-    /* Ultra-Extreme Aggressive Reclamation: 100 microseconds to 1 millisecond. 
+    /* Ultra-Extreme Aggressive Reclamation: 100 microseconds. 
      * This pushes the CPU to reclaim memory almost immediately after release. */
     ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
     ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree, 
                                          TT_MICRO_SECOND(100), 
-                                         TT_MILLI_SECOND(1));
+                                         TT_MICRO_SECOND(100));
     
     /* Zero-Tolerance Pressure: Even 1 byte of garbage triggers a signal. */
     ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 1);
@@ -94,7 +94,7 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
     ttak_detachable_context_init(
         &ctx->detachable,
         TTAK_ARENA_HAS_EPOCH_RECLAMATION | TTAK_ARENA_HAS_DEFAULT_EPOCH_GC |
-            TTAK_ARENA_USE_LOCKED_ACCESS);
+        TTAK_ARENA_USE_ASYNC_OPT | TTAK_ARENA_IS_URGENT_TASK);
 }
 
 static sshc_memory_context_t *sshc_memory_context_global(void)
@@ -110,9 +110,9 @@ void sshc_memory_runtime_init(void)
         GC_set_free_space_divisor(10); 
         GC_init(); 
 #endif
-        // Global TTAK tuning: 100us min, 500us max for constant background rotation
-        ttak_mem_set_trace(0);
-        ttak_mem_configure_gc(TT_MICRO_SECOND(100), TT_MICRO_SECOND(500), 1);
+        // Global TTAK tuning: 100us
+        ttak_mem_set_trace(1);
+        ttak_mem_configure_gc(TT_MICRO_SECOND(100), TT_MICRO_SECOND(100), 1);
 
         sshc_memory_context_init(&sshc_global_context, "global");
         
@@ -214,12 +214,12 @@ sshc_memory_context_t *sshc_memory_context_create(const char *label)
     }
     sshc_memory_context_init(ctx, label);
     
-    /* Session Context Ultra-Extreme Tuning: 100us to 1ms. 
+    /* Session Context Ultra-Extreme Tuning: 100us. 
      * Forced near-instant background cleanup for every session. */
     ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
     ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree, 
                                          TT_MICRO_SECOND(100), 
-                                         TT_MILLI_SECOND(1));
+                                         TT_MICRO_SECOND(100));
     ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 1);
 
     /* Vertical Hierarchy: Register this session owner as a child of the global owner.

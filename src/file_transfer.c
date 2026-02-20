@@ -4,6 +4,11 @@
 #include <sys/uio.h>
 #include <fcntl.h>
 #include <poll.h>
+#ifndef WITH_SERVER
+#define WITH_SERVER 1
+#endif
+#include <libssh/sftp.h>
+#include <libgen.h>
 
 #define FILE_STORAGE_LIST_LIMIT 64
 #define FILE_TRANSFER_BUFFER 65536
@@ -14,6 +19,20 @@ typedef enum {
     SCP_MODE_UPLOAD,
     SCP_MODE_DOWNLOAD,
 } scp_mode_t;
+
+typedef enum {
+    SFTP_HANDLE_FILE,
+    SFTP_HANDLE_DIR
+} sftp_handle_type_t;
+
+typedef struct {
+    sftp_handle_type_t type;
+    union {
+        int fd;
+        DIR *dir;
+    } u;
+    char path[PATH_MAX];
+} sftp_handle_data_t;
 
 static bool file_storage_ensure_directory(const char *path);
 static bool file_storage_ensure_parent(const char *path);
@@ -47,6 +66,40 @@ static ssize_t telnet_binary_read(session_ctx_t *ctx, unsigned char *buffer,
 static bool telnet_spawn_zmodem(session_ctx_t *ctx, char *const argv[],
                                 const char *working_dir,
                                 const char *label);
+
+static sftp_attributes sftp_attr_from_stat(const char *name, struct stat *st)
+{
+    // libssh 0.11 doesn't seem to have sftp_attributes_new in public headers,
+    // so we allocate the structure ourselves.
+    sftp_attributes attr = calloc(1, sizeof(struct sftp_attributes_struct));
+    if (attr == nullptr) {
+        return nullptr;
+    }
+
+    if (name != nullptr) {
+        attr->name = strdup(name);
+    }
+    attr->flags = SSH_FILEXFER_ATTR_SIZE | SSH_FILEXFER_ATTR_UIDGID |
+                  SSH_FILEXFER_ATTR_PERMISSIONS | SSH_FILEXFER_ATTR_ACMODTIME;
+    attr->size = (uint64_t)st->st_size;
+    attr->uid = (uint32_t)st->st_uid;
+    attr->gid = (uint32_t)st->st_gid;
+    attr->permissions = (uint32_t)st->st_mode;
+    attr->atime = (uint32_t)st->st_atime;
+    attr->mtime = (uint32_t)st->st_mtime;
+
+    if (S_ISREG(st->st_mode)) {
+        attr->type = SSH_FILEXFER_TYPE_REGULAR;
+    } else if (S_ISDIR(st->st_mode)) {
+        attr->type = SSH_FILEXFER_TYPE_DIRECTORY;
+    } else if (S_ISLNK(st->st_mode)) {
+        attr->type = SSH_FILEXFER_TYPE_SYMLINK;
+    } else {
+        attr->type = SSH_FILEXFER_TYPE_SPECIAL;
+    }
+
+    return attr;
+}
 
 bool host_file_storage_init(host_t *host)
 {
@@ -1278,59 +1331,346 @@ static bool telnet_spawn_zmodem(session_ctx_t *ctx, char *const argv[],
 
 int file_transfer_handle_sftp(session_ctx_t *ctx)
 {
-    if (ctx == nullptr || ctx->channel == nullptr) {
+    sftp_session sftp;
+    sftp_client_message msg;
+
+    if (ctx == nullptr || ctx->owner == nullptr || ctx->session == nullptr ||
+        ctx->channel == nullptr) {
         return -1;
     }
 
-    unsigned char buffer[4096];
-    uint32_t pkt_len_raw;
-    if (ssh_channel_read(ctx->channel, &pkt_len_raw, 4, 0) != 4) {
-        return -1;
-    }
-    uint32_t pkt_len = ntohl(pkt_len_raw);
-    if (pkt_len < 1 || pkt_len > sizeof(buffer)) {
-        return -1;
-    }
-    if (ssh_channel_read(ctx->channel, buffer, pkt_len, 0) != (int)pkt_len) {
+    sftp = sftp_server_new(ctx->session, ctx->channel);
+    if (sftp == nullptr) {
         return -1;
     }
 
-    uint8_t type = buffer[0];
-    if (type != 1) { // SSH_FXP_INIT
+    if (sftp_server_init(sftp) != SSH_OK) {
+        sftp_server_free(sftp);
         return -1;
     }
 
-    uint32_t resp_pkt_len = htonl(5);
-    uint8_t resp_type = 2; // SSH_FXP_VERSION
-    uint32_t resp_version = htonl(3);
-    ssh_channel_write(ctx->channel, &resp_pkt_len, 4);
-    ssh_channel_write(ctx->channel, &resp_type, 1);
-    ssh_channel_write(ctx->channel, &resp_version, 4);
+    while (true) {
+        msg = sftp_get_client_message(sftp);
+        if (msg == nullptr) {
+            break;
+        }
 
-    while (ssh_channel_read(ctx->channel, &pkt_len_raw, 4, 0) == 4) {
-        pkt_len = ntohl(pkt_len_raw);
-        if (pkt_len < 5 || pkt_len > sizeof(buffer)) break;
-        if (ssh_channel_read(ctx->channel, buffer, pkt_len, 0) != (int)pkt_len) break;
+        uint8_t type = sftp_client_message_get_type(msg);
+        switch (type) {
+        case SSH_FXP_REALPATH: {
+            const char *path = sftp_client_message_get_filename(msg);
+            if (path == nullptr || path[0] == '\0' || strcmp(path, ".") == 0 ||
+                strcmp(path, "./") == 0) {
+                sftp_reply_name(msg, "/", nullptr);
+            } else {
+                sftp_reply_name(msg, path, nullptr);
+            }
+            break;
+        }
+        case SSH_FXP_STAT:
+        case SSH_FXP_LSTAT: {
+            const char *path = sftp_client_message_get_filename(msg);
+            char resolved[PATH_MAX];
+            if (!file_transfer_resolve_path(ctx->owner, path, resolved,
+                                            sizeof(resolved), NULL, 0U)) {
+                sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
+                                  "Permission denied.");
+                break;
+            }
+            struct stat st;
+            if ((type == SSH_FXP_STAT ? stat(resolved, &st)
+                                      : lstat(resolved, &st)) != 0) {
+                sftp_reply_status(msg, SSH_FX_NO_SUCH_FILE, strerror(errno));
+                break;
+            }
+            sftp_attributes attr = sftp_attr_from_stat(basename(resolved), &st);
+            if (attr == nullptr) {
+                sftp_reply_status(msg, SSH_FX_FAILURE, "Memory error.");
+                break;
+            }
+            sftp_reply_attr(msg, attr);
+            sftp_attributes_free(attr);
+            break;
+        }
+        case SSH_FXP_OPENDIR: {
+            const char *path = sftp_client_message_get_filename(msg);
+            char resolved[PATH_MAX];
+            if (!file_transfer_resolve_path(ctx->owner, path, resolved,
+                                            sizeof(resolved), NULL, 0U)) {
+                sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
+                                  "Permission denied.");
+                break;
+            }
+            DIR *dir = opendir(resolved);
+            if (dir == nullptr) {
+                sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+                break;
+            }
+            sftp_handle_data_t *hdata = calloc(1, sizeof(sftp_handle_data_t));
+            if (hdata == nullptr) {
+                closedir(dir);
+                sftp_reply_status(msg, SSH_FX_FAILURE, "Memory error.");
+                break;
+            }
+            hdata->type = SFTP_HANDLE_DIR;
+            hdata->u.dir = dir;
+            snprintf(hdata->path, sizeof(hdata->path), "%s", resolved);
+            ssh_string h_str = sftp_handle_alloc(sftp, hdata);
+            sftp_reply_handle(msg, h_str);
+            ssh_string_free(h_str);
+            break;
+        }
+        case SSH_FXP_READDIR: {
+            ssh_string h_str = msg->handle;
+            sftp_handle_data_t *hdata = sftp_handle(sftp, h_str);
+            if (hdata == nullptr || hdata->type != SFTP_HANDLE_DIR) {
+                sftp_reply_status(msg, SSH_FX_INVALID_HANDLE, "Invalid handle.");
+                break;
+            }
+            struct dirent *entry;
+            int count = 0;
+            while ((entry = readdir(hdata->u.dir)) != nullptr) {
+                if (strcmp(entry->d_name, ".") == 0 ||
+                    strcmp(entry->d_name, "..") == 0) {
+                    continue;
+                }
+                char full_path[PATH_MAX];
+                snprintf(full_path, sizeof(full_path), "%s/%s", hdata->path,
+                         entry->d_name);
+                struct stat st;
+                if (stat(full_path, &st) == 0) {
+                    sftp_attributes attr =
+                        sftp_attr_from_stat(entry->d_name, &st);
+                    char longname[1024];
+                    snprintf(longname, sizeof(longname),
+                             "%s %4u %4u %8llu %s",
+                             S_ISDIR(st.st_mode) ? "drwxr-xr-x" : "-rw-r--r--",
+                             (unsigned)st.st_uid, (unsigned)st.st_gid,
+                             (unsigned long long)st.st_size, entry->d_name);
+                    sftp_reply_names_add(msg, entry->d_name, longname, attr);
+                    sftp_attributes_free(attr);
+                    count++;
+                }
+                if (count >= 100) {
+                    break;
+                }
+            }
+            if (count > 0) {
+                sftp_reply_names(msg);
+            } else {
+                sftp_reply_status(msg, SSH_FX_EOF, "End of directory.");
+            }
+            break;
+        }
+        case SSH_FXP_OPEN: {
+            const char *path = sftp_client_message_get_filename(msg);
+            uint32_t flags = sftp_client_message_get_flags(msg);
+            char resolved[PATH_MAX];
+            if (!file_transfer_resolve_path(ctx->owner, path, resolved,
+                                            sizeof(resolved), NULL, 0U)) {
+                sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
+                                  "Permission denied.");
+                break;
+            }
+            int sys_flags = 0;
+            if ((flags & SSH_FXF_READ) && (flags & SSH_FXF_WRITE)) {
+                sys_flags = O_RDWR;
+            } else if (flags & SSH_FXF_READ) {
+                sys_flags = O_RDONLY;
+            } else if (flags & SSH_FXF_WRITE) {
+                sys_flags = O_WRONLY;
+            }
 
-        uint32_t request_id;
-        memcpy(&request_id, buffer + 1, 4);
+            if (flags & SSH_FXF_CREAT) {
+                sys_flags |= O_CREAT;
+            }
+            if (flags & SSH_FXF_TRUNC) {
+                sys_flags |= O_TRUNC;
+            }
+            if (flags & SSH_FXF_EXCL) {
+                sys_flags |= O_EXCL;
+            }
+            if (flags & SSH_FXF_APPEND) {
+                sys_flags |= O_APPEND;
+            }
 
-        const char *msg = "SFTP not supported by ssh-chatter. Use 'scp -O' for legacy protocol.";
-        uint32_t msg_len = (uint32_t)strlen(msg);
-        uint32_t status_pkt_len = htonl(1 + 4 + 4 + (4 + msg_len) + 4);
-        uint8_t status_type = 101; // SSH_FXP_STATUS
-        uint32_t status_code = htonl(8); // SSH_FX_OP_UNSUPPORTED
-        uint32_t status_msg_len = htonl(msg_len);
-        uint32_t status_lang_len = 0;
-
-        ssh_channel_write(ctx->channel, &status_pkt_len, 4);
-        ssh_channel_write(ctx->channel, &status_type, 1);
-        ssh_channel_write(ctx->channel, &request_id, 4);
-        ssh_channel_write(ctx->channel, &status_code, 4);
-        ssh_channel_write(ctx->channel, &status_msg_len, 4);
-        ssh_channel_write(ctx->channel, msg, msg_len);
-        ssh_channel_write(ctx->channel, &status_lang_len, 4);
+            int fd = open(resolved, sys_flags, 0640);
+            if (fd < 0) {
+                sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+                break;
+            }
+            sftp_handle_data_t *hdata = calloc(1, sizeof(sftp_handle_data_t));
+            if (hdata == nullptr) {
+                close(fd);
+                sftp_reply_status(msg, SSH_FX_FAILURE, "Memory error.");
+                break;
+            }
+            hdata->type = SFTP_HANDLE_FILE;
+            hdata->u.fd = fd;
+            snprintf(hdata->path, sizeof(hdata->path), "%s", resolved);
+            ssh_string h_str = sftp_handle_alloc(sftp, hdata);
+            sftp_reply_handle(msg, h_str);
+            ssh_string_free(h_str);
+            break;
+        }
+        case SSH_FXP_READ: {
+            ssh_string h_str = msg->handle;
+            uint64_t offset = msg->offset;
+            uint32_t len = msg->len;
+            sftp_handle_data_t *hdata = sftp_handle(sftp, h_str);
+            if (hdata == nullptr || hdata->type != SFTP_HANDLE_FILE) {
+                sftp_reply_status(msg, SSH_FX_INVALID_HANDLE, "Invalid handle.");
+                break;
+            }
+            void *data = malloc(len);
+            if (data == nullptr) {
+                sftp_reply_status(msg, SSH_FX_FAILURE, "Memory error.");
+                break;
+            }
+            ssize_t read_len = pread(hdata->u.fd, data, len, (off_t)offset);
+            if (read_len < 0) {
+                free(data);
+                sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+            } else if (read_len == 0) {
+                free(data);
+                sftp_reply_status(msg, SSH_FX_EOF, "EOF");
+            } else {
+                sftp_reply_data(msg, data, (int)read_len);
+                free(data);
+            }
+            break;
+        }
+        case SSH_FXP_WRITE: {
+            ssh_string h_str = msg->handle;
+            uint64_t offset = msg->offset;
+            const char *data = sftp_client_message_get_data(msg);
+            uint32_t len = msg->len;
+            sftp_handle_data_t *hdata = sftp_handle(sftp, h_str);
+            if (hdata == nullptr || hdata->type != SFTP_HANDLE_FILE) {
+                sftp_reply_status(msg, SSH_FX_INVALID_HANDLE, "Invalid handle.");
+                break;
+            }
+            ssize_t written = pwrite(hdata->u.fd, data, len, (off_t)offset);
+            if (written < 0) {
+                sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+            } else {
+                sftp_reply_status(msg, SSH_FX_OK, "Success");
+            }
+            break;
+        }
+        case SSH_FXP_FSTAT: {
+            ssh_string h_str = msg->handle;
+            sftp_handle_data_t *hdata = sftp_handle(sftp, h_str);
+            if (hdata == nullptr || hdata->type != SFTP_HANDLE_FILE) {
+                sftp_reply_status(msg, SSH_FX_INVALID_HANDLE, "Invalid handle.");
+                break;
+            }
+            struct stat st;
+            if (fstat(hdata->u.fd, &st) < 0) {
+                sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+                break;
+            }
+            sftp_attributes attr =
+                sftp_attr_from_stat(basename(hdata->path), &st);
+            if (attr == nullptr) {
+                sftp_reply_status(msg, SSH_FX_FAILURE, "Memory error.");
+                break;
+            }
+            sftp_reply_attr(msg, attr);
+            sftp_attributes_free(attr);
+            break;
+        }
+        case SSH_FXP_CLOSE: {
+            ssh_string h_str = msg->handle;
+            sftp_handle_data_t *hdata = sftp_handle(sftp, h_str);
+            if (hdata != nullptr) {
+                if (hdata->type == SFTP_HANDLE_FILE) {
+                    close(hdata->u.fd);
+                } else {
+                    closedir(hdata->u.dir);
+                }
+                sftp_handle_remove(sftp, hdata);
+                free(hdata);
+            }
+            sftp_reply_status(msg, SSH_FX_OK, "Success");
+            break;
+        }
+        case SSH_FXP_REMOVE: {
+            const char *path = sftp_client_message_get_filename(msg);
+            char resolved[PATH_MAX];
+            if (!file_transfer_resolve_path(ctx->owner, path, resolved,
+                                            sizeof(resolved), NULL, 0U)) {
+                sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
+                                  "Permission denied.");
+                break;
+            }
+            if (unlink(resolved) == 0) {
+                sftp_reply_status(msg, SSH_FX_OK, "Success");
+            } else {
+                sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+            }
+            break;
+        }
+        case SSH_FXP_RENAME: {
+            const char *oldpath = sftp_client_message_get_filename(msg);
+            const char *newpath = sftp_client_message_get_data(msg);
+            char resolved_old[PATH_MAX];
+            char resolved_new[PATH_MAX];
+            if (!file_transfer_resolve_path(ctx->owner, oldpath, resolved_old,
+                                            sizeof(resolved_old), NULL, 0U) ||
+                !file_transfer_resolve_path(ctx->owner, newpath, resolved_new,
+                                            sizeof(resolved_new), NULL, 0U)) {
+                sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
+                                  "Permission denied.");
+                break;
+            }
+            if (rename(resolved_old, resolved_new) == 0) {
+                sftp_reply_status(msg, SSH_FX_OK, "Success");
+            } else {
+                sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+            }
+            break;
+        }
+        case SSH_FXP_MKDIR: {
+            const char *path = sftp_client_message_get_filename(msg);
+            char resolved[PATH_MAX];
+            if (!file_transfer_resolve_path(ctx->owner, path, resolved,
+                                            sizeof(resolved), NULL, 0U)) {
+                sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
+                                  "Permission denied.");
+                break;
+            }
+            if (mkdir(resolved, 0755) == 0) {
+                sftp_reply_status(msg, SSH_FX_OK, "Success");
+            } else {
+                sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+            }
+            break;
+        }
+        case SSH_FXP_RMDIR: {
+            const char *path = sftp_client_message_get_filename(msg);
+            char resolved[PATH_MAX];
+            if (!file_transfer_resolve_path(ctx->owner, path, resolved,
+                                            sizeof(resolved), NULL, 0U)) {
+                sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
+                                  "Permission denied.");
+                break;
+            }
+            if (rmdir(resolved) == 0) {
+                sftp_reply_status(msg, SSH_FX_OK, "Success");
+            } else {
+                sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+            }
+            break;
+        }
+        default:
+            sftp_reply_status(msg, SSH_FX_OP_UNSUPPORTED,
+                              "Operation not supported.");
+            break;
+        }
+        sftp_client_message_free(msg);
     }
 
+    sftp_server_free(sftp);
     return 0;
 }

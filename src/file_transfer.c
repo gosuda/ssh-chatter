@@ -139,6 +139,104 @@ bool host_file_storage_init(host_t *host)
     return true;
 }
 
+static void host_file_storage_list_recursive(const char *root_path,
+                                             const char *relative_path,
+                                             int depth, char *buffer,
+                                             size_t length, size_t *written,
+                                             size_t *count)
+{
+    char full_path[PATH_MAX];
+    if (relative_path == nullptr || relative_path[0] == '\0') {
+        snprintf(full_path, sizeof(full_path), "%s", root_path);
+    } else {
+        snprintf(full_path, sizeof(full_path), "%s/%s", root_path,
+                 relative_path);
+    }
+
+    DIR *dir = opendir(full_path);
+    if (dir == nullptr) {
+        return;
+    }
+
+    struct dirent *entry = nullptr;
+    while ((entry = readdir(dir)) != nullptr &&
+           *count < FILE_STORAGE_LIST_LIMIT) {
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
+
+        char sub_rel_path[PATH_MAX];
+        if (relative_path == nullptr || relative_path[0] == '\0') {
+            snprintf(sub_rel_path, sizeof(sub_rel_path), "%s", entry->d_name);
+        } else {
+            snprintf(sub_rel_path, sizeof(sub_rel_path), "%s/%s", relative_path,
+                     entry->d_name);
+        }
+
+        char sub_full_path[PATH_MAX];
+        snprintf(sub_full_path, sizeof(sub_full_path), "%s/%s", root_path,
+                 sub_rel_path);
+
+        struct stat st;
+        if (stat(sub_full_path, &st) != 0) {
+            continue;
+        }
+
+                char line[512];
+                size_t line_len = 0;
+                int res;
+        
+                // Force \033[1G at the start of every line
+                res = snprintf(line + line_len, sizeof(line) - line_len, "\033[1G");
+                if (res > 0) {
+                    line_len += (size_t)res;
+                }
+        
+                // Hierarchy representation
+                for (int i = 0; i < depth; ++i) {
+                    if (line_len < sizeof(line)) {
+                        res = snprintf(line + line_len, sizeof(line) - line_len, "  ");
+                        if (res > 0) {
+                            line_len += (size_t)res;
+                        }
+                    }
+                }
+                if (line_len < sizeof(line)) {
+                    res = snprintf(line + line_len, sizeof(line) - line_len, "-> ");
+                    if (res > 0) {
+                        line_len += (size_t)res;
+                    }
+                }
+        
+                if (line_len < sizeof(line)) {
+                    if (S_ISDIR(st.st_mode)) {
+                        res = snprintf(line + line_len, sizeof(line) - line_len,
+                                             "%s/\n", entry->d_name);
+                    } else {
+                        res = snprintf(line + line_len, sizeof(line) - line_len,
+                                     "%s (%lld bytes)\n", entry->d_name, (long long)st.st_size);
+                    }
+                    if (res > 0) {
+                        line_len += (size_t)res;
+                    }
+                }
+        
+                if (line_len > 0 && *written + line_len < length) {
+                    memcpy(buffer + *written, line, line_len);
+                    *written += line_len;
+                    buffer[*written] = '\0';
+                    (*count)++;
+                }
+
+        if (S_ISDIR(st.st_mode) && *count < FILE_STORAGE_LIST_LIMIT) {
+            host_file_storage_list_recursive(root_path, sub_rel_path, depth + 1,
+                                             buffer, length, written, count);
+        }
+    }
+
+    closedir(dir);
+}
+
 bool host_file_storage_list(host_t *host, char *buffer, size_t length)
 {
     if (buffer == nullptr || length == 0U) {
@@ -149,64 +247,17 @@ bool host_file_storage_list(host_t *host, char *buffer, size_t length)
     if (host == nullptr || !host->file_storage_ready ||
         host->file_storage_root[0] == '\0') {
         snprintf(buffer, length,
-                 "File storage is unavailable. Please contact the operator.");
-        return false;
-    }
-
-    DIR *dir = opendir(host->file_storage_root);
-    if (dir == nullptr) {
-        snprintf(buffer, length,
-                 "Unable to open %s for listing (%s).",
-                 host->file_storage_root, strerror(errno));
+                 "\033[1GFile storage is unavailable. Please contact the operator.");
         return false;
     }
 
     size_t written = 0U;
     size_t count = 0U;
-    struct dirent *entry = nullptr;
-    while ((entry = readdir(dir)) != nullptr && count < FILE_STORAGE_LIST_LIMIT) {
-        if (entry->d_name[0] == '.') {
-            continue;
-        }
-
-        char resolved[PATH_MAX];
-        if (snprintf(resolved, sizeof(resolved), "%s/%s",
-                     host->file_storage_root, entry->d_name) >=
-            (int)sizeof(resolved)) {
-            continue;
-        }
-
-        struct stat st;
-        if (stat(resolved, &st) != 0) {
-            continue;
-        }
-
-        if (!S_ISREG(st.st_mode)) {
-            continue;
-        }
-
-        char line[256];
-        int line_len = snprintf(line, sizeof(line), " /%s (%lld bytes)\n",
-                                entry->d_name,
-                                (long long)st.st_size);
-        if (line_len <= 0) {
-            continue;
-        }
-
-        if ((size_t)line_len >= length - written) {
-            break;
-        }
-
-        memcpy(buffer + written, line, (size_t)line_len);
-        written += (size_t)line_len;
-        buffer[written] = '\0';
-        ++count;
-    }
-
-    closedir(dir);
+    host_file_storage_list_recursive(host->file_storage_root, "", 0, buffer,
+                                     length, &written, &count);
 
     if (written == 0U) {
-        snprintf(buffer, length, "Storage is empty. Upload something first!");
+        snprintf(buffer, length, "\033[1GStorage is empty. Upload something first!");
     }
 
     return true;

@@ -975,6 +975,91 @@ static bool host_cidr_contains_ip(const char *cidr_text, const char *ip)
     return false;
 }
 
+static void host_version_ip_rule_release(version_ip_ban_rule_t *rule)
+{
+    if (rule == nullptr) {
+        return;
+    }
+
+    if (rule->original_pattern != nullptr) {
+        sshc_gc_free(rule->original_pattern);
+        rule->original_pattern = nullptr;
+    }
+    if (rule->normalized_pattern != nullptr) {
+        sshc_gc_free(rule->normalized_pattern);
+        rule->normalized_pattern = nullptr;
+    }
+    rule->in_use = false;
+}
+
+static bool host_version_ip_rules_reserve(host_t *host, size_t min_capacity)
+{
+    if (host == nullptr) {
+        return false;
+    }
+    if (min_capacity <= host->version_ip_ban_rule_capacity &&
+        host->version_ip_ban_rules != nullptr) {
+        return true;
+    }
+
+    size_t new_capacity = host->version_ip_ban_rule_capacity > 0U
+                              ? host->version_ip_ban_rule_capacity
+                              : 16U;
+    while (new_capacity < min_capacity &&
+           new_capacity < SSH_CHATTER_MAX_VERSION_IP_BANS) {
+        new_capacity *= 2U;
+    }
+    if (new_capacity > SSH_CHATTER_MAX_VERSION_IP_BANS) {
+        new_capacity = SSH_CHATTER_MAX_VERSION_IP_BANS;
+    }
+    if (new_capacity < min_capacity) {
+        return false;
+    }
+
+    version_ip_ban_rule_t *buffer =
+        sshc_gc_calloc(new_capacity, sizeof(*buffer));
+    if (buffer == nullptr) {
+        return false;
+    }
+
+    if (host->version_ip_ban_rules != nullptr &&
+        host->version_ip_ban_rule_count > 0U) {
+        memcpy(buffer, host->version_ip_ban_rules,
+               host->version_ip_ban_rule_count * sizeof(*buffer));
+        sshc_gc_free(host->version_ip_ban_rules);
+    } else if (host->version_ip_ban_rules != nullptr) {
+        sshc_gc_free(host->version_ip_ban_rules);
+    }
+
+    host->version_ip_ban_rules = buffer;
+    host->version_ip_ban_rule_capacity = new_capacity;
+    return true;
+}
+
+static bool host_version_ip_rules_prepare(host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+
+    if (host->version_ip_ban_rules == nullptr ||
+        host->version_ip_ban_rule_capacity == 0U) {
+        if (!host_version_ip_rules_reserve(host, 16U)) {
+            return false;
+        }
+    } else {
+        for (size_t idx = 0U; idx < host->version_ip_ban_rule_capacity;
+             ++idx) {
+            host_version_ip_rule_release(&host->version_ip_ban_rules[idx]);
+            memset(&host->version_ip_ban_rules[idx], 0,
+                   sizeof(host->version_ip_ban_rules[idx]));
+        }
+    }
+
+    host->version_ip_ban_rule_count = 0U;
+    return true;
+}
+
 static bool host_version_ip_rule_matches(const version_ip_ban_rule_t *rule,
                                          const char *version, const char *ip)
 {
@@ -983,40 +1068,40 @@ static bool host_version_ip_rule_matches(const version_ip_ban_rule_t *rule,
     }
 
     bool version_match = false;
+    const char *normalized = rule->normalized_pattern;
     switch (rule->match_mode) {
     case VERSION_PATTERN_MATCH_ANY:
         version_match = true;
         break;
     case VERSION_PATTERN_MATCH_EXACT:
-        if (version != nullptr) {
-            version_match = strcmp(version, rule->normalized_pattern) == 0;
+        if (version != nullptr && normalized != nullptr) {
+            version_match = strcmp(version, normalized) == 0;
         }
         break;
     case VERSION_PATTERN_MATCH_PREFIX:
-        if (version != nullptr) {
-            size_t prefix_len = strnlen(rule->normalized_pattern,
-                                        sizeof(rule->normalized_pattern));
+        if (version != nullptr && normalized != nullptr) {
+            size_t prefix_len =
+                strnlen(normalized, SSH_CHATTER_VERSION_PATTERN_LEN);
             version_match =
-                (prefix_len > 0U &&
-                 strncmp(version, rule->normalized_pattern, prefix_len) == 0);
+                (prefix_len > 0U && strncmp(version, normalized, prefix_len) ==
+                                        0);
         }
         break;
     case VERSION_PATTERN_MATCH_SUFFIX:
-        if (version != nullptr) {
-            size_t suffix_len = strnlen(rule->normalized_pattern,
-                                        sizeof(rule->normalized_pattern));
+        if (version != nullptr && normalized != nullptr) {
+            size_t suffix_len =
+                strnlen(normalized, SSH_CHATTER_VERSION_PATTERN_LEN);
             size_t version_len = strlen(version);
             if (suffix_len > 0U && version_len >= suffix_len) {
-                version_match =
-                    strncmp(version + (version_len - suffix_len),
-                            rule->normalized_pattern, suffix_len) == 0;
+                version_match = strncmp(version + (version_len - suffix_len),
+                                        normalized, suffix_len) == 0;
             }
         }
         break;
     case VERSION_PATTERN_MATCH_SUBSTRING:
-        if (version != nullptr && rule->normalized_pattern[0] != '\0') {
-            version_match =
-                strstr(version, rule->normalized_pattern) != nullptr;
+        if (version != nullptr && normalized != nullptr &&
+            normalized[0] != '\0') {
+            version_match = strstr(version, normalized) != nullptr;
         }
         break;
     default:
@@ -1064,6 +1149,14 @@ static bool host_version_ip_rule_add(host_t *host, const char *pattern,
         printf(
             "[security] version/IP rule capacity reached; skipping %s @ %s\n",
             pattern, cidr);
+        return false;
+    }
+
+    if (!host_version_ip_rules_reserve(
+            host, host->version_ip_ban_rule_count + 1U)) {
+        printf("[security] unable to grow version/IP rule table; skipping %s @ "
+               "%s\n",
+               pattern, cidr);
         return false;
     }
 
@@ -1115,8 +1208,9 @@ static bool host_version_ip_rule_add(host_t *host, const char *pattern,
         if (existing->match_mode != match_mode) {
             continue;
         }
-        if (strncmp(existing->normalized_pattern, normalized,
-                    sizeof(existing->normalized_pattern)) != 0) {
+        if (existing->normalized_pattern == nullptr ||
+            strncmp(existing->normalized_pattern, normalized,
+                    SSH_CHATTER_VERSION_PATTERN_LEN) != 0) {
             continue;
         }
         if (existing->is_ipv6 != is_ipv6) {
@@ -1146,13 +1240,22 @@ static bool host_version_ip_rule_add(host_t *host, const char *pattern,
 
     version_ip_ban_rule_t *rule =
         &host->version_ip_ban_rules[host->version_ip_ban_rule_count];
+    host_version_ip_rule_release(rule);
     memset(rule, 0, sizeof(*rule));
     rule->in_use = true;
     rule->match_mode = match_mode;
-    snprintf(rule->original_pattern, sizeof(rule->original_pattern), "%s",
-             original);
-    snprintf(rule->normalized_pattern, sizeof(rule->normalized_pattern), "%s",
-             normalized);
+    char *original_copy = sshc_strdup(original);
+    char *normalized_copy = sshc_strdup(normalized);
+    if (original_copy == nullptr || normalized_copy == nullptr) {
+        sshc_gc_free(original_copy);
+        sshc_gc_free(normalized_copy);
+        printf("[security] unable to allocate memory for version/IP rule %s @ "
+               "%s\n",
+               original, cidr_trimmed);
+        return false;
+    }
+    rule->original_pattern = original_copy;
+    rule->normalized_pattern = normalized_copy;
     snprintf(rule->cidr_text, sizeof(rule->cidr_text), "%s", cidr_trimmed);
     rule->is_ipv6 = is_ipv6;
     if (!is_ipv6) {
@@ -1176,7 +1279,9 @@ static bool host_version_ip_rule_add(host_t *host, const char *pattern,
     const char *note_display =
         rule->note[0] != '\0' ? rule->note : "version/IP policy";
     const char *pattern_display =
-        rule->original_pattern[0] != '\0' ? rule->original_pattern : "*";
+        (rule->original_pattern != nullptr && rule->original_pattern[0] != '\0')
+            ? rule->original_pattern
+            : "*";
     printf("[security] loaded version/IP ban rule: %s @ %s (%s)\n",
            pattern_display, rule->cidr_text, note_display);
 
@@ -1279,8 +1384,10 @@ static void host_version_ip_rules_init(host_t *host)
         return;
     }
 
-    host->version_ip_ban_rule_count = 0U;
-    memset(host->version_ip_ban_rules, 0, sizeof(host->version_ip_ban_rules));
+    if (!host_version_ip_rules_prepare(host)) {
+        printf("[security] unable to allocate version/IP ban rule table\n");
+        return;
+    }
 
     for (size_t idx = 0U;
          idx < (sizeof(kVersionIpBanSeeds) / sizeof(kVersionIpBanSeeds[0]));

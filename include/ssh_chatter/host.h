@@ -288,8 +288,8 @@ typedef enum version_pattern_match {
 typedef struct version_ip_ban_rule {
     bool in_use;
     version_pattern_match_t match_mode;
-    char original_pattern[SSH_CHATTER_VERSION_PATTERN_LEN];
-    char normalized_pattern[SSH_CHATTER_VERSION_PATTERN_LEN];
+    char *original_pattern;
+    char *normalized_pattern;
     char cidr_text[SSH_CHATTER_CIDR_TEXT_LEN];
     char note[SSH_CHATTER_VERSION_NOTE_LEN];
     bool is_ipv6;
@@ -1008,8 +1008,9 @@ typedef struct host {
     size_t operator_grant_count;
     char protected_ips[SSH_CHATTER_MAX_PROTECTED_IPS][SSH_CHATTER_IP_LEN];
     size_t protected_ip_count;
-    version_ip_ban_rule_t version_ip_ban_rules[SSH_CHATTER_MAX_VERSION_IP_BANS];
+    version_ip_ban_rule_t *version_ip_ban_rules;
     size_t version_ip_ban_rule_count;
+    size_t version_ip_ban_rule_capacity;
     struct {
         lan_operator_credential_t entries[SSH_CHATTER_MAX_LAN_OPERATORS];
         size_t count;
@@ -1045,9 +1046,9 @@ typedef struct host {
     struct timespec archive_last_run;
 
     // Add members for managing reserved nicknames
-    char reserved_nicknames[SSH_CHATTER_MAX_RESERVED_NAMES]
-                           [SSH_CHATTER_USERNAME_LEN];
+    char (*reserved_nicknames)[SSH_CHATTER_USERNAME_LEN];
     size_t reserved_nicknames_len;
+    size_t reserved_nicknames_capacity;
     ttak_mutex_t nickname_reserve_lock;
     volatile sig_atomic_t *shutdown_flag;
 } host_t;

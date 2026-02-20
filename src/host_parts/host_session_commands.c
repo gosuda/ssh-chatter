@@ -1471,8 +1471,9 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
         }
 
         // Add user's nickname to reserved list if password was set
-        if (ctx->owner != nullptr && ctx->owner->reserved_nicknames_len <
-                                         SSH_CHATTER_MAX_RESERVED_NAMES) {
+        if (ctx->owner != nullptr && ctx->owner->reserved_nicknames != nullptr &&
+            ctx->owner->reserved_nicknames_len <
+                ctx->owner->reserved_nicknames_capacity) {
             ttak_mutex_lock(&ctx->owner->nickname_reserve_lock);
             // Check if nickname is already reserved to avoid duplicates
             bool already_reserved = false;
@@ -1584,7 +1585,8 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
         }
 
         // Remove from reserved nicknames if password was deleted
-        if (ctx->owner != nullptr && ctx->owner->reserved_nicknames_len > 0) {
+        if (ctx->owner != nullptr && ctx->owner->reserved_nicknames != nullptr &&
+            ctx->owner->reserved_nicknames_len > 0U) {
             ttak_mutex_lock(&ctx->owner->nickname_reserve_lock);
             for (size_t i = 0; i < ctx->owner->reserved_nicknames_len; ++i) {
                 if (strncmp(ctx->owner->reserved_nicknames[i], target_user,

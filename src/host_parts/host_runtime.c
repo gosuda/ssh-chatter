@@ -1187,6 +1187,10 @@ static bool find_reserved_names(session_ctx_t *ctx, const char *nick)
 
     bool found = false;
     ttak_mutex_lock(&ctx->owner->nickname_reserve_lock);
+    if (ctx->owner->reserved_nicknames == nullptr) {
+        ttak_mutex_unlock(&ctx->owner->nickname_reserve_lock);
+        return false;
+    }
     for (size_t i = 0; i < ctx->owner->reserved_nicknames_len; ++i) {
         if (strcasecmp(nick, ctx->owner->reserved_nicknames[i]) == 0) {
             found = true;
@@ -5333,6 +5337,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     memset(host->eliza_memory, 0, sizeof(host->eliza_memory));
     host->eliza_memory_count = 0U;
     host->eliza_memory_next_id = 1U;
+    host->version_ip_ban_rules = nullptr;
+    host->version_ip_ban_rule_count = 0U;
+    host->version_ip_ban_rule_capacity = 0U;
     snprintf(host->version, sizeof(host->version),
              "ssh-chatter (C, rolling release)");
     snprintf(host->motd_base, sizeof(host->motd_base),
@@ -5470,6 +5477,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->random_seeded = false;
     memset(host->operator_grants, 0, sizeof(host->operator_grants));
     host->operator_grant_count = 0U;
+    host->reserved_nicknames = nullptr;
+    host->reserved_nicknames_len = 0U;
+    host->reserved_nicknames_capacity = 0U;
     host->next_join_ready_time = (struct timespec){0, 0};
     host->join_throttle_initialised = false;
     host->join_progress_length = 0U;
@@ -5489,6 +5499,21 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->last_captcha_answer[0] = '\0';
     host->last_captcha_generated.tv_sec = 0;
     host->last_captcha_generated.tv_nsec = 0L;
+    host->reserved_nicknames =
+        (char(*)[SSH_CHATTER_USERNAME_LEN])sshc_gc_calloc(
+            SSH_CHATTER_MAX_RESERVED_NAMES,
+            sizeof(host->reserved_nicknames[0]));
+    if (host->reserved_nicknames != nullptr) {
+        host->reserved_nicknames_capacity = SSH_CHATTER_MAX_RESERVED_NAMES;
+    } else {
+        host->reserved_nicknames_capacity = 0U;
+        humanized_log_error("host", "failed to allocate reserved nicknames",
+                            ENOMEM);
+    }
+    if (ttak_mutex_init(&host->nickname_reserve_lock) != 0) {
+        humanized_log_error("host", "failed to initialise nickname lock",
+                            errno != 0 ? errno : ENOMEM);
+    }
     atomic_store(&host->eliza_enabled, false);
     atomic_store(&host->eliza_announced, false);
     host->eliza_last_action.tv_sec = 0;

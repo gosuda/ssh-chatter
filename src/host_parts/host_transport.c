@@ -6685,12 +6685,20 @@ static bool host_security_execute_clamav_backend(host_t *host, char *notice,
         if (chunk == 0U) {
             continue;
         }
-        if (output_length + chunk >= sizeof(output)) {
-            chunk = sizeof(output) - output_length - 1U;
+
+        size_t available = 0U;
+        if (output_length < sizeof(output) - 1U) {
+            available = (sizeof(output) - 1U) - output_length;
         }
-        if (chunk == 0U) {
-            break;
+
+        if (available == 0U) {
+            continue; // drain remaining output without corrupting the arena
         }
+
+        if (chunk > available) {
+            chunk = available;
+        }
+
         memcpy(output + output_length, buffer, chunk);
         output_length += chunk;
         output[output_length] = '\0';

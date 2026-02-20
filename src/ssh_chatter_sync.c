@@ -395,8 +395,8 @@ static void *read_channel_thread(void *arg)
     fprintf(stderr, "[SSH_SYNC] Read thread started.\n\n");
 
     while (sync_running && channel) {
-        nbytes =
-            ssh_channel_read_nonblocking(channel, buffer, sizeof(buffer), 0);
+        nbytes = ssh_channel_read_nonblocking(
+            channel, buffer, sizeof(buffer) - 1U, 0);
         if (nbytes < 0) {
             should_reconnect = true;
             break;

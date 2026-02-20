@@ -1472,6 +1472,13 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
                                   "Permission denied.");
                 break;
             }
+
+            if ((flags & SSH_FXF_CREAT) && !file_storage_ensure_parent(resolved)) {
+                sftp_reply_status(msg, SSH_FX_FAILURE,
+                                  "Unable to create parent directory.");
+                break;
+            }
+
             int sys_flags = 0;
             if ((flags & SSH_FXF_READ) && (flags & SSH_FXF_WRITE)) {
                 sys_flags = O_RDWR;
@@ -1640,7 +1647,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
                                   "Permission denied.");
                 break;
             }
-            if (mkdir(resolved, 0755) == 0) {
+            if (file_storage_ensure_directory(resolved)) {
                 sftp_reply_status(msg, SSH_FX_OK, "Success");
             } else {
                 sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));

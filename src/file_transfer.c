@@ -1275,3 +1275,62 @@ static bool telnet_spawn_zmodem(session_ctx_t *ctx, char *const argv[],
 
     return true;
 }
+
+int file_transfer_handle_sftp(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->channel == nullptr) {
+        return -1;
+    }
+
+    unsigned char buffer[4096];
+    uint32_t pkt_len_raw;
+    if (ssh_channel_read(ctx->channel, &pkt_len_raw, 4, 0) != 4) {
+        return -1;
+    }
+    uint32_t pkt_len = ntohl(pkt_len_raw);
+    if (pkt_len < 1 || pkt_len > sizeof(buffer)) {
+        return -1;
+    }
+    if (ssh_channel_read(ctx->channel, buffer, pkt_len, 0) != (int)pkt_len) {
+        return -1;
+    }
+
+    uint8_t type = buffer[0];
+    if (type != 1) { // SSH_FXP_INIT
+        return -1;
+    }
+
+    uint32_t resp_pkt_len = htonl(5);
+    uint8_t resp_type = 2; // SSH_FXP_VERSION
+    uint32_t resp_version = htonl(3);
+    ssh_channel_write(ctx->channel, &resp_pkt_len, 4);
+    ssh_channel_write(ctx->channel, &resp_type, 1);
+    ssh_channel_write(ctx->channel, &resp_version, 4);
+
+    while (ssh_channel_read(ctx->channel, &pkt_len_raw, 4, 0) == 4) {
+        pkt_len = ntohl(pkt_len_raw);
+        if (pkt_len < 5 || pkt_len > sizeof(buffer)) break;
+        if (ssh_channel_read(ctx->channel, buffer, pkt_len, 0) != (int)pkt_len) break;
+
+        uint32_t request_id;
+        memcpy(&request_id, buffer + 1, 4);
+
+        const char *msg = "SFTP not supported by ssh-chatter. Use 'scp -O' for legacy protocol.";
+        uint32_t msg_len = (uint32_t)strlen(msg);
+        uint32_t status_pkt_len = htonl(1 + 4 + 4 + (4 + msg_len) + 4);
+        uint8_t status_type = 101; // SSH_FXP_STATUS
+        uint32_t status_code = htonl(8); // SSH_FX_OP_UNSUPPORTED
+        uint32_t status_msg_len = htonl(msg_len);
+        uint32_t status_lang_len = 0;
+
+        ssh_channel_write(ctx->channel, &status_pkt_len, 4);
+        ssh_channel_write(ctx->channel, &status_type, 1);
+        ssh_channel_write(ctx->channel, &request_id, 4);
+        ssh_channel_write(ctx->channel, &status_code, 4);
+        ssh_channel_write(ctx->channel, &status_msg_len, 4);
+        ssh_channel_write(ctx->channel, msg, msg_len);
+        ssh_channel_write(ctx->channel, &status_lang_len, 4);
+    }
+
+    return 0;
+}

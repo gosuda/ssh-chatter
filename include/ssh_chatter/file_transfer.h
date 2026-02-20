@@ -12,5 +12,6 @@ bool file_transfer_telnet_receive(session_ctx_t *ctx,
                                   const char *resolved_target);
 bool file_transfer_telnet_send(session_ctx_t *ctx, const char *virtual_path);
 int file_transfer_handle_scp_exec(session_ctx_t *ctx, const char *command);
+int file_transfer_handle_sftp(session_ctx_t *ctx);
 
 #endif /* SSH_CHATTER_FILE_TRANSFER_H */

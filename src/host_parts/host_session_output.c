@@ -4484,7 +4484,8 @@ static int session_prepare_shell(session_ctx_t *ctx)
             const int subtype = ssh_message_subtype(message);
             if (subtype == SSH_CHANNEL_REQUEST_PTY ||
                 subtype == SSH_CHANNEL_REQUEST_SHELL ||
-                subtype == SSH_CHANNEL_REQUEST_EXEC) {
+                subtype == SSH_CHANNEL_REQUEST_EXEC ||
+                subtype == SSH_CHANNEL_REQUEST_SUBSYSTEM) {
                 if (subtype == SSH_CHANNEL_REQUEST_PTY) {
                     const int raw_width =
                         ssh_message_channel_request_pty_width(message);
@@ -4520,6 +4521,25 @@ static int session_prepare_shell(session_ctx_t *ctx)
                         ssh_channel_close(ctx->channel);
                         ssh_message_free(message);
                         return 1;
+                    }
+                } else if (subtype == SSH_CHANNEL_REQUEST_SUBSYSTEM) {
+                    const char *subsystem =
+                        ssh_message_channel_request_subsystem(message);
+                    if (subsystem != nullptr &&
+                        strcmp(subsystem, "sftp") == 0) {
+                        humanized_log_error("session", "SFTP subsystem requested but not yet implemented (modern scp defaults to SFTP)", 0);
+                        ssh_message_channel_request_reply_success(message);
+                        int result = file_transfer_handle_sftp(ctx);
+                        ctx->exit_status =
+                            (result == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+                        ssh_channel_request_send_exit_status(
+                            ctx->channel, ctx->exit_status);
+                        ssh_channel_send_eof(ctx->channel);
+                        ssh_channel_close(ctx->channel);
+                        ssh_message_free(message);
+                        return 1;
+                    } else {
+                        ssh_message_reply_default(message);
                     }
                 } else {
                     ssh_message_channel_request_reply_success(message);

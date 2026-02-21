@@ -2,6 +2,7 @@
 
 #include <sys/stat.h>
 #include <sys/uio.h>
+#include <sys/time.h>
 #include <fcntl.h>
 #include <poll.h>
 #ifndef WITH_SERVER
@@ -1410,11 +1411,14 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
         switch (type) {
         case SSH_FXP_REALPATH: {
             const char *path = sftp_client_message_get_filename(msg);
-            if (path == nullptr || path[0] == '\0' || strcmp(path, ".") == 0 ||
-                strcmp(path, "./") == 0) {
-                sftp_reply_name(msg, "/", nullptr);
+            char resolved[PATH_MAX];
+            char display[PATH_MAX];
+            if (file_transfer_resolve_path(ctx->owner, path ? path : "/",
+                                            resolved, sizeof(resolved),
+                                            display, sizeof(display))) {
+                sftp_reply_name(msg, display, nullptr);
             } else {
-                sftp_reply_name(msg, path, nullptr);
+                sftp_reply_name(msg, "/", nullptr);
             }
             break;
         }
@@ -1524,7 +1528,8 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
                 break;
             }
 
-            if ((flags & SSH_FXF_CREAT) && !file_storage_ensure_parent(resolved)) {
+            if ((flags & SSH_FXF_CREAT) &&
+                !file_storage_ensure_parent(resolved)) {
                 sftp_reply_status(msg, SSH_FX_FAILURE,
                                   "Unable to create parent directory.");
                 break;
@@ -1533,10 +1538,10 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             int sys_flags = 0;
             if ((flags & SSH_FXF_READ) && (flags & SSH_FXF_WRITE)) {
                 sys_flags = O_RDWR;
-            } else if (flags & SSH_FXF_READ) {
-                sys_flags = O_RDONLY;
             } else if (flags & SSH_FXF_WRITE) {
                 sys_flags = O_WRONLY;
+            } else {
+                sys_flags = O_RDONLY;
             }
 
             if (flags & SSH_FXF_CREAT) {
@@ -1601,19 +1606,22 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
         case SSH_FXP_WRITE: {
             ssh_string h_str = msg->handle;
             uint64_t offset = msg->offset;
-            const char *data = sftp_client_message_get_data(msg);
-            size_t len = 0;
-            if (msg->data != NULL) {
-                len = ssh_string_len(msg->data);
-            }
             sftp_handle_data_t *hdata = sftp_handle(sftp, h_str);
             if (hdata == nullptr || hdata->type != SFTP_HANDLE_FILE) {
                 sftp_reply_status(msg, SSH_FX_INVALID_HANDLE, "Invalid handle.");
                 break;
             }
+            if (msg->data == nullptr) {
+                sftp_reply_status(msg, SSH_FX_FAILURE, "No data in write message.");
+                break;
+            }
+            size_t len = ssh_string_len(msg->data);
+            const void *data = ssh_string_data(msg->data);
             ssize_t written = pwrite(hdata->u.fd, data, len, (off_t)offset);
             if (written < 0) {
                 sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+            } else if (written != (ssize_t)len) {
+                sftp_reply_status(msg, SSH_FX_FAILURE, "Partial write.");
             } else {
                 sftp_reply_status(msg, SSH_FX_OK, "Success");
             }
@@ -1724,8 +1732,69 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             }
             break;
         }
-        case SSH_FXP_SETSTAT:
+        case SSH_FXP_SETSTAT: {
+            const char *path = sftp_client_message_get_filename(msg);
+            char resolved[PATH_MAX];
+            if (!file_transfer_resolve_path(ctx->owner, path, resolved,
+                                            sizeof(resolved), NULL, 0U)) {
+                sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
+                                  "Permission denied.");
+                break;
+            }
+            sftp_attributes attr = msg->attr;
+            if (attr != nullptr) {
+                if (attr->flags & SSH_FILEXFER_ATTR_SIZE) {
+                    if (truncate(resolved, (off_t)attr->size) < 0) {
+                        sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+                        break;
+                    }
+                }
+                if (attr->flags & SSH_FILEXFER_ATTR_PERMISSIONS) {
+                    if (chmod(resolved, attr->permissions & 0777) < 0) {
+                        /* ignore non-fatal permission errors */
+                    }
+                }
+                if (attr->flags & SSH_FILEXFER_ATTR_ACMODTIME) {
+                    struct timeval tv[2];
+                    tv[0].tv_sec = (long)attr->atime;
+                    tv[0].tv_usec = 0;
+                    tv[1].tv_sec = (long)attr->mtime;
+                    tv[1].tv_usec = 0;
+                    utimes(resolved, tv);
+                }
+            }
+            sftp_reply_status(msg, SSH_FX_OK, "Success");
+            break;
+        }
         case SSH_FXP_FSETSTAT: {
+            ssh_string h_str = msg->handle;
+            sftp_handle_data_t *hdata = sftp_handle(sftp, h_str);
+            if (hdata == nullptr || hdata->type != SFTP_HANDLE_FILE) {
+                sftp_reply_status(msg, SSH_FX_INVALID_HANDLE, "Invalid handle.");
+                break;
+            }
+            sftp_attributes attr = msg->attr;
+            if (attr != nullptr) {
+                if (attr->flags & SSH_FILEXFER_ATTR_SIZE) {
+                    if (ftruncate(hdata->u.fd, (off_t)attr->size) < 0) {
+                        sftp_reply_status(msg, SSH_FX_FAILURE, strerror(errno));
+                        break;
+                    }
+                }
+                if (attr->flags & SSH_FILEXFER_ATTR_PERMISSIONS) {
+                    if (fchmod(hdata->u.fd, attr->permissions & 0777) < 0) {
+                        /* ignore non-fatal permission errors */
+                    }
+                }
+                if (attr->flags & SSH_FILEXFER_ATTR_ACMODTIME) {
+                    struct timeval tv[2];
+                    tv[0].tv_sec = (long)attr->atime;
+                    tv[0].tv_usec = 0;
+                    tv[1].tv_sec = (long)attr->mtime;
+                    tv[1].tv_usec = 0;
+                    futimes(hdata->u.fd, tv);
+                }
+            }
             sftp_reply_status(msg, SSH_FX_OK, "Success");
             break;
         }

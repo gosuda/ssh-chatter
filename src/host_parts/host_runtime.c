@@ -3507,10 +3507,16 @@ static void session_close_channel(session_ctx_t *ctx)
         return;
     }
 
-    ssh_channel_send_eof(ctx->channel);
-    ssh_channel_close(ctx->channel);
-    ssh_channel_free(ctx->channel);
+    /* Nullify the channel pointer first so that concurrent readers
+     * (e.g. in-flight broadcast threads) see NULL via
+     * session_transport_active() and bail out before we free the
+     * underlying libssh object. */
+    ssh_channel old_channel = ctx->channel;
     ctx->channel = nullptr;
+
+    ssh_channel_send_eof(old_channel);
+    ssh_channel_close(old_channel);
+    ssh_channel_free(old_channel);
 }
 
 static void session_reset_for_retry(session_ctx_t *ctx)
@@ -5199,6 +5205,13 @@ static void *session_thread(void *arg)
         host_history_record_system(ctx->owner, part_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
         chat_room_remove(&ctx->owner->room, ctx);
+
+        /* Allow in-flight broadcasts that already captured this session in
+         * their snapshot to finish writing before we destroy the channel
+         * and mutexes.  Without this pause, a concurrent broadcast thread
+         * could dereference the freed channel or a destroyed mutex. */
+        struct timespec drain_delay = {.tv_sec = 0, .tv_nsec = 50000000L};
+        nanosleep(&drain_delay, nullptr);
     }
 
     session_destroy(ctx);

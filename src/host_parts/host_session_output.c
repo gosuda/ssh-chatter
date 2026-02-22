@@ -73,9 +73,14 @@ static void session_scrollback_prepare_display(session_ctx_t *ctx)
     const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
     session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
 
+    // On the first scrollback entry scrollback_rendered_lines is 0, so use the
+    // terminal height to jump up far enough to cover the full visible area and
+    // produce a clean slide-view page.  On subsequent navigations the exact
+    // number of lines that were rendered last time is used instead.
     size_t rendered = ctx->scrollback_rendered_lines;
     if (rendered == 0U) {
-        return;
+        unsigned int height = ctx->terminal_height > 0U ? ctx->terminal_height : SESSION_DEFAULT_TERMINAL_HEIGHT;
+        rendered = (size_t)height;
     }
 
     char move_up[32];
@@ -84,16 +89,10 @@ static void session_scrollback_prepare_display(session_ctx_t *ctx)
         session_channel_write(ctx, move_up, (size_t)move_up_len);
     }
 
-    for (size_t idx = 0U; idx < rendered; ++idx) {
-        session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
-        if (idx + 1U < rendered) {
-            static const char move_down[] = "\033[B";
-            session_channel_write(ctx, move_down, sizeof(move_down) - 1U);
-        }
-    }
-
-    static const char move_to_prompt[] = "\033[B";
-    session_channel_write(ctx, move_to_prompt, sizeof(move_to_prompt) - 1U);
+    // Clear from the repositioned cursor to the end of the screen so the
+    // incoming scrollback chunk fills the terminal without leftover lines.
+    static const char clear_to_end[] = "\033[J";
+    session_channel_write(ctx, clear_to_end, sizeof(clear_to_end) - 1U);
 }
 
 static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
@@ -158,6 +157,7 @@ static void session_game_show_camouflage(session_ctx_t *ctx);
 
 #define SESSION_REALTIME_CLEAR_INTERVAL 100U
 #define SESSION_REALTIME_RECENT_LIMIT SSH_CHATTER_REALTIME_RECENT_LIMIT
+#define SESSION_DEFAULT_TERMINAL_HEIGHT 24U
 
 static void session_realtime_refresh(session_ctx_t *ctx)
 {
@@ -213,10 +213,6 @@ static void session_realtime_record_line(session_ctx_t *ctx, const char *line)
 
     if (ctx->realtime_line_count < SIZE_MAX) {
         ++ctx->realtime_line_count;
-    }
-
-    if (ctx->realtime_line_count >= SESSION_REALTIME_CLEAR_INTERVAL) {
-        session_realtime_refresh(ctx);
     }
 }
 

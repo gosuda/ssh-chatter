@@ -13,6 +13,8 @@
 
 // Session output, history delivery, and client-facing helpers.
 
+#define SESSION_DEFAULT_TERMINAL_HEIGHT 24U
+
 void session_process_pending_sink(session_ctx_t *ctx);
 void session_flag_should_sink(session_ctx_t *ctx);
 
@@ -157,7 +159,6 @@ static void session_game_show_camouflage(session_ctx_t *ctx);
 
 #define SESSION_REALTIME_CLEAR_INTERVAL 100U
 #define SESSION_REALTIME_RECENT_LIMIT SSH_CHATTER_REALTIME_RECENT_LIMIT
-#define SESSION_DEFAULT_TERMINAL_HEIGHT 24U
 
 static void session_realtime_refresh(session_ctx_t *ctx)
 {
@@ -240,6 +241,11 @@ static void session_send_plain_line(session_ctx_t *ctx, const char *message)
 
     session_write_rendered_line(ctx, message);
     session_realtime_record_line(ctx, message);
+
+    if (ctx->capture_realtime_output &&
+        ctx->realtime_line_count >= SESSION_REALTIME_CLEAR_INTERVAL) {
+        session_realtime_refresh(ctx);
+    }
 
     // Update last output line after sending
     snprintf(ctx->last_output_line, sizeof(ctx->last_output_line), "%s", message);

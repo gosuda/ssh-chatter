@@ -6264,11 +6264,11 @@ void session_channel_write(session_ctx_t *ctx, const void *data,
     bool locked = session_output_lock(ctx);
 
     bool success = true;
-    bool channel_locked = false;
+    bool channel_mutex_locked = false;
     if (ctx->channel_mutex_initialized) {
         int lock_result = ttak_mutex_lock(&ctx->channel_mutex);
         if (lock_result == 0) {
-            channel_locked = true;
+            channel_mutex_locked = true;
         } else {
             humanized_log_error("session", "failed to lock channel mutex",
                                 lock_result);
@@ -6295,7 +6295,7 @@ void session_channel_write(session_ctx_t *ctx, const void *data,
         success = session_channel_write_all(ctx, data, length);
     }
 
-    if (channel_locked) {
+    if (channel_mutex_locked) {
         int unlock_result = ttak_mutex_unlock(&ctx->channel_mutex);
         if (unlock_result != 0) {
             humanized_log_error("session", "failed to unlock channel mutex",

@@ -14,6 +14,8 @@ NPROC := $(shell nproc)
 SRC_DIR := src
 INCLUDE_DIR := include
 BUILD_DIR := build
+TTAK_DIR := lib/libttak
+TTAK_LIB := $(TTAK_DIR)/lib/libttak.a
 
 CFLAGS = -std=c2x -Ofast \
               -Werror \

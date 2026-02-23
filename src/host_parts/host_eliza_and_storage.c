@@ -1184,6 +1184,7 @@ static void host_bbs_watchdog_scan(host_t *host)
     ttak_mutex_unlock(&host->lock);
 
     if (snapshot_count == 0U) {
+        sshc_gc_free(snapshot);
         return;
     }
 
@@ -1194,6 +1195,7 @@ static void host_bbs_watchdog_scan(host_t *host)
     if (content == nullptr) {
         humanized_log_error("bbs", "failed to allocate watchdog buffer",
                             ENOMEM);
+        sshc_gc_free(snapshot);
         return;
     }
 
@@ -1319,6 +1321,9 @@ static void host_bbs_watchdog_scan(host_t *host)
         host_history_record_system(host, notice, nullptr);
         chat_room_broadcast(&host->room, notice, nullptr);
     }
+
+    sshc_gc_free(content);
+    sshc_gc_free(snapshot);
 }
 
 static void *host_bbs_watchdog_thread(void *arg)
@@ -4279,6 +4284,7 @@ static bool session_channel_write_utf16_segment(session_ctx_t *ctx,
     }
 
     if (!use_stack) {
+        sshc_gc_free(buffer);
     }
 
     return result;

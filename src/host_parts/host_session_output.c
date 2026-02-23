@@ -330,6 +330,8 @@ static void session_send_reply_tree(session_ctx_t *ctx,
         session_send_reply_tree(ctx, parent_message_id, reply->reply_id,
                                 depth + 1U);
     }
+
+    sshc_gc_free(snapshot);
 }
 
 static bool host_lookup_member_ip(host_t *host, const char *username, char *ip,
@@ -3912,6 +3914,8 @@ static void session_send_multiline_message(session_ctx_t *ctx,
     if (line_start[0] != '\0') {
         session_send_plain_line(ctx, line_start);
     }
+
+    sshc_gc_free(message_copy);
 }
 
 static void session_send_history_entry(session_ctx_t *ctx,
@@ -3929,6 +3933,7 @@ static void session_send_history_entry(session_ctx_t *ctx,
         session_output_set_kind(ctx, SESSION_OUTPUT_KIND_CHAT);
 
     if (session_should_hide_entry(ctx, entry)) {
+        session_output_restore_kind(ctx, previous_kind);
         return;
     }
 
@@ -4006,6 +4011,7 @@ static void session_send_history_entry(session_ctx_t *ctx,
             }
         }
 
+        session_output_restore_kind(ctx, previous_kind);
         return;
     }
 
@@ -6258,10 +6264,11 @@ void session_channel_write(session_ctx_t *ctx, const void *data,
     bool locked = session_output_lock(ctx);
 
     bool success = true;
+    bool channel_mutex_locked = false;
     if (ctx->channel_mutex_initialized) {
         int lock_result = ttak_mutex_lock(&ctx->channel_mutex);
         if (lock_result == 0) {
-            // locked = true; // This line was causing a double lock issue.
+            channel_mutex_locked = true;
         } else {
             humanized_log_error("session", "failed to lock channel mutex",
                                 lock_result);
@@ -6288,7 +6295,7 @@ void session_channel_write(session_ctx_t *ctx, const void *data,
         success = session_channel_write_all(ctx, data, length);
     }
 
-    if (ctx->channel_mutex_initialized && locked) { // Only unlock if it was successfully locked
+    if (channel_mutex_locked) {
         int unlock_result = ttak_mutex_unlock(&ctx->channel_mutex);
         if (unlock_result != 0) {
             humanized_log_error("session", "failed to unlock channel mutex",

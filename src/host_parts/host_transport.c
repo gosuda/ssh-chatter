@@ -6078,6 +6078,8 @@ static void host_apply_grant_to_ip(host_t *host, const char *ip)
         session_send_system_line(
             member, "Operator privileges granted for your IP address.");
     }
+
+    sshc_gc_free(matches);
 }
 
 static bool host_remove_operator_grant_locked(host_t *host, const char *ip)
@@ -6156,6 +6158,8 @@ static void host_revoke_grant_from_ip(host_t *host, const char *ip)
         session_send_system_line(
             member, "Operator privileges revoked for your IP address.");
     }
+
+    sshc_gc_free(matches);
 }
 
 static bool host_lookup_user_os(host_t *host, const char *username,

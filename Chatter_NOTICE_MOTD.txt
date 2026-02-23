@@ -1,25 +1,7 @@
-아스키 아트 붙여넣을시 마지막줄만 보여도 엔터치면 잘 들어갑니다.
-/help to see listed commands
-/help로 도움말 치세요.
-Preferred Language: English, 한국어 (SysOps does not speak other languages)
-Otjer languages are allowed, but you can use Ollama-based tiny translator too.
-try:/bbs read 72
-New feature: Translate(beta) RSS Feed(beta)
-Feel free to use BBS...Please write something to BBS.
-CHATTER_BBS_PROTOCOL=ssh
-CHATTER_BBS_HOST=chat.korokorok.com
-CHATTER_BBS_HOST_DEFAULT=chat.korokorok.com
-Don't add # when /bbs read. /bbs read 66 is correct. BBS리딩할때 /bbs read #66처럼 쓰면 안되고 샵 떼세요.
-제발 BBS에 글써주세요..싹싹 빌겠습니다..(/ ^ \)_/
-모든 주제 허용|NO TOPIC RESTRICTION
-TELNET: THINGS YOU SHOULD DO | 텔넷에서 하셔야 할 일
-  Telnet: Ctrl+]. Write set escape without return, press space bar, press Ctrl+V, type ^@ and press return key
-  텔넷: 컨트롤+] 후에 set escape를 엔터 안치고 적고, 스페이스바 누르고, 컨트롤+V 후에 ^@ 치고 엔터치세요.
-USE PALETTES ON DARK MODE!
-커뮤니티 관리자 모집 중! Recruiting community managers!
-gzblues61@naver.com << Super Administrator's Mail
-Welcome to Chatter BBS!
-Check Admin's Timezone with /date asia/seoul
-Open vote with these commands:
-  /vote Feature
-  /vote-single BBS
+Welcome to Chatter BBS! | 채터 BBS에 오신 것을 환영합니다!
+Languages: English, 한국어 (other languages OK, translator available)
+NO TOPIC RESTRICTION | 모든 주제 허용
+/help to see commands | /help로 도움말 보기
+/bbs list to browse posts | /bbs list로 글 보기
+Recruiting community managers! | 커뮤니티 관리자 모집 중!
+Contact: gzblues61@naver.com

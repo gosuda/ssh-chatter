@@ -4512,83 +4512,10 @@ static void *session_thread(void *arg)
             session_send_system_line(ctx, message);
         }
 
-        if (locale->mode_usage != nullptr && locale->mode_usage[0] != '\0') {
-            const char *args[] = {prefix};
-            char message[SSH_CHATTER_MESSAGE_LIMIT];
-            session_format_template(locale->mode_usage, args,
-                                    sizeof(args) / sizeof(args[0]), message,
-                                    sizeof(message));
-            session_send_system_line(ctx, message);
-        }
-
-        if (locale->mode_explain_command != nullptr &&
-            locale->mode_explain_command[0] != '\0') {
-            const char *args[] = {prefix};
-            char message[SSH_CHATTER_MESSAGE_LIMIT];
-            session_format_template(locale->mode_explain_command, args,
-                                    sizeof(args) / sizeof(args[0]), message,
-                                    sizeof(message));
-            session_send_system_line(ctx, message);
-        }
-
         char bbs_hint[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(bbs_hint, sizeof(bbs_hint),
                  "This room is alive. Use %sbbs list to browse posts.", prefix);
         session_send_system_line(ctx, bbs_hint);
-
-        char slow_contact[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(slow_contact, sizeof(slow_contact),
-                 "Replies may be slow. [MORSE] feed is OFF by default; %smorse on to "
-                 "enable and %smorse-chat <text> to send Morse.",
-                 prefix, prefix);
-        session_send_system_line(ctx, slow_contact);
-
-        // Add retro command hint
-        {
-            char retro_hint[SSH_CHATTER_MESSAGE_LIMIT];
-            const char *retro_msg = nullptr;
-            switch (ctx->ui_language) {
-            case SESSION_UI_LANGUAGE_KO:
-                retro_msg = "레트로 터미널 인코딩: %sretro on "
-                            "[ko|en|jp|zh|ru|de|fr|pl]";
-                break;
-            case SESSION_UI_LANGUAGE_JP:
-                retro_msg = "レトロターミナルエンコーディング: %sretro on "
-                            "[ko|en|jp|zh|ru|de|fr|pl]";
-                break;
-            case SESSION_UI_LANGUAGE_ZH:
-                retro_msg =
-                    "复古终端编码: %sretro on [ko|en|jp|zh|ru|de|fr|pl]";
-                break;
-            case SESSION_UI_LANGUAGE_RU:
-                retro_msg = "Ретро кодировка терминала: %sretro on "
-                            "[ko|en|jp|zh|ru|de|fr|pl]";
-                break;
-            case SESSION_UI_LANGUAGE_DE:
-                retro_msg = "Retro-Terminal-Codierung: %sretro on "
-                            "[ko|en|jp|zh|ru|de|fr|pl]";
-                break;
-            case SESSION_UI_LANGUAGE_FR:
-                retro_msg = "Encodage de terminal rétro: %sretro on "
-                            "[ko|en|jp|zh|ru|de|fr|pl]";
-                break;
-            case SESSION_UI_LANGUAGE_PL:
-                retro_msg = "Kodowanie terminala retro: %sretro on "
-                            "[ko|en|jp|zh|ru|de|fr|pl]";
-                break;
-            case SESSION_UI_LANGUAGE_EN:
-            default:
-                retro_msg = "Retro terminal encoding: %sretro on "
-                            "[ko|en|jp|zh|ru|de|fr|pl]";
-                break;
-            }
-            const char *args[] = {prefix};
-            session_format_template(retro_msg, args,
-                                    sizeof(args) / sizeof(args[0]), retro_hint,
-                                    sizeof(retro_hint));
-            session_send_system_line(ctx, retro_hint);
-            session_send_system_line(ctx, "NOTE: UTF-8 is recommended to see Korean RSS without dirty broken letters");
-        }
 
         char join_message[SSH_CHATTER_MESSAGE_LIMIT];
         if(strnlen(ctx->user_data.preferred_nickname, 256) != 0) {

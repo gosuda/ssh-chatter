@@ -5004,7 +5004,7 @@ static int session_telnet_read_byte(session_ctx_t *ctx, unsigned char *out,
                     unsigned char naws_data[4];
                     size_t naws_pos = 0U;
                     bool naws_done = false;
-                    unsigned char prev_naws = 0U;
+                    unsigned char prev_byte = 0U;
 
                     while (!naws_done) {
                         unsigned char nb = 0U;
@@ -5023,7 +5023,8 @@ static int session_telnet_read_byte(session_ctx_t *ctx, unsigned char *out,
                             return 0;
                         }
 
-                        if (prev_naws == TELNET_IAC) {
+                        if (prev_byte == TELNET_IAC) {
+                            prev_byte = 0U;
                             if (nb == TELNET_CMD_SE) {
                                 naws_done = true;
                                 break;
@@ -5031,12 +5032,11 @@ static int session_telnet_read_byte(session_ctx_t *ctx, unsigned char *out,
                             if (nb == TELNET_IAC && naws_pos < 4U) {
                                 naws_data[naws_pos++] = TELNET_IAC;
                             }
-                            prev_naws = 0U;
                             continue;
                         }
 
                         if (nb == TELNET_IAC) {
-                            prev_naws = TELNET_IAC;
+                            prev_byte = TELNET_IAC;
                             continue;
                         }
 
@@ -5045,7 +5045,7 @@ static int session_telnet_read_byte(session_ctx_t *ctx, unsigned char *out,
                         }
                     }
 
-                    if (naws_pos >= 4U) {
+                    if (naws_pos == 4U) {
                         unsigned int width =
                             ((unsigned int)naws_data[0] << 8) |
                             (unsigned int)naws_data[1];

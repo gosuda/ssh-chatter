@@ -4078,15 +4078,16 @@ static void session_cleanup(session_ctx_t *ctx)
     session_game_release_tetris(ctx);
     session_game_release_saved_tetris(ctx);
 
-    if (ctx->channel_mutex_initialized) {
-        ttak_mutex_destroy(&ctx->channel_mutex);
-        ctx->channel_mutex_initialized = false;
-    }
     if (ctx->transport_kind == SESSION_TRANSPORT_SSH &&
         ctx->channel != nullptr) {
         ssh_channel_request_send_exit_status(ctx->channel, ctx->exit_status);
     }
     session_close_channel(ctx);
+
+    if (ctx->channel_mutex_initialized) {
+        ttak_mutex_destroy(&ctx->channel_mutex);
+        ctx->channel_mutex_initialized = false;
+    }
 
     if (ctx->output_lock_initialized) {
         ttak_mutex_destroy(&ctx->output_lock);

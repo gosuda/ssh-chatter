@@ -4466,6 +4466,7 @@ static int session_accept_channel(session_ctx_t *ctx)
 
             if (channel != nullptr) {
                 ctx->channel = channel;
+                ssh_message_free(message);
                 break;
             }
 

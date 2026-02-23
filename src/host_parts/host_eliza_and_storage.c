@@ -4779,6 +4779,8 @@ static void session_telnet_handle_option(session_ctx_t *ctx,
         } else if (option == TELNET_OPT_TERMINAL_TYPE) {
             session_telnet_send_option(ctx, TELNET_CMD_DO, option);
             session_telnet_request_terminal_type(ctx);
+        } else if (option == TELNET_OPT_NAWS) {
+            session_telnet_send_option(ctx, TELNET_CMD_DO, option);
         } else {
             session_telnet_send_option(ctx, TELNET_CMD_DONT, option);
         }
@@ -4808,7 +4810,7 @@ static void session_telnet_initialize(session_ctx_t *ctx)
     session_telnet_send_option(ctx, TELNET_CMD_WONT, TELNET_OPT_STATUS);
     session_telnet_send_option(ctx, TELNET_CMD_DO, TELNET_OPT_TERMINAL_TYPE);
     session_telnet_send_option(ctx, TELNET_CMD_WONT, TELNET_OPT_TERMINAL_SPEED);
-    session_telnet_send_option(ctx, TELNET_CMD_WONT, TELNET_OPT_NAWS);
+    session_telnet_send_option(ctx, TELNET_CMD_DO, TELNET_OPT_NAWS);
 
     ctx->telnet_negotiated = true;
 }
@@ -4993,6 +4995,68 @@ static int session_telnet_read_byte(session_ctx_t *ctx, unsigned char *out,
                                      sizeof(ctx->terminal_type), "%s",
                                      type_buffer);
                             session_refresh_output_encoding(ctx);
+                        }
+                    }
+                } else if (option == TELNET_OPT_NAWS) {
+                    /* RFC 1073: NAWS sends 4 data bytes followed by IAC SE.
+                     * Format: <width-hi> <width-lo> <height-hi> <height-lo>
+                     * Any 0xFF data byte is doubled (escaped as IAC IAC). */
+                    unsigned char naws_data[4];
+                    size_t naws_pos = 0U;
+                    bool naws_done = false;
+                    unsigned char prev_naws = 0U;
+
+                    while (!naws_done) {
+                        unsigned char nb = 0U;
+                        ssize_t nr = recv(ctx->telnet_fd, &nb, 1, 0);
+                        if (nr < 0) {
+                            if (errno == EINTR) {
+                                continue;
+                            }
+                            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                                continue;
+                            }
+                            return SSH_ERROR;
+                        }
+                        if (nr == 0) {
+                            ctx->telnet_eof = true;
+                            return 0;
+                        }
+
+                        if (prev_naws == TELNET_IAC) {
+                            if (nb == TELNET_CMD_SE) {
+                                naws_done = true;
+                                break;
+                            }
+                            if (nb == TELNET_IAC && naws_pos < 4U) {
+                                naws_data[naws_pos++] = TELNET_IAC;
+                            }
+                            prev_naws = 0U;
+                            continue;
+                        }
+
+                        if (nb == TELNET_IAC) {
+                            prev_naws = TELNET_IAC;
+                            continue;
+                        }
+
+                        if (naws_pos < 4U) {
+                            naws_data[naws_pos++] = nb;
+                        }
+                    }
+
+                    if (naws_pos >= 4U) {
+                        unsigned int width =
+                            ((unsigned int)naws_data[0] << 8) |
+                            (unsigned int)naws_data[1];
+                        unsigned int height =
+                            ((unsigned int)naws_data[2] << 8) |
+                            (unsigned int)naws_data[3];
+                        if (width > 0U && width <= (unsigned)SSH_CHATTER_MESSAGE_LIMIT) {
+                            ctx->terminal_width = width;
+                        }
+                        if (height > 0U) {
+                            ctx->terminal_height = height;
                         }
                     }
                 } else {

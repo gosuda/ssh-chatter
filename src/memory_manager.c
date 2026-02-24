@@ -42,6 +42,8 @@ typedef struct sshc_memory_allocation {
     struct sshc_memory_allocation *next_in_context;
     struct sshc_memory_allocation *next_global;
     struct sshc_memory_context *context;
+    bool gc_registered;
+    pthread_t creator_thread;
 } sshc_memory_allocation_t;
 
 struct sshc_memory_context {
@@ -63,6 +65,7 @@ static sshc_memory_context_t sshc_global_context;
 static sshc_memory_context_t *sshc_contexts = nullptr;
 static sshc_memory_allocation_t *sshc_allocations = nullptr;
 static __thread sshc_memory_context_t *sshc_tls_context = nullptr;
+static __thread bool sshc_tls_defer_gc_registration = false;
 
 static void sshc_memory_context_init(sshc_memory_context_t *ctx,
                                      const char *label)
@@ -157,10 +160,15 @@ void sshc_memory_runtime_shutdown(void)
                 sshc_memory_allocation_t *next_alloc = allocation->next_in_context;
                 sshc_memory_registry_remove_locked(allocation);
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
-                GC_remove_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
+                if (allocation->gc_registered) {
+                    GC_remove_roots(allocation->ptr,
+                                    (char *)allocation->ptr +
+                                        allocation->size);
+                }
 #endif
-                // We don't manually free ptr here because it's in the epoch_gc tree
-                // and ttak_epoch_gc_destroy will handle it.
+                if (!allocation->gc_registered) {
+                    ttak_mem_free(allocation->ptr);
+                }
                 ttak_mem_free(allocation);
                 allocation = next_alloc;
             }
@@ -183,6 +191,9 @@ void sshc_memory_runtime_shutdown(void)
     while (allocation != nullptr) {
         sshc_memory_allocation_t *next_alloc = allocation->next_in_context;
         sshc_memory_registry_remove_locked(allocation);
+        if (!allocation->gc_registered) {
+            ttak_mem_free(allocation->ptr);
+        }
         ttak_mem_free(allocation);
         allocation = next_alloc;
     }
@@ -323,8 +334,13 @@ sshc_memory_context_register_allocation(sshc_memory_context_t *ctx,
     ctx->allocations = allocation;
     pthread_mutex_unlock(&ctx->mutex);
     
+    if (sshc_tls_defer_gc_registration) {
+        return;
+    }
+
     // Register with EpochGC. This adds it to the tree with ref_count=1.
     ttak_epoch_gc_register(&ctx->epoch_gc, allocation->ptr, allocation->size);
+    allocation->gc_registered = true;
 
     // Also register with ttak owner if available
     if (ctx->owner) {
@@ -337,6 +353,56 @@ sshc_memory_context_register_allocation(sshc_memory_context_t *ctx,
     // Ensure Boehm GC scans this manually managed block for pointers
     GC_add_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
 #endif
+}
+
+static void
+sshc_memory_register_deferred_allocation(sshc_memory_allocation_t *allocation)
+{
+    if (allocation == nullptr || allocation->context == nullptr ||
+        allocation->gc_registered) {
+        return;
+    }
+
+    ttak_epoch_gc_register(&allocation->context->epoch_gc, allocation->ptr,
+                           allocation->size);
+    allocation->gc_registered = true;
+
+    if (allocation->context->owner) {
+        char name[32];
+        snprintf(name, sizeof(name), "alloc_%p", allocation->ptr);
+        ttak_owner_register_resource(allocation->context->owner, name,
+                                     allocation->ptr);
+    }
+
+#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
+    GC_add_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
+#endif
+}
+
+void sshc_memory_defer_gc_registration_begin(void)
+{
+    sshc_tls_defer_gc_registration = true;
+}
+
+void sshc_memory_defer_gc_registration_flush(void)
+{
+    pthread_t self = pthread_self();
+    pthread_mutex_lock(&sshc_registry_mutex);
+    sshc_memory_allocation_t *allocation = sshc_allocations;
+    while (allocation != nullptr) {
+        if (!allocation->gc_registered &&
+            pthread_equal(allocation->creator_thread, self)) {
+            sshc_memory_register_deferred_allocation(allocation);
+        }
+        allocation = allocation->next_global;
+    }
+    pthread_mutex_unlock(&sshc_registry_mutex);
+}
+
+void sshc_memory_defer_gc_registration_end(void)
+{
+    sshc_memory_defer_gc_registration_flush();
+    sshc_tls_defer_gc_registration = false;
 }
 
 void *sshc_gc_malloc(size_t size)
@@ -361,6 +427,8 @@ void *sshc_gc_malloc(size_t size)
     allocation->context = ctx;
     allocation->next_in_context = nullptr;
     allocation->next_global = nullptr;
+    allocation->gc_registered = false;
+    allocation->creator_thread = pthread_self();
 
     sshc_memory_context_register_allocation(ctx, allocation);
     sshc_memory_registry_add(allocation);
@@ -404,7 +472,11 @@ void *sshc_gc_realloc(void *ptr, size_t size)
     if (allocation == nullptr) {
         if (old_allocation) {
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
-            GC_remove_roots(old_allocation->ptr, (char *)old_allocation->ptr + old_allocation->size);
+            if (old_allocation->gc_registered) {
+                GC_remove_roots(old_allocation->ptr,
+                                (char *)old_allocation->ptr +
+                                    old_allocation->size);
+            }
 #endif
             sshc_memory_context_remove_allocation(old_allocation->context, ptr);
             
@@ -420,10 +492,16 @@ void *sshc_gc_realloc(void *ptr, size_t size)
     allocation->ptr = new_ptr;
     allocation->size = size;
     allocation->context = ctx;
+    allocation->gc_registered = false;
+    allocation->creator_thread = pthread_self();
     
     if (old_allocation) {
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
-        GC_remove_roots(old_allocation->ptr, (char *)old_allocation->ptr + old_allocation->size);
+        if (old_allocation->gc_registered) {
+            GC_remove_roots(old_allocation->ptr,
+                            (char *)old_allocation->ptr +
+                                old_allocation->size);
+        }
 #endif
         sshc_memory_context_remove_allocation(old_allocation->context, ptr);
         
@@ -468,7 +546,10 @@ void sshc_gc_free(void *ptr)
     if (allocation) {
         sshc_memory_context_remove_allocation(allocation->context, ptr);
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
-        GC_remove_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
+        if (allocation->gc_registered) {
+            GC_remove_roots(allocation->ptr,
+                            (char *)allocation->ptr + allocation->size);
+        }
 #endif
         // Release reference in EpochGC tree. 
         // Background thread will then free ptr safely.
@@ -499,11 +580,18 @@ void sshc_memory_context_reset(sshc_memory_context_t *ctx)
         sshc_memory_allocation_t *next = allocation->next_in_context;
         sshc_memory_registry_remove(allocation);
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
-        GC_remove_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);
+        if (allocation->gc_registered) {
+            GC_remove_roots(allocation->ptr,
+                            (char *)allocation->ptr + allocation->size);
+        }
 #endif
         // Safe release. Let background thread handle the actual free.
         ttak_mem_node_t *node = ttak_mem_tree_find_node(&ctx->epoch_gc.tree, allocation->ptr);
-        if (node) ttak_mem_node_release(node);
+        if (node) {
+            ttak_mem_node_release(node);
+        } else {
+            ttak_mem_free(allocation->ptr);
+        }
         
         ttak_mem_free(allocation);
         allocation = next;

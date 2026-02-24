@@ -116,6 +116,10 @@ ttak_detachable_context_t *sshc_memory_context_get_detachable(
  */
 void sshc_memory_context_epoch_gc_rotate(sshc_memory_context_t *ctx);
 
+void sshc_memory_defer_gc_registration_begin(void);
+void sshc_memory_defer_gc_registration_flush(void);
+void sshc_memory_defer_gc_registration_end(void);
+
 /* ------------------------------------------------------------------ */
 /* EBR (Epoch-Based Reclamation) wrappers                             */
 /* ------------------------------------------------------------------ */

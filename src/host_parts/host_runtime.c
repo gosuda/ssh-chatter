@@ -4084,6 +4084,8 @@ static void session_cleanup(session_ctx_t *ctx)
         return;
     }
 
+    sshc_memory_defer_gc_registration_end();
+
     if (ctx->user_data_loaded) {
         (void)session_user_data_commit(ctx);
     }
@@ -4120,6 +4122,11 @@ static void session_cleanup(session_ctx_t *ctx)
         ssh_disconnect(ctx->session);
         ssh_free(ctx->session);
         ctx->session = nullptr;
+    }
+
+    if (ctx->owner != nullptr && ctx->owner->memory_context != nullptr) {
+        sshc_memory_context_epoch_gc_rotate(ctx->owner->memory_context);
+        sshc_epoch_reclaim();
     }
 }
 
@@ -4215,6 +4222,7 @@ static void *session_thread(void *arg)
     if (ctx->owner != nullptr) {
         memory_scope = sshc_memory_context_push(ctx->owner->memory_context);
     }
+    sshc_memory_defer_gc_registration_begin();
 
 #define SESSION_THREAD_RETURN(value)                                           \
     do {                                                                       \
@@ -7383,9 +7391,6 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             pthread_detach(thread_id);
             host_error_guard_register_success(host);
 
-            // Periodically rotate EpochGC to reclaim expired memory
-            sshc_memory_context_epoch_gc_rotate(host->memory_context);
-            sshc_epoch_reclaim();
         }
 
         ssh_bind_free(bind_handle);

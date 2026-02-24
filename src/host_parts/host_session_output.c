@@ -4577,6 +4577,50 @@ static int session_accept_channel(session_ctx_t *ctx)
     return session_transport_active(ctx) ? 0 : -1;
 }
 
+static int session_on_window_change(ssh_session session, ssh_channel channel,
+                                    int width, int height, int pxwidth,
+                                    int pwheight, void *userdata)
+{
+    (void)session;
+    (void)channel;
+    (void)pxwidth;
+    (void)pwheight;
+
+    session_ctx_t *ctx = (session_ctx_t *)userdata;
+    if (ctx == nullptr) {
+        return -1;
+    }
+
+    if (width > 0 && width <= SSH_CHATTER_MESSAGE_LIMIT) {
+        ctx->terminal_width = (unsigned int)width;
+    }
+    if (height > 0 && height <= SSH_CHATTER_MESSAGE_LIMIT) {
+        ctx->terminal_height = (unsigned int)height;
+    }
+
+    // Trigger a clean screen redraw with the new dimensions.
+    ctx->pending_should_sink = true;
+
+    return 0;
+}
+
+static void session_install_channel_callbacks(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->channel == nullptr || ctx->channel_cb_installed) {
+        return;
+    }
+
+    memset(&ctx->channel_cb, 0, sizeof(ctx->channel_cb));
+    ctx->channel_cb.size = sizeof(ctx->channel_cb);
+    ctx->channel_cb.userdata = ctx;
+    ctx->channel_cb.channel_pty_window_change_function =
+        session_on_window_change;
+    ssh_callbacks_init(&ctx->channel_cb);
+    if (ssh_set_channel_callbacks(ctx->channel, &ctx->channel_cb) == SSH_OK) {
+        ctx->channel_cb_installed = true;
+    }
+}
+
 static int session_prepare_shell(session_ctx_t *ctx)
 {
     ssh_message message = nullptr;

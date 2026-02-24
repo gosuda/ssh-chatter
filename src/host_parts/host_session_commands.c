@@ -150,7 +150,14 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
     }
 
     // Ensure the sender leaves scrollback so the reply appears immediately.
-    session_scrollback_reset_position(ctx);
+    // Only perform the full clear+sink cycle when actually scrolled back,
+    // matching the pattern used for regular chat messages to avoid an
+    // unnecessary duplicate full-frame redraw that can overwhelm the
+    // SSH channel write buffer.
+    const bool was_scrolled_back = ctx->history_scroll_position > 0U;
+    if (was_scrolled_back) {
+        session_scrollback_reset_position(ctx);
+    }
 
     // Add reply to chat history
     const char *target_prefix = (stored.parent_reply_id == 0U) ? "#" : "r#";

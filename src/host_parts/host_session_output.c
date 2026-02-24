@@ -5194,7 +5194,9 @@ static void session_handle_username_conflict_input(session_ctx_t *ctx,
     }
 
     if (session_line_is_exit_command(line)) {
-        ctx->ops->handle_exit(ctx);
+        if (ctx->ops != nullptr && ctx->ops->handle_exit != nullptr) {
+            ctx->ops->handle_exit(ctx);
+        }
         return;
     }
 
@@ -5397,6 +5399,10 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
 
     if (ctx->username_conflict) {
         session_handle_username_conflict_input(ctx, normalized);
+        return;
+    }
+
+    if (ctx->ops == nullptr || ctx->ops->dispatch_command == nullptr) {
         return;
     }
 

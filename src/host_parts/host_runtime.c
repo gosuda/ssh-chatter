@@ -4121,6 +4121,14 @@ static void session_cleanup(session_ctx_t *ctx)
         ssh_channel_request_send_exit_status(ctx->channel, ctx->exit_status);
     }
     session_close_channel(ctx);
+}
+
+static void session_epoch_free(void *ptr)
+{
+    session_ctx_t *ctx = (session_ctx_t *)ptr;
+    if (ctx == nullptr) {
+        return;
+    }
 
     if (ctx->channel_mutex_initialized) {
         ttak_mutex_destroy(&ctx->channel_mutex);
@@ -4139,17 +4147,11 @@ static void session_cleanup(session_ctx_t *ctx)
     }
 
     if (ctx->memory_context != nullptr) {
-        sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
-        sshc_epoch_reclaim();
+        sshc_memory_context_destroy(ctx->memory_context);
+        ctx->memory_context = nullptr;
     }
-}
 
-static void session_epoch_free(void *ptr)
-{
-    if (ptr == nullptr) {
-        return;
-    }
-    sshc_gc_free(ptr);
+    sshc_gc_free(ctx);
 }
 
 static void session_destroy(session_ctx_t *ctx)
@@ -4159,13 +4161,7 @@ static void session_destroy(session_ctx_t *ctx)
     }
 
     session_cleanup(ctx);
-
-    sshc_memory_context_t *ctx_mem = ctx->memory_context;
     sshc_epoch_retire_with(ctx, session_epoch_free);
-    
-    if (ctx_mem != nullptr) {
-        sshc_memory_context_destroy(ctx_mem);
-    }
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,
@@ -5262,13 +5258,6 @@ static void *session_thread(void *arg)
         host_history_record_system(ctx->owner, part_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
         chat_room_remove(&ctx->owner->room, ctx);
-
-        /* Allow in-flight broadcasts that already captured this session in
-         * their snapshot to finish writing before we destroy the channel
-         * and mutexes.  Without this pause, a concurrent broadcast thread
-         * could dereference the freed channel or a destroyed mutex. */
-        struct timespec drain_delay = {.tv_sec = 0, .tv_nsec = 50000000L};
-        nanosleep(&drain_delay, nullptr);
     }
 
     session_destroy(ctx);

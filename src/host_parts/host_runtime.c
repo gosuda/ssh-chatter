@@ -4617,7 +4617,9 @@ static void *session_thread(void *arg)
         }
 
         char join_message[SSH_CHATTER_MESSAGE_LIMIT];
-        if(strnlen(ctx->user_data.preferred_nickname, 256) != 0) {
+        if (ctx->user_data_loaded &&
+            strnlen(ctx->user_data.preferred_nickname,
+                    sizeof(ctx->user_data.preferred_nickname)) != 0U) {
             snprintf(join_message, sizeof(join_message),
                      "%s%s*%s [%s] has joined the chat", ANSI_RESET, ANSI_BRIGHT_RED, ANSI_RESET, ctx->user_data.preferred_nickname);
         } else {

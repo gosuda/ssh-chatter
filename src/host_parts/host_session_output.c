@@ -166,6 +166,14 @@ static void session_realtime_refresh(session_ctx_t *ctx)
         return;
     }
 
+    // When the display model is active, skip the incremental clear+redraw
+    // cycle that can erase visible history and show only a few recent lines.
+    // The full-frame redraw via session_process_pending_sink handles this.
+    if (ctx->display_model_initialized) {
+        ctx->realtime_line_count = 0U;
+        return;
+    }
+
     const bool previous_capture = ctx->capture_realtime_output;
     ctx->capture_realtime_output = false;
 
@@ -2955,6 +2963,11 @@ void session_scrollback_reset_position(session_ctx_t *ctx)
     // Clear no_update flag when returning to latest messages
     ctx->no_update = false;
 
+    // Return display model to tail-follow mode
+    if (ctx->display_model_initialized) {
+        display_model_follow_tail(&ctx->display_model);
+    }
+
     // If a sink flag is pending, synchronize the latest chat chunk now
     session_process_pending_sink(ctx);
 }
@@ -2975,6 +2988,16 @@ void session_process_pending_sink(session_ctx_t *ctx)
     if (ctx->history_scroll_position > 0U) {
         // Do not force-render history when the user is scrolled back.
         return;
+    }
+
+    // When the display model is initialized and following tail, use it to
+    // gate the viewport so the sink emits exactly one viewport-worth of
+    // history instead of the full scrollback chunk.  This avoids the bug
+    // where a burst of messages causes a clear + partial redraw that loses
+    // visible history.
+    if (ctx->display_model_initialized &&
+        display_model_is_following_tail(&ctx->display_model)) {
+        ctx->display_model.dirty = true;
     }
 
     // Compute the newest chunk to deliver.
@@ -3010,10 +3033,21 @@ void session_process_pending_sink(session_ctx_t *ctx)
         session_output_buffer_start(ctx);
     }
 
+    // Disable the incremental realtime capture during the full-frame
+    // redraw to prevent session_realtime_refresh from firing mid-render
+    // and clearing the screen.
+    const bool prev_capture = ctx->capture_realtime_output;
+    ctx->capture_realtime_output = false;
+
     for (size_t idx = 0; idx < copied; ++idx) {
         // Emit each entry in order to rebuild the newest view.
         session_send_history_entry(ctx, &buffer[idx]);
     }
+
+    ctx->capture_realtime_output = prev_capture;
+    // Reset the realtime line counter so the next batch of live messages
+    // does not immediately trigger session_realtime_refresh.
+    ctx->realtime_line_count = 0U;
 
     sshc_gc_free(buffer);
 
@@ -3191,9 +3225,11 @@ static void session_history_navigate(session_ctx_t *ctx, int direction)
 void session_scrollback_navigate(session_ctx_t *ctx, int direction,
                                  size_t step)
 {
-    if(ctx->history_latest_notified | ctx->history_oldest_notified) return;
     if (ctx == nullptr || ctx->owner == nullptr ||
         !session_transport_active(ctx) || direction == 0) {
+        return;
+    }
+    if (ctx->history_latest_notified || ctx->history_oldest_notified) {
         return;
     }
 
@@ -3291,9 +3327,29 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
     if (!at_latest) {
         ctx->no_update = true;
         ctx->history_latest_notified = false;
+        // Synchronize the display model: switch to manual scroll with a
+        // stable anchor based on the oldest visible message so that new
+        // incoming messages do not jump the view back to the tail.
+        if (ctx->display_model_initialized) {
+            const size_t nv = total - 1U - new_position;
+            size_t cs = scroll_step;
+            if (cs > nv + 1U) cs = nv + 1U;
+            if (cs == 0U) cs = 1U;
+            const size_t ov = (nv + 1U > cs) ? (nv + 1U - cs) : 0U;
+            chat_history_entry_t anchor_buf;
+            if (host_history_copy_range(ctx->owner, ov, &anchor_buf, 1U) == 1U &&
+                anchor_buf.message_id > 0U) {
+                ctx->display_model.view.mode = VIEW_MANUAL_SCROLL;
+                ctx->display_model.view.anchor.message_id = anchor_buf.message_id;
+                ctx->display_model.view.anchor.subline_index = 0U;
+            }
+        }
     } else {
         // Clear no_update flag when back at latest
         ctx->no_update = false;
+        if (ctx->display_model_initialized) {
+            display_model_follow_tail(&ctx->display_model);
+        }
     }
 
     if (!at_oldest) {
@@ -3452,9 +3508,28 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     if (!at_latest) {
         ctx->no_update = true;
         ctx->history_latest_notified = false;
+        // Keep display model in manual scroll so new messages don't jump
+        // the view to tail while the user is reading back-history.
+        if (ctx->display_model_initialized) {
+            const size_t nv = total - 1U - new_position;
+            size_t cs = visible_lines;
+            if (cs > nv + 1U) cs = nv + 1U;
+            if (cs == 0U) cs = 1U;
+            const size_t ov = (nv + 1U > cs) ? (nv + 1U - cs) : 0U;
+            chat_history_entry_t anchor_buf;
+            if (host_history_copy_range(ctx->owner, ov, &anchor_buf, 1U) == 1U &&
+                anchor_buf.message_id > 0U) {
+                ctx->display_model.view.mode = VIEW_MANUAL_SCROLL;
+                ctx->display_model.view.anchor.message_id = anchor_buf.message_id;
+                ctx->display_model.view.anchor.subline_index = 0U;
+            }
+        }
     } else {
         // Clear no_update flag when back at latest
         ctx->no_update = false;
+        if (ctx->display_model_initialized) {
+            display_model_follow_tail(&ctx->display_model);
+        }
     }
 
     const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;

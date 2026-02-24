@@ -328,6 +328,10 @@ static session_ctx_t *session_create(void)
         ctx->lifetime_has_activity = true;
         ctx->lifetime_decay_active = false;
 
+        if (display_model_init(&ctx->display_model, 256U)) {
+            ctx->display_model_initialized = true;
+        }
+
         bool workspace_ready = session_bbs_workspace_acquire(ctx);
         bool notice_ready = workspace_ready && session_bbs_view_notice_acquire(ctx);
         bool ascii_ready = notice_ready && session_asciiart_buffer_acquire(ctx);
@@ -4071,6 +4075,10 @@ static void session_cleanup(session_ctx_t *ctx)
     }
 
     session_translation_worker_shutdown(ctx);
+    if (ctx->display_model_initialized) {
+        display_model_destroy(&ctx->display_model);
+        ctx->display_model_initialized = false;
+    }
     session_asciiart_buffer_release(ctx);
     session_bbs_workspace_release(ctx);
     session_bbs_view_notice_release(ctx);

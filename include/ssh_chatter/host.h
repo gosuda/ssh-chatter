@@ -25,6 +25,7 @@
 #include "theme.h"
 #include "security_layer.h"
 #include "codepage.h"
+#include "display_model.h"
 
 #define HOST_GRANTS_CLEAR_SIZE 4512
 
@@ -786,6 +787,9 @@ typedef struct session_ctx {
     char last_output_line[SSH_CHATTER_MESSAGE_LIMIT];
     bool has_last_output_line;
     bool disable_output_dedup;
+    // Full-frame display model for rendering (replaces incremental path)
+    display_model_t display_model;
+    bool display_model_initialized;
     uint32_t lifetime_units;
     struct timespec lifetime_last_activity;
     struct timespec lifetime_decay_reference;

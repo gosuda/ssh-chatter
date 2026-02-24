@@ -310,12 +310,19 @@ bool session_enforce_lifetime(session_ctx_t *ctx,
 
 static session_ctx_t *session_create(void)
 {
-#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
+    // Initially allocate session context in the current (likely global) scope
     session_ctx_t *ctx = (session_ctx_t *)sshc_gc_calloc(1U, sizeof(session_ctx_t));
-#else
-    session_ctx_t *ctx = (session_ctx_t *)sshc_gc_calloc(1U, sizeof(session_ctx_t));
-#endif
     if (ctx != nullptr) {
+        // Create a dedicated memory context for this session
+        ctx->memory_context = sshc_memory_context_create("session");
+        if (ctx->memory_context == nullptr) {
+            sshc_gc_free(ctx);
+            return nullptr;
+        }
+
+        // Push session context so subsequent allocations happen in this scope
+        sshc_memory_context_t *session_scope = sshc_memory_context_push(ctx->memory_context);
+
         ctx->user.is_authenticated = false;
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
         ctx->morse_feed_enabled = false;
@@ -348,9 +355,14 @@ static session_ctx_t *session_create(void)
             session_tetris_buffers_release(ctx);
             session_game_release_tetris(ctx);
             session_game_release_saved_tetris(ctx);
+            
+            sshc_memory_context_pop(session_scope);
+            sshc_memory_context_destroy(ctx->memory_context);
             sshc_gc_free(ctx);
             return nullptr;
         }
+
+        sshc_memory_context_pop(session_scope);
     }
     return ctx;
 }
@@ -4124,8 +4136,8 @@ static void session_cleanup(session_ctx_t *ctx)
         ctx->session = nullptr;
     }
 
-    if (ctx->owner != nullptr && ctx->owner->memory_context != nullptr) {
-        sshc_memory_context_epoch_gc_rotate(ctx->owner->memory_context);
+    if (ctx->memory_context != nullptr) {
+        sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
         sshc_epoch_reclaim();
     }
 }
@@ -4146,7 +4158,12 @@ static void session_destroy(session_ctx_t *ctx)
 
     session_cleanup(ctx);
 
+    sshc_memory_context_t *ctx_mem = ctx->memory_context;
     sshc_epoch_retire_with(ctx, session_epoch_free);
+    
+    if (ctx_mem != nullptr) {
+        sshc_memory_context_destroy(ctx_mem);
+    }
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,
@@ -4226,11 +4243,17 @@ static void *session_thread(void *arg)
 
 #define SESSION_THREAD_RETURN(value)                                           \
     do {                                                                       \
-        if (memory_scope != nullptr) {                                            \
+        if (memory_scope != nullptr) {                                         \
             sshc_memory_context_pop(memory_scope);                             \
         }                                                                      \
         sshc_epoch_thread_exit();                                              \
         return (value);                                                        \
+    } while (0)
+
+#define SESSION_THREAD_ERROR_EXIT()                                            \
+    do {                                                                       \
+        session_destroy(ctx);                                                  \
+        SESSION_THREAD_RETURN(nullptr);                                        \
     } while (0)
 
     ctx->exit_status = EXIT_FAILURE;
@@ -4248,8 +4271,7 @@ static void *session_thread(void *arg)
         if (!authenticated) {
             if (session_authenticate(ctx) != 0) {
                 humanized_log_error("session", "authentication failed", EACCES);
-                session_destroy(ctx);
-                SESSION_THREAD_RETURN(nullptr);
+                SESSION_THREAD_ERROR_EXIT();
             }
             authenticated = true;
             ctx->user.is_authenticated = true;
@@ -4265,8 +4287,7 @@ static void *session_thread(void *arg)
             if (session_attempt_handshake_restart(ctx, &handshake_retries)) {
                 continue;
             }
-            session_destroy(ctx);
-            SESSION_THREAD_RETURN(nullptr);
+            SESSION_THREAD_ERROR_EXIT();
         }
 
         int shell_result = session_prepare_shell(ctx);
@@ -4275,11 +4296,9 @@ static void *session_thread(void *arg)
             if (session_attempt_handshake_restart(ctx, &handshake_retries)) {
                 continue;
             }
-            session_destroy(ctx);
-            SESSION_THREAD_RETURN(nullptr);
+            SESSION_THREAD_ERROR_EXIT();
         } else if (shell_result > 0) {
-            session_destroy(ctx);
-            SESSION_THREAD_RETURN(nullptr);
+            SESSION_THREAD_ERROR_EXIT();
         }
 
         break;
@@ -4345,14 +4364,12 @@ static void *session_thread(void *arg)
     }
     const bool captcha_exempt = session_is_captcha_exempt(ctx);
     if (captcha_enabled && !captcha_exempt && !session_run_captcha(ctx)) {
-        session_destroy(ctx);
-        SESSION_THREAD_RETURN(nullptr);
+        SESSION_THREAD_ERROR_EXIT();
     }
 
     if (host_is_ip_banned(ctx->owner, ctx->client_ip)) {
         session_send_system_line(ctx, "You are banned from this server.");
-        session_destroy(ctx);
-        SESSION_THREAD_RETURN(nullptr);
+        SESSION_THREAD_ERROR_EXIT();
     }
 
     const bool banned_username =
@@ -4446,22 +4463,19 @@ static void *session_thread(void *arg)
             session_send_system_line(ctx, "Type /exit to quit.");
         }
         session_force_disconnect(ctx, "Disconnecting...");
-        session_destroy(ctx);
-        SESSION_THREAD_RETURN(nullptr);
+        SESSION_THREAD_ERROR_EXIT();
     } else {
         host_join_attempt_result_t join_result = host_register_join_attempt(
             ctx->owner, ctx->user.name, ctx->client_ip);
         if (join_result == HOST_JOIN_ATTEMPT_BAN) {
             session_send_system_line(
                 ctx, "Rapid reconnect detected. You have been banned.");
-            session_destroy(ctx);
-            SESSION_THREAD_RETURN(nullptr);
+            SESSION_THREAD_ERROR_EXIT();
         }
         if (join_result == HOST_JOIN_ATTEMPT_KICK) {
             session_send_system_line(
                 ctx, "Rapid reconnect detected. You have been kicked.");
-            session_destroy(ctx);
-            SESSION_THREAD_RETURN(nullptr);
+            SESSION_THREAD_ERROR_EXIT();
         }
 
         session_send_system_line(ctx, "Wait for a moment...");

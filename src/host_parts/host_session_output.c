@@ -4510,6 +4510,7 @@ static int session_authenticate(session_ctx_t *ctx)
                     break; // Break from switch, continue while loop
                 }
             }
+            break;
         }
         case SSH_CHANNEL_REQUEST_WINDOW_CHANGE:
             ssh_message_channel_request_reply_success(message);

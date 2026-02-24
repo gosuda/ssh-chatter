@@ -790,6 +790,8 @@ typedef struct session_ctx {
     char last_output_line[SSH_CHATTER_MESSAGE_LIMIT];
     bool has_last_output_line;
     bool disable_output_dedup;
+    // Dedicated memory context for this session
+    sshc_memory_context_t *memory_context;
     // Full-frame display model for rendering (replaces incremental path)
     display_model_t display_model;
     bool display_model_initialized;

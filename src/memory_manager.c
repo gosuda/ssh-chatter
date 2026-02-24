@@ -59,6 +59,8 @@ struct sshc_memory_context {
     ttak_detachable_context_t detachable;
 };
 
+#define SSH_CHATTER_DEFAULT_LIFETIME TT_HOUR(24)
+
 static pthread_mutex_t sshc_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool sshc_runtime_initialised = false;
 static sshc_memory_context_t sshc_global_context;
@@ -414,12 +416,12 @@ void *sshc_gc_malloc(size_t size)
     sshc_memory_context_t *ctx = sshc_memory_context_current();
     if (size == 0U) size = 1U;
 
-    void *ptr = ttak_mem_alloc(size, __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
+    void *ptr = ttak_mem_alloc(size, SSH_CHATTER_DEFAULT_LIFETIME, ttak_get_tick_count());
     if (ptr == nullptr) return nullptr;
 
     sshc_memory_allocation_t *allocation =
         (sshc_memory_allocation_t *)ttak_mem_alloc(
-            sizeof(*allocation), __TTAK_UNSAFE_MEM_FOREVER__,
+            sizeof(*allocation), SSH_CHATTER_DEFAULT_LIFETIME,
             ttak_get_tick_count());
     if (allocation == nullptr) {
         ttak_mem_free(ptr);
@@ -463,7 +465,7 @@ void *sshc_gc_realloc(void *ptr, size_t size)
     }
     pthread_mutex_unlock(&sshc_registry_mutex);
 
-    void *new_ptr = ttak_mem_realloc(ptr, size, __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
+    void *new_ptr = ttak_mem_realloc(ptr, size, SSH_CHATTER_DEFAULT_LIFETIME, ttak_get_tick_count());
     if (new_ptr == nullptr) {
         if (old_allocation) sshc_memory_registry_add(old_allocation);
         return nullptr;
@@ -471,7 +473,7 @@ void *sshc_gc_realloc(void *ptr, size_t size)
 
     sshc_memory_allocation_t *allocation =
         (sshc_memory_allocation_t *)ttak_mem_alloc(
-            sizeof(*allocation), __TTAK_UNSAFE_MEM_FOREVER__,
+            sizeof(*allocation), SSH_CHATTER_DEFAULT_LIFETIME,
             ttak_get_tick_count());
     if (allocation == nullptr) {
         if (old_allocation) {

@@ -4594,7 +4594,7 @@ static int session_on_window_change(ssh_session session, ssh_channel channel,
     if (width > 0 && width <= SSH_CHATTER_MESSAGE_LIMIT) {
         ctx->terminal_width = (unsigned int)width;
     }
-    if (height > 0) {
+    if (height > 0 && height <= SSH_CHATTER_MESSAGE_LIMIT) {
         ctx->terminal_height = (unsigned int)height;
     }
 

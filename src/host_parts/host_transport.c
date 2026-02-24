@@ -4531,14 +4531,13 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         session_channel_flush(member);
 
         // Auto-scroll to the latest message for telnet sessions only when they
-        // are already at the newest entry. For other transports, preserve the
-        // existing behavior of snapping back when scrolled.
+        // are already at the newest entry. For other transports, keep the
+        // scrollback position stable so that incoming messages do not yank
+        // the view back to the tail while the user is reading history.
         if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
             if (member->history_scroll_position == 0U) {
                 session_scrollback_reset_position(member);
             }
-        } else if (member->history_scroll_position > 0U) {
-            session_scrollback_reset_position(member);
         }
 
         if (member->history_scroll_position == 0U) {

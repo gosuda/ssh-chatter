@@ -310,19 +310,15 @@ bool session_enforce_lifetime(session_ctx_t *ctx,
 
 static session_ctx_t *session_create(void)
 {
-    // Allocate session context manually with cache alignment.
-    // Use __TTAK_UNSAFE_MEM_FOREVER__ to disable automatic GC as requested.
-    session_ctx_t *ctx = (session_ctx_t *)ttak_mem_alloc_with_flags(
-        sizeof(session_ctx_t), __TTAK_UNSAFE_MEM_FOREVER__,
-        ttak_get_tick_count(), TTAK_MEM_CACHE_ALIGNED);
+    // Initially allocate session context in the current (likely global) scope
+    session_ctx_t *ctx =
+        (session_ctx_t *)sshc_gc_calloc(1U, sizeof(session_ctx_t));
 
     if (ctx != nullptr) {
-        memset(ctx, 0, sizeof(session_ctx_t));
-
         // Create a dedicated memory context for this session
         ctx->memory_context = sshc_memory_context_create("session");
         if (ctx->memory_context == nullptr) {
-            ttak_mem_free(ctx);
+            sshc_gc_free(ctx);
             return nullptr;
         }
 
@@ -330,7 +326,7 @@ static session_ctx_t *session_create(void)
         ctx->session_owner = ttak_owner_create(TTAK_OWNER_STRICT_ISOLATION);
         if (ctx->session_owner == nullptr) {
             sshc_memory_context_destroy(ctx->memory_context);
-            ttak_mem_free(ctx);
+            sshc_gc_free(ctx);
             return nullptr;
         }
 
@@ -376,7 +372,7 @@ static session_ctx_t *session_create(void)
                 ttak_owner_destroy(ctx->session_owner);
             }
             sshc_memory_context_destroy(ctx->memory_context);
-            ttak_mem_free(ctx);
+            sshc_gc_free(ctx);
             return nullptr;
         }
 
@@ -4174,7 +4170,7 @@ static void session_epoch_free(void *ptr)
         ctx->session_owner = nullptr;
     }
 
-    ttak_mem_free(ctx);
+    sshc_gc_free(ctx);
 }
 
 static void session_destroy(session_ctx_t *ctx)
@@ -4664,10 +4660,10 @@ static void *session_thread(void *arg)
             strnlen(ctx->user_data.preferred_nickname,
                     sizeof(ctx->user_data.preferred_nickname)) != 0U) {
             snprintf(join_message, sizeof(join_message),
-                     "%s%s*%s [%s] has joined the chat", ANSI_RESET, ANSI_BRIGHT_RED, ANSI_RESET, ctx->user_data.preferred_nickname);
+                     "%s%s*%s [%.*s] has joined the chat", ANSI_RESET, ANSI_BRIGHT_RED, ANSI_RESET, (int)sizeof(ctx->user_data.preferred_nickname), ctx->user_data.preferred_nickname);
         } else {
             snprintf(join_message, sizeof(join_message),
-                     "%s%s*%s [%s] has joined the chat", ANSI_RESET, ANSI_BRIGHT_RED, ANSI_RESET, ctx->user.name);
+                     "%s%s*%s [%.*s] has joined the chat", ANSI_RESET, ANSI_BRIGHT_RED, ANSI_RESET, (int)sizeof(ctx->user.name), ctx->user.name);
         }
         host_history_record_system(ctx->owner, join_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, join_message, nullptr);

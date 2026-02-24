@@ -4217,6 +4217,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
 
+        bool locked = session_output_lock(member);
         // Flush and disable buffering to ensure immediate message delivery
         // This is critical for telnet sessions where buffered writes can hide
         // new messages until another action flushes the buffer
@@ -4281,6 +4282,10 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             member->output_lines_since_prompt = 0U;
             // Refresh prompt/input line after message display.
             session_refresh_input_line(member);
+        }
+
+        if (locked) {
+            session_output_unlock(member);
         }
     }
 

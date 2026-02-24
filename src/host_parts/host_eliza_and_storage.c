@@ -4050,6 +4050,7 @@ static void session_output_buffer_flush(session_ctx_t *ctx)
         return;
     }
 
+    bool locked = session_output_lock(ctx);
     if (ctx->output_buffer_length > 0U) {
         // Temporarily disable buffering to avoid infinite recursion
         ctx->output_buffering_enabled = false;
@@ -4057,6 +4058,9 @@ static void session_output_buffer_flush(session_ctx_t *ctx)
                               ctx->output_buffer_length);
         ctx->output_buffer_length = 0U;
         ctx->output_buffering_enabled = true;
+    }
+    if (locked) {
+        session_output_unlock(ctx);
     }
 }
 
@@ -4636,10 +4640,6 @@ static void session_write_rendered_line(session_ctx_t *ctx,
     char buffer[SSH_CHATTER_MESSAGE_LIMIT * 4U];
     size_t offset = session_prepare_themed_output(ctx, render_source, buffer,
                                                   sizeof(buffer));
-
-    // Prepend \033[1G to ensure cursor is at the beginning of the line
-    static const char column_reset[] = "\033[1G";
-    session_channel_write(ctx, column_reset, sizeof(column_reset) - 1U);
 
     if (offset > 0U) {
         session_channel_write(ctx, buffer, offset);

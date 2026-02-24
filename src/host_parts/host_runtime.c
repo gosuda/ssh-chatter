@@ -3343,8 +3343,10 @@ static bool palette_apply_to_session(session_ctx_t *ctx,
         return false;
     }
 
-    ctx->user_color_code = user_color_code;
-    ctx->user_highlight_code = user_highlight_code;
+    snprintf(ctx->user_color_code, sizeof(ctx->user_color_code), "%s",
+             user_color_code);
+    snprintf(ctx->user_highlight_code, sizeof(ctx->user_highlight_code), "%s",
+             user_highlight_code);
     ctx->user_is_bold = descriptor->user_is_bold;
     snprintf(ctx->user_color_name, sizeof(ctx->user_color_name), "%s",
              descriptor->user_color_name);
@@ -5979,10 +5981,25 @@ static bool host_prepare_chat_entry(host_t *host, const char *username,
         HIGHLIGHT_COLOR_MAP,
         sizeof(HIGHLIGHT_COLOR_MAP) / sizeof(HIGHLIGHT_COLOR_MAP[0]),
         highlight_label);
-    entry->user_color_code =
+
+    const char *effective_color =
         color_code != nullptr ? color_code : host->user_theme.userColor;
-    entry->user_highlight_code =
+    const char *effective_highlight =
         highlight_code != nullptr ? highlight_code : host->user_theme.highlight;
+
+    if (effective_color != nullptr) {
+        snprintf(entry->user_color_code, sizeof(entry->user_color_code), "%s",
+                 effective_color);
+    } else {
+        entry->user_color_code[0] = '\0';
+    }
+
+    if (effective_highlight != nullptr) {
+        snprintf(entry->user_highlight_code, sizeof(entry->user_highlight_code),
+                 "%s", effective_highlight);
+    } else {
+        entry->user_highlight_code[0] = '\0';
+    }
 
     return true;
 }

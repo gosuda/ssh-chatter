@@ -3142,28 +3142,17 @@ static void host_state_assign_color_codes(chat_history_entry_t *entry,
         return;
     }
 
-    entry->user_color_code = nullptr;
-    entry->user_highlight_code = nullptr;
+    entry->user_color_code[0] = '\0';
+    entry->user_highlight_code[0] = '\0';
 
     if (color_code != nullptr && color_code[0] != '\0') {
-        size_t length = strnlen(color_code, SSH_CHATTER_COLOR_CODE_LEN - 1U);
-        char *copy = sshc_gc_malloc(length + 1U);
-        if (copy != nullptr) {
-            memcpy(copy, color_code, length);
-            copy[length] = '\0';
-            entry->user_color_code = copy;
-        }
+        snprintf(entry->user_color_code, sizeof(entry->user_color_code), "%s",
+                 color_code);
     }
 
     if (highlight_code != nullptr && highlight_code[0] != '\0') {
-        size_t length =
-            strnlen(highlight_code, SSH_CHATTER_COLOR_CODE_LEN - 1U);
-        char *copy = sshc_gc_malloc(length + 1U);
-        if (copy != nullptr) {
-            memcpy(copy, highlight_code, length);
-            copy[length] = '\0';
-            entry->user_highlight_code = copy;
-        }
+        snprintf(entry->user_highlight_code,
+                 sizeof(entry->user_highlight_code), "%s", highlight_code);
     }
 }
 
@@ -4249,8 +4238,8 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
             // Pull color/highlight styling from the sender for live output.
             const char *color =
-                from->user_color_code != nullptr ? from->user_color_code : "";
-            const char *highlight = from->user_highlight_code != nullptr
+                from->user_color_code[0] != '\0' ? from->user_color_code : "";
+            const char *highlight = from->user_highlight_code[0] != '\0'
                                         ? from->user_highlight_code
                                         : "";
             const char *bold = from->user_is_bold ? ANSI_BOLD : "";
@@ -4498,7 +4487,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
 
             char line[SSH_CHATTER_MESSAGE_LIMIT * 2U];
             snprintf(line, sizeof(line), "[%s] <%s%s%s%s> %s", id_label,
-                     entry->user_color_code != nullptr ? entry->user_color_code
+                     entry->user_color_code[0] != '\0' ? entry->user_color_code
                                                        : ANSI_RESET,
                      entry->username, ANSI_RESET,
                      entry->user_is_bold ? ANSI_BOLD : "", entry->message);
@@ -4802,12 +4791,10 @@ static bool host_state_write_history_entry(FILE *fp,
              sizeof(serialized.attachment_caption), "%s",
              entry->attachment_caption);
     snprintf(serialized.user_color_code, sizeof(serialized.user_color_code),
-             "%s",
-             entry->user_color_code != nullptr ? entry->user_color_code : "");
+             "%s", entry->user_color_code);
     snprintf(serialized.user_highlight_code,
              sizeof(serialized.user_highlight_code), "%s",
-             entry->user_highlight_code != nullptr ? entry->user_highlight_code
-                                                   : "");
+             entry->user_highlight_code);
     memcpy(serialized.reaction_counts, entry->reaction_counts,
            sizeof(serialized.reaction_counts));
     memset(serialized.reserved, 0, sizeof(serialized.reserved));
@@ -5390,28 +5377,18 @@ static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
     snprintf(entry->raw_username, sizeof(entry->raw_username), "%s",
              raw_username);
     snprintf(entry->user_ip, sizeof(entry->user_ip), "%s", from->client_ip);
-    if (from->user_color_code != nullptr && from->user_color_code[0] != '\0') {
-        size_t color_len = strlen(from->user_color_code);
-        char *color_copy = sshc_gc_malloc(color_len + 1U);
-        if (color_copy != nullptr) {
-            memcpy(color_copy, from->user_color_code, color_len + 1U);
-            entry->user_color_code = color_copy;
-        }
+    if (from->user_color_code[0] != '\0') {
+        snprintf(entry->user_color_code, sizeof(entry->user_color_code), "%s",
+                 from->user_color_code);
     } else {
-        entry->user_color_code = nullptr;
+        entry->user_color_code[0] = '\0';
     }
 
-    if (from->user_highlight_code != nullptr &&
-        from->user_highlight_code[0] != '\0') {
-        size_t highlight_len = strlen(from->user_highlight_code);
-        char *highlight_copy = sshc_gc_malloc(highlight_len + 1U);
-        if (highlight_copy != nullptr) {
-            memcpy(highlight_copy, from->user_highlight_code,
-                   highlight_len + 1U);
-            entry->user_highlight_code = highlight_copy;
-        }
+    if (from->user_highlight_code[0] != '\0') {
+        snprintf(entry->user_highlight_code, sizeof(entry->user_highlight_code),
+                 "%s", from->user_highlight_code);
     } else {
-        entry->user_highlight_code = nullptr;
+        entry->user_highlight_code[0] = '\0';
     }
     entry->user_is_bold = from->user_is_bold;
     snprintf(entry->user_color_name, sizeof(entry->user_color_name), "%s",
@@ -5672,8 +5649,19 @@ static void session_apply_theme_defaults(session_ctx_t *ctx)
 
     host_t *host = ctx->owner;
 
-    ctx->user_color_code = host->user_theme.userColor;
-    ctx->user_highlight_code = host->user_theme.highlight;
+    if (host->user_theme.userColor != nullptr) {
+        snprintf(ctx->user_color_code, sizeof(ctx->user_color_code), "%s",
+                 host->user_theme.userColor);
+    } else {
+        ctx->user_color_code[0] = '\0';
+    }
+
+    if (host->user_theme.highlight != nullptr) {
+        snprintf(ctx->user_highlight_code, sizeof(ctx->user_highlight_code),
+                 "%s", host->user_theme.highlight);
+    } else {
+        ctx->user_highlight_code[0] = '\0';
+    }
     ctx->user_is_bold = host->user_theme.isBold;
     snprintf(ctx->user_color_name, sizeof(ctx->user_color_name), "%s",
              host->default_user_color_name);
@@ -5815,11 +5803,10 @@ static void host_store_user_theme(host_t *host, session_ctx_t *ctx)
     if (pref != nullptr) {
         pref->has_user_theme = true;
         snprintf(pref->user_color_code, sizeof(pref->user_color_code), "%s",
-                 ctx->user_color_code != nullptr ? ctx->user_color_code : "");
+                 ctx->user_color_code);
         snprintf(pref->user_highlight_code, sizeof(pref->user_highlight_code),
                  "%s",
-                 ctx->user_highlight_code != nullptr ? ctx->user_highlight_code
-                                                     : "");
+                 ctx->user_highlight_code);
         snprintf(pref->user_color_name, sizeof(pref->user_color_name), "%s",
                  ctx->user_color_name);
         snprintf(pref->user_highlight_name, sizeof(pref->user_highlight_name),
@@ -5831,11 +5818,10 @@ static void host_store_user_theme(host_t *host, session_ctx_t *ctx)
         ctx->user_data.user_is_bold = ctx->user_is_bold ? 1U : 0U;
         snprintf(ctx->user_data.user_color_code,
                  sizeof(ctx->user_data.user_color_code), "%s",
-                 ctx->user_color_code != nullptr ? ctx->user_color_code : "");
+                 ctx->user_color_code);
         snprintf(ctx->user_data.user_highlight_code,
                  sizeof(ctx->user_data.user_highlight_code), "%s",
-                 ctx->user_highlight_code != nullptr ? ctx->user_highlight_code
-                                                     : "");
+                 ctx->user_highlight_code);
         snprintf(ctx->user_data.user_color_name,
                  sizeof(ctx->user_data.user_color_name), "%s",
                  ctx->user_color_name);
@@ -6281,8 +6267,8 @@ static bool host_history_normalize_entry(host_t *host,
 
 
     if (!entry->is_user_message) {
-        entry->user_color_code = nullptr;
-        entry->user_highlight_code = nullptr;
+        entry->user_color_code[0] = '\0';
+        entry->user_highlight_code[0] = '\0';
         entry->user_is_bold = false;
         entry->user_color_name[0] = '\0';
         entry->user_highlight_name[0] = '\0';
@@ -6290,9 +6276,8 @@ static bool host_history_normalize_entry(host_t *host,
     }
 
     const bool has_color_code =
-        entry->user_color_code != nullptr && entry->user_color_code[0] != '\0';
-    const bool has_highlight_code = entry->user_highlight_code != nullptr &&
-                                    entry->user_highlight_code[0] != '\0';
+        entry->user_color_code[0] != '\0';
+    const bool has_highlight_code = entry->user_highlight_code[0] != '\0';
 
     if (!has_color_code) {
         const char *color_code = lookup_color_code(
@@ -6303,7 +6288,10 @@ static bool host_history_normalize_entry(host_t *host,
             snprintf(entry->user_color_name, sizeof(entry->user_color_name),
                      "%s", host->default_user_color_name);
         }
-        entry->user_color_code = color_code;
+        if (color_code != nullptr) {
+            snprintf(entry->user_color_code, sizeof(entry->user_color_code),
+                     "%s", color_code);
+        }
     }
 
     if (!has_highlight_code) {
@@ -6317,7 +6305,10 @@ static bool host_history_normalize_entry(host_t *host,
                      sizeof(entry->user_highlight_name), "%s",
                      host->default_user_highlight_name);
         }
-        entry->user_highlight_code = highlight_code;
+        if (highlight_code != nullptr) {
+            snprintf(entry->user_highlight_code,
+                     sizeof(entry->user_highlight_code), "%s", highlight_code);
+        }
     }
 
     return true;

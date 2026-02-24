@@ -6303,10 +6303,8 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
                            ctx->client_ip);
         }
 
-        ctx->user_color_code = "";
-        ctx->user_highlight_code = "";
-        ctx->user_highlight_code_buffer[0] = '\0';
-        ctx->user_color_code_buffer[0] = '\0';
+        ctx->user_color_code[0] = '\0';
+        ctx->user_highlight_code[0] = '\0';
         ctx->user_is_bold = false;
 
         session_send_system_line(
@@ -6365,8 +6363,10 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
         }
     }
 
-    ctx->user_color_code = text_code;
-    ctx->user_highlight_code = highlight_code;
+    snprintf(ctx->user_color_code, sizeof(ctx->user_color_code), "%s",
+             text_code);
+    snprintf(ctx->user_highlight_code, sizeof(ctx->user_highlight_code), "%s",
+             highlight_code);
     ctx->user_is_bold = is_bold;
     snprintf(ctx->user_color_name, sizeof(ctx->user_color_name), "%s",
              tokens[0]);

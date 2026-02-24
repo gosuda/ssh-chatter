@@ -1676,10 +1676,7 @@ static void session_apply_user_data_theme(session_ctx_t *ctx,
     const char *highlight_code = nullptr;
 
     if (record->user_color_code[0] != '\0') {
-        snprintf(ctx->user_color_code_buffer,
-                 sizeof(ctx->user_color_code_buffer), "%s",
-                 record->user_color_code);
-        color_code = ctx->user_color_code_buffer;
+        color_code = record->user_color_code;
     } else if (record->user_color_name[0] != '\0') {
         color_code = lookup_color_code(
             USER_COLOR_MAP, sizeof(USER_COLOR_MAP) / sizeof(USER_COLOR_MAP[0]),
@@ -1687,10 +1684,7 @@ static void session_apply_user_data_theme(session_ctx_t *ctx,
     }
 
     if (record->user_highlight_code[0] != '\0') {
-        snprintf(ctx->user_highlight_code_buffer,
-                 sizeof(ctx->user_highlight_code_buffer), "%s",
-                 record->user_highlight_code);
-        highlight_code = ctx->user_highlight_code_buffer;
+        highlight_code = record->user_highlight_code;
     } else if (record->user_highlight_name[0] != '\0') {
         highlight_code = lookup_color_code(HIGHLIGHT_COLOR_MAP,
                                            sizeof(HIGHLIGHT_COLOR_MAP) /
@@ -1699,8 +1693,10 @@ static void session_apply_user_data_theme(session_ctx_t *ctx,
     }
 
     if (color_code != nullptr && highlight_code != nullptr) {
-        ctx->user_color_code = color_code;
-        ctx->user_highlight_code = highlight_code;
+        snprintf(ctx->user_color_code, sizeof(ctx->user_color_code), "%s",
+                 color_code);
+        snprintf(ctx->user_highlight_code, sizeof(ctx->user_highlight_code),
+                 "%s", highlight_code);
         ctx->user_is_bold = record->user_is_bold != 0U;
         snprintf(ctx->user_color_name, sizeof(ctx->user_color_name), "%s",
                  record->user_color_name);
@@ -1779,10 +1775,7 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
 
             const char *color_code = nullptr;
             if (has_custom_color) {
-                snprintf(ctx->user_color_code_buffer,
-                         sizeof(ctx->user_color_code_buffer), "%s",
-                         base_snapshot.user_color_code);
-                color_code = ctx->user_color_code_buffer;
+                color_code = base_snapshot.user_color_code;
             } else {
                 color_code = lookup_color_code(USER_COLOR_MAP,
                                                sizeof(USER_COLOR_MAP) /
@@ -1792,10 +1785,7 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
 
             const char *highlight_code = nullptr;
             if (has_custom_highlight) {
-                snprintf(ctx->user_highlight_code_buffer,
-                         sizeof(ctx->user_highlight_code_buffer), "%s",
-                         base_snapshot.user_highlight_code);
-                highlight_code = ctx->user_highlight_code_buffer;
+                highlight_code = base_snapshot.user_highlight_code;
             } else {
                 highlight_code =
                     lookup_color_code(HIGHLIGHT_COLOR_MAP,
@@ -1805,8 +1795,11 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
             }
 
             if (color_code != nullptr && highlight_code != nullptr) {
-                ctx->user_color_code = color_code;
-                ctx->user_highlight_code = highlight_code;
+                snprintf(ctx->user_color_code, sizeof(ctx->user_color_code),
+                         "%s", color_code);
+                snprintf(ctx->user_highlight_code,
+                         sizeof(ctx->user_highlight_code), "%s",
+                         highlight_code);
                 ctx->user_is_bold = base_snapshot.user_is_bold;
                 snprintf(ctx->user_color_name, sizeof(ctx->user_color_name),
                          "%s", base_snapshot.user_color_name);

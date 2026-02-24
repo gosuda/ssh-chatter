@@ -24,7 +24,7 @@ CFLAGS = -std=c2x -Ofast \
               -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
               -Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
               -fno-omit-frame-pointer -fstack-protector-strong -fno-common \
-              -fPIC \
+              -fPIC -ftls-model=global-dynamic \
               -g \
               -D_FORTIFY_SOURCE=2 \
               -flto=auto -fuse-linker-plugin \
@@ -61,7 +61,6 @@ COMMON_LDFLAGS = \
     -L$(TTAK_DIR)/lib \
     -lpthread -ldl -lcurl -lm -lcrypto -lttak -lc \
     -flto=auto -fuse-linker-plugin \
-    -fwhole-program \
     -Wl,-Ofast \
     -Wl,--hash-style=gnu \
     -Wl,--sort-common \

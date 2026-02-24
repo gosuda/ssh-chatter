@@ -3921,10 +3921,10 @@ static void session_send_private_message_line(session_ctx_t *ctx,
         return;
     }
 
-    const char *highlight = color_source->user_highlight_code != nullptr
+    const char *highlight = color_source->user_highlight_code[0] != '\0'
                                 ? color_source->user_highlight_code
                                 : "";
-    const char *color = color_source->user_color_code != nullptr
+    const char *color = color_source->user_color_code[0] != '\0'
                             ? color_source->user_color_code
                             : "";
     const char *bold = color_source->user_is_bold ? ANSI_BOLD : "";
@@ -4036,11 +4036,11 @@ static void session_send_history_entry(session_ctx_t *ctx,
         char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
         formatted[0] = '\0';
 
-        const char *highlight = (entry->user_highlight_code != nullptr)
+        const char *highlight = (entry->user_highlight_code[0] != '\0')
                                     ? entry->user_highlight_code
                                     : "";
         const char *color =
-            (entry->user_color_code != nullptr) ? entry->user_color_code : "";
+            (entry->user_color_code[0] != '\0') ? entry->user_color_code : "";
         const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
 
         const bool has_custom_codes =

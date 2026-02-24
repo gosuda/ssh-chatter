@@ -5837,6 +5837,13 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
     chat_room_broadcast_entry(&ctx->owner->room, &entry, ctx);
     host_notify_external_clients(ctx->owner, &entry);
 
+    // Force-sync the sender's screen after broadcasting.  The broadcast
+    // marks all room members (including the sender) with a pending sink
+    // flag but skips the sender in the delivery loop, leaving the flag
+    // unprocessed until the next keystroke.  Processing it here ensures
+    // the sender's viewport immediately reflects all recent messages.
+    session_process_pending_sink(ctx);
+
     (void)host_eliza_intervene(ctx, trimmed, nullptr, false);
 
     size_t message_length = strnlen(trimmed, SSH_CHATTER_MESSAGE_LIMIT);

@@ -310,18 +310,33 @@ bool session_enforce_lifetime(session_ctx_t *ctx,
 
 static session_ctx_t *session_create(void)
 {
-    // Initially allocate session context in the current (likely global) scope
-    session_ctx_t *ctx = (session_ctx_t *)sshc_gc_calloc(1U, sizeof(session_ctx_t));
+    // Allocate session context manually with cache alignment.
+    // Use __TTAK_UNSAFE_MEM_FOREVER__ to disable automatic GC as requested.
+    session_ctx_t *ctx = (session_ctx_t *)ttak_mem_alloc_with_flags(
+        sizeof(session_ctx_t), __TTAK_UNSAFE_MEM_FOREVER__,
+        ttak_get_tick_count(), TTAK_MEM_CACHE_ALIGNED);
+
     if (ctx != nullptr) {
+        memset(ctx, 0, sizeof(session_ctx_t));
+
         // Create a dedicated memory context for this session
         ctx->memory_context = sshc_memory_context_create("session");
         if (ctx->memory_context == nullptr) {
-            sshc_gc_free(ctx);
+            ttak_mem_free(ctx);
+            return nullptr;
+        }
+
+        // Initialize session-specific owner for strict isolation
+        ctx->session_owner = ttak_owner_create(TTAK_OWNER_STRICT_ISOLATION);
+        if (ctx->session_owner == nullptr) {
+            sshc_memory_context_destroy(ctx->memory_context);
+            ttak_mem_free(ctx);
             return nullptr;
         }
 
         // Push session context so subsequent allocations happen in this scope
-        sshc_memory_context_t *session_scope = sshc_memory_context_push(ctx->memory_context);
+        sshc_memory_context_t *session_scope =
+            sshc_memory_context_push(ctx->memory_context);
 
         ctx->user.is_authenticated = false;
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
@@ -357,8 +372,11 @@ static session_ctx_t *session_create(void)
             session_game_release_saved_tetris(ctx);
             
             sshc_memory_context_pop(session_scope);
+            if (ctx->session_owner != nullptr) {
+                ttak_owner_destroy(ctx->session_owner);
+            }
             sshc_memory_context_destroy(ctx->memory_context);
-            sshc_gc_free(ctx);
+            ttak_mem_free(ctx);
             return nullptr;
         }
 
@@ -4151,7 +4169,12 @@ static void session_epoch_free(void *ptr)
         ctx->memory_context = nullptr;
     }
 
-    sshc_gc_free(ctx);
+    if (ctx->session_owner != nullptr) {
+        ttak_owner_destroy(ctx->session_owner);
+        ctx->session_owner = nullptr;
+    }
+
+    ttak_mem_free(ctx);
 }
 
 static void session_destroy(session_ctx_t *ctx)
@@ -5258,6 +5281,13 @@ static void *session_thread(void *arg)
         host_history_record_system(ctx->owner, part_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
         chat_room_remove(&ctx->owner->room, ctx);
+
+        /* Allow in-flight broadcasts that already captured this session in
+         * their snapshot to finish writing before we destroy the channel
+         * and mutexes.  Without this pause, a concurrent broadcast thread
+         * could dereference the freed channel or a destroyed mutex. */
+        struct timespec drain_delay = {.tv_sec = 0, .tv_nsec = 50000000L};
+        nanosleep(&drain_delay, nullptr);
     }
 
     session_destroy(ctx);

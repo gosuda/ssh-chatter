@@ -790,6 +790,8 @@ typedef struct session_ctx {
     bool disable_output_dedup;
     // Dedicated memory context for this session
     sshc_memory_context_t *memory_context;
+    // Ownership and isolation context
+    tt_owner_t *session_owner;
     // Full-frame display model for rendering (replaces incremental path)
     display_model_t display_model;
     bool display_model_initialized;

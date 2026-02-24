@@ -184,8 +184,26 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
     // Show the reply to the sender immediately (just like regular chat messages)
     session_send_history_entry(ctx, &reply_entry);
 
+    // Advance the sink watermark so the subsequent pending-sink processing
+    // does not re-deliver this entry (incremental redraw).
+    if (reply_entry.message_id > ctx->last_sink_message_id) {
+        ctx->last_sink_message_id = reply_entry.message_id;
+    }
+
+    // Clear the sender's input and refresh the prompt so the screen
+    // updates immediately, matching the behaviour of regular chat messages.
+    if (ctx->history_scroll_position == 0U && !ctx->bracket_paste_active) {
+        ctx->input_length = 0U;
+        ctx->input_buffer[0] = '\0';
+        session_refresh_input_line(ctx);
+    }
+
     // Broadcast the reply entry to all users so it appears in chat buffer
     chat_room_broadcast_entry(&ctx->owner->room, &reply_entry, ctx);
+
+    // Force-sync the sender's screen after broadcasting so the viewport
+    // reflects the new reply without waiting for the next keystroke.
+    session_process_pending_sink(ctx);
 }
 
 static void session_handle_filestore(session_ctx_t *ctx, const char *arguments)

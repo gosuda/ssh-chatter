@@ -1268,6 +1268,9 @@ static void session_clear_screen(session_ctx_t *ctx)
 
     ctx->output_lines_since_prompt = 0U;
     ctx->prompt_needs_padding = false;
+    // Reset the incremental sink watermark so the next pending-sink
+    // delivers a full viewport after the screen has been cleared.
+    ctx->last_sink_message_id = 0U;
 }
 
 static void session_bbs_prepare_canvas(session_ctx_t *ctx)
@@ -3028,19 +3031,48 @@ void session_process_pending_sink(session_ctx_t *ctx)
 
     ctx->pending_should_sink = false;
 
+    // Determine the first entry that hasn't been delivered yet.
+    // Skip entries whose message_id is at or below the last sink watermark
+    // so only genuinely new lines are emitted (incremental / line-level
+    // redraw instead of a full-viewport clear-and-rewrite).
+    size_t first_new = copied;
+    if (ctx->last_sink_message_id > 0U) {
+        for (size_t idx = 0; idx < copied; ++idx) {
+            if (buffer[idx].message_id > ctx->last_sink_message_id) {
+                first_new = idx;
+                break;
+            }
+        }
+    } else {
+        // No watermark yet – deliver the whole chunk (initial sync).
+        first_new = 0;
+    }
+
+    // Track the highest message_id in the chunk for subsequent calls.
+    for (size_t idx = 0; idx < copied; ++idx) {
+        if (buffer[idx].message_id > ctx->last_sink_message_id) {
+            ctx->last_sink_message_id = buffer[idx].message_id;
+        }
+    }
+
+    if (first_new >= copied) {
+        // Nothing new to display.
+        sshc_gc_free(buffer);
+        return;
+    }
+
     const bool buffering_started = !ctx->output_buffering_enabled;
     if (buffering_started) {
         session_output_buffer_start(ctx);
     }
 
-    // Disable the incremental realtime capture during the full-frame
-    // redraw to prevent session_realtime_refresh from firing mid-render
-    // and clearing the screen.
+    // Disable the incremental realtime capture during the redraw to
+    // prevent session_realtime_refresh from firing mid-render and
+    // clearing the screen.
     const bool prev_capture = ctx->capture_realtime_output;
     ctx->capture_realtime_output = false;
 
-    for (size_t idx = 0; idx < copied; ++idx) {
-        // Emit each entry in order to rebuild the newest view.
+    for (size_t idx = first_new; idx < copied; ++idx) {
         session_send_history_entry(ctx, &buffer[idx]);
     }
 

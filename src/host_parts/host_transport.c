@@ -4542,6 +4542,11 @@ static void chat_room_broadcast_entry(chat_room_t *room,
 
         if (member->history_scroll_position == 0U) {
             session_clear_pending_sink(member);
+            // Advance the sink watermark so the incremental sink path does
+            // not re-deliver this entry.
+            if (entry->message_id > member->last_sink_message_id) {
+                member->last_sink_message_id = entry->message_id;
+            }
         }
 
         // Refresh input line to display the message and prompt

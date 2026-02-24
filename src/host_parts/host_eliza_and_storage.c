@@ -5823,6 +5823,11 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
 
     if (ctx->history_scroll_position == 0U) {
         session_send_history_entry(ctx, &entry);
+        // Advance the sink watermark for the sender so the subsequent
+        // session_process_pending_sink does not re-deliver this entry.
+        if (entry.message_id > ctx->last_sink_message_id) {
+            ctx->last_sink_message_id = entry.message_id;
+        }
     }
 
     ctx->capture_realtime_output = previous_capture;

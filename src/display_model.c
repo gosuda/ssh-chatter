@@ -24,7 +24,9 @@ static unsigned int utf8_char_width(const char **p)
     /* Skip ANSI escape sequences (CSI: ESC [ ... final byte) */
     if (s[0] == 0x1B && s[1] == '[') {
         s += 2;
-        while (*s != '\0' && *s < 0x40) {
+        /* Skip parameter bytes (0x30-0x3F) and intermediate bytes (0x20-0x2F).
+         * The final byte is in range 0x40-0x7E. */
+        while (*s != '\0' && *s >= 0x20 && *s < 0x40) {
             ++s;
         }
         if (*s != '\0') {
@@ -188,6 +190,19 @@ size_t display_model_wrap_line(const char *text, unsigned int width,
             if (col + cw > width && col > 0U) {
                 /* Wrap: revert this character and start a new display line */
                 cursor = prev;
+                break;
+            }
+
+            /* If a single character exceeds the width (e.g. double-width
+             * CJK with width=1), force it onto its own line to avoid
+             * infinite loops. */
+            if (cw > width && col == 0U) {
+                size_t byte_len = (size_t)(cursor - prev);
+                if (out_pos + byte_len < DISPLAY_LINE_TEXT_MAX - 1U) {
+                    memcpy(line->text + out_pos, prev, byte_len);
+                    out_pos += byte_len;
+                }
+                col += cw;
                 break;
             }
 

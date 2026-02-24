@@ -1999,6 +1999,10 @@ static bool session_parse_command(const char *line, const char *command,
 
 static void session_dispatch_command(session_ctx_t *ctx, const char *line)
 {
+    if (ctx == nullptr || line == nullptr) {
+        return;
+    }
+
     const char *args = nullptr;
     const char *effective_line = line;
 
@@ -2130,12 +2134,18 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     }
 
     else if (session_parse_command_any(ctx, "/exit", effective_line, &args)) {
-        ctx->ops->handle_exit(ctx);
+        if (ctx->ops != nullptr && ctx->ops->handle_exit != nullptr) {
+            ctx->ops->handle_exit(ctx);
+        }
         return;
     }
 
     else if (session_parse_command_any(ctx, "/nick", effective_line, &args)) {
-        ctx->ops->handle_nick(ctx, args);
+        if (ctx->ops != nullptr && ctx->ops->handle_nick != nullptr) {
+            ctx->ops->handle_nick(ctx, args);
+        } else {
+            session_send_system_line(ctx, "Usage: /nick <name>");
+        }
         return;
     }
 
@@ -2373,7 +2383,11 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     }
 
     else if (session_parse_command_any(ctx, "/mode", effective_line, &args)) {
-        ctx->ops->handle_mode(ctx, args);
+        if (ctx->ops != nullptr && ctx->ops->handle_mode != nullptr) {
+            ctx->ops->handle_mode(ctx, args);
+        } else {
+            session_send_system_line(ctx, "Usage: /mode <chat|command|toggle>");
+        }
         return;
     } else if (session_parse_command_any(ctx, "/palette", effective_line,
                                          &args)) {
@@ -4311,7 +4325,9 @@ static void *session_thread(void *arg)
             char nick_command[SSH_CHATTER_MAX_INPUT_LEN];
             snprintf(nick_command, sizeof(nick_command), "/nick %s",
                      nick_to_apply);
-            ctx->ops->dispatch_command(ctx, nick_command);
+            if (ctx->ops != nullptr && ctx->ops->dispatch_command != nullptr) {
+                ctx->ops->dispatch_command(ctx, nick_command);
+            }
         }
     }
 

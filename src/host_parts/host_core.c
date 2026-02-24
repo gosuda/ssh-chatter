@@ -4139,7 +4139,8 @@ static const char *session_command_prefix(const session_ctx_t *ctx)
 static bool session_try_localized_command_forward(session_ctx_t *ctx,
                                                   const char *line)
 {
-    if (ctx == nullptr || line == nullptr) {
+    if (ctx == nullptr || line == nullptr || ctx->ops == nullptr ||
+        ctx->ops->dispatch_command == nullptr || ctx->ops->handle_mode == nullptr) {
         return false;
     }
 

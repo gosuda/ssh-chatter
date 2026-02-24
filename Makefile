@@ -58,6 +58,7 @@ CFLAGS = -std=c2x -Ofast \
 # LINKER FLAGS (LDFLAGS) - Extreme Security and Optimization
 # ==============================================================================
 COMMON_LDFLAGS = \
+    -L$(TTAK_DIR)/lib \
     -lpthread -ldl -lcurl -lm -lcrypto -lttak -lc \
     -flto=auto -fuse-linker-plugin \
     -fwhole-program \

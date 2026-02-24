@@ -21,6 +21,7 @@
 
 #include <libssh/libssh.h>
 #include <libssh/server.h>
+#include <libssh/callbacks.h>
 
 #include "theme.h"
 #include "security_layer.h"
@@ -603,6 +604,8 @@ typedef enum session_output_kind {
 typedef struct session_ctx {
     ssh_session session;
     ssh_channel channel;
+    struct ssh_channel_callbacks_struct channel_cb;
+    bool channel_cb_installed;
     session_transport_kind_t transport_kind;
     int telnet_fd;
     bool telnet_negotiated;

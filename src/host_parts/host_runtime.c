@@ -4264,6 +4264,7 @@ static void *session_thread(void *arg)
     }
 
     if (ctx->transport_kind == SESSION_TRANSPORT_SSH) {
+        session_install_channel_callbacks(ctx);
         session_render_prelogin_banner(ctx);
     }
 
@@ -5016,6 +5017,11 @@ static void *session_thread(void *arg)
                     ctx->bbs_line_edit_mode = false;
                     session_clear_input_without_prompt(ctx);
                     session_bbs_render_editor(ctx, status);
+                } else if (!ctx->bbs_post_pending && !ctx->asciiart_pending &&
+                           !ctx->game.active && !ctx->in_rss_mode) {
+                    // Ctrl+L in normal chat mode: clean screen redraw
+                    // without disconnecting/reconnecting.
+                    session_flag_should_sink(ctx);
                 }
                 continue;
             }

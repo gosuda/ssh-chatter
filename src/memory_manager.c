@@ -166,7 +166,9 @@ void sshc_memory_runtime_shutdown(void)
                                         allocation->size);
                 }
 #endif
-                if (!allocation->gc_registered) {
+                ttak_mem_node_t *node = ttak_mem_tree_find_node(
+                    &ctx->epoch_gc.tree, allocation->ptr);
+                if (!allocation->gc_registered && node == nullptr) {
                     ttak_mem_free(allocation->ptr);
                 }
                 ttak_mem_free(allocation);
@@ -191,7 +193,9 @@ void sshc_memory_runtime_shutdown(void)
     while (allocation != nullptr) {
         sshc_memory_allocation_t *next_alloc = allocation->next_in_context;
         sshc_memory_registry_remove_locked(allocation);
-        if (!allocation->gc_registered) {
+        ttak_mem_node_t *node = ttak_mem_tree_find_node(
+            &sshc_global_context.epoch_gc.tree, allocation->ptr);
+        if (!allocation->gc_registered && node == nullptr) {
             ttak_mem_free(allocation->ptr);
         }
         ttak_mem_free(allocation);

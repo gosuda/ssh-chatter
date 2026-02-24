@@ -177,6 +177,14 @@ static void session_realtime_refresh(session_ctx_t *ctx)
     const bool previous_capture = ctx->capture_realtime_output;
     ctx->capture_realtime_output = false;
 
+    // Bundle the clear and redraw into a single buffered write so the
+    // terminal receives them atomically, preventing the visible blank
+    // flash that causes screen flickering.
+    const bool buffering_started = !ctx->output_buffering_enabled;
+    if (buffering_started) {
+        session_output_buffer_start(ctx);
+    }
+
     session_clear_screen(ctx);
 
     size_t lines_to_show = ctx->realtime_recent_count;
@@ -188,6 +196,10 @@ static void session_realtime_refresh(session_ctx_t *ctx)
         size_t slot =
             (ctx->realtime_recent_start + idx) % SESSION_REALTIME_RECENT_LIMIT;
         session_send_plain_line(ctx, ctx->realtime_recent_lines[slot]);
+    }
+
+    if (buffering_started) {
+        session_output_buffer_stop(ctx);
     }
 
     ctx->capture_realtime_output = previous_capture;
@@ -3032,6 +3044,14 @@ void session_process_pending_sink(session_ctx_t *ctx)
     if (buffering_started) {
         session_output_buffer_start(ctx);
     }
+
+    // Place cursor-home + clear inside the same output buffer as the
+    // new content so the terminal receives them in a single write,
+    // eliminating the visible blank flash that causes flickering.
+    static const char kHomeAndClear[] = "\033[H\033[J";
+    session_channel_write(ctx, kHomeAndClear, sizeof(kHomeAndClear) - 1U);
+    ctx->output_lines_since_prompt = 0U;
+    ctx->prompt_needs_padding = false;
 
     // Disable the incremental realtime capture during the full-frame
     // redraw to prevent session_realtime_refresh from firing mid-render

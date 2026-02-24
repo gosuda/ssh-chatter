@@ -184,8 +184,19 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
     // Show the reply to the sender immediately (just like regular chat messages)
     session_send_history_entry(ctx, &reply_entry);
 
+    if (ctx->history_scroll_position == 0U && !ctx->bracket_paste_active) {
+        session_refresh_input_line(ctx);
+    }
+
     // Broadcast the reply entry to all users so it appears in chat buffer
     chat_room_broadcast_entry(&ctx->owner->room, &reply_entry, ctx);
+
+    // Force-sync the sender's screen after broadcasting.  The broadcast
+    // marks all room members (including the sender) with a pending sink
+    // flag but skips the sender in the delivery loop, leaving the flag
+    // unprocessed until the next keystroke.  Processing it here ensures
+    // the sender's viewport immediately reflects all recent messages.
+    session_process_pending_sink(ctx);
 }
 
 static void session_handle_filestore(session_ctx_t *ctx, const char *arguments)

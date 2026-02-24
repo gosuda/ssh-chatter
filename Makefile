@@ -93,7 +93,11 @@ STRESS_TARGET := stress-test
 STRESS_SRC := tests/stress_main.c
 STRESS_OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(STRESS_SRC))
 
-.PHONY: all clean run stress-test
+DISPLAY_TEST_TARGET := display-model-test
+DISPLAY_TEST_SRC := tests/display_model_test.c src/display_model.c
+DISPLAY_TEST_OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(DISPLAY_TEST_SRC))
+
+.PHONY: all clean run stress-test display-model-test
 
 # ==============================================================================
 # BUILD RULES (Single Stage)
@@ -113,6 +117,9 @@ $(SHARED_TARGET): $(SHARED_OBJ) $(TTAK_LIB)
 $(STRESS_TARGET): $(filter-out $(BUILD_DIR)/src/main.o,$(OBJ)) $(STRESS_OBJ) $(TTAK_LIB)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
+$(DISPLAY_TEST_TARGET): $(DISPLAY_TEST_OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ -Wno-error
+
 $(TTAK_LIB):
 	$(MAKE) -C $(TTAK_DIR) all
 
@@ -126,7 +133,7 @@ run: $(TARGET)
 
 clean:
 # Cleanup only for LTO/standard build files
-	rm -rf $(BUILD_DIR) $(TARGET) $(SHARED_TARGET) $(DEP) $(STRESS_OBJ) $(STRESS_TARGET)
+	rm -rf $(BUILD_DIR) $(TARGET) $(SHARED_TARGET) $(DEP) $(STRESS_OBJ) $(STRESS_TARGET) $(DISPLAY_TEST_TARGET)
 
 # Include dependency files
 -include $(DEP)

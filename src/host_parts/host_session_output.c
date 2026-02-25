@@ -3275,8 +3275,6 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
     chat_history_entry_t *buffer = nullptr;
     bool reached_oldest = false;
 
-    session_scrollback_prepare_display(ctx);
-
     size_t scroll_step = (step == 0) ? session_visible_history_lines(ctx) : step;
     if (scroll_step == 0U) {
         scroll_step = 1U;
@@ -3377,12 +3375,8 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
         ctx->history_oldest_notified = false;
     }
 
-    const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
-    session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
-
     if (direction < 0 && at_boundary && new_position == 0U) {
         if (!ctx->history_latest_notified) {
-            session_send_system_line(ctx, "End of scrollback.");
             ctx->history_latest_notified = true;
         }
         session_render_prompt(ctx, false);
@@ -3390,6 +3384,20 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
         ctx->scrollback_rendered_lines = 0U;
         goto cleanup;
     }
+
+    if (direction > 0 && at_boundary && new_position == max_position) {
+        if (!ctx->history_oldest_notified) {
+            ctx->history_oldest_notified = true;
+        }
+        session_render_prompt(ctx, false);
+        session_process_pending_sink(ctx);
+        goto cleanup;
+    }
+
+    session_scrollback_prepare_display(ctx);
+
+    const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
+    session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
 
     const size_t newest_visible = total - 1U - new_position;
     size_t chunk = scroll_step;
@@ -3454,7 +3462,6 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
 
     if (direction < 0 && new_position == 0U) {
         if (!ctx->history_latest_notified) {
-            session_send_system_line(ctx, "End of scrollback.");
             ctx->history_latest_notified = true;
         }
     }
@@ -3571,12 +3578,8 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         ctx->history_oldest_notified = false;
     }
 
-    const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
-    session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
-
     if (direction < 0 && at_boundary && new_position == 0U) {
         if (!ctx->history_latest_notified) {
-            session_send_system_line(ctx, "End of scrollback.");
             ctx->history_latest_notified = true;
         }
         session_render_prompt(ctx, false);
@@ -3594,6 +3597,11 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         session_process_pending_sink(ctx);
         goto cleanup;
     }
+
+    session_scrollback_prepare_display(ctx);
+
+    const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
+    session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
 
     // Calculate sliding window - always show the configured message chunk
     size_t newest_visible = total - 1U - new_position;
@@ -3643,7 +3651,6 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
 
     if (direction < 0 && new_position == 0U) {
         if (!ctx->history_latest_notified) {
-            session_send_system_line(ctx, "End of scrollback.");
             ctx->history_latest_notified = true;
         }
     }

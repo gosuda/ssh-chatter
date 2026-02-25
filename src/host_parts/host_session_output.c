@@ -3009,6 +3009,7 @@ void session_process_pending_sink(session_ctx_t *ctx)
     // visible history.
     if (ctx->display_model_initialized &&
         display_model_is_following_tail(&ctx->display_model)) {
+        ctx->display_model.line_count = 0U;
         ctx->display_model.dirty = true;
     }
 
@@ -3062,6 +3063,12 @@ void session_process_pending_sink(session_ctx_t *ctx)
     for (size_t idx = 0; idx < copied; ++idx) {
         // Emit each entry in order to rebuild the newest view.
         session_send_history_entry(ctx, &buffer[idx]);
+    }
+
+    if (ctx->display_model_initialized) {
+        ctx->scrollback_rendered_lines = ctx->display_model.line_count;
+    } else {
+        ctx->scrollback_rendered_lines = copied;
     }
 
     ctx->capture_realtime_output = prev_capture;
@@ -3431,6 +3438,10 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
              oldest_visible + 1U, newest_visible + 1U, total);
     session_send_system_line(ctx, header);
 
+    if (ctx->display_model_initialized) {
+        ctx->display_model.line_count = 0U;
+    }
+
     buffer_capacity = session_scrollback_line_capacity(ctx);
     buffer = (chat_history_entry_t *)sshc_gc_calloc(buffer_capacity,
                                             sizeof(chat_history_entry_t));
@@ -3458,7 +3469,11 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
         session_send_history_entry(ctx, &buffer[idx]);
     }
 
-    ctx->scrollback_rendered_lines = copied + 1U;
+    if (ctx->display_model_initialized) {
+        ctx->scrollback_rendered_lines = ctx->display_model.line_count + 1U;
+    } else {
+        ctx->scrollback_rendered_lines = copied + 1U;
+    }
 
     if (direction < 0 && new_position == 0U) {
         if (!ctx->history_latest_notified) {
@@ -3507,8 +3522,6 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     if (buffering_started) {
         session_output_buffer_start(ctx);
     }
-
-    session_scrollback_prepare_display(ctx);
 
     size_t visible_lines = session_visible_history_lines(ctx);
     if (visible_lines == 0U) {
@@ -3643,11 +3656,19 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
              oldest_visible + 1U, newest_visible + 1U, total);
     session_send_system_line(ctx, header);
 
+    if (ctx->display_model_initialized) {
+        ctx->display_model.line_count = 0U;
+    }
+
     for (size_t idx = 0; idx < copied; ++idx) {
         session_send_history_entry(ctx, &buffer[idx]);
     }
 
-    ctx->scrollback_rendered_lines = copied + 1U;
+    if (ctx->display_model_initialized) {
+        ctx->scrollback_rendered_lines = ctx->display_model.line_count + 1U;
+    } else {
+        ctx->scrollback_rendered_lines = copied + 1U;
+    }
 
     if (direction < 0 && new_position == 0U) {
         if (!ctx->history_latest_notified) {
@@ -4125,6 +4146,11 @@ static void session_send_history_entry(session_ctx_t *ctx,
                 // For multiline messages, send the username first, then each line separately
                 strncat(formatted, " ",
                         sizeof(formatted) - strlen(formatted) - 1U);
+                if (ctx->display_model_initialized) {
+                    unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
+                    display_model_append_message(&ctx->display_model, entry->message_id, formatted, width);
+                    display_model_append_message(&ctx->display_model, entry->message_id, entry->message, width);
+                }
                 session_send_plain_line(ctx, formatted);
                 session_send_multiline_message(ctx, entry->message);
             } else {
@@ -4133,9 +4159,17 @@ static void session_send_history_entry(session_ctx_t *ctx,
                         sizeof(formatted) - strlen(formatted) - 1U);
                 strncat(formatted, entry->message,
                         sizeof(formatted) - strlen(formatted) - 1U);
+                if (ctx->display_model_initialized) {
+                    unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
+                    display_model_append_message(&ctx->display_model, entry->message_id, formatted, width);
+                }
                 session_send_plain_line(ctx, formatted);
             }
         } else {
+            if (ctx->display_model_initialized) {
+                unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
+                display_model_append_message(&ctx->display_model, entry->message_id, formatted, width);
+            }
             session_send_plain_line(ctx, formatted);
         }
 
@@ -4165,8 +4199,16 @@ static void session_send_history_entry(session_ctx_t *ctx,
     // For non-user messages, check if multiline and send accordingly
     const bool multiline = strchr(entry->message, '\n') != nullptr;
     if (multiline) {
+        if (ctx->display_model_initialized) {
+            unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
+            display_model_append_message(&ctx->display_model, entry->message_id, entry->message, width);
+        }
         session_send_multiline_message(ctx, entry->message);
     } else {
+        if (ctx->display_model_initialized) {
+            unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
+            display_model_append_message(&ctx->display_model, entry->message_id, entry->message, width);
+        }
         session_send_plain_line(ctx, entry->message);
     }
 

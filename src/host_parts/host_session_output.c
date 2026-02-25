@@ -3249,7 +3249,8 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
         !session_transport_active(ctx) || direction == 0) {
         return;
     }
-    if (ctx->history_latest_notified || ctx->history_oldest_notified) {
+    if ((direction < 0 && ctx->history_latest_notified) ||
+        (direction > 0 && ctx->history_oldest_notified)) {
         return;
     }
 
@@ -3381,6 +3382,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
 
     if (direction < 0 && at_boundary && new_position == 0U) {
         if (!ctx->history_latest_notified) {
+            session_send_system_line(ctx, "End of scrollback.");
             ctx->history_latest_notified = true;
         }
         session_render_prompt(ctx, false);
@@ -3401,8 +3403,16 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
     const size_t oldest_visible =
         (newest_visible + 1U > chunk) ? (newest_visible + 1U - chunk) : 0U;
 
-    if (direction > 0 &&
-        (reached_oldest || (at_boundary && new_position == max_position))) {
+    if (direction > 0 && at_boundary && new_position == max_position) {
+        if (!ctx->history_oldest_notified) {
+            ctx->history_oldest_notified = true;
+        }
+        session_render_prompt(ctx, false);
+        session_process_pending_sink(ctx);
+        goto cleanup;
+    }
+
+    if (direction > 0 && reached_oldest) {
         if (!ctx->history_oldest_notified) {
             ctx->history_oldest_notified = true;
         }
@@ -3470,6 +3480,10 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         !session_transport_active(ctx) || direction == 0) {
         return;
     }
+    if ((direction < 0 && ctx->history_latest_notified) ||
+        (direction > 0 && ctx->history_oldest_notified)) {
+        return;
+    }
 
     size_t total = host_history_total(ctx->owner);
     if (total == 0U) {
@@ -3523,6 +3537,7 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     ctx->history_scroll_position = new_position;
 
     bool at_latest = (ctx->history_scroll_position == 0U);
+    bool at_oldest = (ctx->history_scroll_position == max_position);
 
     // Set no_update flag when scrolling away from latest messages
     if (!at_latest) {
@@ -3552,13 +3567,31 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         }
     }
 
+    if (!at_oldest) {
+        ctx->history_oldest_notified = false;
+    }
+
     const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
     session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
 
     if (direction < 0 && at_boundary && new_position == 0U) {
+        if (!ctx->history_latest_notified) {
+            session_send_system_line(ctx, "End of scrollback.");
+            ctx->history_latest_notified = true;
+        }
         session_render_prompt(ctx, false);
         session_process_pending_sink(ctx);
         ctx->scrollback_rendered_lines = 0U;
+        goto cleanup;
+    }
+
+    if (direction > 0 && at_boundary && new_position == max_position) {
+        if (!ctx->history_oldest_notified) {
+            ctx->history_oldest_notified = true;
+        }
+        // No message for oldest by default, just block
+        session_render_prompt(ctx, false);
+        session_process_pending_sink(ctx);
         goto cleanup;
     }
 
@@ -3607,6 +3640,18 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     }
 
     ctx->scrollback_rendered_lines = copied + 1U;
+
+    if (direction < 0 && new_position == 0U) {
+        if (!ctx->history_latest_notified) {
+            session_send_system_line(ctx, "End of scrollback.");
+            ctx->history_latest_notified = true;
+        }
+    }
+    if (direction > 0 && new_position == max_position) {
+        if (!ctx->history_oldest_notified) {
+            ctx->history_oldest_notified = true;
+        }
+    }
 
     session_render_prompt(ctx, false);
     session_process_pending_sink(ctx);

@@ -4296,6 +4296,8 @@ static void session_rss_list(session_ctx_t *ctx)
         return;
     }
 
+    host_rss_refresh_now(ctx->owner);
+
     rss_feed_t *snapshot = (rss_feed_t *)sshc_gc_malloc(
         sizeof(rss_feed_t) * SSH_CHATTER_RSS_MAX_FEEDS);
     size_t count = 0U;

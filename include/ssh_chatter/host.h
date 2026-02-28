@@ -1053,6 +1053,8 @@ typedef struct host {
     _Atomic bool rss_thread_running;
     _Atomic bool rss_thread_stop;
     struct timespec rss_last_run;
+    ttak_mutex_t rss_refresh_lock;
+    bool rss_refresh_lock_initialized;
     pthread_t archive_thread;
     bool archive_thread_initialized;
     _Atomic bool archive_thread_running;

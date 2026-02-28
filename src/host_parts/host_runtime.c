@@ -5492,6 +5492,13 @@ void host_init(host_t *host, auth_profile_t *auth)
     atomic_store(&host->rss_thread_stop, false);
     host->rss_last_run.tv_sec = 0;
     host->rss_last_run.tv_nsec = 0L;
+    host->rss_refresh_lock_initialized = false;
+    if (ttak_mutex_init(&host->rss_refresh_lock) == 0) {
+        host->rss_refresh_lock_initialized = true;
+    } else {
+        humanized_log_error("rss", "failed to initialise refresh lock",
+                            errno != 0 ? errno : ENOMEM);
+    }
     host->archive_thread_initialized = false;
     atomic_store(&host->archive_thread_running, false);
     atomic_store(&host->archive_thread_stop, false);
@@ -6775,6 +6782,11 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     if (host->security_layer_initialized) {
         security_layer_free(&host->security_layer);
         host->security_layer_initialized = false;
+    }
+
+    if (host->rss_refresh_lock_initialized) {
+        ttak_mutex_destroy(&host->rss_refresh_lock);
+        host->rss_refresh_lock_initialized = false;
     }
 
     ttak_mutex_destroy(&host->room.lock);

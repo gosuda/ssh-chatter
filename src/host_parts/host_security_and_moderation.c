@@ -4655,9 +4655,9 @@ static bool host_rss_download(const char *url, char **payload, size_t *length)
         host_rss_buffer_t buffer = {0};
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS,
-                         (long)SSH_CHATTER_RSS_ATTEMPT_TIMEOUT_MS);
+                         (long)SSH_CHATTER_RSS_TRANSFER_TIMEOUT_MS);
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS,
-                         (long)SSH_CHATTER_RSS_ATTEMPT_TIMEOUT_MS);
+                         (long)SSH_CHATTER_RSS_CONNECT_TIMEOUT_MS);
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, SSH_CHATTER_RSS_USER_AGENT);

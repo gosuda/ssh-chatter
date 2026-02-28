@@ -4296,7 +4296,12 @@ static void session_rss_list(session_ctx_t *ctx)
         return;
     }
 
-    host_rss_refresh_now(ctx->owner);
+    bool refresh_requested = host_rss_schedule_manual_refresh(ctx->owner);
+    if (refresh_requested) {
+        session_send_system_line(
+            ctx,
+            "Refreshing RSS feeds in the background; cached results follow:");
+    }
 
     rss_feed_t *snapshot = (rss_feed_t *)sshc_gc_malloc(
         sizeof(rss_feed_t) * SSH_CHATTER_RSS_MAX_FEEDS);

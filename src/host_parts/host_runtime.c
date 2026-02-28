@@ -5492,6 +5492,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     atomic_store(&host->rss_thread_stop, false);
     host->rss_last_run.tv_sec = 0;
     host->rss_last_run.tv_nsec = 0L;
+    atomic_store(&host->rss_manual_refresh_running, false);
     host->rss_refresh_lock_initialized = false;
     if (ttak_mutex_init(&host->rss_refresh_lock) == 0) {
         host->rss_refresh_lock_initialized = true;
@@ -6706,6 +6707,14 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         pthread_join(host->rss_thread, nullptr);
         host->rss_thread_initialized = false;
         atomic_store(&host->rss_thread_running, false);
+    }
+
+    while (atomic_load(&host->rss_manual_refresh_running)) {
+        struct timespec wait = {
+            .tv_sec = 0,
+            .tv_nsec = 50 * 1000 * 1000L,
+        };
+        host_sleep_uninterruptible(&wait);
     }
 
     if (host->archive_thread_initialized) {

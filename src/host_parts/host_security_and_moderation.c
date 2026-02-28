@@ -4644,43 +4644,50 @@ static bool host_rss_download(const char *url, char **payload, size_t *length)
         return false;
     }
 
-    CURL *curl = curl_easy_init();
-    if (curl == nullptr) {
-        return false;
-    }
-
-    host_rss_buffer_t buffer = {0};
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, SSH_CHATTER_RSS_USER_AGENT);
-    curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, host_rss_write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
-
     bool success = false;
-    CURLcode result = curl_easy_perform(curl);
-    if (result == CURLE_OK) {
-        long status = 0;
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-        if (status >= 200L && status < 300L && buffer.data != nullptr) {
-            if (payload != nullptr) {
-                *payload = buffer.data;
-            }
-            if (length != nullptr) {
-                *length = buffer.length;
-            }
-            buffer.data = nullptr;
-            success = true;
+    for (unsigned int attempt = 0U;
+         attempt < SSH_CHATTER_RSS_DOWNLOAD_ATTEMPTS && !success; ++attempt) {
+        CURL *curl = curl_easy_init();
+        if (curl == nullptr) {
+            break;
         }
+
+        host_rss_buffer_t buffer = {0};
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS,
+                         (long)SSH_CHATTER_RSS_ATTEMPT_TIMEOUT_MS);
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS,
+                         (long)SSH_CHATTER_RSS_ATTEMPT_TIMEOUT_MS);
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, SSH_CHATTER_RSS_USER_AGENT);
+        curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, host_rss_write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+
+        CURLcode result = curl_easy_perform(curl);
+        if (result == CURLE_OK) {
+            long status = 0;
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+            if (status >= 200L && status < 300L && buffer.data != nullptr) {
+                if (payload != nullptr) {
+                    *payload = buffer.data;
+                }
+                if (length != nullptr) {
+                    *length = buffer.length;
+                }
+                buffer.data = nullptr;
+                success = true;
+            }
+        }
+
+        if (!success && buffer.data != nullptr) {
+            ttak_mem_free(buffer.data);
+        }
+
+        curl_easy_cleanup(curl);
     }
 
-    if (!success && buffer.data != nullptr) {
-        ttak_mem_free(buffer.data);
-    }
-
-    curl_easy_cleanup(curl);
     return success;
 }
 
@@ -5201,6 +5208,69 @@ static size_t host_rss_refresh_cycle(host_t *host, bool abort_on_stop)
 static bool host_rss_refresh_now(host_t *host)
 {
     return host_rss_refresh_cycle(host, false) > 0U;
+}
+
+typedef struct host_rss_refresh_async_request {
+    host_t *host;
+} host_rss_refresh_async_request_t;
+
+static void *host_rss_manual_refresh_worker(void *arg)
+{
+    host_rss_refresh_async_request_t *request =
+        (host_rss_refresh_async_request_t *)arg;
+    if (request == nullptr) {
+        return nullptr;
+    }
+
+    host_t *host = request->host;
+    sshc_gc_free(request);
+    if (host == nullptr) {
+        return nullptr;
+    }
+
+    sshc_epoch_thread_enter();
+    host_rss_refresh_now(host);
+    sshc_epoch_thread_exit();
+
+    atomic_store(&host->rss_manual_refresh_running, false);
+    return nullptr;
+}
+
+static bool host_rss_schedule_manual_refresh(host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+
+    bool expected = false;
+    if (!atomic_compare_exchange_strong(&host->rss_manual_refresh_running,
+                                        &expected, true)) {
+        return false;
+    }
+
+    host_rss_refresh_async_request_t *request =
+        (host_rss_refresh_async_request_t *)sshc_gc_calloc(
+            1U, sizeof(*request));
+    if (request == nullptr) {
+        atomic_store(&host->rss_manual_refresh_running, false);
+        return false;
+    }
+    request->host = host;
+
+    pthread_t worker;
+    int error =
+        pthread_create(&worker, nullptr, host_rss_manual_refresh_worker,
+                       request);
+    if (error != 0) {
+        printf("[rss] failed to start manual refresh worker: %s\n",
+               strerror(error));
+        sshc_gc_free(request);
+        atomic_store(&host->rss_manual_refresh_running, false);
+        return false;
+    }
+
+    pthread_detach(worker);
+    return true;
 }
 
 static void *host_rss_backend(void *arg)

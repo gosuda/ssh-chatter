@@ -5814,7 +5814,11 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
     ctx->capture_realtime_output =
         (ctx->history_scroll_position == 0U) && !ctx->no_update;
 
-    if (ctx->history_scroll_position == 0U) {
+    // For SSH, send the message immediately for direct visual feedback.
+    // For telnet, skip: session_process_pending_sink() below will do a full
+    // history-scroll redraw that includes this message, keeping display consistent.
+    if (ctx->history_scroll_position == 0U &&
+        ctx->transport_kind != SESSION_TRANSPORT_TELNET) {
         session_send_history_entry(ctx, &entry);
     }
 

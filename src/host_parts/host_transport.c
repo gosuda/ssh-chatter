@@ -4138,7 +4138,7 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
             memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
-                if (member == nullptr || member->channel == nullptr) {
+                if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
                 targets[target_count++] = member;
@@ -4218,26 +4218,25 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         session_ctx_t *member = targets[idx];
 
         bool locked = session_output_lock(member);
-        // Flush and disable buffering to ensure immediate message delivery
-        // This is critical for telnet sessions where buffered writes can hide
-        // new messages until another action flushes the buffer
+
+        // For telnet: trigger history-scroll redraw instead of raw line output.
+        // SSH path is left completely unchanged.
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
+            session_flag_should_sink(member);
+            session_channel_flush(member);
+            if (locked) {
+                session_output_unlock(member);
+            }
+            continue;
+        }
+
+        // --- SSH path (unchanged) ---
         session_output_buffer_flush(member);
-        // Disable buffering so the chat line arrives immediately on slow clients.
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;
 
-        // For telnet, clear the current input line first before displaying the message
-        // This prevents the old prompt from remaining visible above the new message
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
-            // Move to column 1 and clear the line
-            static const char clear_line[] = "\033[1G\033[K";
-            session_channel_write(member, clear_line, sizeof(clear_line) - 1U);
-        }
-
         if (from != nullptr) {
-            // Format message directly for real-time delivery
             char formatted[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-            // Pull color/highlight styling from the sender for live output.
             const char *color =
                 from->user_color_code[0] != '\0' ? from->user_color_code : "";
             const char *highlight = from->user_highlight_code[0] != '\0'
@@ -4259,28 +4258,18 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
 
             session_send_plain_line(member, formatted);
         } else {
-            // System messages bypass user formatting.
             session_send_system_line(member, message);
         }
 
-        // Flush the channel to ensure immediate delivery
         session_channel_flush(member);
 
         if (member->history_scroll_position == 0U) {
-            // Clear pending sink so we don't replay history after live delivery.
             session_clear_pending_sink(member);
         }
 
-        // For telnet, always refresh input line to ensure messages are visible
-        // For SSH, only refresh when at bottom of history
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
-            member->history_scroll_position == 0U) {
-            // Suppress full-screen padding so the prompt reappears directly
-            // below the new message instead of filling the terminal with
-            // blank lines (which would push all previous chat off screen).
+        if (member->history_scroll_position == 0U) {
             member->prompt_needs_padding = false;
             member->output_lines_since_prompt = 0U;
-            // Refresh prompt/input line after message display.
             session_refresh_input_line(member);
         }
 
@@ -4345,32 +4334,27 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
 
-        // Flush and disable buffering to ensure immediate message delivery
-        // This is critical for telnet sessions where buffered writes can hide
-        // new messages until another action flushes the buffer
+        // For telnet: trigger history-scroll redraw instead of raw caption output.
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
+            session_flag_should_sink(member);
+            session_channel_flush(member);
+            continue;
+        }
+
+        // --- SSH path (unchanged) ---
         session_output_buffer_flush(member);
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;
 
-        // For telnet, clear the current input line first before displaying the message
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
-            static const char clear_line[] = "\033[1G\033[K";
-            session_channel_write(member, clear_line, sizeof(clear_line) - 1U);
-        }
-
         session_send_caption_line(member, message);
 
-        // Flush the channel to ensure immediate delivery
         session_channel_flush(member);
 
         if (member->history_scroll_position == 0U) {
             session_clear_pending_sink(member);
         }
 
-        // For telnet, always refresh input line to ensure messages are visible
-        // For SSH, only refresh when at bottom of history
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
-            member->history_scroll_position == 0U) {
+        if (member->history_scroll_position == 0U) {
             member->prompt_needs_padding = false;
             member->output_lines_since_prompt = 0U;
             session_refresh_input_line(member);
@@ -4464,26 +4448,25 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
 
-        // Flush and disable buffering to ensure immediate message delivery
-        // This is critical for telnet sessions where buffered writes can hide
-        // new messages until another action flushes the buffer
+        // For telnet: trigger a full history-scroll redraw so the viewer sees
+        // the last N messages in context, not just the newly arrived line.
+        // SSH behaviour is left completely unchanged below.
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
+            session_flag_should_sink(member);
+            session_channel_flush(member);
+            continue;
+        }
+
+        // --- SSH path (unchanged) ---
         session_output_buffer_flush(member);
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;
-
-        // For telnet, clear the current input line first before displaying the message
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
-            static const char clear_line[] = "\033[1G\033[K";
-            session_channel_write(member, clear_line, sizeof(clear_line) - 1U);
-        }
 
         bool previous_capture = member->capture_realtime_output;
         member->capture_realtime_output =
             (member->history_scroll_position == 0U) && !member->no_update;
 
         if (entry->is_user_message) {
-            // Format user message directly, handling multi-line content to avoid
-            // inserting unintended blank lines.
             char id_label[32] = "-";
             if (entry->message_id > 0U) {
                 host_compact_id_encode(entry->message_id, id_label,
@@ -4498,7 +4481,6 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                      entry->user_is_bold ? ANSI_BOLD : "", entry->message);
             session_send_plain_line(member, line);
 
-            // Send attachment if present
             if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&
                 entry->attachment_target[0] != '\0') {
                 const char *label =
@@ -4517,41 +4499,19 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                 }
             }
         } else {
-            // System message
             session_send_plain_line(member, entry->message);
         }
 
-        // Flush the channel to ensure immediate delivery
         session_channel_flush(member);
-
-        // Auto-scroll to the latest message for telnet sessions only when they
-        // are already at the newest entry. For other transports, keep the
-        // scrollback position stable so that incoming messages do not yank
-        // the view back to the tail while the user is reading history.
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
-            if (member->history_scroll_position == 0U) {
-                session_scrollback_reset_position(member);
-            }
-        }
 
         if (member->history_scroll_position == 0U) {
             session_clear_pending_sink(member);
         }
 
-        // Refresh input line to display the message and prompt
-        // For telnet, always refresh to ensure messages are visible
-        // For SSH, refresh after auto-scrolling to latest
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
-            member->history_scroll_position == 0U) {
+        if (member->history_scroll_position == 0U) {
             member->prompt_needs_padding = false;
             member->output_lines_since_prompt = 0U;
             session_refresh_input_line(member);
-
-            // For telnet, flush again after refreshing the input line to ensure
-            // the prompt and any typed text are immediately visible along with the message
-            if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
-                session_channel_flush(member);
-            }
         }
 
         member->capture_realtime_output = previous_capture;

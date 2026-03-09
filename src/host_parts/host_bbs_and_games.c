@@ -1059,11 +1059,6 @@ static void session_game_tetris_render(session_ctx_t *ctx)
     char *buffer = ctx->tetris_screen_buffer;
     size_t offset = 0;
 
-    // Clear screen and move cursor to home position
-    offset += (size_t)snprintf(buffer + offset,
-                               SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
-                               "\033[H\033[2J");
-
     offset += (size_t)snprintf(
         buffer + offset, SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset, "\n");
     offset += (size_t)snprintf(buffer + offset,
@@ -1173,9 +1168,30 @@ static void session_game_tetris_render(session_ctx_t *ctx)
     // Only send if the buffer has changed
     if (strcmp(ctx->tetris_screen_buffer, ctx->tetris_prev_screen_buffer) !=
         0) {
-        // Enable output buffering to send entire screen in one flush
+        session_screen_line_t previous_lines[32];
+        session_screen_line_t current_lines[32];
+        const size_t previous_count = session_describe_buffer_lines(
+            ctx->tetris_prev_screen_buffer, previous_lines,
+            sizeof(previous_lines) / sizeof(previous_lines[0]));
+        const size_t current_count = session_describe_buffer_lines(
+            ctx->tetris_screen_buffer, current_lines,
+            sizeof(current_lines) / sizeof(current_lines[0]));
+
+        // Enable output buffering to send the frame in one flush.
         session_output_buffer_start(ctx);
-        session_send_raw_text(ctx, ctx->tetris_screen_buffer);
+
+        bool used_incremental = false;
+        if (previous_count > 0U && current_count > 0U) {
+            used_incremental = session_render_incremental_lines(
+                ctx, previous_lines, previous_count, current_lines, current_count,
+                false);
+        }
+
+        if (!used_incremental) {
+            static const char kHomeAndClear[] = "\033[H\033[2J";
+            session_channel_write(ctx, kHomeAndClear, sizeof(kHomeAndClear) - 1U);
+            session_send_raw_text(ctx, ctx->tetris_screen_buffer);
+        }
         session_output_buffer_stop(ctx);
 
         strncpy(ctx->tetris_prev_screen_buffer, ctx->tetris_screen_buffer,

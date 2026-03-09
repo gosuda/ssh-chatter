@@ -3,11 +3,12 @@
  * @desc Display model for the terminal BBS/chat UI. Provides a pipeline
  *       that converts an append-only message log into display lines,
  *       manages view state (tail-follow vs manual scroll with stable
- *       anchor), and renders full-frame redraws.
+ *       anchor), and exposes visible lines for efficient redraws.
  *
  *       Invariants:
  *       - Messages are stored as an append-only log (single source of truth).
- *       - Rendering is full-frame redraw (no incremental patching).
+ *       - Rendering consumes visible display lines, using incremental patching
+ *         when possible and full redraw as a fallback.
  *       - Wrapping/layout produces display-lines; scrolling operates on them.
  *       - View state uses a stable anchor (message_id, subline_index).
  */

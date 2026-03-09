@@ -7,7 +7,8 @@
  *
  *       Invariants:
  *       - Messages are stored as an append-only log (single source of truth).
- *       - Rendering consumes visible display lines and may redraw incrementally.
+ *       - Rendering consumes visible display lines, using incremental patching
+ *         when possible and full redraw as a fallback.
  *       - Wrapping/layout produces display-lines; scrolling operates on them.
  *       - View state uses a stable anchor (message_id, subline_index).
  */

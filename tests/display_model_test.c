@@ -380,6 +380,46 @@ static void test_append_message(void)
     ++g_tests_passed;
 }
 
+/* ---- Test: tail append shifts visible window by one line ---- */
+
+static void test_tail_append_shifts_visible_window(void)
+{
+    display_model_t model;
+    display_model_init(&model, 64);
+
+    uint64_t ids[6];
+    const char *texts[6];
+    char buf[6][16];
+    for (int i = 0; i < 6; ++i) {
+        ids[i] = (uint64_t)(i + 1);
+        snprintf(buf[i], sizeof(buf[i]), "msg %d", i + 1);
+        texts[i] = buf[i];
+    }
+
+    display_model_recompute_layout(&model, ids, texts, 5, 80);
+
+    display_visible_frame_t before;
+    display_model_compute_visible(&model, 3, &before);
+    TEST_ASSERT_EQ(before.count, 3U, "initial visible frame should use viewport");
+    TEST_ASSERT(strcmp(before.lines[0].text, "msg 3") == 0,
+                "viewport should start at msg 3");
+    TEST_ASSERT(strcmp(before.lines[2].text, "msg 5") == 0,
+                "viewport should end at msg 5");
+
+    display_model_append_message(&model, ids[5], texts[5], 80);
+
+    display_visible_frame_t after;
+    display_model_compute_visible(&model, 3, &after);
+    TEST_ASSERT_EQ(after.count, 3U, "visible frame size should remain stable");
+    TEST_ASSERT(strcmp(after.lines[0].text, "msg 4") == 0,
+                "tail append should shift the first visible line");
+    TEST_ASSERT(strcmp(after.lines[2].text, "msg 6") == 0,
+                "tail append should place new message at the bottom");
+
+    display_model_destroy(&model);
+    ++g_tests_passed;
+}
+
 /* ---- Test: empty model visible frame ---- */
 
 static void test_empty_model(void)
@@ -507,6 +547,7 @@ int main(void)
     test_scroll_down_to_tail();
     test_resize_relayout();
     test_append_message();
+    test_tail_append_shifts_visible_window();
     test_empty_model();
     test_long_wrap_content_preserved();
     test_burst_replay();

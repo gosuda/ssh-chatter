@@ -17,6 +17,14 @@
 
 void session_process_pending_sink(session_ctx_t *ctx);
 void session_flag_should_sink(session_ctx_t *ctx);
+static void session_render_history_entry(session_ctx_t *ctx,
+                                         const chat_history_entry_t *entry,
+                                         bool emit_output);
+
+typedef struct session_screen_line {
+    const char *text;
+    size_t length;
+} session_screen_line_t;
 
 void session_note_output_lines(session_ctx_t *ctx, size_t line_count)
 {
@@ -64,6 +72,201 @@ static size_t session_scrollback_line_capacity(const session_ctx_t *ctx)
     }
 
     return target;
+}
+
+static size_t session_capture_visible_display_lines(
+    const display_model_t *model, unsigned int viewport_height,
+    display_line_t *snapshot, size_t snapshot_capacity)
+{
+    if (model == nullptr || snapshot == nullptr || snapshot_capacity == 0U) {
+        return 0U;
+    }
+
+    display_visible_frame_t frame;
+    display_model_compute_visible(model, viewport_height, &frame);
+    size_t count = frame.count;
+    if (count > snapshot_capacity) {
+        count = snapshot_capacity;
+    }
+
+    for (size_t idx = 0U; idx < count; ++idx) {
+        snapshot[idx] = frame.lines[idx];
+    }
+
+    return count;
+}
+
+static size_t session_describe_display_lines(const display_line_t *lines,
+                                             size_t count,
+                                             session_screen_line_t *described,
+                                             size_t described_capacity)
+{
+    if (lines == nullptr || described == nullptr || described_capacity == 0U) {
+        return 0U;
+    }
+
+    if (count > described_capacity) {
+        count = described_capacity;
+    }
+
+    for (size_t idx = 0U; idx < count; ++idx) {
+        described[idx].text = lines[idx].text;
+        described[idx].length =
+            strnlen(lines[idx].text, sizeof(lines[idx].text));
+    }
+
+    return count;
+}
+
+static size_t session_describe_visible_frame(
+    const display_visible_frame_t *frame, session_screen_line_t *described,
+    size_t described_capacity)
+{
+    if (frame == nullptr || described == nullptr || described_capacity == 0U) {
+        return 0U;
+    }
+
+    size_t count = frame->count;
+    if (count > described_capacity) {
+        count = described_capacity;
+    }
+
+    for (size_t idx = 0U; idx < count; ++idx) {
+        described[idx].text = frame->lines[idx].text;
+        described[idx].length =
+            strnlen(frame->lines[idx].text, sizeof(frame->lines[idx].text));
+    }
+
+    return count;
+}
+
+static size_t session_describe_buffer_lines(const char *buffer,
+                                            session_screen_line_t *described,
+                                            size_t described_capacity)
+{
+    if (buffer == nullptr || described == nullptr || described_capacity == 0U) {
+        return 0U;
+    }
+
+    size_t count = 0U;
+    const char *cursor = buffer;
+    while (*cursor != '\0' && count < described_capacity) {
+        const char *line_start = cursor;
+        while (*cursor != '\0' && *cursor != '\n') {
+            ++cursor;
+        }
+
+        size_t line_length = (size_t)(cursor - line_start);
+        if (line_length > 0U && line_start[line_length - 1U] == '\r') {
+            --line_length;
+        }
+
+        described[count].text = line_start;
+        described[count].length = line_length;
+        ++count;
+
+        if (*cursor == '\n') {
+            ++cursor;
+        }
+    }
+
+    return count;
+}
+
+static bool session_screen_line_matches(const session_screen_line_t *lhs,
+                                        const session_screen_line_t *rhs)
+{
+    if (lhs == nullptr || rhs == nullptr) {
+        return false;
+    }
+
+    if (lhs->length != rhs->length) {
+        return false;
+    }
+
+    if (lhs->length == 0U) {
+        return true;
+    }
+
+    return memcmp(lhs->text, rhs->text, lhs->length) == 0;
+}
+
+static void session_write_vertical_cursor_move(session_ctx_t *ctx, size_t lines,
+                                               char direction)
+{
+    if (ctx == nullptr || lines == 0U) {
+        return;
+    }
+
+    char sequence[32];
+    int written =
+        snprintf(sequence, sizeof(sequence), "\033[%zu%c", lines, direction);
+    if (written > 0) {
+        session_channel_write(ctx, sequence, (size_t)written);
+    }
+}
+
+static bool session_render_incremental_lines(session_ctx_t *ctx,
+                                             const session_screen_line_t *old_lines,
+                                             size_t old_count,
+                                             const session_screen_line_t *new_lines,
+                                             size_t new_count,
+                                             bool clear_following_line)
+{
+    if (ctx == nullptr || old_lines == nullptr || new_lines == nullptr ||
+        old_count == 0U) {
+        return false;
+    }
+
+    static const char kHideCursor[] = "\033[?25l";
+    static const char kShowCursor[] = "\033[?25h";
+    static const char kClearLine[] = "\r" ANSI_CLEAR_LINE;
+
+    session_channel_write(ctx, kHideCursor, sizeof(kHideCursor) - 1U);
+    session_channel_write(ctx, kClearLine, sizeof(kClearLine) - 1U);
+    session_write_vertical_cursor_move(ctx, old_count, 'A');
+
+    const size_t max_rows = old_count > new_count ? old_count : new_count;
+    size_t current_row = 0U;
+    bool cursor_positioned = false;
+
+    for (size_t idx = 0U; idx < max_rows; ++idx) {
+        const bool old_present = idx < old_count;
+        const bool new_present = idx < new_count;
+        const bool changed =
+            !old_present || !new_present ||
+            !session_screen_line_matches(&old_lines[idx], &new_lines[idx]);
+        if (!changed) {
+            continue;
+        }
+
+        if (!cursor_positioned) {
+            session_write_vertical_cursor_move(ctx, idx, 'B');
+            current_row = idx;
+            cursor_positioned = true;
+        } else if (idx > current_row) {
+            session_write_vertical_cursor_move(ctx, idx - current_row, 'B');
+            current_row = idx;
+        }
+
+        session_channel_write(ctx, kClearLine, sizeof(kClearLine) - 1U);
+        if (new_present && new_lines[idx].length > 0U) {
+            session_channel_write(ctx, new_lines[idx].text, new_lines[idx].length);
+        }
+    }
+
+    const size_t footer_row = max_rows;
+    if (!cursor_positioned) {
+        session_write_vertical_cursor_move(ctx, footer_row, 'B');
+    } else if (footer_row >= current_row) {
+        session_write_vertical_cursor_move(ctx, footer_row - current_row, 'B');
+    }
+
+    if (clear_following_line) {
+        session_channel_write(ctx, kClearLine, sizeof(kClearLine) - 1U);
+    }
+    session_channel_write(ctx, kShowCursor, sizeof(kShowCursor) - 1U);
+    return true;
 }
 
 static void session_scrollback_prepare_display(session_ctx_t *ctx)
@@ -3002,13 +3205,22 @@ void session_process_pending_sink(session_ctx_t *ctx)
         return;
     }
 
-    // When the display model is initialized and following tail, use it to
-    // gate the viewport so the sink emits exactly one viewport-worth of
-    // history instead of the full scrollback chunk.  This avoids the bug
-    // where a burst of messages causes a clear + partial redraw that loses
-    // visible history.
-    if (ctx->display_model_initialized &&
-        display_model_is_following_tail(&ctx->display_model)) {
+    display_line_t previous_visible[SSH_CHATTER_SCROLLBACK_MAX_CHUNK];
+    session_screen_line_t previous_lines[SSH_CHATTER_SCROLLBACK_MAX_CHUNK];
+    size_t previous_count = 0U;
+    const unsigned int viewport_height =
+        (unsigned int)session_scrollback_line_capacity(ctx);
+    const bool try_incremental =
+        ctx->display_model_initialized &&
+        display_model_is_following_tail(&ctx->display_model);
+
+    if (try_incremental) {
+        previous_count = session_capture_visible_display_lines(
+            &ctx->display_model, viewport_height, previous_visible,
+            SSH_CHATTER_SCROLLBACK_MAX_CHUNK);
+        previous_count = session_describe_display_lines(
+            previous_visible, previous_count, previous_lines,
+            SSH_CHATTER_SCROLLBACK_MAX_CHUNK);
         ctx->display_model.line_count = 0U;
         ctx->display_model.dirty = true;
     }
@@ -3046,11 +3258,7 @@ void session_process_pending_sink(session_ctx_t *ctx)
         session_output_buffer_start(ctx);
     }
 
-    // Place cursor-home + clear inside the same output buffer as the
-    // new content so the terminal receives them in a single write,
-    // eliminating the visible blank flash that causes flickering.
-    static const char kHomeAndClear[] = "\033[H\033[J";
-    session_channel_write(ctx, kHomeAndClear, sizeof(kHomeAndClear) - 1U);
+    const size_t buffer_mark = ctx->output_buffer_length;
     ctx->output_lines_since_prompt = 0U;
     ctx->prompt_needs_padding = false;
 
@@ -3061,8 +3269,37 @@ void session_process_pending_sink(session_ctx_t *ctx)
     ctx->capture_realtime_output = false;
 
     for (size_t idx = 0; idx < copied; ++idx) {
-        // Emit each entry in order to rebuild the newest view.
-        session_send_history_entry(ctx, &buffer[idx]);
+        // Rebuild the visible model without emitting output first so an
+        // incremental patch can replace the previous frame atomically.
+        session_render_history_entry(ctx, &buffer[idx], false);
+    }
+
+    bool used_incremental_redraw = false;
+    if (try_incremental && previous_count > 0U) {
+        display_visible_frame_t current_frame;
+        session_screen_line_t current_lines[SSH_CHATTER_SCROLLBACK_MAX_CHUNK];
+        display_model_compute_visible(&ctx->display_model, viewport_height,
+                                      &current_frame);
+        size_t current_count = session_describe_visible_frame(
+            &current_frame, current_lines, SSH_CHATTER_SCROLLBACK_MAX_CHUNK);
+        if (current_count > 0U) {
+            ctx->output_buffer_length = buffer_mark;
+            used_incremental_redraw = session_render_incremental_lines(
+                ctx, previous_lines, previous_count, current_lines, current_count,
+                true);
+        }
+    }
+
+    if (!used_incremental_redraw) {
+        static const char kHomeAndClear[] = "\033[H\033[J";
+        if (ctx->display_model_initialized) {
+            ctx->display_model.line_count = 0U;
+            ctx->display_model.dirty = true;
+        }
+        session_channel_write(ctx, kHomeAndClear, sizeof(kHomeAndClear) - 1U);
+        for (size_t idx = 0; idx < copied; ++idx) {
+            session_send_history_entry(ctx, &buffer[idx]);
+        }
     }
 
     if (ctx->display_model_initialized) {
@@ -4086,8 +4323,9 @@ static void session_send_multiline_message(session_ctx_t *ctx,
     sshc_gc_free(message_copy);
 }
 
-static void session_send_history_entry(session_ctx_t *ctx,
-                                       const chat_history_entry_t *entry)
+static void session_render_history_entry(session_ctx_t *ctx,
+                                         const chat_history_entry_t *entry,
+                                         bool emit_output)
 {
     if (ctx == nullptr || !session_transport_active(ctx) || entry == nullptr) {
         return;
@@ -4151,8 +4389,10 @@ static void session_send_history_entry(session_ctx_t *ctx,
                     display_model_append_message(&ctx->display_model, entry->message_id, formatted, width);
                     display_model_append_message(&ctx->display_model, entry->message_id, entry->message, width);
                 }
-                session_send_plain_line(ctx, formatted);
-                session_send_multiline_message(ctx, entry->message);
+                if (emit_output) {
+                    session_send_plain_line(ctx, formatted);
+                    session_send_multiline_message(ctx, entry->message);
+                }
             } else {
                 // For single-line messages, send as before
                 strncat(formatted, " ",
@@ -4163,18 +4403,22 @@ static void session_send_history_entry(session_ctx_t *ctx,
                     unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
                     display_model_append_message(&ctx->display_model, entry->message_id, formatted, width);
                 }
-                session_send_plain_line(ctx, formatted);
+                if (emit_output) {
+                    session_send_plain_line(ctx, formatted);
+                }
             }
         } else {
             if (ctx->display_model_initialized) {
                 unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
                 display_model_append_message(&ctx->display_model, entry->message_id, formatted, width);
             }
-            session_send_plain_line(ctx, formatted);
+            if (emit_output) {
+                session_send_plain_line(ctx, formatted);
+            }
         }
 
         // Display attachment URL if present, similar to reply format
-        if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&
+        if (emit_output && entry->attachment_type != CHAT_ATTACHMENT_NONE &&
             entry->attachment_target[0] != '\0') {
             const char *label =
                 chat_attachment_type_label(entry->attachment_type);
@@ -4203,16 +4447,26 @@ static void session_send_history_entry(session_ctx_t *ctx,
             unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
             display_model_append_message(&ctx->display_model, entry->message_id, entry->message, width);
         }
-        session_send_multiline_message(ctx, entry->message);
+        if (emit_output) {
+            session_send_multiline_message(ctx, entry->message);
+        }
     } else {
         if (ctx->display_model_initialized) {
             unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
             display_model_append_message(&ctx->display_model, entry->message_id, entry->message, width);
         }
-        session_send_plain_line(ctx, entry->message);
+        if (emit_output) {
+            session_send_plain_line(ctx, entry->message);
+        }
     }
 
     session_output_restore_kind(ctx, previous_kind);
+}
+
+static void session_send_history_entry(session_ctx_t *ctx,
+                                       const chat_history_entry_t *entry)
+{
+    session_render_history_entry(ctx, entry, true);
 }
 
 // Present a summary of a poll, optionally showing the label used for named polls.

@@ -1,8 +1,8 @@
 /**
  * @file display_model.c
  * @desc Implementation of the display model pipeline for the terminal chat UI.
- *       Converts append-only message log into wrapped display lines, manages
- *       view state with a stable anchor, and provides full-frame redraws.
+ *       Converts append-only message log into wrapped display lines and manages
+ *       view state with a stable anchor for efficient visible-frame redraws.
  */
 
 #include "ssh_chatter/display_model.h"

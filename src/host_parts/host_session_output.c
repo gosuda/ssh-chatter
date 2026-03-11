@@ -206,6 +206,57 @@ static void session_write_vertical_cursor_move(session_ctx_t *ctx, size_t lines,
     }
 }
 
+static void session_write_scroll_up(session_ctx_t *ctx, size_t lines)
+{
+    if (ctx == nullptr || lines == 0U) {
+        return;
+    }
+
+    char sequence[32];
+    int written = snprintf(sequence, sizeof(sequence), "\033[%zuS", lines);
+    if (written > 0 && written < (int)sizeof(sequence)) {
+        session_channel_write(ctx, sequence, (size_t)written);
+    }
+}
+
+static size_t session_detect_incremental_scroll_shift(
+    const session_screen_line_t *old_lines, size_t old_count,
+    const session_screen_line_t *new_lines, size_t new_count)
+{
+    if (old_lines == nullptr || new_lines == nullptr || old_count == 0U ||
+        new_count == 0U || old_count != new_count) {
+        return 0U;
+    }
+
+    bool any_difference = false;
+    for (size_t idx = 0U; idx < old_count; ++idx) {
+        if (!session_screen_line_matches(&old_lines[idx], &new_lines[idx])) {
+            any_difference = true;
+            break;
+        }
+    }
+    if (!any_difference) {
+        return 0U;
+    }
+
+    for (size_t shift = 1U; shift < old_count; ++shift) {
+        const size_t overlap = old_count - shift;
+        bool matches = true;
+        for (size_t idx = 0U; idx < overlap; ++idx) {
+            if (!session_screen_line_matches(&old_lines[shift + idx],
+                                             &new_lines[idx])) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) {
+            return shift;
+        }
+    }
+
+    return 0U;
+}
+
 static bool session_render_incremental_lines(session_ctx_t *ctx,
                                              const session_screen_line_t *old_lines,
                                              size_t old_count,
@@ -226,11 +277,19 @@ static bool session_render_incremental_lines(session_ctx_t *ctx,
     session_channel_write(ctx, kClearLine, sizeof(kClearLine) - 1U);
     session_write_vertical_cursor_move(ctx, old_count, 'A');
 
+    const size_t scroll_shift = session_detect_incremental_scroll_shift(
+        old_lines, old_count, new_lines, new_count);
+    const size_t redraw_start =
+        (scroll_shift > 0U && scroll_shift < old_count) ? (old_count - scroll_shift) : 0U;
+    if (scroll_shift > 0U) {
+        session_write_scroll_up(ctx, scroll_shift);
+    }
+
     const size_t max_rows = old_count > new_count ? old_count : new_count;
     size_t current_row = 0U;
     bool cursor_positioned = false;
 
-    for (size_t idx = 0U; idx < max_rows; ++idx) {
+    for (size_t idx = redraw_start; idx < max_rows; ++idx) {
         const bool old_present = idx < old_count;
         const bool new_present = idx < new_count;
         const bool changed =

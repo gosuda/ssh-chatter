@@ -214,7 +214,7 @@ static void session_write_scroll_up(session_ctx_t *ctx, size_t lines)
 
     char sequence[32];
     int written = snprintf(sequence, sizeof(sequence), "\033[%zuS", lines);
-    if (written > 0) {
+    if (written > 0 && written < (int)sizeof(sequence)) {
         session_channel_write(ctx, sequence, (size_t)written);
     }
 }

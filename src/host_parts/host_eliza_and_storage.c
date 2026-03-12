@@ -5810,26 +5810,18 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
 
     session_scrollback_reset_position(ctx);
 
-    bool previous_capture = ctx->capture_realtime_output;
-    ctx->capture_realtime_output =
-        (ctx->history_scroll_position == 0U) && !ctx->no_update;
-
-    // For SSH, send the message immediately for direct visual feedback.
-    // For telnet, skip: session_process_pending_sink() below will do a full
-    // history-scroll redraw that includes this message, keeping display consistent.
-    if (ctx->history_scroll_position == 0U &&
-        ctx->transport_kind != SESSION_TRANSPORT_TELNET) {
-        session_send_history_entry(ctx, &entry);
-    }
-
-    ctx->capture_realtime_output = previous_capture;
+    // Do not emit the sender's new message directly here. Let the pending sink
+    // redraw compare the previous visible frame against the updated latest
+    // history so the viewport can scroll smoothly instead of appending a
+    // standalone line first and then trying to recover.
 
     if (ctx->history_scroll_position == 0U && !ctx->bracket_paste_active) {
         if (clear_prompt_text) {
             ctx->input_length = 0U;
             ctx->input_buffer[0] = '\0';
         }
-        session_refresh_input_line(ctx);
+        // session_process_pending_sink() refreshes the prompt after applying
+        // the latest-history redraw for the sender.
     }
     chat_room_broadcast_entry(&ctx->owner->room, &entry, ctx);
     host_notify_external_clients(ctx->owner, &entry);

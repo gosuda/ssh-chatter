@@ -450,7 +450,7 @@ void *sshc_gc_realloc(void *ptr, size_t size)
     }
 
     sshc_memory_context_t *ctx = sshc_memory_context_current();
-    
+
     // Find old allocation
     pthread_mutex_lock(&sshc_registry_mutex);
     sshc_memory_allocation_t **prev = &sshc_allocations;
@@ -471,36 +471,10 @@ void *sshc_gc_realloc(void *ptr, size_t size)
         return nullptr;
     }
 
-    sshc_memory_allocation_t *allocation =
-        (sshc_memory_allocation_t *)ttak_mem_alloc(
-            sizeof(*allocation), SSH_CHATTER_DEFAULT_LIFETIME,
-            ttak_get_tick_count());
-    if (allocation == nullptr) {
-        if (old_allocation) {
-#if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
-            if (old_allocation->gc_registered) {
-                GC_remove_roots(old_allocation->ptr,
-                                (char *)old_allocation->ptr +
-                                    old_allocation->size);
-            }
-#endif
-            sshc_memory_context_remove_allocation(old_allocation->context, ptr);
-            
-            // Safe release via mem_tree
-            ttak_mem_node_t *node = ttak_mem_tree_find_node(&old_allocation->context->epoch_gc.tree, ptr);
-            if (node) ttak_mem_node_release(node);
-            
-            ttak_mem_free(old_allocation);
-        }
-        return new_ptr;
-    }
+    sshc_memory_allocation_t *allocation = old_allocation;
+    sshc_memory_context_t *allocation_ctx =
+        old_allocation != nullptr ? old_allocation->context : ctx;
 
-    allocation->ptr = new_ptr;
-    allocation->size = size;
-    allocation->context = ctx;
-    allocation->gc_registered = false;
-    allocation->creator_thread = pthread_self();
-    
     if (old_allocation) {
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
         if (old_allocation->gc_registered) {
@@ -510,15 +484,28 @@ void *sshc_gc_realloc(void *ptr, size_t size)
         }
 #endif
         sshc_memory_context_remove_allocation(old_allocation->context, ptr);
-        
+
         // Safe release
         ttak_mem_node_t *node = ttak_mem_tree_find_node(&old_allocation->context->epoch_gc.tree, ptr);
         if (node) ttak_mem_node_release(node);
-        
-        ttak_mem_free(old_allocation);
+    } else {
+        allocation = (sshc_memory_allocation_t *)ttak_mem_alloc(
+            sizeof(*allocation), SSH_CHATTER_DEFAULT_LIFETIME,
+            ttak_get_tick_count());
+        if (allocation == nullptr) {
+            return new_ptr;
+        }
     }
 
-    sshc_memory_context_register_allocation(ctx, allocation);
+    allocation->ptr = new_ptr;
+    allocation->size = size;
+    allocation->context = allocation_ctx;
+    allocation->next_in_context = nullptr;
+    allocation->next_global = nullptr;
+    allocation->gc_registered = false;
+    allocation->creator_thread = pthread_self();
+
+    sshc_memory_context_register_allocation(allocation_ctx, allocation);
     sshc_memory_registry_add(allocation);
     return new_ptr;
 }

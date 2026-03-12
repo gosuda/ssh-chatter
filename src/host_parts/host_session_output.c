@@ -2684,8 +2684,8 @@ static void session_render_banner(session_ctx_t *ctx)
     session_render_separator(ctx, "Chatroom");
 }
 
-static void session_pad_prompt_to_terminal(session_ctx_t *ctx,
-                                           bool include_separator)
+static __attribute__((unused)) void
+session_pad_prompt_to_terminal(session_ctx_t *ctx, bool include_separator)
 {
     if (ctx == nullptr || !ctx->prompt_needs_padding) {
         return;
@@ -2717,7 +2717,7 @@ static void session_pad_prompt_to_terminal(session_ctx_t *ctx,
     session_note_output_lines(ctx, blanks);
 }
 
-static void session_fill_prompt_line(session_ctx_t *ctx)
+static __attribute__((unused)) void session_fill_prompt_line(session_ctx_t *ctx)
 {
     const char *bg = ctx->system_bg_code != nullptr ? ctx->system_bg_code : "";
     const size_t bg_len = strlen(bg);
@@ -2754,47 +2754,11 @@ static void session_render_prompt_internal(session_ctx_t *ctx,
                                            bool include_separator,
                                            bool fill_line)
 {
+    (void)include_separator;
+    (void)fill_line;
+
     if (ctx == nullptr || !session_transport_active(ctx)) {
         return;
-    }
-
-    session_pad_prompt_to_terminal(ctx, include_separator);
-
-    if (include_separator) {
-        session_render_separator(ctx, "Input");
-    }
-
-    if (fill_line) {
-        session_fill_prompt_line(ctx);
-    }
-
-    const char *fg = ctx->system_fg_code != nullptr ? ctx->system_fg_code : "";
-    const char *bold = ctx->system_is_bold ? ANSI_BOLD : "";
-    const char *bg = ctx->system_bg_code != nullptr ? ctx->system_bg_code : "";
-    const char *mode_prompt = "> ";
-
-    char prompt[128];
-    size_t offset = 0U;
-    offset = session_append_fragment(prompt, sizeof(prompt), offset,
-                                     "\033[38;5;117m");
-    offset = session_append_fragment(prompt, sizeof(prompt), offset, bold);
-    offset =
-        session_append_fragment(prompt, sizeof(prompt), offset, mode_prompt);
-    offset =
-        session_append_fragment(prompt, sizeof(prompt), offset, ANSI_RESET);
-    if (bg[0] != '\0') {
-        offset = session_append_fragment(prompt, sizeof(prompt), offset, bg);
-    }
-    if (fg[0] != '\0') {
-        offset = session_append_fragment(prompt, sizeof(prompt), offset, fg);
-    }
-    if (bold[0] != '\0') {
-        offset = session_append_fragment(prompt, sizeof(prompt), offset, bold);
-    }
-
-    session_channel_write(ctx, prompt, offset);
-    if (ctx->input_length > 0U) {
-        session_channel_write(ctx, ctx->input_buffer, ctx->input_length);
     }
 
     ctx->output_lines_since_prompt = 0U;

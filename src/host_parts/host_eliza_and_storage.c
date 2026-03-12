@@ -5820,6 +5820,8 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
             ctx->input_length = 0U;
             ctx->input_buffer[0] = '\0';
         }
+        // session_process_pending_sink() refreshes the prompt after applying
+        // the latest-history redraw for the sender.
     }
     chat_room_broadcast_entry(&ctx->owner->room, &entry, ctx);
     host_notify_external_clients(ctx->owner, &entry);

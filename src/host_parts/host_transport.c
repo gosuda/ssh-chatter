@@ -4219,9 +4219,12 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
 
         bool locked = session_output_lock(member);
 
-        // For telnet: trigger history-scroll redraw instead of raw line output.
-        // SSH path is left completely unchanged.
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
+        // For telnet, or SSH sessions using the display model: trigger an
+        // incremental history-scroll redraw so the conversation scrolls up
+        // by one line and the new message appears at the bottom, rather than
+        // the message simply being appended as a standalone line.
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
+            member->display_model_initialized) {
             session_flag_should_sink(member);
             session_channel_flush(member);
             if (locked) {
@@ -4230,7 +4233,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             continue;
         }
 
-        // --- SSH path (unchanged) ---
+        // --- SSH path (no display model) ---
         session_output_buffer_flush(member);
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;
@@ -4334,14 +4337,17 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
 
-        // For telnet: trigger history-scroll redraw instead of raw caption output.
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
+        // For telnet, or SSH sessions using the display model: trigger an
+        // incremental history-scroll redraw so the conversation scrolls up
+        // by one line and the new message appears at the bottom.
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
+            member->display_model_initialized) {
             session_flag_should_sink(member);
             session_channel_flush(member);
             continue;
         }
 
-        // --- SSH path (unchanged) ---
+        // --- SSH path (no display model) ---
         session_output_buffer_flush(member);
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;
@@ -4448,16 +4454,18 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
 
-        // For telnet: trigger a full history-scroll redraw so the viewer sees
-        // the last N messages in context, not just the newly arrived line.
-        // SSH behaviour is left completely unchanged below.
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET) {
+        // For telnet, or SSH sessions using the display model: trigger an
+        // incremental history-scroll redraw so the conversation scrolls up
+        // by one line and the new message appears at the bottom, rather than
+        // the new entry being appended as a standalone line.
+        if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
+            member->display_model_initialized) {
             session_flag_should_sink(member);
             session_channel_flush(member);
             continue;
         }
 
-        // --- SSH path (unchanged) ---
+        // --- SSH path (no display model) ---
         session_output_buffer_flush(member);
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;

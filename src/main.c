@@ -115,6 +115,7 @@ int main(int argc, char **argv)
         0; // Do NOT use SA_RESTART - we want signals to interrupt accept()
     sigaction(SIGINT, &sa, nullptr);
     sigaction(SIGTERM, &sa, nullptr);
+    signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
 
     setlocale(LC_ALL, "");

@@ -35,12 +35,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <ttak/ht/map.h>
 
 typedef struct sshc_memory_allocation {
     void *ptr;
     size_t size;
     struct sshc_memory_allocation *next_in_context;
+    /* Doubly-linked global list enables O(1) removal without a full scan. */
     struct sshc_memory_allocation *next_global;
+    struct sshc_memory_allocation *prev_global;
     struct sshc_memory_context *context;
     bool gc_registered;
     pthread_t creator_thread;
@@ -66,6 +69,8 @@ static bool sshc_runtime_initialised = false;
 static sshc_memory_context_t sshc_global_context;
 static sshc_memory_context_t *sshc_contexts = nullptr;
 static sshc_memory_allocation_t *sshc_allocations = nullptr;
+/* Hash map: ptr → allocation* for O(1) lookup in free/realloc. */
+static ttak_map_t *sshc_alloc_map = nullptr;
 static __thread sshc_memory_context_t *sshc_tls_context = nullptr;
 static __thread bool sshc_tls_defer_gc_registration = false;
 
@@ -82,20 +87,19 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
                                    TTAK_OWNER_STRICT_ISOLATION |
                                    TTAK_OWNER_DENY_THREADING);
 
-    /* EpochGC: generational collector. */
+    /* EpochGC: generational collector with adaptive min/max intervals. */
     ttak_epoch_gc_init(&ctx->epoch_gc);
 
-    /* Reclamation: 50ms. */
+    /* Reclamation: 10ms min / 200ms max for adaptive sweep. */
     ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
-    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree, 
-                                         TT_MILLI_SECOND(50), 
-                                         TT_MILLI_SECOND(50));
-    
+    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
+                                         TT_MILLI_SECOND(10),
+                                         TT_MILLI_SECOND(200));
+
     /* Detachable arena: fast alloc/free with EBR. */
     ttak_detachable_context_init(
         &ctx->detachable,
-        TTAK_ARENA_HAS_EPOCH_RECLAMATION | TTAK_ARENA_HAS_DEFAULT_EPOCH_GC
-        | TTAK_ARENA_HAS_DEFAULT_EPOCH_GC);
+        TTAK_ARENA_HAS_EPOCH_RECLAMATION | TTAK_ARENA_HAS_DEFAULT_EPOCH_GC);
 }
 
 static sshc_memory_context_t *sshc_memory_context_global(void)
@@ -111,9 +115,12 @@ void sshc_memory_runtime_init(void)
         GC_set_free_space_divisor(10); 
         GC_init(); 
 #endif
-        // Global TTAK tuning: 50ms
+        /* Global TTAK tuning: adaptive 10ms–500ms, pressure threshold = 8. */
         ttak_mem_set_trace(1);
-        ttak_mem_configure_gc(TT_MILLI_SECOND(50), TT_MILLI_SECOND(50), 1);
+        ttak_mem_configure_gc(TT_MILLI_SECOND(10), TT_MILLI_SECOND(500), 8);
+
+        /* Hash map for O(1) ptr → allocation lookups (initial capacity 1024). */
+        sshc_alloc_map = ttak_create_map(1024, ttak_get_tick_count());
 
         sshc_memory_context_init(&sshc_global_context, "global");
         
@@ -126,14 +133,22 @@ void sshc_memory_runtime_init(void)
 
 static void sshc_memory_registry_remove_locked(sshc_memory_allocation_t *allocation)
 {
-    // Internal helper that assumes sshc_registry_mutex is already held
-    sshc_memory_allocation_t **prev = &sshc_allocations;
-    while (*prev != nullptr) {
-        if (*prev == allocation) {
-            *prev = allocation->next_global;
-            break;
-        }
-        prev = &(*prev)->next_global;
+    /* O(1) removal using the doubly-linked global list. */
+    if (allocation->prev_global != nullptr) {
+        allocation->prev_global->next_global = allocation->next_global;
+    } else {
+        sshc_allocations = allocation->next_global;
+    }
+    if (allocation->next_global != nullptr) {
+        allocation->next_global->prev_global = allocation->prev_global;
+    }
+    allocation->next_global = nullptr;
+    allocation->prev_global = nullptr;
+
+    /* Remove from O(1) hash map. */
+    if (sshc_alloc_map != nullptr) {
+        ttak_delete_from_map(sshc_alloc_map, (uintptr_t)allocation->ptr,
+                             ttak_get_tick_count());
     }
 }
 
@@ -208,7 +223,14 @@ void sshc_memory_runtime_shutdown(void)
     ttak_epoch_gc_destroy(&sshc_global_context.epoch_gc);
     if (sshc_global_context.owner) ttak_owner_destroy(sshc_global_context.owner);
     pthread_mutex_destroy(&sshc_global_context.mutex);
-    
+
+    /* Release the allocation hash map. */
+    if (sshc_alloc_map != nullptr) {
+        ttak_mem_free(sshc_alloc_map->tbl);
+        ttak_mem_free(sshc_alloc_map);
+        sshc_alloc_map = nullptr;
+    }
+
     sshc_contexts = nullptr;
     sshc_runtime_initialised = false;
     pthread_mutex_unlock(&sshc_registry_mutex);
@@ -227,12 +249,12 @@ sshc_memory_context_t *sshc_memory_context_create(const char *label)
     }
     sshc_memory_context_init(ctx, label);
     
-    /* Session Context Tuning: 50ms.  */
+    /* Session context: adaptive 10ms–200ms, pressure threshold = 4. */
     ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
-    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree, 
-                                         TT_MILLI_SECOND(50), 
-                                         TT_MILLI_SECOND(50));
-    ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 1);
+    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
+                                         TT_MILLI_SECOND(10),
+                                         TT_MILLI_SECOND(200));
+    ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 4);
 
     /* Vertical Hierarchy: Register this session owner as a child of the global owner.
      * This ensures that if the global context is destroyed, all session contexts are audited. */
@@ -255,8 +277,19 @@ static void sshc_memory_registry_remove(sshc_memory_allocation_t *allocation)
 static void sshc_memory_registry_add(sshc_memory_allocation_t *allocation)
 {
     pthread_mutex_lock(&sshc_registry_mutex);
+    /* Prepend to doubly-linked global list. */
     allocation->next_global = sshc_allocations;
+    allocation->prev_global = nullptr;
+    if (sshc_allocations != nullptr) {
+        sshc_allocations->prev_global = allocation;
+    }
     sshc_allocations = allocation;
+    /* Insert into O(1) hash map. */
+    if (sshc_alloc_map != nullptr) {
+        ttak_insert_to_map(sshc_alloc_map, (uintptr_t)allocation->ptr,
+                           (size_t)(uintptr_t)allocation,
+                           ttak_get_tick_count());
+    }
     pthread_mutex_unlock(&sshc_registry_mutex);
 }
 
@@ -433,6 +466,7 @@ void *sshc_gc_malloc(size_t size)
     allocation->context = ctx;
     allocation->next_in_context = nullptr;
     allocation->next_global = nullptr;
+    allocation->prev_global = nullptr;
     allocation->gc_registered = false;
     allocation->creator_thread = pthread_self();
 
@@ -451,17 +485,28 @@ void *sshc_gc_realloc(void *ptr, size_t size)
 
     sshc_memory_context_t *ctx = sshc_memory_context_current();
 
-    // Find old allocation
+    /* O(1) lookup via hash map to find the old allocation, then remove. */
     pthread_mutex_lock(&sshc_registry_mutex);
-    sshc_memory_allocation_t **prev = &sshc_allocations;
     sshc_memory_allocation_t *old_allocation = nullptr;
-    while (*prev != nullptr) {
-        if ((*prev)->ptr == ptr) {
-            old_allocation = *prev;
-            *prev = (*prev)->next_global;
-            break;
+    if (sshc_alloc_map != nullptr) {
+        size_t val = 0;
+        if (ttak_map_get_key(sshc_alloc_map, (uintptr_t)ptr, &val,
+                             ttak_get_tick_count())) {
+            old_allocation = (sshc_memory_allocation_t *)(uintptr_t)val;
+            /* Remove from doubly-linked list and hash map. */
+            sshc_memory_registry_remove_locked(old_allocation);
         }
-        prev = &(*prev)->next_global;
+    } else {
+        /* Fallback: linear scan when map is not yet initialised. */
+        sshc_memory_allocation_t **prev = &sshc_allocations;
+        while (*prev != nullptr) {
+            if ((*prev)->ptr == ptr) {
+                old_allocation = *prev;
+                sshc_memory_registry_remove_locked(old_allocation);
+                break;
+            }
+            prev = &(*prev)->next_global;
+        }
     }
     pthread_mutex_unlock(&sshc_registry_mutex);
 
@@ -493,6 +538,26 @@ void *sshc_gc_realloc(void *ptr, size_t size)
             sizeof(*allocation), SSH_CHATTER_DEFAULT_LIFETIME,
             ttak_get_tick_count());
         if (allocation == nullptr) {
+            /* Metadata allocation failed – use the current context (ctx) to
+             * register a fresh tracking entry so new_ptr is not orphaned.
+             * (In this branch old_allocation is nullptr, so allocation_ctx
+             *  already equals ctx; we use ctx explicitly for clarity.) */
+            sshc_memory_allocation_t *fallback =
+                (sshc_memory_allocation_t *)ttak_mem_alloc(
+                    sizeof(*fallback), SSH_CHATTER_DEFAULT_LIFETIME,
+                    ttak_get_tick_count());
+            if (fallback != nullptr) {
+                fallback->ptr = new_ptr;
+                fallback->size = size;
+                fallback->context = ctx;
+                fallback->next_in_context = nullptr;
+                fallback->next_global = nullptr;
+                fallback->prev_global = nullptr;
+                fallback->gc_registered = false;
+                fallback->creator_thread = pthread_self();
+                sshc_memory_context_register_allocation(ctx, fallback);
+                sshc_memory_registry_add(fallback);
+            }
             return new_ptr;
         }
     }
@@ -502,6 +567,7 @@ void *sshc_gc_realloc(void *ptr, size_t size)
     allocation->context = allocation_ctx;
     allocation->next_in_context = nullptr;
     allocation->next_global = nullptr;
+    allocation->prev_global = nullptr;
     allocation->gc_registered = false;
     allocation->creator_thread = pthread_self();
 
@@ -513,6 +579,11 @@ void *sshc_gc_realloc(void *ptr, size_t size)
 void *sshc_gc_calloc(size_t count, size_t size)
 {
     if (count == 0 || size == 0) return sshc_gc_malloc(0);
+    /* Guard against multiplicative integer overflow before allocating. */
+    if (size > SIZE_MAX / count) {
+        errno = ENOMEM;
+        return nullptr;
+    }
     size_t total = count * size;
     void *ptr = sshc_gc_malloc(total);
     if (ptr) memset(ptr, 0, total);
@@ -523,16 +594,26 @@ void sshc_gc_free(void *ptr)
 {
     if (ptr == nullptr) return;
 
+    /* O(1) lookup via hash map; fall back to linear scan when map absent. */
     pthread_mutex_lock(&sshc_registry_mutex);
-    sshc_memory_allocation_t **prev = &sshc_allocations;
     sshc_memory_allocation_t *allocation = nullptr;
-    while (*prev != nullptr) {
-        if ((*prev)->ptr == ptr) {
-            allocation = *prev;
-            *prev = (*prev)->next_global;
-            break;
+    if (sshc_alloc_map != nullptr) {
+        size_t val = 0;
+        if (ttak_map_get_key(sshc_alloc_map, (uintptr_t)ptr, &val,
+                             ttak_get_tick_count())) {
+            allocation = (sshc_memory_allocation_t *)(uintptr_t)val;
+            sshc_memory_registry_remove_locked(allocation);
         }
-        prev = &(*prev)->next_global;
+    } else {
+        sshc_memory_allocation_t **prev = &sshc_allocations;
+        while (*prev != nullptr) {
+            if ((*prev)->ptr == ptr) {
+                allocation = *prev;
+                sshc_memory_registry_remove_locked(allocation);
+                break;
+            }
+            prev = &(*prev)->next_global;
+        }
     }
     pthread_mutex_unlock(&sshc_registry_mutex);
 

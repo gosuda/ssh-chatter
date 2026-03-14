@@ -17,21 +17,25 @@ BUILD_DIR := build
 TTAK_DIR := lib/libttak
 TTAK_LIB := $(TTAK_DIR)/lib/libttak.a
 
+# NOTE: -march=native builds binaries tuned for the current host CPU and must
+#       be rebuilt on any deployment target with a different microarchitecture.
+#       For portable/container deployments use -march=x86-64 -mtune=generic.
 CFLAGS = -std=c2x -Ofast \
               -Werror \
               -Wno-error=deprecated-declarations -DSSH_CHATTER_USE_GC=$(ENABLE_GC) \
               -I $(INCLUDE_DIR) -I $(TTAK_DIR)/include -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
               -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
               -Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
-              -fno-omit-frame-pointer -fstack-protector-strong -fno-common \
+              -fstack-protector-strong -fno-common \
               -fPIC -ftls-model=global-dynamic \
               -g \
-              -D_FORTIFY_SOURCE=2 \
+              -D_FORTIFY_SOURCE=3 \
+              -march=native -mtune=native \
               -flto=auto -fuse-linker-plugin \
               -fomit-frame-pointer \
               -fno-signed-zeros \
               -funroll-loops \
-              -falign-functions=32 -falign-loops=32 \
+              -falign-functions=32 -falign-loops=32 -falign-jumps=32 -falign-labels=32 \
               -ftree-vectorize \
               -fno-math-errno -freciprocal-math \
               -fmerge-all-constants -fipa-pta -fdevirtualize-at-ltrans \
@@ -47,7 +51,10 @@ CFLAGS = -std=c2x -Ofast \
               -fivopts \
               -faggressive-loop-optimizations \
               -fipa-sra \
-              \
+              -fmodulo-sched -fmodulo-sched-allow-regmoves \
+              -ftracer \
+              -fvisibility=hidden \
+              -fno-plt \
               -funsafe-math-optimizations \
               -ftree-loop-vectorize -ftree-slp-vectorize \
               -fno-exceptions \
@@ -74,7 +81,9 @@ COMMON_LDFLAGS = \
     -Wl,--no-undefined \
     -Wl,--warn-execstack -Wl,-z,noexecstack \
     -Wl,-z,separate-code \
-    -Wl,-z,stack-size=4194304
+    -Wl,-z,stack-size=4194304 \
+    -Wl,-z,combreloc \
+    -Wl,--build-id=none
 
 LDFLAGS = $(COMMON_LDFLAGS) -lssh
 

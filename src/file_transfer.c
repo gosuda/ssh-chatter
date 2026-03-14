@@ -140,6 +140,48 @@ bool host_file_storage_init(host_t *host)
     return true;
 }
 
+static bool path_buffer_copy(char *dest, size_t dest_len, const char *src)
+{
+    if (dest == nullptr || dest_len == 0U || src == nullptr) {
+        return false;
+    }
+
+    size_t len = strnlen(src, dest_len);
+    if (len >= dest_len) {
+        return false;
+    }
+
+    memcpy(dest, src, len);
+    dest[len] = '\0';
+    return true;
+}
+
+static bool path_buffer_join(char *dest, size_t dest_len, const char *base,
+                             const char *suffix)
+{
+    if (dest == nullptr || dest_len == 0U || base == nullptr ||
+        suffix == nullptr) {
+        return false;
+    }
+
+    size_t base_len = strnlen(base, dest_len);
+    size_t suffix_len = strnlen(suffix, dest_len);
+    if (base_len >= dest_len || suffix_len >= dest_len) {
+        return false;
+    }
+
+    size_t needed = base_len + 1U + suffix_len + 1U;
+    if (needed > dest_len) {
+        return false;
+    }
+
+    memcpy(dest, base, base_len);
+    dest[base_len] = '/';
+    memcpy(dest + base_len + 1U, suffix, suffix_len);
+    dest[base_len + 1U + suffix_len] = '\0';
+    return true;
+}
+
 static void host_file_storage_list_recursive(const char *root_path,
                                              const char *relative_path,
                                              int depth, char *buffer,
@@ -148,10 +190,14 @@ static void host_file_storage_list_recursive(const char *root_path,
 {
     char full_path[PATH_MAX];
     if (relative_path == nullptr || relative_path[0] == '\0') {
-        snprintf(full_path, sizeof(full_path), "%s", root_path);
+        if (!path_buffer_copy(full_path, sizeof(full_path), root_path)) {
+            return;
+        }
     } else {
-        snprintf(full_path, sizeof(full_path), "%s/%s", root_path,
-                 relative_path);
+        if (!path_buffer_join(full_path, sizeof(full_path), root_path,
+                              relative_path)) {
+            return;
+        }
     }
 
     DIR *dir = opendir(full_path);
@@ -168,15 +214,22 @@ static void host_file_storage_list_recursive(const char *root_path,
 
         char sub_rel_path[PATH_MAX];
         if (relative_path == nullptr || relative_path[0] == '\0') {
-            snprintf(sub_rel_path, sizeof(sub_rel_path), "%s", entry->d_name);
+            if (!path_buffer_copy(sub_rel_path, sizeof(sub_rel_path),
+                                  entry->d_name)) {
+                continue;
+            }
         } else {
-            snprintf(sub_rel_path, sizeof(sub_rel_path), "%s/%s", relative_path,
-                     entry->d_name);
+            if (!path_buffer_join(sub_rel_path, sizeof(sub_rel_path),
+                                  relative_path, entry->d_name)) {
+                continue;
+            }
         }
 
         char sub_full_path[PATH_MAX];
-        snprintf(sub_full_path, sizeof(sub_full_path), "%s/%s", root_path,
-                 sub_rel_path);
+        if (!path_buffer_join(sub_full_path, sizeof(sub_full_path), root_path,
+                              sub_rel_path)) {
+            continue;
+        }
 
         struct stat st;
         if (stat(sub_full_path, &st) != 0) {
@@ -410,8 +463,8 @@ bool file_transfer_resolve_path(host_t *host, const char *virtual_path,
         return false;
     }
 
-    if (snprintf(resolved, resolved_len, "%s/%s", host->file_storage_root,
-                 sanitized) >= (int)resolved_len) {
+    if (!path_buffer_join(resolved, resolved_len, host->file_storage_root,
+                          sanitized)) {
         return false;
     }
 
@@ -632,8 +685,7 @@ static bool file_storage_locate_single_file_recursive(const char *root,
         }
 
         char path[PATH_MAX];
-        if (snprintf(path, sizeof(path), "%s/%s", root, entry->d_name) >=
-            (int)sizeof(path)) {
+        if (!path_buffer_join(path, sizeof(path), root, entry->d_name)) {
             ok = false;
             break;
         }
@@ -705,8 +757,7 @@ static void file_storage_remove_tree(const char *root)
         }
 
         char path[PATH_MAX];
-        if (snprintf(path, sizeof(path), "%s/%s", root, entry->d_name) >=
-            (int)sizeof(path)) {
+        if (!path_buffer_join(path, sizeof(path), root, entry->d_name)) {
             continue;
         }
 
@@ -1490,8 +1541,10 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
                     continue;
                 }
                 char full_path[PATH_MAX];
-                snprintf(full_path, sizeof(full_path), "%s/%s", hdata->path,
-                         entry->d_name);
+                if (!path_buffer_join(full_path, sizeof(full_path),
+                                      hdata->path, entry->d_name)) {
+                    continue;
+                }
                 struct stat st;
                 if (stat(full_path, &st) == 0) {
                     sftp_attributes attr =

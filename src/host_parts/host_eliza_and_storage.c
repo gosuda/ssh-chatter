@@ -5494,7 +5494,8 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
             }
         }
 
-        snprintf(id_buffer, sizeof(id_buffer), "%s", input_line);
+        snprintf(id_buffer, sizeof(id_buffer), "%.*s",
+                 SSH_CHATTER_USERNAME_LEN - 1, input_line);
         trim_whitespace_inplace(id_buffer);
         if (id_buffer[0] == '\0') {
             session_send_system_line(ctx, "A nickname is required to proceed.");

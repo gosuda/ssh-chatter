@@ -1927,8 +1927,8 @@ static bool host_alpha_landers_save_locked(host_t *host,
 
     for (size_t idx = 0U; success && idx < count; ++idx) {
         alpha_landers_file_entry_t raw = {0};
-        snprintf(raw.username, sizeof(raw.username), "%s",
-                 entries[idx].username);
+        snprintf(raw.username, sizeof(raw.username), "%.*s",
+                 SSH_CHATTER_USERNAME_LEN - 1, entries[idx].username);
         raw.flag_count = entries[idx].flag_count;
         raw.last_flag_timestamp = entries[idx].last_flag_timestamp;
         if (fwrite(&raw, sizeof(raw), 1U, fp) != 1U) {
@@ -5467,9 +5467,13 @@ static bool host_archive_push_snapshot(host_t *host)
     }
 
     char clone_cmd[PATH_MAX * 2];
+    size_t component_limit =
+        (sizeof(clone_cmd) / 2U > 64U) ? (sizeof(clone_cmd) / 2U - 64U)
+                                       : (sizeof(clone_cmd) / 2U);
+    int component_precision = (int)component_limit;
     snprintf(clone_cmd, sizeof(clone_cmd),
-             "GIT_TERMINAL_PROMPT=0 git clone --depth 1 %s %s", clone_target,
-             repo_dir);
+             "GIT_TERMINAL_PROMPT=0 git clone --depth 1 %.*s %.*s",
+             component_precision, clone_target, component_precision, repo_dir);
 
     bool success = host_archive_run_command(nullptr, clone_cmd);
     if (!success) {
@@ -5480,7 +5484,14 @@ static bool host_archive_push_snapshot(host_t *host)
     }
 
     char destination[PATH_MAX];
-    snprintf(destination, sizeof(destination), "%s/%s", repo_dir, timestamp);
+    size_t dest_repo_limit =
+        (sizeof(destination) > sizeof(timestamp) + 2U)
+            ? (sizeof(destination) - sizeof(timestamp) - 2U)
+            : (sizeof(destination) / 2U);
+    int dest_repo_precision = (int)dest_repo_limit;
+    int dest_time_precision = (int)(sizeof(timestamp) - 1U);
+    snprintf(destination, sizeof(destination), "%.*s/%.*s", dest_repo_precision,
+             repo_dir, dest_time_precision, timestamp);
     success = host_archive_copy_file(host->state_file_path, destination);
     if (!success) {
         char cleanup_cmd[PATH_MAX * 2];

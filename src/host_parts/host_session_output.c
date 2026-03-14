@@ -1466,7 +1466,8 @@ static void session_format_separator_line(session_ctx_t *ctx, const char *label,
     size_t left = dash_total / 2U;
     size_t right = dash_total - left;
 
-    char body[SSH_CHATTER_MESSAGE_LIMIT];
+    enum { SESSION_SEPARATOR_BODY_LEN = SSH_CHATTER_MESSAGE_LIMIT - 16 };
+    char body[SESSION_SEPARATOR_BODY_LEN];
     size_t max_body = sizeof(body);
     if (length > 0U && length < max_body) {
         max_body = length;
@@ -1488,7 +1489,8 @@ static void session_format_separator_line(session_ctx_t *ctx, const char *label,
     }
     body[offset < max_body ? offset : max_body - 1U] = '\0';
 
-    snprintf(out, length, "%s%s%s%s%s", hl, fg, bold, body, ANSI_RESET);
+    snprintf(out, length, "%s%s%s%.*s%s", hl, fg, bold,
+             SESSION_SEPARATOR_BODY_LEN - 1, body, ANSI_RESET);
 }
 
 static void session_render_separator(session_ctx_t *ctx, const char *label)
@@ -2472,6 +2474,7 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
         bool selection_active = ctx->bbs_editor_selection_start_set &&
                                 ctx->bbs_editor_selection_end_set;
 
+        enum { BBS_EDITOR_LINE_PREC = SSH_CHATTER_MESSAGE_LIMIT - 3 };
         for (size_t idx = start; idx < end; ++idx) {
             if (!ctx->pending_bbs_editing_line &&
                 insertion_index == idx) {
@@ -2491,7 +2494,8 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
             if (line_buffer[0] == '\0') {
                 snprintf(display, sizeof(display), "%s", prefix);
             } else {
-                snprintf(display, sizeof(display), "%s%s", prefix, line_buffer);
+                snprintf(display, sizeof(display), "%s%.*s", prefix,
+                         BBS_EDITOR_LINE_PREC, line_buffer);
             }
             session_send_plain_line(ctx, display);
         }
@@ -4514,13 +4518,21 @@ static void session_send_poll_summary_generic(session_ctx_t *ctx,
     }
 
     char header[SSH_CHATTER_MESSAGE_LIMIT];
+    enum {
+        SESSION_POLL_HEADER_QUESTION_PREC = SSH_CHATTER_MESSAGE_LIMIT / 2,
+        SESSION_POLL_HEADER_LABEL_PREC = SSH_CHATTER_POLL_LABEL_LEN - 1,
+        SESSION_POLL_OPTION_TEXT_PREC = SSH_CHATTER_MESSAGE_LIMIT / 2
+    };
     const char *mode_suffix = poll->allow_multiple ? " (multiple choice)" : "";
     if (label == nullptr) {
-        snprintf(header, sizeof(header), "Poll #%" PRIu64 ": %s%s", poll->id,
-                 poll->question, mode_suffix);
+        snprintf(header, sizeof(header), "Poll #%" PRIu64 ": %.*s%s", poll->id,
+                 SESSION_POLL_HEADER_QUESTION_PREC, poll->question,
+                 mode_suffix);
     } else {
-        snprintf(header, sizeof(header), "Poll [%s] #%" PRIu64 ": %s%s", label,
-                 poll->id, poll->question, mode_suffix);
+        snprintf(header, sizeof(header), "Poll [%.*s] #%" PRIu64 ": %.*s%s",
+                 SESSION_POLL_HEADER_LABEL_PREC, label, poll->id,
+                 SESSION_POLL_HEADER_QUESTION_PREC, poll->question,
+                 mode_suffix);
     }
     session_send_system_line(ctx, header);
 
@@ -4529,12 +4541,15 @@ static void session_send_poll_summary_generic(session_ctx_t *ctx,
         uint32_t votes = poll->options[idx].votes;
         if (label == nullptr) {
             snprintf(option_line, sizeof(option_line),
-                     "  /%zu - %s (%u vote%s)", idx + 1U,
-                     poll->options[idx].text, votes, votes == 1U ? "" : "s");
+                     "  /%zu - %.*s (%u vote%s)", idx + 1U,
+                     SESSION_POLL_OPTION_TEXT_PREC, poll->options[idx].text,
+                     votes, votes == 1U ? "" : "s");
         } else {
             snprintf(option_line, sizeof(option_line),
-                     "  /%zu %s - %s (%u vote%s)", idx + 1U, label,
-                     poll->options[idx].text, votes, votes == 1U ? "" : "s");
+                     "  /%zu %.*s - %.*s (%u vote%s)", idx + 1U,
+                     SESSION_POLL_HEADER_LABEL_PREC, label,
+                     SESSION_POLL_OPTION_TEXT_PREC, poll->options[idx].text,
+                     votes, votes == 1U ? "" : "s");
         }
         session_send_system_line(ctx, option_line);
     }
@@ -6169,18 +6184,25 @@ static void session_handle_ban_list(session_ctx_t *ctx, const char *arguments)
     }
 
     session_send_system_line(ctx, "Active bans:");
+    enum {
+        SESSION_BAN_USERNAME_PREC = SSH_CHATTER_USERNAME_LEN - 1,
+        SESSION_BAN_IP_PREC = SSH_CHATTER_IP_LEN - 1
+    };
     for (size_t idx = 0U; idx < entry_count; ++idx) {
         const char *username = entries[idx].username;
         const char *ip = entries[idx].ip;
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         if (username[0] != '\0' && ip[0] != '\0') {
-            snprintf(message, sizeof(message), "%zu. user: %s, ip: %s",
-                     idx + 1U, username, ip);
+            snprintf(message, sizeof(message),
+                     "%zu. user: %.*s, ip: %.*s", idx + 1U,
+                     SESSION_BAN_USERNAME_PREC, username,
+                     SESSION_BAN_IP_PREC, ip);
         } else if (username[0] != '\0') {
-            snprintf(message, sizeof(message), "%zu. user: %s", idx + 1U,
-                     username);
+            snprintf(message, sizeof(message), "%zu. user: %.*s", idx + 1U,
+                     SESSION_BAN_USERNAME_PREC, username);
         } else if (ip[0] != '\0') {
-            snprintf(message, sizeof(message), "%zu. ip: %s", idx + 1U, ip);
+            snprintf(message, sizeof(message), "%zu. ip: %.*s", idx + 1U,
+                     SESSION_BAN_IP_PREC, ip);
         } else {
             snprintf(message, sizeof(message), "%zu. <empty>", idx + 1U);
         }

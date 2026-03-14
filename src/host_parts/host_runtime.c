@@ -35,6 +35,9 @@
 #define SSH_CHATTER_AI_MEMORY_TOKEN_LIMIT 12U
 #define SSH_CHATTER_AI_MEMORY_PREVIEW_LEN 160U
 #define SSH_CHATTER_AI_MEMORY_CONTEXT_BUFFER SSH_CHATTER_MESSAGE_LIMIT
+#define SSH_CHATTER_AI_PROMPT_CONTEXT_MAX 1536U
+#define SSH_CHATTER_AI_PROMPT_MESSAGE_MAX (SSH_CHATTER_MESSAGE_LIMIT / 2U)
+#define SSH_CHATTER_AI_PROMPT_USERNAME_MAX (SSH_CHATTER_USERNAME_LEN - 1U)
 
 static inline void session_safe_free(void **ptr)
 {
@@ -75,6 +78,27 @@ static void session_timespec_add_seconds(struct timespec *ts, time_t seconds)
         ts->tv_sec += 1;
         ts->tv_nsec -= 1000000000L;
     }
+}
+
+static void host_ai_chat_copy_limited(char *dest, size_t dest_len,
+                                      const char *src, size_t limit)
+{
+    if (dest == nullptr || dest_len == 0U) {
+        return;
+    }
+    if (src == nullptr) {
+        dest[0] = '\0';
+        return;
+    }
+
+    size_t max_copy = dest_len - 1U;
+    if (limit < max_copy) {
+        max_copy = limit;
+    }
+
+    size_t copied = strnlen(src, max_copy);
+    memcpy(dest, src, copied);
+    dest[copied] = '\0';
 }
 
 static bool host_ai_chat_enable(host_t *host);
@@ -2816,8 +2840,10 @@ static bool host_user_data_send_mail(host_t *host, const char *recipient,
     if (!host_user_data_load_existing(host, recipient, resolved_ip, &record,
                                       true)) {
         if (error != nullptr && error_length > 0U) {
-            snprintf(error, error_length, "Unable to open mailbox for %s.",
-                     recipient);
+            const int mailbox_name_precision =
+                (int)(SSH_CHATTER_USERNAME_LEN / 4U);
+            snprintf(error, error_length, "Unable to open mailbox for %.*s.",
+                     mailbox_name_precision, recipient);
         }
         return false;
     }
@@ -6440,22 +6466,33 @@ static void host_ai_chat_consider_reply(host_t *host,
 
     char prompt[SSH_CHATTER_MESSAGE_LIMIT * 2U];
     char context[SSH_CHATTER_AI_MEMORY_CONTEXT_BUFFER];
+    char username_snippet[SSH_CHATTER_USERNAME_LEN];
+    char message_snippet[SSH_CHATTER_AI_PROMPT_MESSAGE_MAX];
+    host_ai_chat_copy_limited(username_snippet, sizeof(username_snippet),
+                              entry->username, SSH_CHATTER_AI_PROMPT_USERNAME_MAX);
+    host_ai_chat_copy_limited(message_snippet, sizeof(message_snippet),
+                              entry->message,
+                              SSH_CHATTER_AI_PROMPT_MESSAGE_MAX - 1U);
     size_t context_matches = host_ai_chat_memory_collect_context(
         host, entry->message, context, sizeof(context));
     if (context_matches > 0U && context[0] != '\0') {
+        char context_snippet[SSH_CHATTER_AI_PROMPT_CONTEXT_MAX];
+        host_ai_chat_copy_limited(context_snippet, sizeof(context_snippet),
+                                  context,
+                                  SSH_CHATTER_AI_PROMPT_CONTEXT_MAX - 1U);
         snprintf(prompt, sizeof(prompt),
                  "Memory context:\n%s\n\nUser %s says: %s\n"
                  "Respond as ai-eliza, a friendly retro terminal chatter "
                  "focused on light conversation. Keep replies under three "
                  "sentences and avoid moderation or BBS topics.",
-                 context, entry->username, entry->message);
+                 context_snippet, username_snippet, message_snippet);
     } else {
         snprintf(prompt, sizeof(prompt),
                  "User %s says: %s\n"
                  "Respond as ai-eliza, a friendly retro terminal chatter "
                  "focused on light conversation. Keep replies under three "
                  "sentences and avoid moderation or BBS topics.",
-                 entry->username, entry->message);
+                 username_snippet, message_snippet);
     }
 
     char reply[SSH_CHATTER_MESSAGE_LIMIT];

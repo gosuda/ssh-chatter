@@ -571,7 +571,7 @@ host_ensure_connection_guard_locked(host_t *host, const char *ip)
 
     entry = &host->connection_guard[host->connection_guard_count++];
     memset(entry, 0, sizeof(*entry));
-    snprintf(entry->ip, sizeof(entry->ip), "%s", ip);
+    snprintf(entry->ip, sizeof(entry->ip), "%.*s", SSH_CHATTER_IP_LEN - 1, ip);
     return entry;
 }
 

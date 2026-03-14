@@ -2085,10 +2085,15 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
 
         char self_reason[64];
         char opp_reason[64];
+        int opp_precision = 0;
+        const size_t opp_suffix_len = sizeof(" resigned.") - 1U;
+        if (sizeof(opp_reason) > opp_suffix_len + 1U) {
+            opp_precision = (int)(sizeof(opp_reason) - opp_suffix_len - 1U);
+        }
         snprintf(self_reason, sizeof(self_reason), "You resigned.");
         if (opponent != nullptr) {
-            snprintf(opp_reason, sizeof(opp_reason), "%s resigned.",
-                     ctx->user.name);
+            snprintf(opp_reason, sizeof(opp_reason), "%.*s resigned.",
+                     opp_precision, ctx->user.name);
         } else {
             snprintf(opp_reason, sizeof(opp_reason), "Opponent resigned.");
         }
@@ -2253,18 +2258,24 @@ bool session_game_othello_handle_forced_exit(session_ctx_t *ctx)
 
     char reason_p1[64];
     char reason_p2[64];
+    const size_t reason_suffix_len = sizeof(" resigned.") - 1U;
+    size_t reason_name_limit = 0U;
+    if (sizeof(reason_p1) > reason_suffix_len + 1U) {
+        reason_name_limit = sizeof(reason_p1) - reason_suffix_len - 1U;
+    }
+    const int reason_precision = (int)reason_name_limit;
     if (is_player_one) {
         snprintf(reason_p1, sizeof(reason_p1), "You resigned.");
         if (opponent != nullptr) {
-            snprintf(reason_p2, sizeof(reason_p2), "%s resigned.",
-                     resigner_name);
+            snprintf(reason_p2, sizeof(reason_p2), "%.*s resigned.",
+                     reason_precision, resigner_name);
         } else {
             snprintf(reason_p2, sizeof(reason_p2), "Opponent resigned.");
         }
     } else {
         if (opponent != nullptr) {
-            snprintf(reason_p1, sizeof(reason_p1), "%s resigned.",
-                     resigner_name);
+            snprintf(reason_p1, sizeof(reason_p1), "%.*s resigned.",
+                     reason_precision, resigner_name);
         } else {
             snprintf(reason_p1, sizeof(reason_p1), "Opponent resigned.");
         }
@@ -2922,8 +2933,8 @@ static void session_othello_list_games(session_ctx_t *ctx)
     for (size_t idx = 0U; idx < count; ++idx) {
         char line[SSH_CHATTER_MESSAGE_LIMIT];
         if (owners[idx][0] != '\0') {
-            snprintf(line, sizeof(line), "  #%d - host: %s", ids[idx],
-                     owners[idx]);
+            snprintf(line, sizeof(line), "  #%d - host: %.*s", ids[idx],
+                     SSH_CHATTER_USERNAME_LEN - 1, owners[idx]);
         } else {
             snprintf(line, sizeof(line), "  #%d - host: unknown", ids[idx]);
         }

@@ -10,6 +10,10 @@
 #include "host_internal.h"
 #include "ssh_chatter/utils/jwt.h"
 
+#define JSON_API_NOTICE_QUESTION_LIMIT (SSH_CHATTER_MESSAGE_LIMIT / 2U)
+#define JSON_API_NOTICE_USERNAME_LIMIT (SSH_CHATTER_USERNAME_LEN - 1U)
+#define JSON_API_NOTICE_LABEL_LIMIT (SSH_CHATTER_POLL_LABEL_LEN - 1U)
+
 typedef struct json_builder {
     char *data;
     size_t len;
@@ -85,6 +89,25 @@ static bool host_asciiart_cooldown_active(host_t *host, const char *ip,
                                           long *remaining_seconds);
 static void host_asciiart_register_post(host_t *host, const char *ip,
                                         const struct timespec *when);
+
+static void json_api_copy_limited(char *dest, size_t dest_len, const char *src,
+                                  size_t limit)
+{
+    if (dest == nullptr || dest_len == 0U) {
+        return;
+    }
+    if (src == nullptr) {
+        dest[0] = '\0';
+        return;
+    }
+    size_t max_copy = dest_len - 1U;
+    if (limit < max_copy) {
+        max_copy = limit;
+    }
+    size_t copied = strnlen(src, max_copy);
+    memcpy(dest, src, copied);
+    dest[copied] = '\0';
+}
 
 static void json_api_sleep_before_restart(unsigned int attempts)
 {
@@ -1331,8 +1354,15 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
     ttak_mutex_unlock(&host->lock);
 
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(notice, sizeof(notice), "* [%s] started a poll: %s",
-             request->username, request->question);
+    char notice_user[SSH_CHATTER_USERNAME_LEN];
+    char notice_question[JSON_API_NOTICE_QUESTION_LIMIT];
+    json_api_copy_limited(notice_user, sizeof(notice_user), request->username,
+                          JSON_API_NOTICE_USERNAME_LIMIT);
+    json_api_copy_limited(notice_question, sizeof(notice_question),
+                          request->question,
+                          JSON_API_NOTICE_QUESTION_LIMIT - 1U);
+    snprintf(notice, sizeof(notice), "* [%s] started a poll: %s", notice_user,
+             notice_question);
     host_history_record_system(host, notice, nullptr);
     chat_room_broadcast(&host->room, notice, nullptr);
 
@@ -1678,8 +1708,18 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
 
     if (created) {
         char notice[SSH_CHATTER_MESSAGE_LIMIT];
+        char notice_user[SSH_CHATTER_USERNAME_LEN];
+        char notice_label[SSH_CHATTER_POLL_LABEL_LEN];
+        char notice_question[JSON_API_NOTICE_QUESTION_LIMIT];
+        json_api_copy_limited(notice_user, sizeof(notice_user), request->username,
+                              JSON_API_NOTICE_USERNAME_LIMIT);
+        json_api_copy_limited(notice_label, sizeof(notice_label), request->label,
+                              JSON_API_NOTICE_LABEL_LIMIT);
+        json_api_copy_limited(notice_question, sizeof(notice_question),
+                              request->question,
+                              JSON_API_NOTICE_QUESTION_LIMIT - 1U);
         snprintf(notice, sizeof(notice), "* [%s] started poll [%s]: %s",
-                 request->username, request->label, request->question);
+                 notice_user, notice_label, notice_question);
         host_history_record_system(host, notice, nullptr);
         chat_room_broadcast(&host->room, notice, nullptr);
 

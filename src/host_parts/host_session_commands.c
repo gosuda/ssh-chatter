@@ -178,9 +178,14 @@ static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
     }
 
     char reply_message[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(reply_message, sizeof(reply_message), "->[r#%s %s%s] %s: %s",
-             reply_label, target_prefix, target_label, stored.username,
-             stored.message);
+    enum {
+        SESSION_REPLY_USERNAME_PREC = SSH_CHATTER_USERNAME_LEN - 1,
+        SESSION_REPLY_MESSAGE_PREC = SSH_CHATTER_MESSAGE_LIMIT / 2
+    };
+    snprintf(reply_message, sizeof(reply_message),
+             "->[r#%s %s%s] %.*s: %.*s", reply_label, target_prefix, target_label,
+             SESSION_REPLY_USERNAME_PREC, stored.username,
+             SESSION_REPLY_MESSAGE_PREC, stored.message);
 
     chat_history_entry_t reply_entry = {0};
     if (!host_history_record_system(ctx->owner, reply_message, &reply_entry)) {
@@ -1162,8 +1167,9 @@ static void session_handle_alpha_centauri_landers(session_ctx_t *ctx)
 
         char line[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(line, sizeof(line),
-                 "#%zu %s -- flags planted: %u (last landing %s)", idx + 1U,
-                 lander->username, lander->flag_count, when);
+                 "#%zu %.*s -- flags planted: %u (last landing %.*s)",
+                 idx + 1U, SSH_CHATTER_USERNAME_LEN - 1, lander->username,
+                 lander->flag_count, (int)(sizeof(when) - 1U), when);
         session_send_system_line(ctx, line);
     }
 
@@ -1885,6 +1891,13 @@ static void session_handle_delete_message(session_ctx_t *ctx,
     }
 
     char range_label[64];
+    const int range_pair_precision =
+        (int)((sizeof(range_label) > 3U)
+                  ? ((sizeof(range_label) - 3U) / 2U)
+                  : (sizeof(range_label) - 1U));
+    const int range_single_precision =
+        (int)((sizeof(range_label) > 2U) ? (sizeof(range_label) - 2U)
+                                         : (sizeof(range_label) - 1U));
     char first_label[32];
     if (!host_compact_id_encode(first_removed, first_label,
                                 sizeof(first_label))) {
@@ -1897,10 +1910,12 @@ static void session_handle_delete_message(session_ctx_t *ctx,
                                     sizeof(last_label))) {
             snprintf(last_label, sizeof(last_label), "%" PRIu64, last_removed);
         }
-        snprintf(range_label, sizeof(range_label), "#%s-#%s", first_label,
+        snprintf(range_label, sizeof(range_label), "#%.*s-#%.*s",
+                 range_pair_precision, first_label, range_pair_precision,
                  last_label);
     } else {
-        snprintf(range_label, sizeof(range_label), "#%s", first_label);
+        snprintf(range_label, sizeof(range_label), "#%.*s",
+                 range_single_precision, first_label);
     }
 
     char reply_note[64];
@@ -2068,6 +2083,11 @@ static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
 
     char question[SSH_CHATTER_MESSAGE_LIMIT];
     char options[5][SSH_CHATTER_MESSAGE_LIMIT];
+    enum {
+        SESSION_POLL_TEXT_PREC = SSH_CHATTER_MESSAGE_LIMIT - 1,
+        SESSION_POLL_NOTICE_USER_PREC = SSH_CHATTER_USERNAME_LEN - 1,
+        SESSION_POLL_NOTICE_QUESTION_PREC = SSH_CHATTER_MESSAGE_LIMIT / 2
+    };
     size_t option_count = 0U;
     char error[128];
     if (!session_poll_parse_fields(working, question, sizeof(question), options,
@@ -2090,11 +2110,11 @@ static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
     ctx->owner->poll.id = next_id == 0U ? 1U : next_id;
     ctx->owner->poll.option_count = option_count;
     snprintf(ctx->owner->poll.question, sizeof(ctx->owner->poll.question),
-             "%s", question);
+             "%.*s", SESSION_POLL_TEXT_PREC, question);
     for (size_t idx = 0U; idx < option_count; ++idx) {
         snprintf(ctx->owner->poll.options[idx].text,
-                 sizeof(ctx->owner->poll.options[idx].text), "%s",
-                 options[idx]);
+                 sizeof(ctx->owner->poll.options[idx].text), "%.*s",
+                 SESSION_POLL_TEXT_PREC, options[idx]);
         ctx->owner->poll.options[idx].votes = 0U;
     }
     host_vote_state_save_locked(ctx->owner);
@@ -2102,8 +2122,9 @@ static void session_handle_poll(session_ctx_t *ctx, const char *arguments)
     ttak_mutex_unlock(&ctx->owner->lock);
 
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(notice, sizeof(notice), "* [%s] started a poll: %s",
-             ctx->user.name, question);
+    snprintf(notice, sizeof(notice), "* [%.*s] started a poll: %.*s",
+             SESSION_POLL_NOTICE_USER_PREC, ctx->user.name,
+             SESSION_POLL_NOTICE_QUESTION_PREC, question);
     host_history_record_system(ctx->owner, notice, nullptr);
     chat_room_broadcast(&ctx->owner->room, notice, nullptr);
     session_send_poll_summary_generic(ctx, &snapshot, nullptr);
@@ -2530,6 +2551,7 @@ static void session_handle_vote_command(session_ctx_t *ctx,
 
     char question[SSH_CHATTER_MESSAGE_LIMIT];
     char options[5][SSH_CHATTER_MESSAGE_LIMIT];
+    enum { SESSION_NAMED_POLL_TEXT_PREC = SSH_CHATTER_MESSAGE_LIMIT - 1 };
     size_t option_count = 0U;
     char error[128];
     if (!session_poll_parse_fields(remainder, question, sizeof(question),
@@ -2567,12 +2589,12 @@ static void session_handle_vote_command(session_ctx_t *ctx,
         poll->poll.allow_multiple = allow_multiple;
         poll->poll.id = next_id == 0U ? 1U : next_id;
         poll->poll.option_count = option_count;
-        snprintf(poll->poll.question, sizeof(poll->poll.question), "%s",
-                 question);
+        snprintf(poll->poll.question, sizeof(poll->poll.question), "%.*s",
+                 SESSION_NAMED_POLL_TEXT_PREC, question);
         for (size_t idx = 0U; idx < option_count; ++idx) {
             snprintf(poll->poll.options[idx].text,
-                     sizeof(poll->poll.options[idx].text), "%s",
-                     options[idx]);
+                     sizeof(poll->poll.options[idx].text), "%.*s",
+                     SESSION_NAMED_POLL_TEXT_PREC, options[idx]);
             poll->poll.options[idx].votes = 0U;
         }
         poll->voter_count = 0U;
@@ -2592,9 +2614,16 @@ static void session_handle_vote_command(session_ctx_t *ctx,
     }
 
     if (created) {
+        enum {
+            SESSION_VOTE_NOTICE_USER_PREC = SSH_CHATTER_USERNAME_LEN - 1,
+            SESSION_VOTE_NOTICE_LABEL_PREC = SSH_CHATTER_POLL_LABEL_LEN - 1,
+            SESSION_VOTE_NOTICE_QUESTION_PREC = SSH_CHATTER_MESSAGE_LIMIT / 2
+        };
         char notice[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(notice, sizeof(notice), "* [%s] started poll [%s]: %s",
-                 ctx->user.name, label, question);
+        snprintf(notice, sizeof(notice), "* [%.*s] started poll [%.*s]: %.*s",
+                 SESSION_VOTE_NOTICE_USER_PREC, ctx->user.name,
+                 SESSION_VOTE_NOTICE_LABEL_PREC, label,
+                 SESSION_VOTE_NOTICE_QUESTION_PREC, question);
         host_history_record_system(ctx->owner, notice, nullptr);
         chat_room_broadcast(&ctx->owner->room, notice, nullptr);
         session_send_poll_summary_generic(ctx, &snapshot.poll, snapshot.label);
@@ -2994,6 +3023,8 @@ static void session_bbs_list(session_ctx_t *ctx)
         return;
     }
 
+    enum { SESSION_BBS_TOPIC_NAME_PREC = SSH_CHATTER_BBS_TAG_LEN - 1 };
+
     bool previous_override = session_translation_push_scope_override(ctx);
     typedef struct bbs_listing {
         uint64_t id;
@@ -3116,8 +3147,8 @@ static void session_bbs_list(session_ctx_t *ctx)
     session_render_separator(ctx, "BBS Posts by Topic");
     for (size_t topic_idx = 0U; topic_idx < topic_count; ++topic_idx) {
         char section_label[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(section_label, sizeof(section_label), "Topic: %s",
-                 topics[topic_idx].name);
+        snprintf(section_label, sizeof(section_label), "Topic: %.*s",
+                 SESSION_BBS_TOPIC_NAME_PREC, topics[topic_idx].name);
         session_render_separator(ctx, section_label);
 
         for (size_t entry_idx = 0U; entry_idx < topics[topic_idx].count;

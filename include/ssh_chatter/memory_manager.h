@@ -11,6 +11,7 @@
 #include <ttak/mem/epoch_gc.h>
 #include <ttak/mem/epoch.h>
 #include <ttak/mem/detachable.h>
+#include <ttak/mem/fastpath.h>
 #include <ttak/timing/timing.h>
 #include <ttak/sync/sync.h>
 #include <ttak/atomic/atomic.h>

@@ -109,10 +109,17 @@ bool session_bbs_workspace_acquire(session_ctx_t *ctx)
             (char *)sshc_gc_calloc(SSH_CHATTER_BBS_BODY_LEN, sizeof(char));
     }
 
-    return ctx->pending_bbs_title != nullptr &&
-           ctx->pending_bbs_tags != nullptr &&
-           ctx->pending_bbs_body != nullptr &&
-           ctx->bbs_editor_clipboard != nullptr;
+    bool ok = ctx->pending_bbs_title != nullptr &&
+              ctx->pending_bbs_tags != nullptr &&
+              ctx->pending_bbs_body != nullptr &&
+              ctx->bbs_editor_clipboard != nullptr;
+
+    /* On partial failure release whatever was allocated to avoid leaks. */
+    if (!ok) {
+        session_bbs_workspace_release(ctx);
+    }
+
+    return ok;
 }
 
 void session_bbs_workspace_release(session_ctx_t *ctx)

@@ -75,7 +75,7 @@ static size_t session_scrollback_line_capacity(const session_ctx_t *ctx)
 }
 
 static size_t session_capture_visible_display_lines(
-    const display_model_t *model, unsigned int viewport_height,
+    display_model_t *model, unsigned int viewport_height,
     display_line_t *snapshot, size_t snapshot_capacity)
 {
     if (model == nullptr || snapshot == nullptr || snapshot_capacity == 0U) {

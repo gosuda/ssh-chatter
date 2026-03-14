@@ -69,6 +69,9 @@ typedef struct display_model {
     unsigned int layout_width;
     bool dirty;
     display_view_state_t view;
+    size_t last_visible_start;
+    unsigned int last_viewport_height;
+    bool has_last_visible_frame;
 } display_model_t;
 
 /**
@@ -140,7 +143,7 @@ bool display_model_append_message(display_model_t *model,
  * @param viewport_height Number of lines the terminal can show.
  * @param frame           Output: visible frame descriptor.
  */
-void display_model_compute_visible(const display_model_t *model,
+void display_model_compute_visible(display_model_t *model,
                                    unsigned int viewport_height,
                                    display_visible_frame_t *frame);
 

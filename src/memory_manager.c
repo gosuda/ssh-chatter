@@ -235,9 +235,6 @@ void sshc_memory_runtime_shutdown(void)
 
     /* Release the allocation hash map (free SoA arrays then the struct). */
     if (sshc_alloc_map != nullptr) {
-        ttak_mem_free(sshc_alloc_map->ctrls);
-        ttak_mem_free(sshc_alloc_map->keys);
-        ttak_mem_free(sshc_alloc_map->values);
         ttak_mem_free(sshc_alloc_map);
         sshc_alloc_map = nullptr;
     }

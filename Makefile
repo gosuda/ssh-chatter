@@ -1,5 +1,8 @@
 # Default setting: Disable Garbage Collector (GC)
 ENABLE_GC ?= 0
+# LTO currently triggers a TLS type mismatch inside libttak when linking ssh-chatter.
+# Keep it opt-in so the default build remains stable.
+ENABLE_LTO ?= 0
 
 # The C compiler to use
 CC := gcc
@@ -31,7 +34,6 @@ CFLAGS = -std=c2x -Ofast \
               -g \
               -D_FORTIFY_SOURCE=3 \
               -march=native -mtune=native \
-              -flto=auto -fuse-linker-plugin \
               -fomit-frame-pointer \
               -fno-signed-zeros \
               -funroll-loops \
@@ -67,7 +69,6 @@ CFLAGS = -std=c2x -Ofast \
 COMMON_LDFLAGS = \
     -L$(TTAK_DIR)/lib \
     -lpthread -ldl -lcurl -lm -lcrypto -lttak -lc \
-    -flto=auto -fuse-linker-plugin \
     -Wl,-Ofast \
     -Wl,--hash-style=gnu \
     -Wl,--sort-common \
@@ -86,6 +87,11 @@ COMMON_LDFLAGS = \
     -Wl,--build-id=none
 
 LDFLAGS = $(COMMON_LDFLAGS) -lssh
+
+ifeq ($(ENABLE_LTO),1)
+CFLAGS += -flto=auto -fuse-linker-plugin
+COMMON_LDFLAGS += -flto=auto -fuse-linker-plugin
+endif
 
 # Define targets and source files
 TARGET := ssh-chatter

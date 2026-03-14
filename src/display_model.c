@@ -10,6 +10,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+static size_t display_model_effective_viewport(const display_model_t *model,
+                                               size_t fallback_lines)
+{
+    size_t vp = 0U;
+    if (model != NULL && model->last_viewport_height > 0U) {
+        vp = (size_t)model->last_viewport_height;
+    } else {
+        vp = fallback_lines;
+    }
+
+    if (vp == 0U) {
+        vp = 1U;
+    }
+
+    return vp;
+}
+
 /* ---- Internal helpers ---- */
 
 /**
@@ -334,7 +351,7 @@ size_t display_model_resolve_anchor(const display_model_t *model,
     return model->line_count - 1U;
 }
 
-void display_model_compute_visible(const display_model_t *model,
+void display_model_compute_visible(display_model_t *model,
                                    unsigned int viewport_height,
                                    display_visible_frame_t *frame)
 {
@@ -350,6 +367,11 @@ void display_model_compute_visible(const display_model_t *model,
     if (model->line_count == 0U || viewport_height == 0U) {
         frame->at_tail = true;
         frame->at_head = true;
+        if (model != NULL) {
+            model->has_last_visible_frame = false;
+            model->last_visible_start = 0U;
+            model->last_viewport_height = viewport_height;
+        }
         return;
     }
 
@@ -391,6 +413,10 @@ void display_model_compute_visible(const display_model_t *model,
         frame->at_tail = (anchor_idx + count >= total);
         frame->at_head = (anchor_idx == 0U);
     }
+
+    model->last_viewport_height = viewport_height;
+    model->last_visible_start = frame->first_global_index;
+    model->has_last_visible_frame = true;
 }
 
 void display_model_scroll_up(display_model_t *model, size_t lines)
@@ -399,25 +425,26 @@ void display_model_scroll_up(display_model_t *model, size_t lines)
         return;
     }
 
-    size_t current_idx;
+    size_t total = model->line_count;
+    size_t viewport = display_model_effective_viewport(model, lines);
+    if (viewport > total) {
+        viewport = total;
+    }
+
+    size_t current_idx = 0U;
 
     if (model->view.mode == VIEW_FOLLOW_TAIL) {
-        /* Switch from tail to manual scroll. Anchor at current top. */
         model->view.mode = VIEW_MANUAL_SCROLL;
-        /* Set anchor to the line that would be the top of the current view.
-         * Since we don't know viewport_height here, we anchor at the last
-         * line and the caller should recompute visible. For now, anchor at
-         * the end of the model. */
-        if (model->line_count > 0U) {
-            current_idx = model->line_count - 1U;
-        } else {
-            current_idx = 0U;
+        if (model->has_last_visible_frame) {
+            current_idx = model->last_visible_start;
+        } else if (total > viewport) {
+            current_idx = total - viewport;
         }
     } else {
         current_idx = display_model_resolve_anchor(
             model, &model->view.anchor);
         if (current_idx == SIZE_MAX) {
-            current_idx = model->line_count - 1U;
+            current_idx = (total > viewport) ? (total - viewport) : 0U;
         }
     }
 
@@ -445,21 +472,32 @@ void display_model_scroll_down(display_model_t *model, size_t lines)
 
     size_t current_idx = display_model_resolve_anchor(
         model, &model->view.anchor);
+    size_t total = model->line_count;
+    size_t viewport = display_model_effective_viewport(model, lines);
+    if (viewport > total) {
+        viewport = total;
+    }
+
     if (current_idx == SIZE_MAX) {
         display_model_follow_tail(model);
         return;
     }
 
-    current_idx += lines;
-    if (current_idx >= model->line_count) {
-        /* Reached the end: switch back to tail-follow */
+    size_t max_top = (total > viewport) ? (total - viewport) : 0U;
+    if (max_top == 0U) {
         display_model_follow_tail(model);
         return;
     }
 
-    model->view.anchor.message_id = model->lines[current_idx].message_id;
+    size_t new_idx = current_idx + lines;
+    if (new_idx >= max_top) {
+        display_model_follow_tail(model);
+        return;
+    }
+
+    model->view.anchor.message_id = model->lines[new_idx].message_id;
     model->view.anchor.subline_index =
-        model->lines[current_idx].subline_index;
+        model->lines[new_idx].subline_index;
 }
 
 void display_model_follow_tail(display_model_t *model)
@@ -471,6 +509,8 @@ void display_model_follow_tail(display_model_t *model)
     model->view.mode = VIEW_FOLLOW_TAIL;
     model->view.anchor.message_id = 0U;
     model->view.anchor.subline_index = 0U;
+    model->has_last_visible_frame = false;
+    model->last_visible_start = 0U;
 }
 
 bool display_model_is_following_tail(const display_model_t *model)

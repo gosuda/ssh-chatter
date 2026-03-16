@@ -184,6 +184,7 @@ tetris_game_state_t *session_game_ensure_tetris(session_ctx_t *ctx);
 tetris_game_state_t *session_game_ensure_saved_tetris(session_ctx_t *ctx);
 void session_game_release_tetris(session_ctx_t *ctx);
 void session_game_release_saved_tetris(session_ctx_t *ctx);
+void session_game_handle_screen_cleared(session_ctx_t *ctx);
 void session_mark_activity(session_ctx_t *ctx);
 bool session_enforce_lifetime(session_ctx_t *ctx, const struct timespec *now);
 

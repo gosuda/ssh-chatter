@@ -1711,6 +1711,8 @@ static void session_clear_screen(session_ctx_t *ctx)
 
     ctx->output_lines_since_prompt = 0U;
     ctx->prompt_needs_padding = false;
+
+    session_game_handle_screen_cleared(ctx);
 }
 
 static void session_bbs_prepare_canvas(session_ctx_t *ctx)

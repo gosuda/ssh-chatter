@@ -1359,6 +1359,27 @@ static void session_game_start_tetris(session_ctx_t *ctx)
     ctx->translation_suppress_output = previous_translation_suppress;
 }
 
+void session_game_handle_screen_cleared(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || !ctx->game.active) {
+        return;
+    }
+
+    if (ctx->game.type != SESSION_GAME_TETRIS) {
+        return;
+    }
+
+    if (ctx->tetris_screen_buffer == nullptr ||
+        ctx->tetris_prev_screen_buffer == nullptr ||
+        ctx->game.tetris == nullptr) {
+        return;
+    }
+
+    // Force the next render to redraw the entire frame.
+    ctx->tetris_prev_screen_buffer[0] = '\0';
+    session_game_tetris_render(ctx);
+}
+
 static void session_game_start_liargame(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {

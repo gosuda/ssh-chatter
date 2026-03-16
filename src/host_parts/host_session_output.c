@@ -26,6 +26,146 @@ typedef struct session_screen_line {
     size_t length;
 } session_screen_line_t;
 
+static size_t session_skip_ansi_sequence(const char *text, size_t length)
+{
+    if (text == nullptr || length == 0U || text[0] != '\x1b') {
+        return 0U;
+    }
+
+    size_t idx = 1U;
+    if (idx < length && text[idx] == '[') {
+        ++idx;
+        while (idx < length) {
+            unsigned char ch = (unsigned char)text[idx];
+            ++idx;
+            if (ch >= '@' && ch <= '~') {
+                break;
+            }
+        }
+        return idx;
+    }
+
+    if (idx < length && text[idx] == ']') {
+        ++idx;
+        while (idx < length) {
+            unsigned char ch = (unsigned char)text[idx];
+            ++idx;
+            if (ch == '\a') {
+                break;
+            }
+            if (ch == '\x1b') {
+                ++idx;
+                break;
+            }
+        }
+        return idx;
+    }
+
+    while (idx < length) {
+        unsigned char ch = (unsigned char)text[idx];
+        ++idx;
+        if (ch >= '@' && ch <= '~') {
+            break;
+        }
+    }
+    return idx;
+}
+
+static size_t session_count_visible_columns(const char *text, size_t length)
+{
+    if (text == nullptr || length == 0U) {
+        return 0U;
+    }
+
+    size_t columns = 0U;
+    size_t idx = 0U;
+    while (idx < length) {
+        unsigned char ch = (unsigned char)text[idx];
+        if (ch == '\x1b') {
+            size_t consumed = session_skip_ansi_sequence(text + idx, length - idx);
+            if (consumed == 0U) {
+                ++idx;
+            } else {
+                idx += consumed;
+            }
+            continue;
+        }
+
+        if (ch < 0x20U) {
+            ++idx;
+            continue;
+        }
+
+        if ((ch & 0x80U) == 0U) {
+            ++columns;
+            ++idx;
+            continue;
+        }
+
+        size_t advance = 1U;
+        if ((ch & 0xE0U) == 0xC0U && idx + 1U < length) {
+            advance = 2U;
+        } else if ((ch & 0xF0U) == 0xE0U && idx + 2U < length) {
+            advance = 3U;
+        } else if ((ch & 0xF8U) == 0xF0U && idx + 3U < length) {
+            advance = 4U;
+        }
+        idx += advance;
+        ++columns;
+    }
+
+    return columns;
+}
+
+static size_t session_estimate_line_rows(const session_screen_line_t *line,
+                                         unsigned int terminal_width)
+{
+    if (terminal_width == 0U) {
+        terminal_width = 80U;
+    }
+    if (terminal_width == 0U) {
+        terminal_width = 1U;
+    }
+
+    if (line == nullptr || line->text == nullptr) {
+        return 1U;
+    }
+
+    size_t visible = session_count_visible_columns(line->text, line->length);
+    if (visible == 0U) {
+        return 1U;
+    }
+
+    size_t rows = (visible + terminal_width - 1U) / terminal_width;
+    return rows > 0U ? rows : 1U;
+}
+
+static size_t session_build_row_offsets(const session_screen_line_t *lines,
+                                        size_t count, unsigned int terminal_width,
+                                        size_t *offsets, size_t offsets_capacity)
+{
+    if (offsets == nullptr || offsets_capacity == 0U) {
+        return 0U;
+    }
+
+    offsets[0] = 0U;
+    if (lines == nullptr || count == 0U) {
+        return 0U;
+    }
+
+    if (count + 1U > offsets_capacity) {
+        count = offsets_capacity - 1U;
+    }
+
+    size_t total = 0U;
+    for (size_t idx = 0U; idx < count; ++idx) {
+        size_t rows = session_estimate_line_rows(&lines[idx], terminal_width);
+        total += rows;
+        offsets[idx + 1U] = total;
+    }
+    return total;
+}
+
 void session_note_output_lines(session_ctx_t *ctx, size_t line_count)
 {
     if (ctx == nullptr || line_count == 0U) {
@@ -272,24 +412,48 @@ static bool session_render_incremental_lines(session_ctx_t *ctx,
     static const char kHideCursor[] = "\033[?25l";
     static const char kShowCursor[] = "\033[?25h";
     static const char kClearLine[] = "\r" ANSI_CLEAR_LINE;
+    unsigned int terminal_width =
+        (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
+    if (terminal_width == 0U) {
+        terminal_width = 80U;
+    }
+
+    size_t old_row_offsets[SSH_CHATTER_SCROLLBACK_MAX_CHUNK + 1];
+    size_t new_row_offsets[SSH_CHATTER_SCROLLBACK_MAX_CHUNK + 1];
+    const size_t old_offset_capacity =
+        sizeof(old_row_offsets) / sizeof(old_row_offsets[0]);
+    const size_t new_offset_capacity =
+        sizeof(new_row_offsets) / sizeof(new_row_offsets[0]);
+    size_t total_old_rows = session_build_row_offsets(
+        old_lines, old_count, terminal_width, old_row_offsets,
+        old_offset_capacity);
+    size_t total_new_rows = session_build_row_offsets(
+        new_lines, new_count, terminal_width, new_row_offsets,
+        new_offset_capacity);
 
     session_channel_write(ctx, kHideCursor, sizeof(kHideCursor) - 1U);
     session_channel_write(ctx, kClearLine, sizeof(kClearLine) - 1U);
-    session_write_vertical_cursor_move(ctx, old_count, 'A');
+    session_write_vertical_cursor_move(ctx, total_old_rows, 'A');
 
     const size_t scroll_shift = session_detect_incremental_scroll_shift(
         old_lines, old_count, new_lines, new_count);
     const size_t redraw_start =
         (scroll_shift > 0U && scroll_shift < old_count) ? (old_count - scroll_shift) : 0U;
     if (scroll_shift > 0U) {
-        session_write_scroll_up(ctx, scroll_shift);
+        size_t limited_shift = scroll_shift < old_count ? scroll_shift : old_count;
+        size_t scroll_rows =
+            limited_shift < old_offset_capacity ? old_row_offsets[limited_shift]
+                                                : total_old_rows;
+        if (scroll_rows > 0U) {
+            session_write_scroll_up(ctx, scroll_rows);
+        }
     }
 
-    const size_t max_rows = old_count > new_count ? old_count : new_count;
+    const size_t max_lines = old_count > new_count ? old_count : new_count;
     size_t current_row = 0U;
     bool cursor_positioned = false;
 
-    for (size_t idx = redraw_start; idx < max_rows; ++idx) {
+    for (size_t idx = redraw_start; idx < max_lines; ++idx) {
         const bool old_present = idx < old_count;
         const bool new_present = idx < new_count;
         const bool changed =
@@ -299,13 +463,16 @@ static bool session_render_incremental_lines(session_ctx_t *ctx,
             continue;
         }
 
+        size_t target_row =
+            (old_present && idx < old_offset_capacity) ? old_row_offsets[idx]
+                                                       : total_old_rows;
         if (!cursor_positioned) {
-            session_write_vertical_cursor_move(ctx, idx, 'B');
-            current_row = idx;
+            session_write_vertical_cursor_move(ctx, target_row, 'B');
+            current_row = target_row;
             cursor_positioned = true;
-        } else if (idx > current_row) {
-            session_write_vertical_cursor_move(ctx, idx - current_row, 'B');
-            current_row = idx;
+        } else if (target_row > current_row) {
+            session_write_vertical_cursor_move(ctx, target_row - current_row, 'B');
+            current_row = target_row;
         }
 
         session_channel_write(ctx, kClearLine, sizeof(kClearLine) - 1U);
@@ -314,7 +481,7 @@ static bool session_render_incremental_lines(session_ctx_t *ctx,
         }
     }
 
-    const size_t footer_row = max_rows;
+    size_t footer_row = total_new_rows > 0U ? total_new_rows : total_old_rows;
     if (!cursor_positioned) {
         session_write_vertical_cursor_move(ctx, footer_row, 'B');
     } else if (footer_row >= current_row) {

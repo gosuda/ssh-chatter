@@ -830,6 +830,9 @@ static void session_game_tetris_clear_lines(session_ctx_t *ctx,
              ++move_col) {
             state->board[0][move_col] = 0;
         }
+        /* The rows above shifted down into position `row`.
+         * Decrement so the for-loop's ++row re-checks the same row. */
+        --row;
     }
     if (cleared != nullptr) {
         *cleared = removed;

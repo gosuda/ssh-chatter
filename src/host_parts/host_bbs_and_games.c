@@ -830,6 +830,9 @@ static void session_game_tetris_clear_lines(session_ctx_t *ctx,
              ++move_col) {
             state->board[0][move_col] = 0;
         }
+        /* The rows above shifted down into position `row`.
+         * Decrement so the for-loop's ++row re-checks the same row. */
+        --row;
     }
     if (cleared != nullptr) {
         *cleared = removed;
@@ -1105,13 +1108,18 @@ static void session_game_tetris_render(session_ctx_t *ctx)
                                ANSI_RESET);
 
     for (int row = 0; row < SSH_CHATTER_TETRIS_HEIGHT; ++row) {
-        char line_buffer[SSH_CHATTER_TETRIS_WIDTH * 8 + 32];
+        /* Worst case: border(10) + 15 cells * (color5 + char1 + reset4) + border(10) + NUL(1) = 171 bytes */
+        char line_buffer[SSH_CHATTER_TETRIS_WIDTH * 12 + 16];
         size_t line_offset = 0U;
+        size_t line_cap = sizeof(line_buffer);
         line_offset += (size_t)snprintf(line_buffer + line_offset,
-                                        sizeof(line_buffer) - line_offset,
+                                        line_cap - line_offset,
                                         "%s|%s", ANSI_BRIGHT_BLACK,
                                         ANSI_RESET);
         for (int col = 0; col < SSH_CHATTER_TETRIS_WIDTH; ++col) {
+            if (line_offset >= line_cap - 1U) {
+                break;
+            }
             char cell = ' ';
             const char *color = "";
             if (state->board[row][col] != 0) {
@@ -1136,17 +1144,21 @@ static void session_game_tetris_render(session_ctx_t *ctx)
             }
             if (color[0] != '\0') {
                 line_offset += (size_t)snprintf(
-                    line_buffer + line_offset, sizeof(line_buffer) - line_offset,
+                    line_buffer + line_offset, line_cap - line_offset,
                     "%s%c%s", color, cell, ANSI_RESET);
             } else {
-                line_buffer[line_offset++] = cell;
-                line_buffer[line_offset] = '\0';
+                if (line_offset + 1U < line_cap) {
+                    line_buffer[line_offset++] = cell;
+                    line_buffer[line_offset] = '\0';
+                }
             }
         }
-        line_offset += (size_t)snprintf(line_buffer + line_offset,
-                                        sizeof(line_buffer) - line_offset,
-                                        "%s|%s", ANSI_BRIGHT_BLACK,
-                                        ANSI_RESET);
+        if (line_offset < line_cap) {
+            line_offset += (size_t)snprintf(line_buffer + line_offset,
+                                            line_cap - line_offset,
+                                            "%s|%s", ANSI_BRIGHT_BLACK,
+                                            ANSI_RESET);
+        }
         offset += (size_t)snprintf(
             buffer + offset, SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
             "%s\n", line_buffer);

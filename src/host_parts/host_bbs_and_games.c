@@ -990,6 +990,10 @@ static void session_game_show_camouflage(session_ctx_t *ctx)
         return;
     }
 
+    // Clear scrollback buffer so the existing game screen is fully hidden
+    static const char kClearScrollback[] = "\033[3J";
+    session_channel_write(ctx, kClearScrollback, sizeof(kClearScrollback) - 1U);
+
     session_clear_screen(ctx);
     session_apply_background_fill(ctx);
 
@@ -5569,6 +5573,20 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx,
     trim_whitespace_inplace(working);
     for (size_t idx = 0U; working[idx] != '\0'; ++idx) {
         working[idx] = (char)tolower((unsigned char)working[idx]);
+    }
+
+    // Handle camouflage toggle with 't' command
+    if (strcmp(working, "t") == 0) {
+        if (ctx->game.is_camouflaged) {
+            ctx->game.is_camouflaged = false;
+            ctx->game.saved_gonu_state = ctx->game.gonu;
+            session_game_gonu_render(ctx);
+        } else {
+            ctx->game.is_camouflaged = true;
+            ctx->game.saved_gonu_state = ctx->game.gonu;
+            session_game_show_camouflage(ctx);
+        }
+        return true;
     }
 
     // Handle mode selection

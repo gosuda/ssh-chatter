@@ -499,6 +499,7 @@ typedef struct session_game_state {
     gonu_game_state_t gonu;
     uint64_t rng_state;
     bool rng_seeded;
+    unsigned tetris_render_count;
 } session_game_state_t;
 
 typedef struct othello_multiplayer_slot {

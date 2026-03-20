@@ -723,6 +723,12 @@ static bool session_game_tetris_process_raw_input(session_ctx_t *ctx, char ch)
             }
             ctx->game.tetris->gravity_timer_initialized = false;
             ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
+            // Force full clear+redraw when returning from the screen locker:
+            // reset the render counter so the next two frames are full
+            // redraws, and clear the previous buffer so the comparison always
+            // triggers a redraw even if the game state is unchanged.
+            ctx->game.tetris_render_count = 0U;
+            ctx->tetris_prev_screen_buffer[0] = '\0';
             // Re-enable alternate screen buffer when returning to game
             session_enable_alternate_screen(ctx);
             session_game_tetris_render(ctx);
@@ -1181,9 +1187,14 @@ static void session_game_tetris_render(session_ctx_t *ctx)
                                "rotate, drop. Blank line = down.\n",
                                ANSI_BRIGHT_CYAN, ANSI_RESET);
 
-    // Only send if the buffer has changed
-    if (strcmp(ctx->tetris_screen_buffer, ctx->tetris_prev_screen_buffer) !=
-        0) {
+    // Only send if the buffer has changed or a full redraw is required.
+    // Force a full clear+redraw for the first two frames after game entry or
+    // after returning from the screen locker (camouflage), so the entire
+    // screen is always refreshed in those transitions.
+    const bool force_full_redraw = (ctx->game.tetris_render_count < 2U);
+    if (force_full_redraw ||
+        strcmp(ctx->tetris_screen_buffer, ctx->tetris_prev_screen_buffer) !=
+            0) {
         session_screen_line_t previous_lines[32];
         session_screen_line_t current_lines[32];
         const size_t previous_count = session_describe_buffer_lines(
@@ -1197,7 +1208,7 @@ static void session_game_tetris_render(session_ctx_t *ctx)
         session_output_buffer_start(ctx);
 
         bool used_incremental = false;
-        if (previous_count > 0U && current_count > 0U) {
+        if (!force_full_redraw && previous_count > 0U && current_count > 0U) {
             used_incremental = session_render_incremental_lines(
                 ctx, previous_lines, previous_count, current_lines, current_count,
                 false);
@@ -1214,6 +1225,10 @@ static void session_game_tetris_render(session_ctx_t *ctx)
                 SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE);
         ctx->tetris_prev_screen_buffer[SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE -
                                        1] = '\0';
+    }
+
+    if (ctx->game.tetris_render_count < 2U) {
+        ctx->game.tetris_render_count++;
     }
 
     ctx->translation_suppress_output = previous_translation_suppress;
@@ -1359,6 +1374,7 @@ static void session_game_start_tetris(session_ctx_t *ctx)
     memset(ctx->tetris_screen_buffer, 0, SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE);
     memset(ctx->tetris_prev_screen_buffer, 0,
            SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE);
+    ctx->game.tetris_render_count = 0U;
 
     session_send_system_line(ctx,
                              "Tetris started. Pieces fall on their own - use "

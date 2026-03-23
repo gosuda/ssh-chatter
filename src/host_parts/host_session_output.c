@@ -1576,7 +1576,8 @@ void session_send_raw_text(session_ctx_t *ctx, const char *text)
         const char *newline = strchr(cursor, '\n');
         char line[SSH_CHATTER_MESSAGE_LIMIT];
         if (newline == nullptr) {
-            snprintf(line, sizeof(line), "%s", cursor);
+            snprintf(line, sizeof(line), "%.*s",
+                     (int)(sizeof(line) - 1U), cursor);
             session_send_plain_line(ctx, line);
             break;
         }
@@ -1588,6 +1589,114 @@ void session_send_raw_text(session_ctx_t *ctx, const char *text)
         memcpy(line, cursor, length);
         line[length] = '\0';
         session_send_plain_line(ctx, line);
+
+        cursor = newline + 1;
+        if (*cursor == '\r') {
+            ++cursor;
+        }
+        if (*cursor == '\0') {
+            session_send_plain_line(ctx, "");
+        }
+    }
+}
+
+/* Expand BBS color markup: (#RRGGBB)text(#end)
+ * Renders the enclosed text with a bright white background and a 24-bit
+ * foreground color. Any other text is passed through unchanged.
+ * out is NUL-terminated and will not exceed out_size bytes. */
+static void session_bbs_expand_color_markup(const char *text, char *out,
+                                             size_t out_size)
+{
+    if (text == nullptr || out == nullptr || out_size == 0U) {
+        if (out != nullptr && out_size > 0U) {
+            out[0] = '\0';
+        }
+        return;
+    }
+    out[0] = '\0';
+
+    size_t pos = 0U;
+    const char *cursor = text;
+
+    while (*cursor != '\0' && pos + 1U < out_size) {
+        /* Check for (#end) - case-insensitive, 6 chars */
+        if (cursor[0] == '(' && cursor[1] == '#' &&
+            (cursor[2] == 'e' || cursor[2] == 'E') &&
+            (cursor[3] == 'n' || cursor[3] == 'N') &&
+            (cursor[4] == 'd' || cursor[4] == 'D') &&
+            cursor[5] == ')') {
+            static const char kReset[] = "\033[0m";
+            const size_t seq_len = sizeof(kReset) - 1U;
+            if (pos + seq_len + 1U <= out_size) {
+                memcpy(out + pos, kReset, seq_len);
+                pos += seq_len;
+            }
+            cursor += 6;
+            continue;
+        }
+
+        /* Check for (#RRGGBB) - exactly 9 characters */
+        if (cursor[0] == '(' && cursor[1] == '#' && cursor[8] == ')') {
+            bool valid = true;
+            for (int hex_idx = 2; hex_idx < 8; ++hex_idx) {
+                if (!isxdigit((unsigned char)cursor[hex_idx])) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (valid) {
+                unsigned int r = 0U, g = 0U, b = 0U;
+                if (sscanf(cursor + 2, "%02x%02x%02x", &r, &g, &b) == 3) {
+                    /* Bright white bg (\033[107m) + 24-bit fg */
+                    char ansi_seq[48];
+                    int written = snprintf(ansi_seq, sizeof(ansi_seq),
+                                           "\033[107m\033[38;2;%u;%u;%um",
+                                           r, g, b);
+                    if (written > 0 &&
+                        pos + (size_t)written + 1U <= out_size) {
+                        memcpy(out + pos, ansi_seq, (size_t)written);
+                        pos += (size_t)written;
+                    }
+                    cursor += 9;
+                    continue;
+                }
+            }
+        }
+
+        out[pos++] = *cursor++;
+    }
+
+    out[pos] = '\0';
+}
+
+/* Like session_send_raw_text but expands BBS color markup on each line. */
+static void session_send_bbs_body_text(session_ctx_t *ctx, const char *text)
+{
+    if (ctx == nullptr || !session_transport_active(ctx) || text == nullptr) {
+        return;
+    }
+
+    const char *cursor = text;
+    while (*cursor != '\0') {
+        const char *newline = strchr(cursor, '\n');
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        char expanded[SSH_CHATTER_MESSAGE_LIMIT * 4U];
+        if (newline == nullptr) {
+            snprintf(line, sizeof(line), "%.*s",
+                     (int)(sizeof(line) - 1U), cursor);
+            session_bbs_expand_color_markup(line, expanded, sizeof(expanded));
+            session_send_plain_line(ctx, expanded);
+            break;
+        }
+
+        size_t length = (size_t)(newline - cursor);
+        if (length >= sizeof(line)) {
+            length = sizeof(line) - 1U;
+        }
+        memcpy(line, cursor, length);
+        line[length] = '\0';
+        session_bbs_expand_color_markup(line, expanded, sizeof(expanded));
+        session_send_plain_line(ctx, expanded);
 
         cursor = newline + 1;
         if (*cursor == '\r') {
@@ -1768,8 +1877,8 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
     session_send_plain_line(ctx, bumped_line);
     session_render_separator(ctx, "{Body}");
 
-    // Send body line by line
-    session_send_raw_text(ctx, post->body);
+    // Send body line by line (with BBS color markup expansion)
+    session_send_bbs_body_text(ctx, post->body);
 
     // Send comments if any
     if (post->comment_count > 0U) {
@@ -1788,7 +1897,7 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
 
             session_send_system_line(ctx, comment_author_line);
             session_send_system_line(ctx, comment_created_line);
-            session_send_raw_text(ctx, comment->text);
+            session_send_bbs_body_text(ctx, comment->text);
             session_send_plain_line(ctx, ""); // Empty line for spacing between comments
         }
     }
@@ -2232,6 +2341,64 @@ static bool session_bbs_insert_line(session_ctx_t *ctx, size_t line_index,
     return true;
 }
 
+/* Commit the current input buffer to the body for the cursor line without
+ * changing the cursor position.  Used by navigation to auto-save inline edits. */
+static void session_bbs_commit_edit_in_place(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || !ctx->pending_bbs_editing_line) {
+        return;
+    }
+
+    session_bbs_recalculate_line_count(ctx);
+    const size_t line_index = ctx->pending_bbs_cursor_line;
+    if (line_index >= ctx->pending_bbs_line_count) {
+        return;
+    }
+
+    ctx->input_buffer[ctx->input_length] = '\0';
+
+    size_t start = 0U;
+    size_t old_length = 0U;
+    if (!session_bbs_get_line_range(ctx, line_index, &start, &old_length)) {
+        return;
+    }
+
+    size_t capacity = session_editor_body_capacity(ctx);
+    if (capacity > 0U) {
+        --capacity;
+    }
+    const size_t current_length = ctx->pending_bbs_body_length;
+    const size_t base_length = current_length - old_length;
+    const size_t max_allowed =
+        (capacity > base_length) ? (capacity - base_length) : 0U;
+
+    size_t new_length = ctx->input_length;
+    if (new_length > max_allowed) {
+        new_length = max_allowed;
+    }
+
+    const size_t tail_offset = start + old_length;
+    const size_t tail_bytes = current_length - tail_offset + 1U;
+
+    if (new_length > old_length) {
+        memmove(ctx->pending_bbs_body + tail_offset + (new_length - old_length),
+                ctx->pending_bbs_body + tail_offset, tail_bytes);
+    } else if (old_length > new_length) {
+        /* new_tail_offset: adjusted destination after line shrinkage */
+        const size_t new_tail_offset = tail_offset - (old_length - new_length);
+        memmove(ctx->pending_bbs_body + new_tail_offset,
+                ctx->pending_bbs_body + tail_offset, tail_bytes);
+    }
+
+    if (new_length > 0U) {
+        memcpy(ctx->pending_bbs_body + start, ctx->input_buffer, new_length);
+    }
+
+    ctx->pending_bbs_body_length = base_length + new_length;
+    ctx->pending_bbs_body[ctx->pending_bbs_body_length] = '\0';
+    session_bbs_recalculate_line_count(ctx);
+}
+
 static bool session_bbs_replace_line(session_ctx_t *ctx, size_t line_index,
                                      const char *line, char *status,
                                      size_t status_length)
@@ -2643,7 +2810,8 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
         bool selection_active = ctx->bbs_editor_selection_start_set &&
                                 ctx->bbs_editor_selection_end_set;
 
-        enum { BBS_EDITOR_LINE_PREC = SSH_CHATTER_MESSAGE_LIMIT - 3 };
+        /* BBS_EDITOR_LINE_PREC: reserve 4 bytes for "> " (2), "_" (1), NUL (1) */
+        enum { BBS_EDITOR_LINE_PREC = SSH_CHATTER_MESSAGE_LIMIT - 4 };
         for (size_t idx = start; idx < end; ++idx) {
             if (!ctx->pending_bbs_editing_line &&
                 insertion_index == idx) {
@@ -2660,7 +2828,12 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
                                   : range_selected ? "* "
                                                    : "  ";
             char display[SSH_CHATTER_MESSAGE_LIMIT];
-            if (line_buffer[0] == '\0') {
+            if (cursor_selected) {
+                /* Real-time inline edit: show the live input buffer so the
+                 * user sees every keystroke; '_' marks the insertion point. */
+                snprintf(display, sizeof(display), "> %.*s_",
+                         BBS_EDITOR_LINE_PREC, ctx->input_buffer);
+            } else if (line_buffer[0] == '\0') {
                 snprintf(display, sizeof(display), "%s", prefix);
             } else {
                 snprintf(display, sizeof(display), "%s%.*s", prefix,
@@ -2697,14 +2870,14 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
     session_send_plain_line(ctx, shortcut_hint);
     session_send_plain_line(ctx, "Ctrl+O inserts the current input at the "
                                  "cursor. Ctrl+F searches within the draft.");
-    session_send_plain_line(ctx, "Ctrl+M starts line edit mode; Ctrl+L applies "
-                                 "the edited line.");
+    session_send_plain_line(ctx, "Ctrl+M starts explicit line edit mode; "
+                                 "Ctrl+L applies the edited line.");
     session_send_plain_line(ctx, "Ctrl+1 marks a selection start, Ctrl+2 cuts "
                                  "to a selection end, Ctrl+3 pastes.");
     session_send_plain_line(ctx, "Searching returns to the editor and moves the "
                                  "cursor to the first match.");
-    session_send_plain_line(ctx, "Use Up/Down arrows to revisit a saved line "
-                                 "and press Enter to store changes.");
+    session_send_plain_line(ctx, "Up/Down arrows move between lines; edits are "
+                                 "saved automatically on navigation.");
 
     char publish_hint[SSH_CHATTER_MESSAGE_LIMIT];
     if (ascii_mode) {
@@ -2755,6 +2928,11 @@ static void session_bbs_move_cursor(session_ctx_t *ctx, int direction)
         return;
     }
     ctx->bbs_line_edit_mode = false;
+
+    /* Auto-save the current inline edit before moving the cursor. */
+    if (ctx->pending_bbs_editing_line) {
+        session_bbs_commit_edit_in_place(ctx);
+    }
 
     session_bbs_recalculate_line_count(ctx);
     size_t line_count = ctx->pending_bbs_line_count;

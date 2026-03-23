@@ -3923,6 +3923,16 @@ static void session_bbs_capture_body_line(session_ctx_t *ctx, const char *line)
         updated = session_bbs_replace_line(ctx, ctx->pending_bbs_cursor_line,
                                            line, status, sizeof(status));
         ctx->bbs_line_edit_mode = false;
+        if (updated) {
+            /* session_bbs_replace_line advanced the cursor to line_index+1.
+             * If that position is still within the post, continue editing
+             * there so the user can keep typing without extra keystrokes. */
+            session_bbs_recalculate_line_count(ctx);
+            const size_t next = ctx->pending_bbs_cursor_line;
+            if (next < ctx->pending_bbs_line_count) {
+                session_bbs_set_cursor(ctx, next, true);
+            }
+        }
     } else if (inserting_line) {
         updated = session_bbs_insert_line(ctx, ctx->pending_bbs_cursor_line,
                                           line, status, sizeof(status));
@@ -4459,7 +4469,7 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
     }
 
     static const char *kUsage =
-        "Usage: /rss <add <url> <tag>|del <tag>|read <tag>|list>";
+        "Usage: /rss <add <url> <tag>|del <tag>|rename <old> <new>|read <tag>|list>";
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/rss", kUsage, usage, sizeof(usage));
@@ -4566,6 +4576,45 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
         } else {
             if (error[0] == '\0') {
                 snprintf(error, sizeof(error), "Failed to delete RSS feed.");
+            }
+            session_send_system_line(ctx, error);
+        }
+        return;
+    }
+
+    if (strcasecmp(command, "rename") == 0 || strcasecmp(command, "이름변경") == 0) {
+        if (!ctx->user.is_operator) {
+            session_send_system_line(ctx,
+                                     "Only operators may rename RSS feeds.");
+            return;
+        }
+
+        char *old_tag = strtok_r(nullptr, " \t", &saveptr);
+        char *new_tag = strtok_r(nullptr, " \t", &saveptr);
+        if (old_tag == nullptr || new_tag == nullptr) {
+            session_send_system_line(ctx,
+                                     "Usage: /rss rename <old_name> <new_name>");
+            return;
+        }
+
+        rss_trim_whitespace(old_tag);
+        rss_trim_whitespace(new_tag);
+        if (old_tag[0] == '\0' || new_tag[0] == '\0') {
+            session_send_system_line(ctx,
+                                     "Usage: /rss rename <old_name> <new_name>");
+            return;
+        }
+
+        char error[128];
+        if (host_rss_rename_feed(ctx->owner, old_tag, new_tag, error,
+                                 sizeof(error))) {
+            char message[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(message, sizeof(message),
+                     "RSS feed '%s' renamed to '%s'.", old_tag, new_tag);
+            session_send_system_line(ctx, message);
+        } else {
+            if (error[0] == '\0') {
+                snprintf(error, sizeof(error), "Failed to rename RSS feed.");
             }
             session_send_system_line(ctx, error);
         }

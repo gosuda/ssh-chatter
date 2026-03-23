@@ -2116,6 +2116,7 @@ static bool session_bbs_append_line(session_ctx_t *ctx, const char *line,
 static bool session_bbs_replace_line(session_ctx_t *ctx, size_t line_index,
                                      const char *line, char *status,
                                      size_t status_length);
+static void session_bbs_commit_edit_in_place(session_ctx_t *ctx);
 static void session_bbs_move_cursor(session_ctx_t *ctx, int direction);
 static bool session_bbs_is_admin_only_tag(const char *tag);
 static void session_bbs_buffer_breaking_notice(session_ctx_t *ctx,

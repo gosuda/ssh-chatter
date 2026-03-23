@@ -32,6 +32,7 @@
 #include <signal.h>
 
 #define HOST_STABLE_RESET_SECONDS 10.0
+#define SSH_CHATTER_MAX_HOST_RESTARTS 2U
 
 static volatile sig_atomic_t g_shutdown_flag = 0;
 static char *g_welcome_banner_content = nullptr;
@@ -431,6 +432,13 @@ int main(int argc, char **argv)
             humanized_log_error("daemon", "failed to allocate host state",
                                 errno != 0 ? errno : ENOMEM);
 
+            if (restart_attempts > SSH_CHATTER_MAX_HOST_RESTARTS) {
+                printf("[daemon] host startup failed %u times; exiting\n",
+                       SSH_CHATTER_MAX_HOST_RESTARTS);
+                exit_code = EXIT_FAILURE;
+                goto cleanup;
+            }
+
             printf("[daemon] retrying host startup (attempt %u)\n",
                    restart_attempts);
 
@@ -447,6 +455,14 @@ int main(int argc, char **argv)
             humanized_log_error("daemon",
                                 "failed to create host memory context",
                                 errno != 0 ? errno : ENOMEM);
+
+            if (restart_attempts > SSH_CHATTER_MAX_HOST_RESTARTS) {
+                printf("[daemon] host startup failed %u times; exiting\n",
+                       SSH_CHATTER_MAX_HOST_RESTARTS);
+                sshc_gc_free(host);
+                exit_code = EXIT_FAILURE;
+                goto cleanup;
+            }
 
             printf("[daemon] retrying host startup (attempt %u)\n",
                    restart_attempts);
@@ -580,6 +596,13 @@ int main(int argc, char **argv)
 
         humanized_log_error("daemon", detail,
                             serve_errno != 0 ? serve_errno : EIO);
+
+        if (restart_attempts > SSH_CHATTER_MAX_HOST_RESTARTS) {
+            printf("[daemon] host restart limit (%u) reached; exiting\n",
+                   SSH_CHATTER_MAX_HOST_RESTARTS);
+            exit_code = EXIT_FAILURE;
+            goto cleanup;
+        }
 
         printf("[daemon] restarting ssh-chatter (attempt %u)\n",
                restart_attempts);

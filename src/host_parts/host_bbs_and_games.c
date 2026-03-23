@@ -1053,6 +1053,43 @@ static const char *TETROMINO_COLOR_CODES[7] = {
     ANSI_YELLOW,       ANSI_BRIGHT_GREEN,  ANSI_BRIGHT_MAGENTA,
     ANSI_BRIGHT_RED};
 
+static bool session_game_tetris_capture_visible_cells(session_ctx_t *ctx,
+                                                       uint8_t out_cells
+                                                           [SSH_CHATTER_TETRIS_HEIGHT]
+                                                           [SSH_CHATTER_TETRIS_WIDTH])
+{
+    if (ctx == nullptr || out_cells == nullptr || ctx->game.tetris == nullptr) {
+        return false;
+    }
+
+    const tetris_game_state_t *state = ctx->game.tetris;
+    for (int row = 0; row < SSH_CHATTER_TETRIS_HEIGHT; ++row) {
+        for (int col = 0; col < SSH_CHATTER_TETRIS_WIDTH; ++col) {
+            uint8_t cell = 0U;
+            if (state->board[row][col] != 0) {
+                int index = state->board[row][col] - 1;
+                if (index < 0 || index >= 7) {
+                    index = 0;
+                }
+                cell = (uint8_t)(index + 1);
+            } else if (!state->game_over && state->current_piece >= 0) {
+                int local_row = row - state->row;
+                int local_col = col - state->column;
+                if (local_row >= 0 && local_row < SSH_CHATTER_TETROMINO_SIZE &&
+                    local_col >= 0 && local_col < SSH_CHATTER_TETROMINO_SIZE &&
+                    session_game_tetris_cell_occupied(state->current_piece,
+                                                      state->rotation, local_row,
+                                                      local_col)) {
+                    cell = (uint8_t)(state->current_piece + 1);
+                }
+            }
+            out_cells[row][col] = cell;
+        }
+    }
+
+    return true;
+}
+
 static void session_game_tetris_render(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->game.type != SESSION_GAME_TETRIS) {
@@ -1187,14 +1224,30 @@ static void session_game_tetris_render(session_ctx_t *ctx)
                                "rotate, drop. Blank line = down.\n",
                                ANSI_BRIGHT_CYAN, ANSI_RESET);
 
-    // Only send if the buffer has changed or a full redraw is required.
-    // Force a full clear+redraw for the first two frames after game entry or
-    // after returning from the screen locker (camouflage), so the entire
-    // screen is always refreshed in those transitions.
-    const bool force_full_redraw = (ctx->game.tetris_render_count < 2U);
+    // Force a full clear+redraw for the very first render (game entry or
+    // locker return), then switch to fine-grained incremental updates.
+    const bool force_full_redraw = (ctx->game.tetris_render_count < 1U);
+    uint8_t visible_cells[SSH_CHATTER_TETRIS_HEIGHT][SSH_CHATTER_TETRIS_WIDTH];
+    bool has_visible_cells =
+        session_game_tetris_capture_visible_cells(ctx, visible_cells);
+    bool board_changed = true;
+    if (!force_full_redraw && has_visible_cells &&
+        ctx->game.tetris_prev_cells_valid) {
+        board_changed = memcmp(visible_cells, ctx->game.tetris_prev_cells,
+                               sizeof(visible_cells)) != 0;
+    }
+
+    // If neither board cells nor textual frame changed, skip write completely.
+    const bool frame_text_changed =
+        strcmp(ctx->tetris_screen_buffer, ctx->tetris_prev_screen_buffer) != 0;
+    if (!force_full_redraw && !board_changed && !frame_text_changed) {
+        ctx->translation_suppress_output = previous_translation_suppress;
+        ctx->disable_output_dedup = previous_dedup_state;
+        return;
+    }
+
     if (force_full_redraw ||
-        strcmp(ctx->tetris_screen_buffer, ctx->tetris_prev_screen_buffer) !=
-            0) {
+        frame_text_changed) {
         session_screen_line_t previous_lines[32];
         session_screen_line_t current_lines[32];
         const size_t previous_count = session_describe_buffer_lines(
@@ -1227,8 +1280,14 @@ static void session_game_tetris_render(session_ctx_t *ctx)
                                        1] = '\0';
     }
 
-    if (ctx->game.tetris_render_count < 2U) {
+    if (ctx->game.tetris_render_count < 1U) {
         ctx->game.tetris_render_count++;
+    }
+    if (has_visible_cells) {
+        memcpy(ctx->game.tetris_prev_cells, visible_cells, sizeof(visible_cells));
+        ctx->game.tetris_prev_cells_valid = true;
+    } else {
+        ctx->game.tetris_prev_cells_valid = false;
     }
 
     ctx->translation_suppress_output = previous_translation_suppress;
@@ -1375,6 +1434,8 @@ static void session_game_start_tetris(session_ctx_t *ctx)
     memset(ctx->tetris_prev_screen_buffer, 0,
            SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE);
     ctx->game.tetris_render_count = 0U;
+    memset(ctx->game.tetris_prev_cells, 0, sizeof(ctx->game.tetris_prev_cells));
+    ctx->game.tetris_prev_cells_valid = false;
 
     session_send_system_line(ctx,
                              "Tetris started. Pieces fall on their own - use "
@@ -1409,6 +1470,7 @@ void session_game_handle_screen_cleared(session_ctx_t *ctx)
 
     // Force the next render to redraw the entire frame.
     ctx->tetris_prev_screen_buffer[0] = '\0';
+    ctx->game.tetris_prev_cells_valid = false;
     session_game_tetris_render(ctx);
 }
 

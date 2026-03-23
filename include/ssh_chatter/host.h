@@ -500,6 +500,9 @@ typedef struct session_game_state {
     uint64_t rng_state;
     bool rng_seeded;
     unsigned tetris_render_count;
+    uint8_t tetris_prev_cells[SSH_CHATTER_TETRIS_HEIGHT]
+                             [SSH_CHATTER_TETRIS_WIDTH];
+    bool tetris_prev_cells_valid;
 } session_game_state_t;
 
 typedef struct othello_multiplayer_slot {

@@ -658,8 +658,12 @@ static void session_realtime_record_line(session_ctx_t *ctx, const char *line)
             SESSION_REALTIME_RECENT_LIMIT;
     }
 
-    snprintf(ctx->realtime_recent_lines[insert_pos],
-             sizeof(ctx->realtime_recent_lines[insert_pos]), "%s", line);
+    size_t line_length = strnlen(line, SSH_CHATTER_MESSAGE_LIMIT - 1U);
+    if (line_length >= sizeof(ctx->realtime_recent_lines[insert_pos])) {
+        line_length = sizeof(ctx->realtime_recent_lines[insert_pos]) - 1U;
+    }
+    memcpy(ctx->realtime_recent_lines[insert_pos], line, line_length);
+    ctx->realtime_recent_lines[insert_pos][line_length] = '\0';
 
     if (ctx->realtime_line_count < SIZE_MAX) {
         ++ctx->realtime_line_count;
@@ -683,7 +687,12 @@ static void session_send_plain_line(session_ctx_t *ctx, const char *message)
     if (strncmp(message, kCaptionPrefix, sizeof(kCaptionPrefix) - 1U) == 0) {
         session_send_caption_line(ctx, message);
         // Update last output line after sending
-        snprintf(ctx->last_output_line, sizeof(ctx->last_output_line), "%s", message);
+        size_t msg_len = strnlen(message, SSH_CHATTER_MESSAGE_LIMIT - 1U);
+        if (msg_len >= sizeof(ctx->last_output_line)) {
+            msg_len = sizeof(ctx->last_output_line) - 1U;
+        }
+        memcpy(ctx->last_output_line, message, msg_len);
+        ctx->last_output_line[msg_len] = '\0';
         ctx->has_last_output_line = true;
         return;
     }
@@ -697,7 +706,12 @@ static void session_send_plain_line(session_ctx_t *ctx, const char *message)
     }
 
     // Update last output line after sending
-    snprintf(ctx->last_output_line, sizeof(ctx->last_output_line), "%s", message);
+    size_t msg_len = strnlen(message, SSH_CHATTER_MESSAGE_LIMIT - 1U);
+    if (msg_len >= sizeof(ctx->last_output_line)) {
+        msg_len = sizeof(ctx->last_output_line) - 1U;
+    }
+    memcpy(ctx->last_output_line, message, msg_len);
+    ctx->last_output_line[msg_len] = '\0';
     ctx->has_last_output_line = true;
 }
 

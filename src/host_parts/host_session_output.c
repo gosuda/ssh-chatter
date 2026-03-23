@@ -2115,21 +2115,25 @@ static void session_bbs_adjust_editor_scroll(session_ctx_t *ctx,
         window = 1U;
     }
 
-    if (line_count <= window) {
+    bool include_insertion_line =
+        !ctx->pending_bbs_editing_line &&
+        ctx->pending_bbs_cursor_line >= line_count;
+    size_t effective_line_count = line_count;
+    if (include_insertion_line && line_count < SIZE_MAX) {
+        ++effective_line_count;
+    }
+
+    if (effective_line_count <= window) {
         ctx->bbs_editor_scroll_offset = 0U;
         return;
     }
 
-    size_t max_offset = line_count - window;
+    size_t max_offset = effective_line_count - window;
     size_t offset = ctx->bbs_editor_scroll_offset;
     size_t cursor = ctx->pending_bbs_cursor_line;
 
-    if (cursor > line_count) {
-        cursor = line_count;
-    }
-
-    if (cursor >= line_count && line_count > 0U) {
-        cursor = line_count - 1U;
+    if (cursor >= effective_line_count && effective_line_count > 0U) {
+        cursor = effective_line_count - 1U;
     }
 
     if (cursor < offset) {

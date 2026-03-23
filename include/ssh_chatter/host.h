@@ -897,6 +897,8 @@ typedef struct bbs_post {
 typedef struct host {
     sshc_memory_context_t *memory_context;
     chat_room_t room;
+    struct timespec last_room_empty_time;
+    bool idle_state_pending;
     ssh_listener_t listener;
     struct {
         bool enabled;
@@ -951,6 +953,7 @@ typedef struct host {
     size_t history_capacity;
     size_t history_start_index;
     size_t history_total;
+    bool history_cache_loaded;
     chat_history_entry_t *history_override;
     size_t history_override_count;
     uint64_t next_message_id;
@@ -993,6 +996,7 @@ typedef struct host {
     size_t bbs_post_count;
     size_t bbs_post_capacity;
     uint64_t next_bbs_id;
+    bool bbs_cache_loaded;
     rss_feed_t rss_feeds[SSH_CHATTER_RSS_MAX_FEEDS];
     size_t rss_feed_count;
     uint8_t rss_current_window_id;

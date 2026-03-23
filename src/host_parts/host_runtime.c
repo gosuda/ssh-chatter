@@ -38,6 +38,8 @@
 #define SSH_CHATTER_AI_PROMPT_CONTEXT_MAX 1536U
 #define SSH_CHATTER_AI_PROMPT_MESSAGE_MAX (SSH_CHATTER_MESSAGE_LIMIT / 2U)
 #define SSH_CHATTER_AI_PROMPT_USERNAME_MAX (SSH_CHATTER_USERNAME_LEN - 1U)
+#define HOST_IDLE_UNLOAD_SECONDS 120
+#define HOST_IDLE_CHECK_INTERVAL_NS 500000000LL
 
 static inline void session_safe_free(void **ptr)
 {
@@ -123,6 +125,183 @@ static inline void host_gc_cycle(host_t *host, struct timespec *last_gc_run)
     sshc_memory_context_epoch_gc_rotate(host->memory_context);
     sshc_epoch_reclaim();
     *last_gc_run = now;
+}
+
+void session_manual_gc_tick(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->memory_context == nullptr) {
+        return;
+    }
+    sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
+}
+
+void host_manual_gc_tick(host_t *host)
+{
+    if (host == nullptr || host->memory_context == nullptr) {
+        return;
+    }
+    sshc_memory_context_epoch_gc_rotate(host->memory_context);
+    sshc_epoch_reclaim();
+}
+
+static bool host_room_has_members(host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+    bool has_members = false;
+    ttak_mutex_lock(&host->room.lock);
+    has_members = host->room.member_count > 0U;
+    ttak_mutex_unlock(&host->room.lock);
+    return has_members;
+}
+
+static void host_history_release_cache(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+    chat_history_entry_t *buffer = nullptr;
+    ttak_mutex_lock(&host->lock);
+    buffer = host->history;
+    host->history = nullptr;
+    host->history_capacity = 0U;
+    host->history_count = 0U;
+    host->history_start_index = host->history_total;
+    host->history_cache_loaded = false;
+    ttak_mutex_unlock(&host->lock);
+    if (buffer != nullptr) {
+        sshc_gc_free(buffer);
+    }
+}
+
+static bool host_bbs_acquire_storage(host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+    if (host->bbs_posts != nullptr) {
+        return true;
+    }
+
+    bbs_post_t *allocated = (bbs_post_t *)sshc_gc_calloc(
+        SSH_CHATTER_BBS_MAX_POSTS, sizeof(host->bbs_posts[0]));
+    if (allocated == nullptr) {
+        humanized_log_error("bbs", "failed to allocate post cache",
+                            errno != 0 ? errno : ENOMEM);
+        return false;
+    }
+
+    ttak_mutex_lock(&host->lock);
+    if (host->bbs_posts != nullptr) {
+        ttak_mutex_unlock(&host->lock);
+        sshc_gc_free(allocated);
+        return true;
+    }
+
+    host->bbs_posts = allocated;
+    host->bbs_post_capacity = SSH_CHATTER_BBS_MAX_POSTS;
+    for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
+        host->bbs_posts[idx].in_use = false;
+        host->bbs_posts[idx].id = 0U;
+        host->bbs_posts[idx].author[0] = '\0';
+        host->bbs_posts[idx].title[0] = '\0';
+        host->bbs_posts[idx].body[0] = '\0';
+        host->bbs_posts[idx].tag_count = 0U;
+        host->bbs_posts[idx].created_at = 0;
+        host->bbs_posts[idx].bumped_at = 0;
+        host->bbs_posts[idx].comment_count = 0U;
+        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
+             ++comment) {
+            host->bbs_posts[idx].comments[comment].author[0] = '\0';
+            host->bbs_posts[idx].comments[comment].text[0] = '\0';
+            host->bbs_posts[idx].comments[comment].created_at = 0;
+        }
+    }
+    host->bbs_cache_loaded = true;
+    ttak_mutex_unlock(&host->lock);
+    return true;
+}
+
+static void host_bbs_release_cache(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+    bbs_post_t *posts = nullptr;
+    ttak_mutex_lock(&host->lock);
+    posts = host->bbs_posts;
+    host->bbs_posts = nullptr;
+    host->bbs_post_capacity = 0U;
+    host->bbs_post_count = 0U;
+    host->bbs_cache_loaded = false;
+    ttak_mutex_unlock(&host->lock);
+    if (posts != nullptr) {
+        sshc_gc_free(posts);
+    }
+}
+
+static void host_reload_cached_state(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    if (!host->history_cache_loaded) {
+        host_state_load(host);
+        host->history_cache_loaded =
+            host->history != nullptr && host->history_capacity > 0U;
+    }
+
+    if (!host->bbs_cache_loaded) {
+        if (host_bbs_acquire_storage(host)) {
+            host_bbs_state_load(host);
+            host->bbs_cache_loaded = host_bbs_storage_ready(host);
+        }
+    }
+}
+
+static void host_idle_state_maintenance(host_t *host,
+                                        struct timespec *last_idle_check)
+{
+    if (host == nullptr || last_idle_check == nullptr) {
+        return;
+    }
+
+    struct timespec now = session_now_monotonic();
+    long long elapsed_ns =
+        (long long)(now.tv_sec - last_idle_check->tv_sec) * 1000000000LL +
+        (long long)(now.tv_nsec - last_idle_check->tv_nsec);
+    if (elapsed_ns < HOST_IDLE_CHECK_INTERVAL_NS) {
+        return;
+    }
+    *last_idle_check = now;
+
+    if (host_room_has_members(host)) {
+        host->idle_state_pending = false;
+        host->last_room_empty_time = now;
+        return;
+    }
+
+    if (!host->idle_state_pending) {
+        host->last_room_empty_time = now;
+        host->idle_state_pending = true;
+        return;
+    }
+
+    long long idle_ns =
+        (long long)(now.tv_sec - host->last_room_empty_time.tv_sec) *
+            1000000000LL +
+        (long long)(now.tv_nsec - host->last_room_empty_time.tv_nsec);
+    if (idle_ns < (long long)HOST_IDLE_UNLOAD_SECONDS * 1000000000LL) {
+        return;
+    }
+
+    host_history_release_cache(host);
+    host_bbs_release_cache(host);
+    host_manual_gc_tick(host);
+    host->idle_state_pending = false;
+    host->last_room_empty_time = now;
 }
 
 static bool host_ai_chat_enable(host_t *host);
@@ -3760,9 +3939,11 @@ static void *host_telnet_thread(void *arg)
 
     sshc_epoch_thread_enter();
     atomic_store(&host->telnet.running, true);
+    struct timespec last_idle_check = session_now_monotonic();
 
     while (!atomic_load(&host->telnet.stop) &&
            (host->shutdown_flag == nullptr || *host->shutdown_flag == 0)) {
+        host_idle_state_maintenance(host, &last_idle_check);
         if (host->telnet.fd < 0) {
             int fd = host_telnet_open_socket(host);
             if (fd < 0) {
@@ -4597,6 +4778,9 @@ static void *session_thread(void *arg)
             host_sleep_uninterruptible(&wait_time);
         }
         chat_room_add(&ctx->owner->room, ctx);
+        session_manual_gc_tick(ctx);
+        host_manual_gc_tick(ctx->owner);
+        host_reload_cached_state(ctx->owner);
         ctx->has_joined_room = true;
         printf("[join] %s\n", ctx->user.name);
 
@@ -5334,6 +5518,8 @@ static void *session_thread(void *arg)
         host_history_record_system(ctx->owner, part_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
         chat_room_remove(&ctx->owner->room, ctx);
+        session_manual_gc_tick(ctx);
+        host_manual_gc_tick(ctx->owner);
 
         /* Allow in-flight broadcasts that already captured this session in
          * their snapshot to finish writing before we destroy the channel
@@ -5373,6 +5559,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     }
 
     chat_room_init(&host->room);
+    host->idle_state_pending = false;
+    host->last_room_empty_time = session_now_monotonic();
     host->listener.handle = nullptr;
     host->listener.inplace_recoveries = 0U;
     host->listener.restart_attempts = 0U;
@@ -5493,6 +5681,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->history = nullptr;
     host->history_count = 0U;
     host->history_capacity = 0U;
+    host->history_cache_loaded = false;
     host->next_message_id = 1U;
     memset(host->preferences, 0, sizeof(host->preferences));
     host->preference_count = 0U;
@@ -5573,31 +5762,9 @@ void host_init(host_t *host, auth_profile_t *auth)
         named_poll_reset(&host->named_polls[idx]);
     }
     host->named_poll_count = 0U;
-    host->bbs_posts = (bbs_post_t *)sshc_gc_calloc(
-        SSH_CHATTER_BBS_MAX_POSTS, sizeof(host->bbs_posts[0]));
-    if (host->bbs_posts != nullptr) {
-        host->bbs_post_capacity = SSH_CHATTER_BBS_MAX_POSTS;
-        for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
-            host->bbs_posts[idx].in_use = false;
-            host->bbs_posts[idx].id = 0U;
-            host->bbs_posts[idx].author[0] = '\0';
-            host->bbs_posts[idx].title[0] = '\0';
-            host->bbs_posts[idx].body[0] = '\0';
-            host->bbs_posts[idx].tag_count = 0U;
-            host->bbs_posts[idx].created_at = 0;
-            host->bbs_posts[idx].bumped_at = 0;
-            host->bbs_posts[idx].comment_count = 0U;
-            for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
-                 ++comment) {
-                host->bbs_posts[idx].comments[comment].author[0] = '\0';
-                host->bbs_posts[idx].comments[comment].text[0] = '\0';
-                host->bbs_posts[idx].comments[comment].created_at = 0;
-            }
-        }
-    } else {
+    host->bbs_cache_loaded = false;
+    if (!host_bbs_acquire_storage(host)) {
         host->bbs_post_capacity = 0U;
-        humanized_log_error("bbs", "failed to allocate post cache",
-                            errno != 0 ? errno : ENOMEM);
     }
     host->bbs_post_count = 0U;
     host->next_bbs_id = 1U;
@@ -5676,9 +5843,12 @@ void host_init(host_t *host, auth_profile_t *auth)
     (void)host_try_load_motd_from_path(host, "/etc/ssh-chatter/motd");
 
     host_state_load(host);
+    host->history_cache_loaded =
+        host->history != nullptr && host->history_capacity > 0U;
     host_ui_language_state_load(host);
     host_vote_state_load(host);
     host_bbs_state_load(host);
+    host->bbs_cache_loaded = host_bbs_storage_ready(host);
     host_ban_state_load(host);
     host_reply_state_load(host);
     host_rss_state_load(host);
@@ -7099,6 +7269,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         unsigned int idle_poll_cycles = 0U;
         struct timespec last_gc_run = {0};
         clock_gettime(CLOCK_MONOTONIC, &last_gc_run);
+        struct timespec last_idle_check = last_gc_run;
 
         bool restart_listener = false;
         while (!restart_listener &&
@@ -7158,6 +7329,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             }
 
             host_gc_cycle(host, &last_gc_run);
+            host_idle_state_maintenance(host, &last_idle_check);
 
             ssh_session session = ssh_new();
             if (session == nullptr) {

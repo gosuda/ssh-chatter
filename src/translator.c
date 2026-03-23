@@ -56,6 +56,7 @@ static ttak_mutex_t g_error_mutex;
 static ttak_mutex_t g_rate_mutex;
 static ttak_mutex_t g_moderation_mutex;
 static ttak_mutex_t g_provider_mutex;
+static ttak_mutex_t g_memory_mutex;
 static bool g_init_mutex_initialized = false;
 static bool g_curl_initialised = false;
 static char g_last_error[256] = "";
@@ -69,6 +70,7 @@ static bool g_manual_skip_scrollback_translation = true;
 static char g_gemini_cooldown_file_path[PATH_MAX] = "";
 static ttak_mutex_t g_gemini_cooldown_file_mutex;
 static bool g_gemini_cooldown_file_initialised = false;
+static sshc_memory_context_t *g_translator_memory_context = nullptr;
 
 static void translator_mutex_init_all(void)
 {
@@ -78,9 +80,50 @@ static void translator_mutex_init_all(void)
         ttak_mutex_init(&g_rate_mutex);
         ttak_mutex_init(&g_moderation_mutex);
         ttak_mutex_init(&g_provider_mutex);
+        ttak_mutex_init(&g_memory_mutex);
         ttak_mutex_init(&g_gemini_cooldown_file_mutex);
         g_init_mutex_initialized = true;
     }
+}
+
+typedef struct translator_memory_scope {
+    bool active;
+    sshc_memory_context_t *previous;
+} translator_memory_scope_t;
+
+static translator_memory_scope_t translator_memory_scope_enter(void)
+{
+    translator_memory_scope_t scope = {.active = false, .previous = nullptr};
+    translator_mutex_init_all();
+    ttak_mutex_lock(&g_memory_mutex);
+    if (g_translator_memory_context == nullptr) {
+        g_translator_memory_context =
+            sshc_memory_context_create("translator");
+    }
+    sshc_memory_context_t *context = g_translator_memory_context;
+    ttak_mutex_unlock(&g_memory_mutex);
+    if (context == nullptr) {
+        return scope;
+    }
+    scope.previous = sshc_memory_context_push(context);
+    scope.active = true;
+    return scope;
+}
+
+static void translator_memory_scope_exit(translator_memory_scope_t *scope)
+{
+    if (scope == nullptr || !scope->active) {
+        return;
+    }
+    sshc_memory_context_pop(scope->previous);
+    translator_mutex_init_all();
+    ttak_mutex_lock(&g_memory_mutex);
+    if (g_translator_memory_context != nullptr) {
+        sshc_memory_context_epoch_gc_rotate(g_translator_memory_context);
+    }
+    ttak_mutex_unlock(&g_memory_mutex);
+    sshc_epoch_reclaim();
+    scope->active = false;
 }
 
 #define TRANSLATOR_RATE_LIMIT_INTERVAL_NS 800000000L
@@ -957,12 +1000,20 @@ void translator_global_init(void)
 
 void translator_global_cleanup(void)
 {
+    translator_mutex_init_all();
     ttak_mutex_lock(&g_init_mutex);
     if (g_curl_initialised) {
         curl_global_cleanup();
         g_curl_initialised = false;
     }
     ttak_mutex_unlock(&g_init_mutex);
+
+    ttak_mutex_lock(&g_memory_mutex);
+    if (g_translator_memory_context != nullptr) {
+        sshc_memory_context_destroy(g_translator_memory_context);
+        g_translator_memory_context = nullptr;
+    }
+    ttak_mutex_unlock(&g_memory_mutex);
 }
 
 static size_t translator_write_callback(void *contents, size_t size,
@@ -2920,21 +2971,30 @@ bool translator_translate_with_cancel(const char *text,
                                       size_t detected_len,
                                       const volatile bool *cancel_flag)
 {
-    return translator_translate_internal(text, target_language, translation,
-                                         translation_len, detected_language,
-                                         detected_len, cancel_flag);
+    translator_memory_scope_t memory_scope = translator_memory_scope_enter();
+    bool result = translator_translate_internal(text, target_language,
+                                                translation, translation_len,
+                                                detected_language, detected_len,
+                                                cancel_flag);
+    translator_memory_scope_exit(&memory_scope);
+    return result;
 }
 
 bool translator_translate(const char *text, const char *target_language,
                           char *translation, size_t translation_len,
                           char *detected_language, size_t detected_len)
 {
-    return translator_translate_internal(text, target_language, translation,
-                                         translation_len, detected_language,
-                                         detected_len, nullptr);
+    translator_memory_scope_t memory_scope = translator_memory_scope_enter();
+    bool result = translator_translate_internal(text, target_language,
+                                                translation, translation_len,
+                                                detected_language, detected_len,
+                                                nullptr);
+    translator_memory_scope_exit(&memory_scope);
+    return result;
 }
 
-bool translator_eliza_respond(const char *prompt, char *reply, size_t reply_len)
+static bool translator_eliza_respond_internal(const char *prompt, char *reply,
+                                              size_t reply_len)
 {
     if (reply != nullptr && reply_len > 0U) {
         reply[0] = '\0';
@@ -2988,8 +3048,18 @@ bool translator_eliza_respond(const char *prompt, char *reply, size_t reply_len)
     return false;
 }
 
-bool translator_ollama_smalltalk(const char *prompt, const char *model_name,
-                                 char *reply, size_t reply_len)
+bool translator_eliza_respond(const char *prompt, char *reply, size_t reply_len)
+{
+    translator_memory_scope_t memory_scope = translator_memory_scope_enter();
+    bool result = translator_eliza_respond_internal(prompt, reply, reply_len);
+    translator_memory_scope_exit(&memory_scope);
+    return result;
+}
+
+static bool translator_ollama_smalltalk_internal(const char *prompt,
+                                                 const char *model_name,
+                                                 char *reply,
+                                                 size_t reply_len)
 {
     if (reply != nullptr && reply_len > 0U) {
         reply[0] = '\0';
@@ -3017,8 +3087,20 @@ bool translator_ollama_smalltalk(const char *prompt, const char *model_name,
                                        &retryable);
 }
 
-bool translator_moderate_text(const char *category, const char *content,
-                              bool *blocked, char *reason, size_t reason_len)
+bool translator_ollama_smalltalk(const char *prompt, const char *model_name,
+                                 char *reply, size_t reply_len)
+{
+    translator_memory_scope_t memory_scope = translator_memory_scope_enter();
+    bool result = translator_ollama_smalltalk_internal(prompt, model_name,
+                                                       reply, reply_len);
+    translator_memory_scope_exit(&memory_scope);
+    return result;
+}
+
+static bool translator_moderate_text_internal(const char *category,
+                                              const char *content,
+                                              bool *blocked, char *reason,
+                                              size_t reason_len)
 {
     if (blocked != nullptr) {
         *blocked = false;
@@ -3088,4 +3170,14 @@ bool translator_moderate_text(const char *category, const char *content,
     }
 
     return false;
+}
+
+bool translator_moderate_text(const char *category, const char *content,
+                              bool *blocked, char *reason, size_t reason_len)
+{
+    translator_memory_scope_t memory_scope = translator_memory_scope_enter();
+    bool result = translator_moderate_text_internal(category, content, blocked,
+                                                    reason, reason_len);
+    translator_memory_scope_exit(&memory_scope);
+    return result;
 }

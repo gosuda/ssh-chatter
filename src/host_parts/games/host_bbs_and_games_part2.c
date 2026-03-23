@@ -1929,6 +1929,8 @@ static void session_game_suspend(session_ctx_t *ctx, const char *reason)
 
     ctx->game.active = false;
     ctx->game.type = SESSION_GAME_NONE;
+    session_manual_gc_tick(ctx);
+    host_manual_gc_tick(ctx->owner);
 }
 
 static int session_channel_read_poll(session_ctx_t *ctx, char *buffer,

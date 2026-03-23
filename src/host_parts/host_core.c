@@ -76,7 +76,7 @@ static const session_ops_t telnet_session_ops = {
 #define SSH_CHATTER_RSS_USER_AGENT "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 #define SSH_CHATTER_RSS_BREAKING_PREFIX "[BREAKING NEWS]"
 #define SSH_CHATTER_TETROMINO_SIZE 4
-#define SSH_CHATTER_HANDSHAKE_RETRY_LIMIT ((unsigned int)INT_MAX)
+#define SSH_CHATTER_HANDSHAKE_RETRY_LIMIT 2U
 #define SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS_DISPLAY                        \
     "rsa-sha2-512, rsa-sha2-256, ssh-rsa, ssh-ed25519, ecdsa-sha2-nistp256"
 // KEX algorithms matching modern openssh-server defaults

@@ -38,7 +38,7 @@
 #define SSH_CHATTER_AI_PROMPT_CONTEXT_MAX 1536U
 #define SSH_CHATTER_AI_PROMPT_MESSAGE_MAX (SSH_CHATTER_MESSAGE_LIMIT / 2U)
 #define SSH_CHATTER_AI_PROMPT_USERNAME_MAX (SSH_CHATTER_USERNAME_LEN - 1U)
-#define HOST_IDLE_UNLOAD_SECONDS 120
+#define HOST_IDLE_UNLOAD_SECONDS 0
 #define HOST_IDLE_CHECK_INTERVAL_NS 500000000LL
 
 static inline void session_safe_free(void **ptr)
@@ -286,6 +286,9 @@ static void host_idle_state_maintenance(host_t *host,
     if (!host->idle_state_pending) {
         host->last_room_empty_time = now;
         host->idle_state_pending = true;
+        if (HOST_IDLE_UNLOAD_SECONDS <= 0) {
+            goto unload_idle_state;
+        }
         return;
     }
 
@@ -293,10 +296,12 @@ static void host_idle_state_maintenance(host_t *host,
         (long long)(now.tv_sec - host->last_room_empty_time.tv_sec) *
             1000000000LL +
         (long long)(now.tv_nsec - host->last_room_empty_time.tv_nsec);
-    if (idle_ns < (long long)HOST_IDLE_UNLOAD_SECONDS * 1000000000LL) {
+    if (HOST_IDLE_UNLOAD_SECONDS > 0 &&
+        idle_ns < (long long)HOST_IDLE_UNLOAD_SECONDS * 1000000000LL) {
         return;
     }
 
+unload_idle_state:
     host_history_release_cache(host);
     host_bbs_release_cache(host);
     host_manual_gc_tick(host);
@@ -4418,6 +4423,10 @@ static void session_destroy(session_ctx_t *ctx)
     }
 
     session_cleanup(ctx);
+    session_manual_gc_tick(ctx);
+    if (ctx->owner != nullptr) {
+        host_manual_gc_tick(ctx->owner);
+    }
     sshc_epoch_retire_with(ctx, session_epoch_free);
 }
 

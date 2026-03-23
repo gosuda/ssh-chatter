@@ -2859,9 +2859,15 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
             }
             session_send_plain_line(ctx, display);
         }
-        if (!ctx->pending_bbs_editing_line &&
-            insertion_index >= end && insertion_index == line_count) {
-            session_send_plain_line(ctx, "> ");
+        if (insertion_index >= end && insertion_index == line_count) {
+            if (ctx->pending_bbs_editing_line) {
+                char display[SSH_CHATTER_MESSAGE_LIMIT];
+                snprintf(display, sizeof(display), "> %.*s_",
+                         BBS_EDITOR_LINE_PREC, ctx->input_buffer);
+                session_send_plain_line(ctx, display);
+            } else {
+                session_send_plain_line(ctx, "> ");
+            }
         }
     }
 

@@ -381,32 +381,6 @@ static session_ctx_t *session_create(void)
             ctx->display_model_initialized = true;
         }
 
-        bool workspace_ready = session_bbs_workspace_acquire(ctx);
-        bool notice_ready = workspace_ready && session_bbs_view_notice_acquire(ctx);
-        bool ascii_ready = notice_ready && session_asciiart_buffer_acquire(ctx);
-        bool tetris_buffers_ready =
-            ascii_ready && session_tetris_buffers_acquire(ctx);
-        bool tetris_state_ready =
-            tetris_buffers_ready && session_game_ensure_tetris(ctx) != nullptr &&
-            session_game_ensure_saved_tetris(ctx) != nullptr;
-
-        if (!tetris_state_ready) {
-            session_asciiart_buffer_release(ctx);
-            session_bbs_view_notice_release(ctx);
-            session_bbs_workspace_release(ctx);
-            session_tetris_buffers_release(ctx);
-            session_game_release_tetris(ctx);
-            session_game_release_saved_tetris(ctx);
-            
-            sshc_memory_context_pop(session_scope);
-            if (ctx->session_owner != nullptr) {
-                ttak_owner_destroy(ctx->session_owner);
-            }
-            sshc_memory_context_destroy(ctx->memory_context);
-            sshc_gc_free(ctx);
-            return nullptr;
-        }
-
         sshc_memory_context_pop(session_scope);
     }
     return ctx;
@@ -7090,6 +7064,11 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     poll(&pfd, 1, SSH_CHATTER_ACCEPT_POLL_TIMEOUT_MS);
                 if (poll_rc < 0) {
                     if (errno == EINTR) {
+                        if (host->memory_context != nullptr) {
+                            sshc_memory_context_epoch_gc_rotate(
+                                host->memory_context);
+                            sshc_epoch_reclaim();
+                        }
                         continue;
                     }
                     // poll() failed on the bind socket -- treat as fatal
@@ -7100,6 +7079,11 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 }
                 if (poll_rc == 0) {
                     // Timeout: no incoming connection yet
+                    if (host->memory_context != nullptr) {
+                        sshc_memory_context_epoch_gc_rotate(
+                            host->memory_context);
+                        sshc_epoch_reclaim();
+                    }
                     ++idle_poll_cycles;
                     if (idle_poll_cycles >=
                         SSH_CHATTER_ACCEPT_HEALTH_CHECK_POLLS) {
@@ -7127,6 +7111,11 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     break;
                 }
                 idle_poll_cycles = 0U;
+            }
+
+            if (host->memory_context != nullptr) {
+                sshc_memory_context_epoch_gc_rotate(host->memory_context);
+                sshc_epoch_reclaim();
             }
 
             ssh_session session = ssh_new();

@@ -1000,9 +1000,14 @@ static bool host_version_ip_rules_reserve(host_t *host, size_t min_capacity)
     if (host == nullptr) {
         return false;
     }
+
+    sshc_memory_context_t *memory_scope = host_memory_scope_push(host);
+    bool success = false;
+
     if (min_capacity <= host->version_ip_ban_rule_capacity &&
         host->version_ip_ban_rules != nullptr) {
-        return true;
+        success = true;
+        goto cleanup;
     }
 
     size_t new_capacity = host->version_ip_ban_rule_capacity > 0U
@@ -1016,13 +1021,13 @@ static bool host_version_ip_rules_reserve(host_t *host, size_t min_capacity)
         new_capacity = SSH_CHATTER_MAX_VERSION_IP_BANS;
     }
     if (new_capacity < min_capacity) {
-        return false;
+        goto cleanup;
     }
 
     version_ip_ban_rule_t *buffer =
         sshc_gc_calloc(new_capacity, sizeof(*buffer));
     if (buffer == nullptr) {
-        return false;
+        goto cleanup;
     }
 
     if (host->version_ip_ban_rules != nullptr &&
@@ -1036,7 +1041,11 @@ static bool host_version_ip_rules_reserve(host_t *host, size_t min_capacity)
 
     host->version_ip_ban_rules = buffer;
     host->version_ip_ban_rule_capacity = new_capacity;
-    return true;
+    success = true;
+
+cleanup:
+    host_memory_scope_pop(memory_scope);
+    return success;
 }
 
 static bool host_version_ip_rules_prepare(host_t *host)

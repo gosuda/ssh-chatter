@@ -546,9 +546,12 @@ host_ensure_connection_guard_locked(host_t *host, const char *ip)
         return nullptr;
     }
 
+    sshc_memory_context_t *memory_scope = host_memory_scope_push(host);
+
     connection_guard_entry_t *entry =
         host_find_connection_guard_locked(host, ip);
     if (entry != nullptr) {
+        host_memory_scope_pop(memory_scope);
         return entry;
     }
 
@@ -560,6 +563,7 @@ host_ensure_connection_guard_locked(host_t *host, const char *ip)
             sshc_gc_realloc(host->connection_guard,
                        new_capacity * sizeof(connection_guard_entry_t));
         if (resized == nullptr) {
+            host_memory_scope_pop(memory_scope);
             return nullptr;
         }
         host->connection_guard = resized;
@@ -572,6 +576,7 @@ host_ensure_connection_guard_locked(host_t *host, const char *ip)
     entry = &host->connection_guard[host->connection_guard_count++];
     memset(entry, 0, sizeof(*entry));
     snprintf(entry->ip, sizeof(entry->ip), "%.*s", SSH_CHATTER_IP_LEN - 1, ip);
+    host_memory_scope_pop(memory_scope);
     return entry;
 }
 
@@ -4565,19 +4570,23 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
         return false;
     }
 
+    sshc_memory_context_t *memory_scope = host_memory_scope_push(host);
+    bool success = false;
+
     if (SSH_CHATTER_HISTORY_CACHE_LIMIT > 0U &&
         min_capacity > SSH_CHATTER_HISTORY_CACHE_LIMIT) {
         min_capacity = SSH_CHATTER_HISTORY_CACHE_LIMIT;
     }
 
     if (min_capacity <= host->history_capacity) {
-        return true;
+        success = true;
+        goto cleanup;
     }
 
     if (min_capacity > SIZE_MAX / sizeof(chat_history_entry_t)) {
         humanized_log_error("host-history",
                             "history buffer too large to allocate", ENOMEM);
-        return false;
+        goto cleanup;
     }
 
     size_t new_capacity =
@@ -4606,7 +4615,7 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
         humanized_log_error("host-history",
                             "failed to grow chat history buffer",
                             errno != 0 ? errno : ENOMEM);
-        return false;
+        goto cleanup;
     }
 
     if (new_capacity > host->history_capacity) {
@@ -4617,7 +4626,11 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
 
     host->history = resized;
     host->history_capacity = new_capacity;
-    return true;
+    success = true;
+
+cleanup:
+    host_memory_scope_pop(memory_scope);
+    return success;
 }
 
 static bool host_history_append_locked(host_t *host,

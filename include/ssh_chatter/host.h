@@ -775,6 +775,8 @@ typedef struct session_ctx {
     bool history_oldest_notified;
     bool history_latest_notified;
     size_t scrollback_rendered_lines;
+    chat_history_entry_t *scrollback_buffer;
+    size_t scrollback_buffer_capacity;
     bool
         no_update; // Flag to prevent automatic message updates when scrolling history
     bool pending_should_sink;

@@ -214,6 +214,53 @@ static size_t session_scrollback_line_capacity(const session_ctx_t *ctx)
     return target;
 }
 
+static chat_history_entry_t *
+session_scrollback_reserve_buffer(session_ctx_t *ctx, size_t minimum_capacity,
+                                  size_t *out_capacity)
+{
+    if (ctx == nullptr) {
+        if (out_capacity != nullptr) {
+            *out_capacity = 0U;
+        }
+        return nullptr;
+    }
+
+    size_t target = session_scrollback_line_capacity(ctx);
+    if (target < minimum_capacity) {
+        target = minimum_capacity;
+    }
+    if (target == 0U) {
+        target = 1U;
+    }
+
+    if (ctx->scrollback_buffer != nullptr &&
+        ctx->scrollback_buffer_capacity >= target) {
+        if (out_capacity != nullptr) {
+            *out_capacity = ctx->scrollback_buffer_capacity;
+        }
+        return ctx->scrollback_buffer;
+    }
+
+    chat_history_entry_t *fresh = (chat_history_entry_t *)sshc_gc_calloc(
+        target, sizeof(chat_history_entry_t));
+    if (fresh == nullptr) {
+        if (out_capacity != nullptr) {
+            *out_capacity = 0U;
+        }
+        return nullptr;
+    }
+
+    if (ctx->scrollback_buffer != nullptr) {
+        sshc_gc_free(ctx->scrollback_buffer);
+    }
+    ctx->scrollback_buffer = fresh;
+    ctx->scrollback_buffer_capacity = target;
+    if (out_capacity != nullptr) {
+        *out_capacity = target;
+    }
+    return ctx->scrollback_buffer;
+}
+
 static size_t session_capture_visible_display_lines(
     display_model_t *model, unsigned int viewport_height,
     display_line_t *snapshot, size_t snapshot_capacity)
@@ -2974,13 +3021,20 @@ static void session_bbs_move_cursor(session_ctx_t *ctx, int direction)
     }
 
     if (direction < 0) {
-        if (!editing) {
-            target = line_count - 1U;
-            editing = true;
-        } else {
+        if (editing) {
             if (target > 0U) {
                 --target;
             }
+        } else if (line_count > 0U) {
+            if (target > line_count) {
+                target = line_count;
+            }
+            if (target > 0U) {
+                --target;
+            } else {
+                target = 0U;
+            }
+            editing = true;
         }
     } else {
         if (editing) {
@@ -2990,6 +3044,8 @@ static void session_bbs_move_cursor(session_ctx_t *ctx, int direction)
                 target = line_count;
                 editing = false;
             }
+        } else if (target < line_count) {
+            editing = true;
         }
     }
 
@@ -4077,9 +4133,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
         ctx->display_model.line_count = 0U;
     }
 
-    buffer_capacity = session_scrollback_line_capacity(ctx);
-    buffer = (chat_history_entry_t *)sshc_gc_calloc(buffer_capacity,
-                                            sizeof(chat_history_entry_t));
+    buffer = session_scrollback_reserve_buffer(ctx, chunk, &buffer_capacity);
     if (buffer == nullptr) {
         goto cleanup;
     }
@@ -4120,9 +4174,6 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
     session_process_pending_sink(ctx);
 
 cleanup:
-    if (buffer != nullptr) {
-        sshc_gc_free(buffer);
-    }
     if (buffering_started) {
         session_output_buffer_stop(ctx);
     }
@@ -4264,9 +4315,7 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     const size_t oldest_visible =
         (newest_visible + 1U > chunk) ? (newest_visible + 1U - chunk) : 0U;
 
-    buffer_capacity = session_scrollback_line_capacity(ctx);
-    buffer = (chat_history_entry_t *)sshc_gc_calloc(buffer_capacity,
-                                            sizeof(chat_history_entry_t));
+    buffer = session_scrollback_reserve_buffer(ctx, chunk, &buffer_capacity);
     if (buffer == nullptr) {
         goto cleanup;
     }
@@ -4320,9 +4369,6 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     session_process_pending_sink(ctx);
 
 cleanup:
-    if (buffer != nullptr) {
-        sshc_gc_free(buffer);
-    }
     if (buffering_started) {
         session_output_buffer_stop(ctx);
     }

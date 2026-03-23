@@ -17,6 +17,45 @@
 #include "ssh_chatter/translation_helpers.h"
 #include "ssh_chatter/file_transfer.h"
 
+#include "ssh_chatter/memory_manager.h"
+
+#ifndef HOST_MEMORY_SCOPE_HELPERS
+#define HOST_MEMORY_SCOPE_HELPERS
+
+static inline sshc_memory_context_t *
+session_memory_scope_push(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->memory_context == nullptr) {
+        return nullptr;
+    }
+    return sshc_memory_context_push(ctx->memory_context);
+}
+
+static inline void session_memory_scope_pop(sshc_memory_context_t *scope)
+{
+    if (scope != nullptr) {
+        sshc_memory_context_pop(scope);
+    }
+}
+
+static inline sshc_memory_context_t *
+host_memory_scope_push(host_t *host)
+{
+    if (host == nullptr || host->memory_context == nullptr) {
+        return nullptr;
+    }
+    return sshc_memory_context_push(host->memory_context);
+}
+
+static inline void host_memory_scope_pop(sshc_memory_context_t *scope)
+{
+    if (scope != nullptr) {
+        sshc_memory_context_pop(scope);
+    }
+}
+
+#endif
+
 #define TELNET_IAC 255
 #define TELNET_CMD_SE 240
 #define TELNET_CMD_NOP 241

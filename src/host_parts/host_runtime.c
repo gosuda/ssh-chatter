@@ -1772,8 +1772,14 @@ static void
 host_prune_join_activity_locked(host_t *host,
                                 const struct timespec *reference_time)
 {
-    if (host == nullptr || host->join_activity == nullptr ||
-        host->join_activity_count == 0U) {
+    if (host == nullptr) {
+        return;
+    }
+
+    sshc_memory_context_t *memory_scope = host_memory_scope_push(host);
+
+    if (host->join_activity == nullptr || host->join_activity_count == 0U) {
+        host_memory_scope_pop(memory_scope);
         return;
     }
 
@@ -1842,6 +1848,8 @@ host_prune_join_activity_locked(host_t *host,
             host->join_activity_capacity = new_capacity;
         }
     }
+
+    host_memory_scope_pop(memory_scope);
 }
 
 static join_activity_entry_t *host_ensure_join_activity_locked(host_t *host,
@@ -1851,8 +1859,11 @@ static join_activity_entry_t *host_ensure_join_activity_locked(host_t *host,
         return nullptr;
     }
 
+    sshc_memory_context_t *memory_scope = host_memory_scope_push(host);
+
     join_activity_entry_t *entry = host_find_join_activity_locked(host, ip);
     if (entry != nullptr) {
+        host_memory_scope_pop(memory_scope);
         return entry;
     }
 
@@ -1863,6 +1874,7 @@ static join_activity_entry_t *host_ensure_join_activity_locked(host_t *host,
         join_activity_entry_t *resized = sshc_gc_realloc(
             host->join_activity, new_capacity * sizeof(join_activity_entry_t));
         if (resized == nullptr) {
+            host_memory_scope_pop(memory_scope);
             return nullptr;
         }
         host->join_activity = resized;
@@ -1872,6 +1884,7 @@ static join_activity_entry_t *host_ensure_join_activity_locked(host_t *host,
     entry = &host->join_activity[host->join_activity_count++];
     memset(entry, 0, sizeof(*entry));
     snprintf(entry->ip, sizeof(entry->ip), "%s", ip);
+    host_memory_scope_pop(memory_scope);
     return entry;
 }
 
@@ -4372,6 +4385,8 @@ static void session_cleanup(session_ctx_t *ctx)
     session_tetris_buffers_release(ctx);
     session_game_release_tetris(ctx);
     session_game_release_saved_tetris(ctx);
+    session_safe_free((void **)&ctx->scrollback_buffer);
+    ctx->scrollback_buffer_capacity = 0U;
 
     if (ctx->transport_kind == SESSION_TRANSPORT_SSH &&
         ctx->channel != nullptr) {
@@ -4499,16 +4514,13 @@ static void *session_thread(void *arg)
 
     sshc_epoch_thread_enter();
 
-    sshc_memory_context_t *memory_scope = nullptr;
-    if (ctx->owner != nullptr) {
-        memory_scope = sshc_memory_context_push(ctx->owner->memory_context);
-    }
+    sshc_memory_context_t *memory_scope = session_memory_scope_push(ctx);
     sshc_memory_defer_gc_registration_begin();
 
 #define SESSION_THREAD_RETURN(value)                                           \
     do {                                                                       \
         if (memory_scope != nullptr) {                                         \
-            sshc_memory_context_pop(memory_scope);                             \
+            session_memory_scope_pop(memory_scope);                            \
         }                                                                      \
         sshc_epoch_thread_exit();                                              \
         return (value);                                                        \

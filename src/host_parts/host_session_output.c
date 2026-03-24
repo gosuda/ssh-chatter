@@ -2878,18 +2878,17 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
         /* BBS_EDITOR_LINE_PREC: reserve 4 bytes for "> " (2), "_" (1), NUL (1) */
         enum { BBS_EDITOR_LINE_PREC = SSH_CHATTER_MESSAGE_LIMIT - 4 };
         for (size_t idx = start; idx < end; ++idx) {
-            if (!ctx->pending_bbs_editing_line &&
-                insertion_index == idx) {
-                session_send_plain_line(ctx, "> ");
-            }
             char line_buffer[SSH_CHATTER_MESSAGE_LIMIT];
             session_bbs_copy_line(ctx, idx, line_buffer, sizeof(line_buffer));
             bool cursor_selected = ctx->pending_bbs_editing_line &&
                                    ctx->pending_bbs_cursor_line == idx;
+            bool cursor_highlight =
+                !ctx->pending_bbs_editing_line && insertion_index == idx;
             bool range_selected =
                 selection_active && idx >= selection_start &&
                 idx <= selection_end;
             const char *prefix = cursor_selected ? "> "
+                                  : cursor_highlight ? "> "
                                   : range_selected ? "* "
                                                    : "  ";
             char display[SSH_CHATTER_MESSAGE_LIMIT];

@@ -88,6 +88,18 @@ static ttak_map_t *sshc_alloc_map = nullptr;
 static __thread sshc_memory_context_t *sshc_tls_context = nullptr;
 static __thread bool sshc_tls_defer_gc_registration = false;
 
+static bool sshc_env_truthy(const char *value)
+{
+    if (value == nullptr || value[0] == '\0') {
+        return false;
+    }
+
+    return strcmp(value, "1") == 0 || strcmp(value, "true") == 0 ||
+           strcmp(value, "TRUE") == 0 || strcmp(value, "yes") == 0 ||
+           strcmp(value, "YES") == 0 || strcmp(value, "on") == 0 ||
+           strcmp(value, "ON") == 0;
+}
+
 static void sshc_memory_context_init(sshc_memory_context_t *ctx,
                                      const char *label)
 {
@@ -130,7 +142,8 @@ void sshc_memory_runtime_init(void)
         GC_init(); 
 #endif
         /* Global TTAK tuning: adaptive 10ms–500ms, pressure threshold = 8. */
-        ttak_mem_set_trace(1);
+        ttak_mem_set_trace(
+            sshc_env_truthy(getenv("SSH_CHATTER_MEM_TRACE")) ? 1 : 0);
         ttak_mem_configure_gc(TT_MILLI_SECOND(10), TT_MILLI_SECOND(500), 8);
 
         /* Hash map for O(1) ptr → allocation* lookup (initial capacity 1024). */
@@ -381,15 +394,9 @@ sshc_memory_context_register_allocation(sshc_memory_context_t *ctx,
     ctx->allocations = allocation;
     pthread_mutex_unlock(&ctx->mutex);
 
-    /* ttak_fastalloc already registered the block with the epoch GC tree;
-     * no need to call ttak_epoch_gc_register here.  Just track for owner
-     * audit and optional Boehm root scanning. */
-
-    if (ctx->owner) {
-        char name[32];
-        snprintf(name, sizeof(name), "alloc_%p", allocation->ptr);
-        ttak_owner_register_resource(ctx->owner, name, allocation->ptr);
-    }
+    /* ttak_fastalloc already registered the block with the epoch GC tree.
+     * Do not register every allocation in tt_owner_t; that metadata list is
+     * unbounded and grows under allocation churn even after free(). */
 
 #if defined(SSH_CHATTER_USE_GC) && SSH_CHATTER_USE_GC
     GC_add_roots(allocation->ptr, (char *)allocation->ptr + allocation->size);

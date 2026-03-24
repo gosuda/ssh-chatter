@@ -54,8 +54,13 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
 
     if (strcmp(command, "exit") == 0) {
         ctx->in_bbs_mode = false;
+        ctx->bbs_post_pending = false;
         ctx->bbs_view_active = false;
         ctx->bbs_view_post_id = 0U;
+        ctx->bbs_view_scroll_offset = 0U;
+        ctx->bbs_view_total_lines = 0U;
+        ctx->bbs_rendering_editor = false;
+        session_bbs_workspace_release(ctx);
         session_send_system_line(ctx, "Exited BBS mode.");
         return;
     }

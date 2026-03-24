@@ -584,7 +584,7 @@ typedef struct session_rss_view {
     char tag[SSH_CHATTER_RSS_TAG_LEN];
     size_t item_count;
     size_t cursor;
-    rss_session_item_t items[SSH_CHATTER_RSS_MAX_ITEMS];
+    rss_session_item_t *items;
 } session_rss_view_t;
 
 typedef enum session_cp437_override {

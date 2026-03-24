@@ -4192,7 +4192,14 @@ static void session_rss_clear(session_ctx_t *ctx)
         return;
     }
 
-    memset(&ctx->rss_view, 0, sizeof(ctx->rss_view));
+    if (ctx->rss_view.items != nullptr) {
+        sshc_gc_free(ctx->rss_view.items);
+        ctx->rss_view.items = nullptr;
+    }
+    ctx->rss_view.active = false;
+    ctx->rss_view.tag[0] = '\0';
+    ctx->rss_view.item_count = 0U;
+    ctx->rss_view.cursor = 0U;
     ctx->in_rss_mode = false;
 }
 
@@ -4225,6 +4232,10 @@ static void session_rss_show_current(session_ctx_t *ctx)
 
     if (ctx->rss_view.cursor >= ctx->rss_view.item_count) {
         ctx->rss_view.cursor = ctx->rss_view.item_count - 1U;
+    }
+
+    if (ctx->rss_view.items == nullptr) {
+        return;
     }
 
     const rss_session_item_t *item = &ctx->rss_view.items[ctx->rss_view.cursor];
@@ -4280,6 +4291,13 @@ static void session_rss_begin(session_ctx_t *ctx, const char *tag,
 
     if (count > SSH_CHATTER_RSS_MAX_ITEMS) {
         count = SSH_CHATTER_RSS_MAX_ITEMS;
+    }
+
+    ctx->rss_view.items =
+        (rss_session_item_t *)sshc_gc_calloc(count, sizeof(rss_session_item_t));
+    if (ctx->rss_view.items == nullptr) {
+        session_send_system_line(ctx, "Unable to open RSS reader right now.");
+        return;
     }
 
     ctx->rss_view.active = true;

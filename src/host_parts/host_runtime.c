@@ -595,9 +595,7 @@ static session_ctx_t *session_create(void)
             ctx->display_model_initialized = true;
         }
 
-        bool workspace_ready = session_bbs_workspace_acquire(ctx);
-        bool notice_ready = workspace_ready && session_bbs_view_notice_acquire(ctx);
-        bool ascii_ready = notice_ready && session_asciiart_buffer_acquire(ctx);
+        bool ascii_ready = session_asciiart_buffer_acquire(ctx);
         bool tetris_buffers_ready =
             ascii_ready && session_tetris_buffers_acquire(ctx);
         bool tetris_state_ready =
@@ -606,8 +604,6 @@ static session_ctx_t *session_create(void)
 
         if (!tetris_state_ready) {
             session_asciiart_buffer_release(ctx);
-            session_bbs_view_notice_release(ctx);
-            session_bbs_workspace_release(ctx);
             session_tetris_buffers_release(ctx);
             session_game_release_tetris(ctx);
             session_game_release_saved_tetris(ctx);

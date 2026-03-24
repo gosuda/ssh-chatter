@@ -8,6 +8,9 @@
 
 // Remaining operator commands, ban management, and host lifecycle entry points.
 #include "host_internal.h"
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 #define TELNET_STABLE_RESET_SECONDS 10.0
 #define SSH_CHATTER_TCP_KEEPALIVE_IDLE 60
@@ -305,6 +308,9 @@ unload_idle_state:
     host_history_release_cache(host);
     host_bbs_release_cache(host);
     host_manual_gc_tick(host);
+#if defined(__GLIBC__)
+    (void)malloc_trim(0);
+#endif
     host->idle_state_pending = false;
     host->last_room_empty_time = now;
 }
@@ -4438,10 +4444,21 @@ static void session_destroy(session_ctx_t *ctx)
     }
 
     session_cleanup(ctx);
+    if (ctx->memory_context != nullptr) {
+        /*
+         * Explicitly reset per-session allocations before EBR-retiring the
+         * session object. This keeps join/leave bursts from accumulating large
+         * deferred heaps while waiting for epoch reclamation.
+         */
+        sshc_memory_context_reset(ctx->memory_context);
+    }
     session_manual_gc_tick(ctx);
     if (ctx->owner != nullptr) {
         host_manual_gc_tick(ctx->owner);
     }
+#if defined(__GLIBC__)
+    (void)malloc_trim(0);
+#endif
     sshc_epoch_retire_with(ctx, session_epoch_free);
 }
 

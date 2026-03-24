@@ -523,6 +523,7 @@ static bool session_render_incremental_lines(session_ctx_t *ctx,
         }
 
         session_channel_write(ctx, kClearLine, sizeof(kClearLine) - 1U);
+        session_fill_line_with_theme(ctx);
         if (new_present && new_lines[idx].length > 0U) {
             session_channel_write(ctx, new_lines[idx].text, new_lines[idx].length);
         }
@@ -1423,7 +1424,7 @@ static void session_bbs_format_breaking_notice_wrapped(
     // ANSI codes to apply
     const char *kPrefix =
         "\r\033[2G" ANSI_BG_BRIGHT_BLUE ANSI_BRIGHT_MAGENTA ANSI_BOLD;
-    const char *kSuffix = ANSI_RESET;
+    const char *kSuffix = "\033[K" ANSI_RESET;
 
     size_t pos = 0U;
     while (message[pos] != '\0' && *line_count < max_lines) {
@@ -1488,6 +1489,7 @@ static void session_bbs_format_breaking_notice(const char *message, char *out,
     offset = session_append_fragment(out, length, offset, ANSI_BRIGHT_MAGENTA);
     offset = session_append_fragment(out, length, offset, ANSI_BOLD);
     offset = session_append_fragment(out, length, offset, message);
+    offset = session_append_fragment(out, length, offset, "\033[K");
     session_append_fragment(out, length, offset, ANSI_RESET);
 }
 
@@ -3692,16 +3694,15 @@ void session_process_pending_sink(session_ctx_t *ctx)
     }
 
     size_t start_index = (total > 0U && total > chunk) ? (total - chunk) : 0U;
-    // Allocate a temporary buffer to copy the newest history slice.
+    size_t buffer_capacity = 0U;
     chat_history_entry_t *buffer =
-        (chat_history_entry_t *)sshc_gc_calloc(chunk, sizeof(chat_history_entry_t));
-    if (buffer == nullptr) {
+        session_scrollback_reserve_buffer(ctx, chunk, &buffer_capacity);
+    if (buffer == nullptr || buffer_capacity < chunk) {
         return;
     }
     size_t copied =
         host_history_copy_range(ctx->owner, start_index, buffer, chunk);
     if (copied == 0U) {
-        sshc_gc_free(buffer);
         return;
     }
 
@@ -3766,8 +3767,6 @@ void session_process_pending_sink(session_ctx_t *ctx)
     // Reset the realtime line counter so the next batch of live messages
     // does not immediately trigger session_realtime_refresh.
     ctx->realtime_line_count = 0U;
-
-    sshc_gc_free(buffer);
 
     if (buffering_started) {
         session_output_buffer_stop(ctx);

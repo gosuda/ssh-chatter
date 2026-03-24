@@ -1358,6 +1358,16 @@ cleanup:
 
 static void session_game_start_tetris(session_ctx_t *ctx)
 {
+    if (ctx == nullptr) {
+        return;
+    }
+    if (!session_tetris_buffers_acquire(ctx) ||
+        session_game_ensure_tetris(ctx) == nullptr ||
+        session_game_ensure_saved_tetris(ctx) == nullptr) {
+        session_send_system_line(ctx, "Unable to allocate Tetris resources.");
+        return;
+    }
+
     session_send_system_line(
         ctx,
         "CHOOSE YOUR LOCKSCREEN LANGUAGE TO HIDE THE SCREEN ON YOUR OFFICE! "

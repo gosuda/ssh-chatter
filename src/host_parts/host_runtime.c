@@ -600,17 +600,8 @@ static session_ctx_t *session_create(void)
         }
 
         bool ascii_ready = session_asciiart_buffer_acquire(ctx);
-        bool tetris_buffers_ready =
-            ascii_ready && session_tetris_buffers_acquire(ctx);
-        bool tetris_state_ready =
-            tetris_buffers_ready && session_game_ensure_tetris(ctx) != nullptr &&
-            session_game_ensure_saved_tetris(ctx) != nullptr;
-
-        if (!tetris_state_ready) {
+        if (!ascii_ready) {
             session_asciiart_buffer_release(ctx);
-            session_tetris_buffers_release(ctx);
-            session_game_release_tetris(ctx);
-            session_game_release_saved_tetris(ctx);
 
             sshc_memory_context_pop(session_scope);
             if (ctx->session_owner != nullptr) {

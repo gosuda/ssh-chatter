@@ -1,0 +1,23 @@
+interface Packet {
+  id: string;
+  topic: "chat" | "notice";
+  body: string;
+}
+
+class Router {
+  route(packet: Packet): string {
+    if (packet.topic === "notice") {
+      return `[NOTICE:${packet.id}] ${packet.body}`;
+    }
+    return `[CHAT:${packet.id}] ${packet.body}`;
+  }
+}
+
+const router = new Router();
+const packet: Packet = {
+  id: "evt-1002",
+  topic: "chat",
+  body: "bridge message delivered",
+};
+
+console.log(router.route(packet));

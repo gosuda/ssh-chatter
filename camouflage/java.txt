@@ -1,0 +1,29 @@
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+record ChatMessage(String author, String body, Instant createdAt) {}
+
+public class ChatRelay {
+    private final List<ChatMessage> backlog = new ArrayList<>();
+
+    public void publish(String author, String body) {
+        backlog.add(new ChatMessage(author, body, Instant.now()));
+    }
+
+    public void dump() {
+        for (ChatMessage msg : backlog) {
+            System.out.printf("[%s] %s: %s%n",
+                    msg.createdAt(),
+                    msg.author(),
+                    msg.body());
+        }
+    }
+
+    public static void main(String[] args) {
+        ChatRelay relay = new ChatRelay();
+        relay.publish("system", "bridge connected");
+        relay.publish("alice", "deploy in 5 minutes");
+        relay.dump();
+    }
+}

@@ -1,0 +1,17 @@
+const session = {
+  room: "#general",
+  users: new Set(["admin", "bot", "guest"]),
+};
+
+function formatMessage(user, text) {
+  const at = new Date().toISOString();
+  return `[${at}] ${user}@${session.room}: ${text}`;
+}
+
+function broadcast(text) {
+  for (const user of session.users) {
+    console.log(formatMessage(user, text));
+  }
+}
+
+broadcast("rolling restart in 60 seconds");

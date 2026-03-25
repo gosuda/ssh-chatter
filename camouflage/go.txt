@@ -1,0 +1,30 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
+type Event struct {
+	Channel string
+	Payload string
+	At      time.Time
+}
+
+func normalize(raw string) string {
+	clean := strings.TrimSpace(raw)
+	clean = strings.ReplaceAll(clean, "\t", " ")
+	return clean
+}
+
+func main() {
+	events := []Event{
+		{Channel: "#ops", Payload: "sync start", At: time.Now()},
+		{Channel: "#ops", Payload: normalize("memory\tstable"), At: time.Now()},
+	}
+
+	for _, e := range events {
+		fmt.Printf("%s %s %s\n", e.At.Format(time.RFC3339), e.Channel, e.Payload)
+	}
+}

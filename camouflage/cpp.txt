@@ -1,0 +1,40 @@
+#include <chrono>
+#include <iostream>
+#include <mutex>
+#include <queue>
+#include <string>
+#include <thread>
+
+class MessageQueue {
+  public:
+    void push(std::string msg) {
+        std::lock_guard<std::mutex> lock(mu_);
+        q_.push(std::move(msg));
+    }
+
+    bool pop(std::string& out) {
+        std::lock_guard<std::mutex> lock(mu_);
+        if (q_.empty()) {
+            return false;
+        }
+        out = std::move(q_.front());
+        q_.pop();
+        return true;
+    }
+
+  private:
+    std::mutex mu_;
+    std::queue<std::string> q_;
+};
+
+int main() {
+    MessageQueue q;
+    q.push("connected: #ops");
+    q.push("received: health-check ok");
+
+    std::string line;
+    while (q.pop(line)) {
+        std::cout << line << '\n';
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+}

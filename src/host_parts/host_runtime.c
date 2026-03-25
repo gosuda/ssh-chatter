@@ -1044,6 +1044,14 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
     if (working[0] == '\0' || strcasecmp(working, "list") == 0) {
         session_send_system_line(ctx, "Available palettes:");
 
+        /* +1 ensures there is always room for the null terminator after 16
+         * entries each up to SSH_CHATTER_MESSAGE_LIMIT bytes long. */
+        static char palette_line_group[SSH_CHATTER_MESSAGE_LIMIT * 16 + 1U];
+        /* Reset the static buffer at the start of each listing call so that
+         * stale data from a previous invocation cannot bleed through. */
+        size_t group_len = 0U;
+        palette_line_group[0] = '\0';
+
         for (size_t idx = 0U;
              idx < sizeof(PALETTE_DEFINITIONS) / sizeof(PALETTE_DEFINITIONS[0]);
              ++idx) {
@@ -1071,7 +1079,6 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
                 break;
             }
             char palette_line[SSH_CHATTER_MESSAGE_LIMIT];
-            static char palette_line_group[SSH_CHATTER_MESSAGE_LIMIT * 16];
             if (descriptor->is_256_color) {
                 snprintf(palette_line, sizeof(palette_line),
                          "\033[1G  %s\033[1G\n   - %s (256-color)\n", name,
@@ -1080,15 +1087,33 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
                 snprintf(palette_line, sizeof(palette_line),
                          "\033[1G  %s\033[1G\n   - %s\n", name, description);
             }
-            strncat(palette_line_group, palette_line,
-                    strnlen(palette_line, SSH_CHATTER_MESSAGE_LIMIT));
-            strncat(palette_line_group, "\n", 1);
+            /* Use offset-tracked snprintf to avoid strncat truncation warnings
+             * and ensure the group buffer is never overflowed. */
+            size_t remaining = sizeof(palette_line_group) - group_len;
+            if (remaining > 1U) {
+                int written = snprintf(palette_line_group + group_len,
+                                       remaining, "%s\n", palette_line);
+                if (written > 0) {
+                    group_len += (size_t)written < remaining
+                                     ? (size_t)written
+                                     : remaining - 1U;
+                }
+            }
             if ((idx + 1) % 16 == 0) {
                 session_send_system_line(ctx, palette_line_group);
-                memset(palette_line_group, 0,
-                       sizeof(SSH_CHATTER_MESSAGE_LIMIT * 16));
+                /* Use sizeof(palette_line_group) — NOT sizeof(integer expression) —
+                 * to zero the full buffer, then reset the offset. */
+                memset(palette_line_group, 0, sizeof(palette_line_group));
+                group_len = 0U;
             }
         }
+        /* Flush any remaining entries that did not fill a full 16-entry batch. */
+        if (group_len > 0U) {
+            session_send_system_line(ctx, palette_line_group);
+            palette_line_group[0] = '\0';
+            group_len = 0U;
+        }
+        (void)group_len;
         session_send_system_line(ctx, "Apply a palette with /palette <name>.");
         return;
     }

@@ -88,7 +88,8 @@ static sshc_memory_allocation_t *sshc_allocations = nullptr;
 static ttak_map_t *sshc_alloc_map = nullptr;
 static __thread sshc_memory_context_t *sshc_tls_context = nullptr;
 static __thread bool sshc_tls_defer_gc_registration = false;
-static size_t sshc_max_single_allocation_bytes = 512U * 1024U * 1024U;
+/* SIZE_MAX = no hard cap by default; override with CHATTER_MAX_ALLOC_BYTES. */
+static size_t sshc_max_single_allocation_bytes = SIZE_MAX;
 
 static void sshc_memory_load_alloc_limit_from_env(void)
 {
@@ -113,7 +114,9 @@ static void sshc_memory_load_alloc_limit_from_env(void)
 static bool sshc_memory_validate_single_allocation(size_t size)
 {
     pthread_once(&sshc_alloc_limit_once, sshc_memory_load_alloc_limit_from_env);
-    if (size > sshc_max_single_allocation_bytes) {
+    /* When the limit is SIZE_MAX (default, uncapped) skip the check entirely. */
+    if (sshc_max_single_allocation_bytes != SIZE_MAX &&
+        size > sshc_max_single_allocation_bytes) {
         errno = ENOMEM;
         return false;
     }

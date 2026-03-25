@@ -372,8 +372,7 @@ void ssh_chatter_sync_send_message(const char *message)
     if (!msg)
         return;
 
-    strcpy(msg, message);
-    strcat(msg, "\n");
+    snprintf(msg, len, "%s\n", message);
 
     ssh_channel_write(channel, msg, (uint32_t)strlen(msg));
     sshc_gc_free(msg);

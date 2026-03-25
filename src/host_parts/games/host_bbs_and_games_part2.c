@@ -3544,14 +3544,8 @@ static void session_translate_scope_send_usage(session_ctx_t *ctx)
     }
 
     char usage_line[SSH_CHATTER_MESSAGE_LIMIT];
-    strncat(usage_line, usage_format_head,
-            strnlen(usage_format_head, SSH_CHATTER_MESSAGE_LIMIT));
-
-    size_t prefix_len = strnlen(prefix, SSH_CHATTER_MESSAGE_LIMIT);
-    if (prefix_len > 0)
-        strncat(usage_line, prefix, prefix_len);
-    strncat(usage_line, usage_format_tail,
-            strnlen(usage_format_tail, SSH_CHATTER_MESSAGE_LIMIT));
+    snprintf(usage_line, sizeof(usage_line), "%s%s%s",
+             usage_format_head, prefix, usage_format_tail);
     session_send_system_line(ctx, usage_line);
 }
 

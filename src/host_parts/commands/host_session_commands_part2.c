@@ -1,0 +1,2800 @@
+static void session_handle_vote_command(session_ctx_t *ctx,
+                                        const char *arguments,
+                                        bool allow_multiple)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    const char *canonical = allow_multiple ? "/vote" : "/vote-single";
+    const char *kUsage =
+        "Usage: /vote <label> [close|<question>|<option1>|<option2>|...]";
+    const char *kUsageSingle =
+        "Usage: /vote-single <label> [close|<question>|<option1>|<option2>|...]";
+
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, canonical,
+                                 allow_multiple ? kUsage : kUsageSingle, usage,
+                                 sizeof(usage));
+
+    char working[SSH_CHATTER_MAX_INPUT_LEN];
+    if (arguments == nullptr) {
+        working[0] = '\0';
+    } else {
+        snprintf(working, sizeof(working), "%s", arguments);
+    }
+    trim_whitespace_inplace(working);
+
+    if (working[0] == '\0') {
+        session_list_named_polls(ctx);
+        return;
+    }
+
+    char *saveptr = nullptr;
+    char *label = strtok_r(working, " \t", &saveptr);
+    if (label == nullptr) {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    if (strcasecmp(label, "list") == 0) {
+        session_list_named_polls(ctx);
+        return;
+    }
+
+    trim_whitespace_inplace(label);
+    if (!poll_label_is_valid(label)) {
+        session_send_system_line(
+            ctx, "Poll labels may only contain letters, numbers, '-' or '_'.");
+        return;
+    }
+
+    char remainder[SSH_CHATTER_MAX_INPUT_LEN];
+    if (saveptr == nullptr) {
+        remainder[0] = '\0';
+    } else {
+        snprintf(remainder, sizeof(remainder), "%s", saveptr);
+    }
+    trim_whitespace_inplace(remainder);
+
+    if (remainder[0] == '\0') {
+        named_poll_state_t snapshot = {0};
+        bool found = false;
+        ttak_mutex_lock(&ctx->owner->lock);
+        named_poll_state_t *poll =
+            host_find_named_poll_locked(ctx->owner, label);
+        if (poll != nullptr) {
+            snapshot = *poll;
+            found = true;
+        }
+        ttak_mutex_unlock(&ctx->owner->lock);
+
+        if (!found) {
+            char message[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(message, sizeof(message), "No poll found for label '%s'.",
+                     label);
+            session_send_system_line(ctx, message);
+            return;
+        }
+
+        session_send_poll_summary_generic(ctx, &snapshot.poll, snapshot.label);
+        return;
+    }
+
+    if (strcasecmp(remainder, "close") == 0 ||
+        strcasecmp(remainder, "end") == 0 ||
+        strcasecmp(remainder, "stop") == 0 ||
+        strcasecmp(remainder, "off") == 0) {
+        bool closed = false;
+        bool allowed = false;
+        bool found = false;
+        ttak_mutex_lock(&ctx->owner->lock);
+        named_poll_state_t *poll =
+            host_find_named_poll_locked(ctx->owner, label);
+        if (poll != nullptr) {
+            found = true;
+            allowed = ctx->user.is_operator || ctx->user.is_lan_operator ||
+                      strcasecmp(poll->owner, ctx->user.name) == 0;
+            if (allowed && poll->poll.active) {
+                poll->poll.active = false;
+                closed = true;
+                host_recount_named_polls_locked(ctx->owner);
+                host_vote_state_save_locked(ctx->owner);
+            }
+        }
+        ttak_mutex_unlock(&ctx->owner->lock);
+
+        if (!found) {
+            char message[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(message, sizeof(message), "No poll found for label '%s'.",
+                     label);
+            session_send_system_line(ctx, message);
+            return;
+        }
+
+        if (!allowed) {
+            session_send_system_line(
+                ctx,
+                "Only the poll owner or an operator may close this poll.");
+            return;
+        }
+
+        if (!closed) {
+            session_send_system_line(ctx, "That poll is not active.");
+            return;
+        }
+
+        char notice[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(notice, sizeof(notice), "* [%s] closed poll [%s].",
+                 ctx->user.name, label);
+        host_history_record_system(ctx->owner, notice, nullptr);
+        chat_room_broadcast(&ctx->owner->room, notice, nullptr);
+        session_send_system_line(ctx, "Poll closed.");
+        return;
+    }
+
+    char question[SSH_CHATTER_MESSAGE_LIMIT];
+    char options[5][SSH_CHATTER_MESSAGE_LIMIT];
+    enum { SESSION_NAMED_POLL_TEXT_PREC = SSH_CHATTER_MESSAGE_LIMIT - 1 };
+    size_t option_count = 0U;
+    char error[128];
+    if (!session_poll_parse_fields(remainder, question, sizeof(question),
+                                   options,
+                                   sizeof(options) / sizeof(options[0]),
+                                   &option_count, error, sizeof(error))) {
+        if (error[0] != '\0') {
+            session_send_system_line(ctx, error);
+        } else {
+            session_send_system_line(ctx, usage);
+        }
+        return;
+    }
+
+    named_poll_state_t snapshot = {0};
+    bool created = false;
+    bool allowed = true;
+    ttak_mutex_lock(&ctx->owner->lock);
+    named_poll_state_t *poll =
+        host_ensure_named_poll_locked(ctx->owner, label);
+    if (poll == nullptr) {
+        allowed = false;
+    } else if (poll->poll.active &&
+               !(ctx->user.is_operator || ctx->user.is_lan_operator ||
+                 strcasecmp(poll->owner, ctx->user.name) == 0)) {
+        allowed = false;
+    } else {
+        uint64_t next_id = poll->poll.id + 1U;
+        char saved_label[SSH_CHATTER_POLL_LABEL_LEN];
+        snprintf(saved_label, sizeof(saved_label), "%s", label);
+        named_poll_reset(poll);
+        snprintf(poll->label, sizeof(poll->label), "%s", saved_label);
+        snprintf(poll->owner, sizeof(poll->owner), "%s", ctx->user.name);
+        poll->poll.active = true;
+        poll->poll.allow_multiple = allow_multiple;
+        poll->poll.id = next_id == 0U ? 1U : next_id;
+        poll->poll.option_count = option_count;
+        snprintf(poll->poll.question, sizeof(poll->poll.question), "%.*s",
+                 SESSION_NAMED_POLL_TEXT_PREC, question);
+        for (size_t idx = 0U; idx < option_count; ++idx) {
+            snprintf(poll->poll.options[idx].text,
+                     sizeof(poll->poll.options[idx].text), "%.*s",
+                     SESSION_NAMED_POLL_TEXT_PREC, options[idx]);
+            poll->poll.options[idx].votes = 0U;
+        }
+        poll->voter_count = 0U;
+        host_recount_named_polls_locked(ctx->owner);
+        host_vote_state_save_locked(ctx->owner);
+        snapshot = *poll;
+        created = true;
+    }
+    ttak_mutex_unlock(&ctx->owner->lock);
+
+    if (!allowed) {
+        session_send_system_line(ctx,
+                                 "Unable to start that poll. Another active "
+                                 "poll owns the label or the poll limit has "
+                                 "been reached.");
+        return;
+    }
+
+    if (created) {
+        enum {
+            SESSION_VOTE_NOTICE_USER_PREC = SSH_CHATTER_USERNAME_LEN - 1,
+            SESSION_VOTE_NOTICE_LABEL_PREC = SSH_CHATTER_POLL_LABEL_LEN - 1,
+            SESSION_VOTE_NOTICE_QUESTION_PREC = SSH_CHATTER_MESSAGE_LIMIT / 2
+        };
+        char notice[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(notice, sizeof(notice), "* [%.*s] started poll [%.*s]: %.*s",
+                 SESSION_VOTE_NOTICE_USER_PREC, ctx->user.name,
+                 SESSION_VOTE_NOTICE_LABEL_PREC, label,
+                 SESSION_VOTE_NOTICE_QUESTION_PREC, question);
+        host_history_record_system(ctx->owner, notice, nullptr);
+        chat_room_broadcast(&ctx->owner->room, notice, nullptr);
+        session_send_poll_summary_generic(ctx, &snapshot.poll, snapshot.label);
+    }
+}
+
+static void __attribute__((unused))
+session_handle_gameopt(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    static const char *kUsage = "Usage: /gameopt <reset>";
+
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, "/gameopt", kUsage, usage, sizeof(usage));
+
+    if (arguments == nullptr) {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(working, sizeof(working), "%s", arguments);
+    trim_whitespace_inplace(working);
+
+    if (working[0] == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    if (strcasecmp(working, "reset") == 0) {
+        snprintf(ctx->game.chosen_camouflage_language,
+                 sizeof(ctx->game.chosen_camouflage_language), "c");
+        if (ctx->owner != nullptr) {
+            ttak_mutex_lock(&ctx->owner->lock);
+            user_preference_t *pref =
+                host_ensure_preference_locked(ctx->owner, ctx->user.name, "");
+            if (pref != nullptr) {
+                snprintf(pref->camouflage_language,
+                         sizeof(pref->camouflage_language), "c");
+                host_state_save_locked(ctx->owner);
+            }
+            ttak_mutex_unlock(&ctx->owner->lock);
+        }
+        session_send_system_line(
+            ctx, "Game options reset. Camouflage language set to default (C).");
+        return;
+    }
+
+    session_send_system_line(ctx, usage);
+}
+
+static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    bool is_operator = ctx->user.is_operator || ctx->user.is_lan_operator;
+
+    char delegated_buffer[SSH_CHATTER_MESSAGE_LIMIT];
+    if (arguments != nullptr) {
+        snprintf(delegated_buffer, sizeof(delegated_buffer), "%s", arguments);
+        trim_whitespace_inplace(delegated_buffer);
+
+        if (delegated_buffer[0] != '\0') {
+            char token[64];
+            const char *remaining =
+                session_consume_token(delegated_buffer, token, sizeof(token));
+            if (strcasecmp(token, "telnet-server") == 0) {
+                char forwarded[SSH_CHATTER_MESSAGE_LIMIT];
+                if (remaining != nullptr) {
+                    snprintf(forwarded, sizeof(forwarded), "%s", remaining);
+                    trim_whitespace_inplace(forwarded);
+                } else {
+                    forwarded[0] = '\0';
+                }
+
+                session_send_system_line(
+                    ctx, "Tip: use /telnet-server directly "
+                         "for Telnet/Fidonet integration controls.");
+
+                return;
+            }
+
+            session_send_system_line(
+                ctx,
+                "Unknown advanced topic. Showing available commands instead.");
+        }
+    }
+
+    const session_ui_locale_t *locale = session_ui_get_locale(ctx);
+    const char *prefix = session_command_prefix(ctx);
+    char help_buffer[SSH_CHATTER_MESSAGE_LIMIT * 32];
+
+    if (locale != nullptr && locale->help_extra_title != nullptr &&
+        locale->help_extra_title[0] != '\0') {
+        session_send_system_line(ctx, locale->help_extra_title);
+    }
+
+    help_buffer[0] = '\0';
+    session_format_help_entries_to_buffer(ctx, kSessionHelpExtended,
+                                          sizeof(kSessionHelpExtended) /
+                                              sizeof(kSessionHelpExtended[0]),
+                                          help_buffer, sizeof(help_buffer));
+    session_send_raw_text(ctx, help_buffer);
+
+    if (locale != nullptr && locale->help_extra_hint != nullptr &&
+        locale->help_extra_hint[0] != '\0') {
+        const char *args[] = {prefix};
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        session_format_template(locale->help_extra_hint, args,
+                                sizeof(args) / sizeof(args[0]), line,
+                                sizeof(line));
+        session_send_system_line(ctx, line);
+    }
+
+    if (is_operator) {
+        if (locale != nullptr && locale->help_operator_title != nullptr &&
+            locale->help_operator_title[0] != '\0') {
+            session_send_system_line(ctx, locale->help_operator_title);
+        }
+
+        help_buffer[0] = '\0';
+        session_format_help_entries_to_buffer(
+            ctx, kSessionHelpOperator,
+            sizeof(kSessionHelpOperator) / sizeof(kSessionHelpOperator[0]),
+            help_buffer, sizeof(help_buffer));
+        session_send_raw_text(ctx, help_buffer);
+
+    } else {
+        session_send_system_line(
+            ctx,
+            "Operator-only integrations are hidden. Request access if needed.");
+    }
+}
+
+// Format a timestamp for BBS displays in a compact form.
+static void bbs_format_time(time_t value, char *buffer, size_t length)
+{
+    if (buffer == nullptr || length == 0U) {
+        return;
+    }
+    struct tm tm_value;
+    if (localtime_r(&value, &tm_value) == nullptr) {
+        snprintf(buffer, length, "-");
+        return;
+    }
+    strftime(buffer, length, "%Y-%m-%d %H:%M", &tm_value);
+}
+
+// Return a post by identifier while the host lock is held.
+static bbs_post_t *host_find_bbs_post_locked(host_t *host, uint64_t id)
+{
+    if (!host_bbs_storage_ready(host) || id == 0U) {
+        return nullptr;
+    }
+    for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
+        if (!host->bbs_posts[idx].in_use) {
+            continue;
+        }
+        if (host->bbs_posts[idx].id == id) {
+            return &host->bbs_posts[idx];
+        }
+    }
+    return nullptr;
+}
+
+// Allocate a new post slot, returning nullptr if capacity has been reached.
+static bbs_post_t *host_allocate_bbs_post_locked(host_t *host)
+{
+    if (!host_bbs_storage_ready(host)) {
+        return nullptr;
+    }
+    for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
+        if (host->bbs_posts[idx].in_use) {
+            continue;
+        }
+        bbs_post_t *post = &host->bbs_posts[idx];
+        post->in_use = true;
+        post->id = host->next_bbs_id++;
+        post->tag_count = 0U;
+        post->comment_count = 0U;
+        post->created_at = time(nullptr);
+        post->bumped_at = post->created_at;
+        post->title[0] = '\0';
+        post->body[0] = '\0';
+        post->author[0] = '\0';
+        for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
+            post->tags[tag][0] = '\0';
+        }
+        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
+             ++comment) {
+            post->comments[comment].author[0] = '\0';
+            post->comments[comment].text[0] = '\0';
+            post->comments[comment].created_at = 0;
+        }
+        if (host->bbs_post_count < SSH_CHATTER_BBS_MAX_POSTS) {
+            host->bbs_post_count += 1U;
+        }
+        return post;
+    }
+    return nullptr;
+}
+
+static void host_reset_bbs_post(bbs_post_t *post)
+{
+    if (post == nullptr) {
+        return;
+    }
+
+    post->in_use = false;
+    post->id = 0U;
+    post->author[0] = '\0';
+    post->title[0] = '\0';
+    post->body[0] = '\0';
+    post->tag_count = 0U;
+    post->created_at = 0;
+    post->bumped_at = 0;
+    post->comment_count = 0U;
+    for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
+        post->tags[tag][0] = '\0';
+    }
+    for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
+         ++comment) {
+        post->comments[comment].author[0] = '\0';
+        post->comments[comment].text[0] = '\0';
+        post->comments[comment].created_at = 0;
+    }
+}
+
+static void host_clear_bbs_post_locked(host_t *host, bbs_post_t *post)
+{
+    if (!host_bbs_storage_ready(host) || post == nullptr) {
+        return;
+    }
+
+    host_reset_bbs_post(post);
+
+    size_t write_index = 0U;
+    for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
+        if (!host->bbs_posts[idx].in_use) {
+            continue;
+        }
+
+        if (write_index != idx) {
+            host->bbs_posts[write_index] = host->bbs_posts[idx];
+        }
+
+        ++write_index;
+    }
+
+    for (size_t idx = write_index; idx < host->bbs_post_capacity; ++idx) {
+        host_reset_bbs_post(&host->bbs_posts[idx]);
+    }
+
+    host->bbs_post_count = write_index;
+}
+
+// Render an ASCII framed view of a post, including metadata and comments.
+
+static bool session_bbs_refresh_view(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || !ctx->bbs_view_active ||
+        ctx->bbs_view_post_id == 0U) {
+        return false;
+    }
+
+    host_t *host = ctx->owner;
+    if (!host_bbs_storage_ready(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return false;
+    }
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *post = host_find_bbs_post_locked(host, ctx->bbs_view_post_id);
+    bbs_post_t snapshot = {0};
+    if (post != nullptr) {
+        snapshot = *post;
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (post == nullptr || !snapshot.in_use) {
+        ctx->bbs_view_active = false;
+        ctx->bbs_view_post_id = 0U;
+        ctx->bbs_view_total_lines = 0U;
+        ctx->bbs_view_scroll_offset = 0U;
+        session_send_system_line(ctx, "That post is no longer available.");
+        return false;
+    }
+
+    session_bbs_render_post(ctx, &snapshot, nullptr, false);
+    return true;
+}
+
+static bool session_bbs_scroll(session_ctx_t *ctx, int direction, size_t step)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || !ctx->bbs_view_active ||
+        direction == 0) {
+        return false;
+    }
+
+    size_t window = SSH_CHATTER_BBS_VIEW_WINDOW;
+    if (window == 0U) {
+        window = 1U;
+    }
+
+    size_t total = ctx->bbs_view_total_lines;
+    if (total <= window) {
+        if (direction > 0) {
+            session_send_system_line(ctx,
+                                     "Already viewing the top of this post.");
+        } else if (direction < 0) {
+            session_send_system_line(ctx,
+                                     "Already viewing the end of this post.");
+        }
+        return true;
+    }
+
+    size_t max_offset = total - window;
+    size_t offset = ctx->bbs_view_scroll_offset;
+    size_t effective_step = step;
+    if (effective_step == 0U) {
+        effective_step = window;
+    }
+    if (effective_step == 0U) {
+        effective_step = 1U;
+    }
+
+    size_t new_offset = offset;
+    if (direction > 0) {
+        if (offset == 0U) {
+            session_send_system_line(ctx,
+                                     "Already viewing the top of this post.");
+            return true;
+        }
+        if (effective_step > offset) {
+            effective_step = offset;
+        }
+        if (effective_step == 0U) {
+            effective_step = 1U;
+        }
+        new_offset = offset - effective_step;
+    } else if (direction < 0) {
+        if (offset >= max_offset) {
+            session_send_system_line(ctx,
+                                     "Already viewing the end of this post.");
+            return true;
+        }
+        size_t advance = effective_step;
+        if (advance > max_offset - offset) {
+            advance = max_offset - offset;
+        }
+        if (advance == 0U) {
+            advance = 1U;
+        }
+        new_offset = offset + advance;
+    }
+
+    if (new_offset == offset) {
+        if (direction > 0) {
+            session_send_system_line(ctx,
+                                     "Already viewing the top of this post.");
+        } else if (direction < 0) {
+            session_send_system_line(ctx,
+                                     "Already viewing the end of this post.");
+        }
+        return true;
+    }
+
+    ctx->bbs_view_scroll_offset = new_offset;
+    return session_bbs_refresh_view(ctx);
+}
+
+// Show the BBS dashboard and mark the session as being in BBS mode.
+static void session_bbs_show_dashboard(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    ctx->in_bbs_mode = true;
+    ctx->bbs_view_active = false;
+    ctx->bbs_view_post_id = 0U;
+    session_bbs_prepare_canvas(ctx);
+    session_render_separator(ctx, "BBS Dashboard");
+    session_send_system_line(
+        ctx, "Commands: list, read <id>, topic read <tag>, post <title> "
+             "[tags...], comment <id>|<text>, regen <id>, delete <id>, exit");
+    session_bbs_list(ctx);
+}
+
+// List posts sorted by most recent activity.
+static void session_bbs_list(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    enum { SESSION_BBS_TOPIC_NAME_PREC = SSH_CHATTER_BBS_TAG_LEN - 1 };
+
+    bool previous_override = session_translation_push_scope_override(ctx);
+    typedef struct bbs_listing {
+        uint64_t id;
+        char title[SSH_CHATTER_BBS_TITLE_LEN];
+        char author[SSH_CHATTER_USERNAME_LEN];
+        char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
+        size_t tag_count;
+        time_t created_at;
+        time_t bumped_at;
+    } bbs_listing_t;
+
+    bbs_listing_t listings[SSH_CHATTER_BBS_MAX_POSTS];
+    size_t count = 0U;
+
+    host_t *host = ctx->owner;
+    if (!host_bbs_storage_ready(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    size_t capacity = host_bbs_loop_limit(host);
+    for (size_t idx = 0U; idx < capacity; ++idx) {
+        const bbs_post_t *post = &host->bbs_posts[idx];
+        if (!post->in_use) {
+            continue;
+        }
+        listings[count].id = post->id;
+        snprintf(listings[count].title, sizeof(listings[count].title), "%s",
+                 post->title);
+        snprintf(listings[count].author, sizeof(listings[count].author), "%s",
+                 post->author);
+        listings[count].tag_count = post->tag_count;
+        for (size_t tag = 0U;
+             tag < post->tag_count && tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
+            snprintf(listings[count].tags[tag],
+                     sizeof(listings[count].tags[tag]), "%s", post->tags[tag]);
+        }
+        listings[count].created_at = post->created_at;
+        listings[count].bumped_at = post->bumped_at;
+        ++count;
+        if (count >= SSH_CHATTER_BBS_MAX_POSTS) {
+            break;
+        }
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (count == 0U) {
+        char empty_hint[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(
+            empty_hint, sizeof(empty_hint),
+            "The bulletin board is empty. Use /bbs post <title> [tags...] to "
+            "write something. Finish drafts with %s.",
+            session_bbs_terminator(ctx));
+        session_send_system_line(ctx, empty_hint);
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
+
+    for (size_t outer = 1U; outer < count; ++outer) {
+        bbs_listing_t key = listings[outer];
+        size_t position = outer;
+        while (position > 0U &&
+               listings[position - 1U].bumped_at < key.bumped_at) {
+            listings[position] = listings[position - 1U];
+            --position;
+        }
+        listings[position] = key;
+    }
+
+    ctx->bbs_view_active = false;
+    ctx->bbs_view_post_id = 0U;
+
+    typedef struct bbs_topic_group {
+        char name[SSH_CHATTER_BBS_TAG_LEN];
+        size_t indexes[SSH_CHATTER_BBS_MAX_POSTS];
+        size_t count;
+    } bbs_topic_group_t;
+
+    bbs_topic_group_t topics[SSH_CHATTER_BBS_MAX_POSTS];
+    size_t topic_count = 0U;
+    memset(topics, 0, sizeof(topics));
+
+    for (size_t idx = 0U; idx < count; ++idx) {
+        const char *topic_name = (listings[idx].tag_count > 0U)
+                                     ? listings[idx].tags[0]
+                                     : SSH_CHATTER_BBS_DEFAULT_TAG;
+        size_t match = topic_count;
+        for (size_t topic_idx = 0U; topic_idx < topic_count; ++topic_idx) {
+            if (strcasecmp(topics[topic_idx].name, topic_name) == 0) {
+                match = topic_idx;
+                break;
+            }
+        }
+        if (match == topic_count) {
+            if (topic_count >= SSH_CHATTER_BBS_MAX_POSTS) {
+                continue;
+            }
+            snprintf(topics[match].name, sizeof(topics[match].name), "%s",
+                     topic_name);
+            topics[match].count = 0U;
+            ++topic_count;
+        }
+        if (topics[match].count < SSH_CHATTER_BBS_MAX_POSTS) {
+            topics[match].indexes[topics[match].count++] = idx;
+        }
+    }
+
+    for (size_t outer = 1U; outer < topic_count; ++outer) {
+        bbs_topic_group_t key = topics[outer];
+        size_t position = outer;
+        while (position > 0U &&
+               strcasecmp(topics[position - 1U].name, key.name) > 0) {
+            topics[position] = topics[position - 1U];
+            --position;
+        }
+        topics[position] = key;
+    }
+
+    session_render_separator(ctx, "BBS Posts by Topic");
+    for (size_t topic_idx = 0U; topic_idx < topic_count; ++topic_idx) {
+        char section_label[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(section_label, sizeof(section_label), "Topic: %.*s",
+                 SESSION_BBS_TOPIC_NAME_PREC, topics[topic_idx].name);
+        session_render_separator(ctx, section_label);
+
+        for (size_t entry_idx = 0U; entry_idx < topics[topic_idx].count;
+             ++entry_idx) {
+            size_t listing_index = topics[topic_idx].indexes[entry_idx];
+            const bbs_listing_t *entry = &listings[listing_index];
+            char created_buffer[32];
+            bbs_format_time(entry->bumped_at, created_buffer,
+                            sizeof(created_buffer));
+            char line[SSH_CHATTER_MESSAGE_LIMIT];
+            int title_preview =
+                (int)strnlen(entry->title, sizeof(entry->title));
+            if (title_preview > 80) {
+                title_preview = 80;
+            }
+            if (entry->tag_count == 0U) {
+                snprintf(line, sizeof(line), "#%" PRIu64 " [%s] %.*s|(no tags)",
+                         entry->id, created_buffer, title_preview,
+                         entry->title);
+            } else {
+                char tag_buffer[SSH_CHATTER_MESSAGE_LIMIT];
+                size_t buffer_offset = 0U;
+                tag_buffer[0] = '\0';
+                for (size_t tag = 0U; tag < entry->tag_count; ++tag) {
+                    size_t len = strlen(entry->tags[tag]);
+                    if (buffer_offset + len + 2U >= sizeof(tag_buffer)) {
+                        break;
+                    }
+                    if (tag > 0U) {
+                        tag_buffer[buffer_offset++] = ',';
+                    }
+                    memcpy(tag_buffer + buffer_offset, entry->tags[tag], len);
+                    buffer_offset += len;
+                    tag_buffer[buffer_offset] = '\0';
+                }
+                int tags_preview = (int)strnlen(tag_buffer, sizeof(tag_buffer));
+                if (tags_preview > 80) {
+                    tags_preview = 80;
+                }
+                snprintf(line, sizeof(line), "#%" PRIu64 " [%s] %.*s|%.*s",
+                         entry->id, created_buffer, title_preview, entry->title,
+                         tags_preview, tag_buffer);
+            }
+            session_send_system_line(ctx, line);
+        }
+    }
+
+    session_render_separator(ctx, "End");
+    session_translation_pop_scope_override(ctx, previous_override);
+}
+
+static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    char working_topic[SSH_CHATTER_BBS_TAG_LEN];
+    if (topic != nullptr) {
+        snprintf(working_topic, sizeof(working_topic), "%s", topic);
+    } else {
+        working_topic[0] = '\0';
+    }
+    trim_whitespace_inplace(working_topic);
+
+    if (working_topic[0] == '\0') {
+        session_send_system_line(ctx, "Specify a topic to read.");
+        return;
+    }
+
+    bool previous_override = session_translation_push_scope_override(ctx);
+
+    typedef struct bbs_listing {
+        uint64_t id;
+        char title[SSH_CHATTER_BBS_TITLE_LEN];
+        char author[SSH_CHATTER_USERNAME_LEN];
+        char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
+        size_t tag_count;
+        time_t created_at;
+        time_t bumped_at;
+    } bbs_listing_t;
+
+    bbs_listing_t listings[SSH_CHATTER_BBS_MAX_POSTS];
+    size_t count = 0U;
+
+    host_t *host = ctx->owner;
+    if (!host_bbs_storage_ready(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    size_t capacity = host_bbs_loop_limit(host);
+    for (size_t idx = 0U; idx < capacity; ++idx) {
+        const bbs_post_t *post = &host->bbs_posts[idx];
+        if (!post->in_use) {
+            continue;
+        }
+        listings[count].id = post->id;
+        snprintf(listings[count].title, sizeof(listings[count].title), "%s",
+                 post->title);
+        snprintf(listings[count].author, sizeof(listings[count].author), "%s",
+                 post->author);
+        listings[count].tag_count = post->tag_count;
+        for (size_t tag_idx = 0U;
+             tag_idx < post->tag_count && tag_idx < SSH_CHATTER_BBS_MAX_TAGS;
+             ++tag_idx) {
+            snprintf(listings[count].tags[tag_idx],
+                     sizeof(listings[count].tags[tag_idx]), "%s",
+                     post->tags[tag_idx]);
+        }
+        listings[count].created_at = post->created_at;
+        listings[count].bumped_at = post->bumped_at;
+        ++count;
+        if (count >= SSH_CHATTER_BBS_MAX_POSTS) {
+            break;
+        }
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (count == 0U) {
+        session_send_system_line(ctx, "The bulletin board is empty.");
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
+
+    for (size_t outer = 1U; outer < count; ++outer) {
+        bbs_listing_t key = listings[outer];
+        size_t position = outer;
+        while (position > 0U &&
+               listings[position - 1U].bumped_at < key.bumped_at) {
+            listings[position] = listings[position - 1U];
+            --position;
+        }
+        listings[position] = key;
+    }
+
+    ctx->bbs_view_active = false;
+    ctx->bbs_view_post_id = 0U;
+
+    char section_label[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(section_label, sizeof(section_label), "BBS Topic: %s",
+             working_topic);
+    session_render_separator(ctx, section_label);
+
+    bool found = false;
+    for (size_t idx = 0U; idx < count; ++idx) {
+        const bbs_listing_t *entry = &listings[idx];
+        const char *entry_topic = (entry->tag_count > 0U)
+                                      ? entry->tags[0]
+                                      : SSH_CHATTER_BBS_DEFAULT_TAG;
+        if (strcasecmp(entry_topic, working_topic) != 0) {
+            continue;
+        }
+
+        char created_buffer[32];
+        bbs_format_time(entry->bumped_at, created_buffer,
+                        sizeof(created_buffer));
+
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        int title_preview = (int)strnlen(entry->title, sizeof(entry->title));
+        if (title_preview > 80) {
+            title_preview = 80;
+        }
+
+        if (entry->tag_count <= 1U) {
+            snprintf(line, sizeof(line), "#%" PRIu64 " [%s] %.*s", entry->id,
+                     created_buffer, title_preview, entry->title);
+        } else {
+            char tag_buffer[SSH_CHATTER_MESSAGE_LIMIT];
+            size_t buffer_offset = 0U;
+            tag_buffer[0] = '\0';
+            for (size_t tag_idx = 0U; tag_idx < entry->tag_count; ++tag_idx) {
+                const char *tag_value = entry->tags[tag_idx];
+                if (tag_value[0] == '\0') {
+                    continue;
+                }
+                size_t len = strlen(tag_value);
+                if (buffer_offset + len + 2U >= sizeof(tag_buffer)) {
+                    break;
+                }
+                if (buffer_offset > 0U) {
+                    tag_buffer[buffer_offset++] = ',';
+                }
+                memcpy(tag_buffer + buffer_offset, tag_value, len);
+                buffer_offset += len;
+                tag_buffer[buffer_offset] = '\0';
+            }
+            int tags_preview = (int)strnlen(tag_buffer, sizeof(tag_buffer));
+            if (tags_preview > 80) {
+                tags_preview = 80;
+            }
+            snprintf(line, sizeof(line), "#%" PRIu64 " [%s] %.*s|%.*s",
+                     entry->id, created_buffer, title_preview, entry->title,
+                     tags_preview, tag_buffer);
+        }
+
+        session_send_system_line(ctx, line);
+        found = true;
+    }
+
+    if (!found) {
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message), "No posts found for topic '%s'.",
+                 working_topic);
+        session_send_system_line(ctx, message);
+    }
+
+    session_render_separator(ctx, "End");
+    session_translation_pop_scope_override(ctx, previous_override);
+}
+
+// Display a single post to the user.
+static void session_bbs_read(session_ctx_t *ctx, uint64_t id)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || id == 0U) {
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    if (!host_bbs_storage_ready(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *post = host_find_bbs_post_locked(host, id);
+    bbs_post_t snapshot = {0};
+    if (post != nullptr) {
+        snapshot = *post;
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (post == nullptr || !snapshot.in_use) {
+        session_send_system_line(ctx, "No post exists with that identifier.");
+        return;
+    }
+
+    session_bbs_render_post(ctx, &snapshot, nullptr, true);
+}
+
+// Create a new post using the provided argument format.
+static bool session_bbs_is_admin_only_tag(const char *tag)
+{
+    if (tag == nullptr || tag[0] == '\0') {
+        return false;
+    }
+
+    if (strcasecmp(tag, "manual") == 0 || strcasecmp(tag, "notice") == 0) {
+        return true;
+    }
+
+    if (strcmp(tag, "설명서") == 0 || strcmp(tag, "공지") == 0) {
+        return true;
+    }
+
+    return false;
+}
+
+static void session_bbs_compact_preview(const char *input, char *output,
+                                        size_t length)
+{
+    if (output == nullptr || length == 0U) {
+        return;
+    }
+    output[0] = '\0';
+    if (input == nullptr) {
+        return;
+    }
+
+    size_t out_idx = 0U;
+    bool last_space = true;
+    bool truncated = false;
+    const unsigned char *cursor = (const unsigned char *)input;
+
+    while (*cursor != '\0') {
+        unsigned char ch = *cursor++;
+        if (ch == '\r' || ch == '\n' || ch == '\t') {
+            ch = ' ';
+        }
+        if (ch < 32U) {
+            continue;
+        }
+        if (ch == ' ') {
+            if (last_space) {
+                continue;
+            }
+            last_space = true;
+        } else {
+            last_space = false;
+        }
+
+        if (out_idx + 1U >= length) {
+            truncated = true;
+            break;
+        }
+
+        output[out_idx++] = (char)ch;
+    }
+
+    if (last_space && out_idx > 0U) {
+        --out_idx;
+    }
+
+    if (truncated && out_idx + 3U < length) {
+        output[out_idx++] = '.';
+        output[out_idx++] = '.';
+        output[out_idx++] = '.';
+    }
+
+    output[out_idx] = '\0';
+}
+
+static void session_bbs_announce_post(host_t *host, const bbs_post_t *post)
+{
+    if (host == nullptr || post == nullptr) {
+        return;
+    }
+
+    char author[SSH_CHATTER_USERNAME_LEN];
+    snprintf(author, sizeof(author), "%s", post->author);
+    trim_whitespace_inplace(author);
+
+    char title[SSH_CHATTER_BBS_TITLE_LEN];
+    snprintf(title, sizeof(title), "%s", post->title);
+    trim_whitespace_inplace(title);
+
+    char preview[128];
+    session_bbs_compact_preview(post->body, preview, sizeof(preview));
+
+    char notice[SSH_CHATTER_MESSAGE_LIMIT];
+    if (preview[0] != '\0') {
+        snprintf(notice, sizeof(notice), "* [bbs] #%llu %s posted \"%s\" --%s",
+                 (unsigned long long)post->id,
+                 author[0] != '\0' ? author : "unknown",
+                 title[0] != '\0' ? title : "(untitled)", preview);
+    } else {
+        snprintf(notice, sizeof(notice), "* [bbs] #%llu %s posted \"%s\"",
+                 (unsigned long long)post->id,
+                 author[0] != '\0' ? author : "unknown",
+                 title[0] != '\0' ? title : "(untitled)");
+    }
+
+    host_history_record_system(host, notice, nullptr);
+}
+
+static void session_bbs_announce_comment(host_t *host, const bbs_post_t *post,
+                                         const bbs_comment_t *comment)
+{
+    if (host == nullptr || post == nullptr || comment == nullptr) {
+        return;
+    }
+
+    char author[SSH_CHATTER_USERNAME_LEN];
+    snprintf(author, sizeof(author), "%s", comment->author);
+    trim_whitespace_inplace(author);
+
+    char title[SSH_CHATTER_BBS_TITLE_LEN];
+    snprintf(title, sizeof(title), "%s", post->title);
+    trim_whitespace_inplace(title);
+
+    char preview[128];
+    session_bbs_compact_preview(comment->text, preview, sizeof(preview));
+
+    char notice[SSH_CHATTER_MESSAGE_LIMIT];
+    if (preview[0] != '\0') {
+        snprintf(notice, sizeof(notice),
+                 "* [bbs] #%llu %s commented on \"%s\": %s",
+                 (unsigned long long)post->id,
+                 author[0] != '\0' ? author : "unknown",
+                 title[0] != '\0' ? title : "(untitled)", preview);
+    } else {
+        snprintf(notice, sizeof(notice), "* [bbs] #%llu %s commented on \"%s\"",
+                 (unsigned long long)post->id,
+                 author[0] != '\0' ? author : "unknown",
+                 title[0] != '\0' ? title : "(untitled)");
+    }
+
+    host_history_record_system(host, notice, nullptr);
+}
+
+static void session_bbs_reset_pending_post(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    ctx->bbs_post_pending = false;
+    ctx->editor_mode = SESSION_EDITOR_MODE_NONE;
+    ctx->pending_bbs_edit_id = 0U;
+    ctx->pending_bbs_body_length = 0U;
+    ctx->pending_bbs_tag_count = 0U;
+    ctx->pending_bbs_line_count = 0U;
+    ctx->pending_bbs_cursor_line = 0U;
+    ctx->pending_bbs_editing_line = false;
+    ctx->bbs_editor_scroll_offset = 0U;
+    ctx->bbs_editor_selection_start = 0U;
+    ctx->bbs_editor_selection_start_set = false;
+    ctx->bbs_editor_selection_end = 0U;
+    ctx->bbs_editor_selection_end_set = false;
+    if (ctx->pending_bbs_title != nullptr) {
+        ctx->pending_bbs_title[0] = '\0';
+    }
+    if (ctx->pending_bbs_body != nullptr) {
+        ctx->pending_bbs_body[0] = '\0';
+    }
+    if (ctx->pending_bbs_tags != nullptr) {
+        memset(ctx->pending_bbs_tags, 0,
+               sizeof(*ctx->pending_bbs_tags) * SSH_CHATTER_BBS_MAX_TAGS);
+    }
+    if (ctx->bbs_editor_clipboard != nullptr) {
+        ctx->bbs_editor_clipboard[0] = '\0';
+    }
+    ctx->bbs_editor_clipboard_length = 0U;
+    ctx->bbs_editor_clipboard_lines = 0U;
+    ctx->bbs_line_edit_mode = false;
+    ctx->bbs_line_edit_target = 0U;
+    ctx->bbs_search_active = false;
+    ctx->bbs_search_restore_line = 0U;
+    ctx->bbs_search_restore_editing = false;
+    ctx->bbs_search_restore_scroll = 0U;
+    ctx->bbs_rendering_editor = false;
+}
+
+static void session_bbs_commit_pending_post(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (!ctx->bbs_post_pending) {
+        return;
+    }
+
+    if (ctx->editor_mode == SESSION_EDITOR_MODE_ASCIIART) {
+        session_asciiart_import_from_editor(ctx);
+        if (ctx->asciiart_length == 0U) {
+            session_asciiart_cancel(ctx, "ASCII art draft discarded.");
+            session_bbs_reset_pending_post(ctx);
+            return;
+        }
+
+        session_asciiart_commit(ctx);
+        session_bbs_reset_pending_post(ctx);
+        return;
+    }
+
+    if (ctx->pending_bbs_body_length == 0U) {
+        session_send_system_line(ctx, "Post body was empty. Draft discarded.");
+        session_bbs_reset_pending_post(ctx);
+        return;
+    }
+
+    if (session_security_check_text(ctx, "BBS post", ctx->pending_bbs_body,
+                                    ctx->pending_bbs_body_length,
+                                    false) != HOST_SECURITY_SCAN_CLEAN) {
+        session_bbs_reset_pending_post(ctx);
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    if (host == nullptr) {
+        session_bbs_reset_pending_post(ctx);
+        return;
+    }
+
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t snapshot = {0};
+    if (ctx->editor_mode == SESSION_EDITOR_MODE_BBS_EDIT) {
+        uint64_t edit_id = ctx->pending_bbs_edit_id;
+        bbs_post_t *post = host_find_bbs_post_locked(host, edit_id);
+        if (post == nullptr || !post->in_use) {
+            ttak_mutex_unlock(&host->lock);
+            session_send_system_line(
+                ctx, "No post exists with that identifier anymore.");
+            session_bbs_reset_pending_post(ctx);
+            return;
+        }
+
+        bool can_edit = (strncmp(post->author, ctx->user.name,
+                                 SSH_CHATTER_USERNAME_LEN) == 0) ||
+                        ctx->user.is_operator || ctx->user.is_lan_operator;
+        if (!can_edit) {
+            ttak_mutex_unlock(&host->lock);
+            session_send_system_line(
+                ctx, "Only the author or an operator may edit this post.");
+            session_bbs_reset_pending_post(ctx);
+            return;
+        }
+
+        snprintf(post->title, sizeof(post->title), "%s",
+                 ctx->pending_bbs_title);
+        memcpy(post->body, ctx->pending_bbs_body, ctx->pending_bbs_body_length);
+        post->body[ctx->pending_bbs_body_length] = '\0';
+        host_strip_column_reset(post->title);
+        host_strip_column_reset(post->body);
+        post->tag_count = ctx->pending_bbs_tag_count;
+        for (size_t idx = 0U; idx < post->tag_count; ++idx) {
+            snprintf(post->tags[idx], sizeof(post->tags[idx]), "%s",
+                     ctx->pending_bbs_tags[idx]);
+            host_strip_column_reset(post->tags[idx]);
+        }
+
+        post->bumped_at = time(nullptr);
+        snapshot = *post;
+        host_bbs_state_save_locked(host);
+        ttak_mutex_unlock(&host->lock);
+
+        session_bbs_reset_pending_post(ctx);
+        session_bbs_render_post(ctx, &snapshot, "Post updated.", false);
+        return;
+    }
+
+    bbs_post_t *post = host_allocate_bbs_post_locked(host);
+    if (post == nullptr) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "The bulletin board is full right now.");
+        return;
+    }
+
+    snprintf(post->author, sizeof(post->author), "%s", ctx->user.name);
+    snprintf(post->title, sizeof(post->title), "%s", ctx->pending_bbs_title);
+    memcpy(post->body, ctx->pending_bbs_body, ctx->pending_bbs_body_length);
+    post->body[ctx->pending_bbs_body_length] = '\0';
+    host_strip_column_reset(post->author);
+    host_strip_column_reset(post->title);
+    host_strip_column_reset(post->body);
+    post->tag_count = ctx->pending_bbs_tag_count;
+    for (size_t idx = 0U; idx < post->tag_count; ++idx) {
+        snprintf(post->tags[idx], sizeof(post->tags[idx]), "%s",
+                 ctx->pending_bbs_tags[idx]);
+        host_strip_column_reset(post->tags[idx]);
+    }
+
+    snapshot = *post;
+    host_bbs_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+
+    session_bbs_reset_pending_post(ctx);
+
+    session_bbs_announce_post(ctx->owner, &snapshot);
+    session_bbs_render_post(ctx, &snapshot, "Post created.", true);
+}
+
+static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (ctx->bbs_post_pending) {
+        const char *terminator = session_editor_terminator(ctx);
+        char warning[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(warning, sizeof(warning),
+                 "You are already composing a post. Finish it with %s.",
+                 terminator);
+        session_send_system_line(ctx, warning);
+        return;
+    }
+
+    ctx->bbs_view_active = false;
+    ctx->bbs_view_post_id = 0U;
+
+    if (ctx->owner == nullptr) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
+
+    session_bbs_reset_pending_post(ctx);
+    if (!session_bbs_workspace_acquire(ctx)) {
+        session_send_system_line(ctx, "Unable to allocate editor workspace.");
+        return;
+    }
+
+    if (arguments == nullptr) {
+        session_bbs_send_usage(ctx, "post", "<title>[|tags...]");
+        session_send_system_line(
+            ctx, "Use | to separate tags when the title has spaces.");
+        return;
+    }
+
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(working, sizeof(working), "%s", arguments);
+    trim_whitespace_inplace(working);
+    if (working[0] == '\0') {
+        session_bbs_send_usage(ctx, "post", "<title>[|tags...]");
+        session_send_system_line(
+            ctx, "Use | to separate tags when the title has spaces.");
+        return;
+    }
+
+    char title[SSH_CHATTER_BBS_TITLE_LEN];
+    title[0] = '\0';
+    char *tag_cursor = nullptr;
+    char *separator = strchr(working, '|');
+    if (separator != nullptr) {
+        *separator = '\0';
+        char *title_part = working;
+        char *tags_part = separator + 1;
+        trim_whitespace_inplace(title_part);
+        trim_whitespace_inplace(tags_part);
+        size_t title_len = strnlen(title_part, sizeof(title));
+        if (title_len > 1U &&
+            (title_part[0] == '\"' || title_part[0] == '\'') &&
+            title_part[title_len - 1U] == title_part[0]) {
+            title_part[title_len - 1U] = '\0';
+            ++title_part;
+            trim_whitespace_inplace(title_part);
+        }
+        size_t copy_len = strnlen(title_part, sizeof(title) - 1U);
+        memcpy(title, title_part, copy_len);
+        title[copy_len] = '\0';
+        tag_cursor = tags_part;
+    } else {
+        char *cursor = working;
+        if (*cursor == '\"' || *cursor == '\'') {
+            char quote = *cursor++;
+            char *closing = strchr(cursor, quote);
+            if (closing == nullptr) {
+                session_send_system_line(
+                    ctx, "Missing closing quote for the title.");
+                return;
+            }
+            size_t copy_len = (size_t)(closing - cursor);
+            if (copy_len >= sizeof(title)) {
+                copy_len = sizeof(title) - 1U;
+            }
+            memcpy(title, cursor, copy_len);
+            title[copy_len] = '\0';
+            cursor = closing + 1;
+        } else {
+            char *space = cursor;
+            while (*space != '\0' && !isspace((unsigned char)*space)) {
+                ++space;
+            }
+            size_t copy_len = (size_t)(space - cursor);
+            if (copy_len >= sizeof(title)) {
+                copy_len = sizeof(title) - 1U;
+            }
+            memcpy(title, cursor, copy_len);
+            title[copy_len] = '\0';
+            cursor = space;
+        }
+
+        trim_whitespace_inplace(cursor);
+        tag_cursor = cursor;
+    }
+
+    if (title[0] == '\0') {
+        session_send_system_line(ctx, "A title is required to create a post.");
+        return;
+    }
+
+    size_t tag_count = 0U;
+    bool discarded_tags = false;
+    bool default_tag_applied = false;
+    while (tag_cursor != nullptr && *tag_cursor != '\0') {
+        while (isspace((unsigned char)*tag_cursor)) {
+            ++tag_cursor;
+        }
+        if (*tag_cursor == '\0') {
+            break;
+        }
+        char *end = tag_cursor;
+        while (*end != '\0' && !isspace((unsigned char)*end)) {
+            ++end;
+        }
+        size_t length = (size_t)(end - tag_cursor);
+        if (length > 0U) {
+            if (tag_count < SSH_CHATTER_BBS_MAX_TAGS) {
+                if (length >= SSH_CHATTER_BBS_TAG_LEN) {
+                    length = SSH_CHATTER_BBS_TAG_LEN - 1U;
+                }
+                char tag_value[SSH_CHATTER_BBS_TAG_LEN];
+                memcpy(tag_value, tag_cursor, length);
+                tag_value[length] = '\0';
+                if (!ctx->user.is_operator &&
+                    session_bbs_is_admin_only_tag(tag_value)) {
+                    char warning[SSH_CHATTER_MESSAGE_LIMIT];
+                    snprintf(warning, sizeof(warning),
+                             "The '%s' tag is reserved for administrators.",
+                             tag_value);
+                    session_send_system_line(ctx, warning);
+                    return;
+                }
+                snprintf(ctx->pending_bbs_tags[tag_count],
+                         SSH_CHATTER_BBS_TAG_LEN, "%s",
+                         tag_value);
+                ++tag_count;
+            } else {
+                discarded_tags = true;
+            }
+        }
+        tag_cursor = end;
+    }
+
+    if (tag_count == 0U) {
+        snprintf(ctx->pending_bbs_tags[0], SSH_CHATTER_BBS_TAG_LEN,
+                 "%s", SSH_CHATTER_BBS_DEFAULT_TAG);
+        tag_count = 1U;
+        default_tag_applied = true;
+    }
+
+    snprintf(ctx->pending_bbs_title, SSH_CHATTER_BBS_TITLE_LEN, "%s", title);
+    ctx->pending_bbs_tag_count = tag_count;
+    ctx->pending_bbs_body[0] = '\0';
+    ctx->pending_bbs_body_length = 0U;
+    ctx->bbs_post_pending = true;
+    ctx->editor_mode = SESSION_EDITOR_MODE_BBS_CREATE;
+    ctx->pending_bbs_edit_id = 0U;
+
+    char notice[SSH_CHATTER_MESSAGE_LIMIT];
+    notice[0] = '\0';
+    if (default_tag_applied) {
+        snprintf(notice, sizeof(notice),
+                 "No tags provided; default tag '%s' applied.",
+                 SSH_CHATTER_BBS_DEFAULT_TAG);
+    }
+    if (discarded_tags) {
+        if (notice[0] != '\0') {
+            strncat(notice, "\n", sizeof(notice) - strlen(notice) - 1U);
+        }
+        strncat(notice,
+                "Only the first four tags were kept. Extra tags were ignored.",
+                sizeof(notice) - strlen(notice) - 1U);
+    }
+
+    session_bbs_render_editor(ctx, notice[0] != '\0' ? notice : nullptr);
+}
+
+static void session_bbs_capture_body_text(session_ctx_t *ctx, const char *text)
+{
+    if (ctx == nullptr || !ctx->bbs_post_pending || text == nullptr) {
+        return;
+    }
+
+    session_capture_multiline_text(ctx, text, session_bbs_capture_body_line,
+                                   session_bbs_capture_continue);
+}
+
+static void session_bbs_capture_body_line(session_ctx_t *ctx, const char *line)
+{
+    if (ctx == nullptr || !ctx->bbs_post_pending) {
+        return;
+    }
+
+    char trimmed[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(trimmed, sizeof(trimmed), "%s", line != nullptr ? line : "");
+    trim_whitespace_inplace(trimmed);
+    if (session_editor_matches_terminator(ctx, trimmed)) {
+        session_bbs_commit_pending_post(ctx);
+        return;
+    }
+
+    if (line == nullptr) {
+        line = "";
+    }
+
+    char status[SSH_CHATTER_MESSAGE_LIMIT];
+    status[0] = '\0';
+
+    session_bbs_recalculate_line_count(ctx);
+    bool editing_line =
+        ctx->pending_bbs_editing_line &&
+        ctx->pending_bbs_cursor_line < ctx->pending_bbs_line_count;
+    bool inserting_line =
+        !editing_line &&
+        ctx->pending_bbs_cursor_line < ctx->pending_bbs_line_count;
+
+    bool updated = false;
+    if (editing_line) {
+        updated = session_bbs_replace_line(ctx, ctx->pending_bbs_cursor_line,
+                                           line, status, sizeof(status));
+        ctx->bbs_line_edit_mode = false;
+        if (updated) {
+            /* session_bbs_replace_line advanced the cursor to line_index+1.
+             * If that position is still within the post, continue editing
+             * there so the user can keep typing without extra keystrokes. */
+            session_bbs_recalculate_line_count(ctx);
+            const size_t next = ctx->pending_bbs_cursor_line;
+            if (next < ctx->pending_bbs_line_count) {
+                session_bbs_set_cursor(ctx, next, true);
+            }
+        }
+    } else if (inserting_line) {
+        updated = session_bbs_insert_line(ctx, ctx->pending_bbs_cursor_line,
+                                          line, status, sizeof(status));
+        if (updated) {
+            session_bbs_set_cursor(ctx, ctx->pending_bbs_cursor_line + 1U,
+                                   false);
+        }
+    } else {
+        updated = session_bbs_append_line(ctx, line, status, sizeof(status));
+    }
+
+    if (!updated && status[0] == '\0') {
+        snprintf(status, sizeof(status),
+                 "Unable to update the draft right now.");
+    }
+    if (updated) {
+        ctx->bbs_line_edit_mode = false;
+    }
+
+    session_bbs_render_editor(ctx, status[0] != '\0' ? status : nullptr);
+}
+
+static void session_bbs_begin_edit(session_ctx_t *ctx, uint64_t id)
+{
+    if (ctx == nullptr || id == 0U) {
+        session_send_system_line(ctx, "Invalid post identifier.");
+        return;
+    }
+
+    if (ctx->bbs_post_pending) {
+        const char *terminator = session_editor_terminator(ctx);
+        char warning[SSH_CHATTER_MESSAGE_LIMIT];
+        if (ctx->editor_mode == SESSION_EDITOR_MODE_ASCIIART) {
+            snprintf(warning, sizeof(warning),
+                     "You are already composing ASCII art. Finish it with %s.",
+                     terminator);
+        } else {
+            snprintf(warning, sizeof(warning),
+                     "You are already composing a post. Finish it with %s.",
+                     terminator);
+        }
+        session_send_system_line(ctx, warning);
+        return;
+    }
+
+    if (ctx->owner == nullptr) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *post = host_find_bbs_post_locked(host, id);
+    bbs_post_t snapshot = {0};
+    if (post != nullptr && post->in_use) {
+        snapshot = *post;
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (post == nullptr || !snapshot.in_use) {
+        session_send_system_line(ctx, "No post exists with that identifier.");
+        return;
+    }
+
+    bool can_edit = (strncmp(snapshot.author, ctx->user.name,
+                             SSH_CHATTER_USERNAME_LEN) == 0) ||
+                    ctx->user.is_operator || ctx->user.is_lan_operator;
+    if (!can_edit) {
+        session_send_system_line(
+            ctx, "Only the author or an operator may edit this post.");
+        return;
+    }
+
+    session_bbs_reset_pending_post(ctx);
+    if (!session_bbs_workspace_acquire(ctx)) {
+        session_send_system_line(ctx, "Unable to allocate editor workspace.");
+        return;
+    }
+    ctx->bbs_post_pending = true;
+    ctx->editor_mode = SESSION_EDITOR_MODE_BBS_EDIT;
+    ctx->pending_bbs_edit_id = id;
+
+    snprintf(ctx->pending_bbs_title, SSH_CHATTER_BBS_TITLE_LEN, "%s",
+             snapshot.title);
+
+    size_t body_len =
+        strnlen(snapshot.body, SSH_CHATTER_BBS_BODY_LEN - 1U);
+    memcpy(ctx->pending_bbs_body, snapshot.body, body_len);
+    ctx->pending_bbs_body[body_len] = '\0';
+    ctx->pending_bbs_body_length = body_len;
+
+    ctx->pending_bbs_tag_count = snapshot.tag_count;
+    if (ctx->pending_bbs_tag_count > SSH_CHATTER_BBS_MAX_TAGS) {
+        ctx->pending_bbs_tag_count = SSH_CHATTER_BBS_MAX_TAGS;
+    }
+    for (size_t idx = 0U; idx < ctx->pending_bbs_tag_count; ++idx) {
+        snprintf(ctx->pending_bbs_tags[idx], SSH_CHATTER_BBS_TAG_LEN,
+                 "%s", snapshot.tags[idx]);
+    }
+
+    char notice[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(notice, sizeof(notice),
+             "Editing post #%" PRIu64 ". Finish with %s to save changes.", id,
+             session_bbs_terminator(ctx));
+    session_bbs_render_editor(ctx, notice);
+}
+
+// Append a comment to a post.
+static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || arguments == nullptr) {
+        session_bbs_send_usage(ctx, "comment", "<id>|<text>");
+        return;
+    }
+
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(working, sizeof(working), "%s", arguments);
+    trim_whitespace_inplace(working);
+    if (working[0] == '\0') {
+        session_bbs_send_usage(ctx, "comment", "<id>|<text>");
+        return;
+    }
+
+    char *separator = strchr(working, '|');
+    if (separator == nullptr) {
+        session_bbs_send_usage(ctx, "comment", "<id>|<text>");
+        return;
+    }
+    *separator = '\0';
+    char *id_text = working;
+    char *comment_text = separator + 1;
+    trim_whitespace_inplace(id_text);
+    trim_whitespace_inplace(comment_text);
+
+    if (id_text[0] == '\0' || comment_text[0] == '\0') {
+        session_bbs_send_usage(ctx, "comment", "<id>|<text>");
+        return;
+    }
+
+    uint64_t id = (uint64_t)strtoull(id_text, nullptr, 10);
+    if (id == 0U) {
+        session_send_system_line(ctx, "Invalid post identifier.");
+        return;
+    }
+
+    size_t comment_scan_length =
+        strnlen(comment_text, SSH_CHATTER_BBS_COMMENT_LEN);
+    if (session_security_check_text(ctx, "BBS comment", comment_text,
+                                    comment_scan_length,
+                                    false) != HOST_SECURITY_SCAN_CLEAN) {
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *post = host_find_bbs_post_locked(host, id);
+    if (post == nullptr || !post->in_use) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "No post exists with that identifier.");
+        return;
+    }
+    if (post->comment_count >= SSH_CHATTER_BBS_MAX_COMMENTS) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx,
+                                 "This post has reached the comment limit.");
+        return;
+    }
+
+    size_t comment_index = post->comment_count;
+    bbs_comment_t *comment = &post->comments[comment_index];
+    post->comment_count++;
+    snprintf(comment->author, sizeof(comment->author), "%s", ctx->user.name);
+    size_t comment_len =
+        strnlen(comment_text, SSH_CHATTER_BBS_COMMENT_LEN - 1U);
+    memcpy(comment->text, comment_text, comment_len);
+    comment->text[comment_len] = '\0';
+    host_strip_column_reset(comment->author);
+    host_strip_column_reset(comment->text);
+    comment->created_at = time(nullptr);
+    post->bumped_at = comment->created_at;
+    bbs_post_t snapshot = *post;
+    host_bbs_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+
+    if (comment_index < snapshot.comment_count) {
+        session_bbs_announce_comment(ctx->owner, &snapshot,
+                                     &snapshot.comments[comment_index]);
+    }
+    session_bbs_render_post(ctx, &snapshot, "Comment added.", false);
+}
+
+static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    if (id == 0U) {
+        session_send_system_line(ctx, "Invalid post identifier.");
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *post = host_find_bbs_post_locked(host, id);
+    if (post == nullptr || !post->in_use) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "No post exists with that identifier.");
+        return;
+    }
+
+    bool can_delete = (strncmp(post->author, ctx->user.name,
+                               SSH_CHATTER_USERNAME_LEN) == 0) ||
+                      ctx->user.is_operator || ctx->user.is_lan_operator;
+    if (!can_delete) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(
+            ctx, "Only the author or an operator may delete this post.");
+        return;
+    }
+
+    host_clear_bbs_post_locked(host, post);
+    host_bbs_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+
+    session_send_system_line(ctx, "Post deleted.");
+}
+
+// Bump a post to the top of the list by refreshing its activity time.
+static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || id == 0U) {
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *post = host_find_bbs_post_locked(host, id);
+    if (post == nullptr || !post->in_use) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "No post exists with that identifier.");
+        return;
+    }
+
+    post->bumped_at = time(nullptr);
+    bbs_post_t snapshot = *post;
+    host_bbs_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+
+    session_bbs_render_post(ctx, &snapshot, "Post bumped to the top.", false);
+}
+
+static void session_rss_clear(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (ctx->rss_view.items != nullptr) {
+        sshc_gc_free(ctx->rss_view.items);
+        ctx->rss_view.items = nullptr;
+    }
+    ctx->rss_view.active = false;
+    ctx->rss_view.tag[0] = '\0';
+    ctx->rss_view.item_count = 0U;
+    ctx->rss_view.cursor = 0U;
+    ctx->in_rss_mode = false;
+}
+
+static void session_rss_exit(session_ctx_t *ctx, const char *reason)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    const bool was_active = ctx->in_rss_mode;
+    session_rss_clear(ctx);
+
+    if (reason != nullptr && reason[0] != '\0') {
+        session_send_system_line(ctx, reason);
+    } else if (was_active) {
+        session_send_system_line(ctx, "RSS reader closed.");
+    }
+
+    if (was_active) {
+        session_render_prompt(ctx, false);
+    }
+}
+
+static void session_rss_show_current(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || !ctx->rss_view.active ||
+        ctx->rss_view.item_count == 0U) {
+        return;
+    }
+
+    if (ctx->rss_view.cursor >= ctx->rss_view.item_count) {
+        ctx->rss_view.cursor = ctx->rss_view.item_count - 1U;
+    }
+
+    if (ctx->rss_view.items == nullptr) {
+        return;
+    }
+
+    const rss_session_item_t *item = &ctx->rss_view.items[ctx->rss_view.cursor];
+
+    char header[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(header, sizeof(header), "Feed %s (%zu/%zu)", ctx->rss_view.tag,
+             ctx->rss_view.cursor + 1U, ctx->rss_view.item_count);
+    session_render_separator(ctx, header);
+
+    char line[SSH_CHATTER_MESSAGE_LIMIT];
+    if (item->title[0] != '\0') {
+        snprintf(line, sizeof(line), "Title : %s", item->title);
+    } else {
+        snprintf(line, sizeof(line), "Title : (untitled)");
+    }
+    session_send_system_line(ctx, line);
+
+    if (item->link[0] != '\0') {
+        snprintf(line, sizeof(line), "Link  : %s", item->link);
+    } else {
+        snprintf(line, sizeof(line), "Link  : (none)");
+    }
+    session_send_system_line(ctx, line);
+
+    if (item->summary[0] != '\0') {
+        session_send_system_line(ctx, "Summary:");
+        char working[SSH_CHATTER_RSS_SUMMARY_LEN];
+        snprintf(working, sizeof(working), "%s", item->summary);
+        char *saveptr = nullptr;
+        char *fragment = strtok_r(working, "\r\n", &saveptr);
+        while (fragment != nullptr) {
+            rss_trim_whitespace(fragment);
+            if (fragment[0] != '\0') {
+                snprintf(line, sizeof(line), "  %s", fragment);
+                session_send_system_line(ctx, line);
+            }
+            fragment = strtok_r(nullptr, "\r\n", &saveptr);
+        }
+    } else {
+        session_send_system_line(ctx, "Summary: (none)");
+    }
+}
+
+static void session_rss_begin(session_ctx_t *ctx, const char *tag,
+                              const rss_session_item_t *items, size_t count)
+{
+    if (ctx == nullptr || tag == nullptr || tag[0] == '\0' ||
+        items == nullptr || count == 0U) {
+        return;
+    }
+
+    session_rss_clear(ctx);
+
+    if (count > SSH_CHATTER_RSS_MAX_ITEMS) {
+        count = SSH_CHATTER_RSS_MAX_ITEMS;
+    }
+
+    ctx->rss_view.items =
+        (rss_session_item_t *)sshc_gc_calloc(count, sizeof(rss_session_item_t));
+    if (ctx->rss_view.items == nullptr) {
+        session_send_system_line(ctx, "Unable to open RSS reader right now.");
+        return;
+    }
+
+    ctx->rss_view.active = true;
+    ctx->rss_view.item_count = count;
+    ctx->rss_view.cursor = 0U;
+    snprintf(ctx->rss_view.tag, sizeof(ctx->rss_view.tag), "%s", tag);
+    for (size_t idx = 0U; idx < count; ++idx) {
+        ctx->rss_view.items[idx] = items[idx];
+    }
+    ctx->in_rss_mode = true;
+
+    char intro[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(
+        intro, sizeof(intro),
+        "Browsing feed '%s'. Use Up/Down arrows to navigate. Type /exit or "
+        "press Ctrl+Z to return.",
+        ctx->rss_view.tag);
+    session_render_separator(ctx, "RSS Reader");
+    session_send_system_line(ctx, intro);
+    session_rss_show_current(ctx);
+}
+
+static bool session_rss_move(session_ctx_t *ctx, int delta)
+{
+    if (ctx == nullptr || !ctx->rss_view.active ||
+        ctx->rss_view.item_count == 0U || delta == 0) {
+        return false;
+    }
+
+    size_t current = ctx->rss_view.cursor;
+    size_t next = current;
+
+    if (delta > 0) {
+        if (next + 1U < ctx->rss_view.item_count) {
+            next += 1U;
+        }
+    } else {
+        if (next > 0U) {
+            next -= 1U;
+        }
+    }
+
+    if (next == current) {
+        return false;
+    }
+
+    ctx->rss_view.cursor = next;
+    session_rss_show_current(ctx);
+    return true;
+}
+
+static void session_rss_list(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    bool refresh_requested = host_rss_schedule_manual_refresh(ctx->owner);
+    if (refresh_requested) {
+        session_send_system_line(
+            ctx,
+            "Refreshing RSS feeds in the background; cached results follow:");
+    }
+
+    rss_feed_t *snapshot = (rss_feed_t *)sshc_gc_malloc(
+        sizeof(rss_feed_t) * SSH_CHATTER_RSS_MAX_FEEDS);
+    size_t count = 0U;
+
+    if (snapshot != nullptr) {
+        ttak_mutex_lock(&ctx->owner->lock);
+        for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
+            if (!ctx->owner->rss_feeds[idx].in_use) {
+                continue;
+            }
+            snapshot[count++] = ctx->owner->rss_feeds[idx];
+            if (count >= SSH_CHATTER_RSS_MAX_FEEDS) {
+                break;
+            }
+        }
+        ttak_mutex_unlock(&ctx->owner->lock);
+    }
+
+    session_render_separator(ctx, "RSS Feeds");
+    if (count == 0U) {
+        session_send_system_line(ctx,
+                                 "No RSS feeds registered. Operators can add "
+                                 "one with /rss add <url> <tag>.");
+        if (snapshot != nullptr) {
+            sshc_gc_free(snapshot);
+        }
+        return;
+    }
+
+    for (size_t idx = 0U; idx < count; ++idx) {
+        const rss_feed_t *entry = &snapshot[idx];
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        if (entry->last_title[0] != '\0') {
+            char preview[72];
+            snprintf(preview, sizeof(preview), "%.64s", entry->last_title);
+            snprintf(line, sizeof(line), "[%s] %s (last: %s)", entry->tag,
+                     entry->url, preview);
+        } else {
+            snprintf(line, sizeof(line), "[%s] %s", entry->tag, entry->url);
+        }
+        session_send_system_line(ctx, line);
+    }
+
+    if (snapshot != nullptr) {
+        sshc_gc_free(snapshot);
+    }
+}
+
+static void session_rss_read(session_ctx_t *ctx, const char *tag)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || tag == nullptr ||
+        tag[0] == '\0') {
+        session_send_system_line(ctx, "Usage: /rss read <tag>");
+        return;
+    }
+
+    char working[SSH_CHATTER_RSS_TAG_LEN];
+    snprintf(working, sizeof(working), "%s", tag);
+    rss_trim_whitespace(working);
+    if (!rss_tag_is_valid(working)) {
+        session_send_system_line(
+            ctx, "Tags may only contain letters, numbers, '-', '_' or '.'.");
+        return;
+    }
+
+    rss_feed_t *feed_snapshot = (rss_feed_t *)sshc_gc_malloc(sizeof(rss_feed_t));
+    rss_session_item_t *items = (rss_session_item_t *)sshc_gc_malloc(
+        sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS);
+    size_t item_count = 0U;
+
+    if (feed_snapshot != nullptr && items != nullptr) {
+        memset(feed_snapshot, 0, sizeof(rss_feed_t));
+        memset(items, 0, sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS);
+
+        ttak_mutex_lock(&ctx->owner->lock);
+        rss_feed_t *entry = host_find_rss_feed_locked(ctx->owner, working);
+        if (entry != nullptr && entry->in_use) {
+            *feed_snapshot = *entry;
+            item_count = entry->stored_item_count;
+            if (item_count > SSH_CHATTER_RSS_MAX_ITEMS) {
+                item_count = SSH_CHATTER_RSS_MAX_ITEMS;
+            }
+            if (item_count > 0U) {
+                memcpy(items, entry->stored_items,
+                       item_count * sizeof(rss_session_item_t));
+            }
+        }
+        ttak_mutex_unlock(&ctx->owner->lock);
+    }
+
+    if (feed_snapshot == nullptr || feed_snapshot->tag[0] == '\0') {
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message), "No RSS feed found for tag '%s'.",
+                 working);
+        session_send_system_line(ctx, message);
+        if (feed_snapshot != nullptr) {
+            sshc_gc_free(feed_snapshot);
+        }
+        if (items != nullptr) {
+            sshc_gc_free(items);
+        }
+        return;
+    }
+
+    if (item_count == 0U) {
+        session_send_system_line(
+            ctx,
+            "The feed does not contain any entries for the current window yet.");
+        sshc_gc_free(feed_snapshot);
+        sshc_gc_free(items);
+        return;
+    }
+
+    session_rss_begin(ctx, feed_snapshot->tag, items, item_count);
+    sshc_gc_free(feed_snapshot);
+    sshc_gc_free(items);
+}
+
+static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    static const char *kUsage =
+        "Usage: /rss <add <url> <tag>|del <tag>|rename <old> <new>|read <tag>|list>";
+
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, "/rss", kUsage, usage, sizeof(usage));
+
+    char working[SSH_CHATTER_MAX_INPUT_LEN];
+    if (arguments == nullptr) {
+        working[0] = '\0';
+    } else {
+        snprintf(working, sizeof(working), "%s", arguments);
+    }
+    rss_trim_whitespace(working);
+
+    if (working[0] == '\0') {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    char *saveptr = nullptr;
+    char *command = strtok_r(working, " \t", &saveptr);
+    if (command == nullptr) {
+        session_send_system_line(ctx, usage);
+        return;
+    }
+
+    if (strcasecmp(command, "list") == 0) {
+        session_rss_list(ctx);
+        return;
+    }
+
+    if (strcasecmp(command, "add") == 0 || strcasecmp(command, "추가") == 0) {
+        if (!ctx->user.is_operator) {
+            session_send_system_line(ctx, "Only operators may add RSS feeds.");
+            return;
+        }
+
+        char *arg1 = strtok_r(nullptr, " \t", &saveptr);
+        char *arg2 = strtok_r(nullptr, " \t", &saveptr);
+        if (arg1 == nullptr || arg2 == nullptr) {
+            session_send_system_line(ctx, "Usage: /rss add <url> <tag>");
+            return;
+        }
+
+        rss_trim_whitespace(arg1);
+        rss_trim_whitespace(arg2);
+        if (arg1[0] == '\0' || arg2[0] == '\0') {
+            session_send_system_line(ctx, "Usage: /rss add <url> <tag>");
+            return;
+        }
+
+        char *url = arg1;
+        char *tag = arg2;
+
+        // Auto-correction: if arg2 looks like a URL and arg1 does not, swap them.
+        bool arg1_is_url = (strncasecmp(arg1, "http://", 7) == 0 ||
+                            strncasecmp(arg1, "https://", 8) == 0);
+        bool arg2_is_url = (strncasecmp(arg2, "http://", 7) == 0 ||
+                            strncasecmp(arg2, "https://", 8) == 0);
+
+        if (arg2_is_url && !arg1_is_url) {
+            url = arg2;
+            tag = arg1;
+        }
+
+        char error[128];
+        if (host_rss_add_feed(ctx->owner, url, tag, error, sizeof(error))) {
+            char message[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(message, sizeof(message),
+                     "RSS feed '%s' registered as '%s'.", url, tag);
+            session_send_system_line(ctx, message);
+            host_rss_start_backend(ctx->owner);
+        } else {
+            if (error[0] == '\0') {
+                snprintf(error, sizeof(error), "Failed to add RSS feed.");
+            }
+            session_send_system_line(ctx, error);
+        }
+        return;
+    }
+
+    if (strcasecmp(command, "del") == 0 || strcasecmp(command, "삭제") == 0) {
+        if (!ctx->user.is_operator) {
+            session_send_system_line(ctx,
+                                     "Only operators may delete RSS feeds.");
+            return;
+        }
+
+        char *tag = strtok_r(nullptr, " \t", &saveptr);
+        if (tag == nullptr) {
+            session_send_system_line(ctx, "Usage: /rss del <tag>");
+            return;
+        }
+
+        rss_trim_whitespace(tag);
+        if (tag[0] == '\0') {
+            session_send_system_line(ctx, "Usage: /rss del <tag>");
+            return;
+        }
+
+        char error[128];
+        if (host_rss_remove_feed(ctx->owner, tag, error, sizeof(error))) {
+            char message[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(message, sizeof(message), "RSS feed '%s' deleted.", tag);
+            session_send_system_line(ctx, message);
+        } else {
+            if (error[0] == '\0') {
+                snprintf(error, sizeof(error), "Failed to delete RSS feed.");
+            }
+            session_send_system_line(ctx, error);
+        }
+        return;
+    }
+
+    if (strcasecmp(command, "rename") == 0 || strcasecmp(command, "이름변경") == 0) {
+        if (!ctx->user.is_operator) {
+            session_send_system_line(ctx,
+                                     "Only operators may rename RSS feeds.");
+            return;
+        }
+
+        char *old_tag = strtok_r(nullptr, " \t", &saveptr);
+        char *new_tag = strtok_r(nullptr, " \t", &saveptr);
+        if (old_tag == nullptr || new_tag == nullptr) {
+            session_send_system_line(ctx,
+                                     "Usage: /rss rename <old_name> <new_name>");
+            return;
+        }
+
+        rss_trim_whitespace(old_tag);
+        rss_trim_whitespace(new_tag);
+        if (old_tag[0] == '\0' || new_tag[0] == '\0') {
+            session_send_system_line(ctx,
+                                     "Usage: /rss rename <old_name> <new_name>");
+            return;
+        }
+
+        char error[128];
+        if (host_rss_rename_feed(ctx->owner, old_tag, new_tag, error,
+                                 sizeof(error))) {
+            char message[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(message, sizeof(message),
+                     "RSS feed '%s' renamed to '%s'.", old_tag, new_tag);
+            session_send_system_line(ctx, message);
+        } else {
+            if (error[0] == '\0') {
+                snprintf(error, sizeof(error), "Failed to rename RSS feed.");
+            }
+            session_send_system_line(ctx, error);
+        }
+        return;
+    }
+
+    if (strcasecmp(command, "read") == 0) {
+        char *tag = strtok_r(nullptr, " \t", &saveptr);
+        if (tag == nullptr) {
+            session_send_system_line(ctx, "Usage: /rss read <tag>");
+            return;
+        }
+        session_rss_read(ctx, tag);
+        return;
+    }
+
+    session_send_system_line(ctx, usage);
+}
+
+static void session_handle_morse(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    static const char *kUsage = "Usage: /morse <on <filter>|off|status>";
+
+    char working[SSH_CHATTER_MAX_INPUT_LEN];
+    if (arguments == nullptr) {
+        working[0] = '\0';
+    } else {
+        snprintf(working, sizeof(working), "%s", arguments);
+        trim_whitespace_inplace(working);
+    }
+
+    char *command = strtok(working, " \t");
+    if (command == nullptr || strcasecmp(command, "status") == 0) {
+        char status[SSH_CHATTER_MESSAGE_LIMIT];
+        if (ctx->morse_feed_enabled) {
+            snprintf(status, sizeof(status),
+                     "Morse feed is ON. Filter: '%s'. /morse off to mute.",
+                     ctx->morse_filter);
+        } else {
+            snprintf(status, sizeof(status),
+                     "Morse feed is OFF. /morse on <filter> to resume.");
+        }
+        session_send_system_line(ctx, status);
+        return;
+    }
+
+    if (strcasecmp(command, "on") == 0) {
+        char *filter = strtok(NULL, "");
+        if (filter == NULL || filter[0] == '\0') {
+            session_send_system_line(ctx, kUsage);
+            return;
+        }
+        trim_whitespace_inplace(filter);
+        if (strlen(filter) >= sizeof(ctx->morse_filter)) {
+            session_send_system_line(ctx, "Filter is too long.");
+            return;
+        }
+        strncpy(ctx->morse_filter, filter, sizeof(ctx->morse_filter) - 1);
+        ctx->morse_filter[sizeof(ctx->morse_filter) - 1] = '\0';
+        ctx->morse_feed_enabled = true;
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message),
+                 "Morse relay enabled with filter '%s'. Use /morse off to silence.",
+                 ctx->morse_filter);
+        session_send_system_line(ctx, message);
+        return;
+    }
+
+    if (strcasecmp(command, "off") == 0) {
+        ctx->morse_feed_enabled = false;
+        ctx->morse_filter[0] = '\0';
+        session_send_system_line(ctx,
+                                 "Morse relay disabled for this session.");
+        return;
+    }
+
+    session_send_system_line(ctx, kUsage);
+}
+
+static void session_handle_morse_chat(session_ctx_t *ctx,
+                                      const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    static const char *kUsage = "Usage: /morse-chat <text>";
+
+    if (arguments == nullptr || arguments[0] == '\0') {
+        session_send_system_line(ctx, kUsage);
+        return;
+    }
+
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(working, sizeof(working), "%s", arguments);
+    trim_whitespace_inplace(working);
+
+    if (working[0] == '\0') {
+        session_send_system_line(ctx, kUsage);
+        return;
+    }
+
+    morse_client_t *client = ctx->owner->morse_client;
+    if (client == nullptr || !morse_client_connected(client)) {
+        session_send_system_line(ctx,
+                                 "Morse relay is not connected. Please try "
+                                 "again shortly.");
+        return;
+    }
+
+    if (!morse_client_send(client, working)) {
+        session_send_system_line(ctx, "Unable to send Morse chat right now.");
+        return;
+    }
+
+    session_send_system_line(ctx, "[MORSE] message transmitted.");
+}
+
+static bool host_asciiart_cooldown_active(host_t *host, const char *ip,
+                                          const struct timespec *now,
+                                          long *remaining_seconds)
+{
+    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
+        if (remaining_seconds != nullptr) {
+            *remaining_seconds = 0L;
+        }
+        return false;
+    }
+
+    struct timespec current = {0, 0};
+    if (now != nullptr) {
+        current = *now;
+    } else if (clock_gettime(CLOCK_MONOTONIC, &current) != 0) {
+        current.tv_sec = time(nullptr);
+        current.tv_nsec = 0L;
+    }
+
+    bool active = false;
+    long remaining = 0L;
+
+    ttak_mutex_lock(&host->lock);
+    join_activity_entry_t *entry = host_find_join_activity_locked(host, ip);
+    if (entry != nullptr && entry->asciiart_has_cooldown) {
+        struct timespec expiry = entry->last_asciiart_post;
+        expiry.tv_sec += SSH_CHATTER_ASCIIART_COOLDOWN_SECONDS;
+        if (timespec_compare(&current, &expiry) >= 0) {
+            entry->asciiart_has_cooldown = false;
+        } else {
+            active = true;
+            struct timespec diff = timespec_diff(&expiry, &current);
+            remaining = diff.tv_sec;
+            if (diff.tv_nsec > 0L) {
+                ++remaining;
+            }
+            if (remaining < 0L) {
+                remaining = 0L;
+            }
+        }
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (remaining_seconds != nullptr) {
+        *remaining_seconds = active ? remaining : 0L;
+    }
+
+    return active;
+}
+
+static void host_asciiart_register_post(host_t *host, const char *ip,
+                                        const struct timespec *when)
+{
+    if (host == nullptr || ip == nullptr || ip[0] == '\0' || when == nullptr) {
+        return;
+    }
+
+    ttak_mutex_lock(&host->lock);
+    join_activity_entry_t *entry = host_ensure_join_activity_locked(host, ip);
+    if (entry != nullptr) {
+        entry->last_asciiart_post = *when;
+        entry->asciiart_has_cooldown = true;
+    }
+    ttak_mutex_unlock(&host->lock);
+}
+
+static void session_asciiart_reset(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    ctx->asciiart_pending = false;
+    ctx->asciiart_target = SESSION_ASCIIART_TARGET_NONE;
+    if (ctx->asciiart_buffer != nullptr) {
+        ctx->asciiart_buffer[0] = '\0';
+    }
+    ctx->asciiart_length = 0U;
+    ctx->asciiart_line_count = 0U;
+}
+
+static bool session_asciiart_cooldown_active(session_ctx_t *ctx,
+                                             struct timespec *now,
+                                             long *remaining_seconds)
+{
+    if (ctx == nullptr) {
+        return false;
+    }
+
+    struct timespec current;
+    if (clock_gettime(CLOCK_MONOTONIC, &current) != 0) {
+        current.tv_sec = time(nullptr);
+        current.tv_nsec = 0L;
+    }
+
+    if (now != nullptr) {
+        *now = current;
+    }
+
+    long session_remaining = 0L;
+    bool session_active = false;
+    if (ctx->asciiart_has_cooldown) {
+        struct timespec expiry = ctx->last_asciiart_post;
+        expiry.tv_sec += SSH_CHATTER_ASCIIART_COOLDOWN_SECONDS;
+        if (timespec_compare(&current, &expiry) >= 0) {
+            ctx->asciiart_has_cooldown = false;
+        } else {
+            session_active = true;
+            struct timespec diff = timespec_diff(&expiry, &current);
+            session_remaining = diff.tv_sec;
+            if (diff.tv_nsec > 0L) {
+                ++session_remaining;
+            }
+            if (session_remaining < 0L) {
+                session_remaining = 0L;
+            }
+        }
+    }
+
+    long ip_remaining = 0L;
+    bool ip_active = host_asciiart_cooldown_active(ctx->owner, ctx->client_ip,
+                                                   &current, &ip_remaining);
+
+    if (!session_active && !ip_active) {
+        if (remaining_seconds != nullptr) {
+            *remaining_seconds = 0L;
+        }
+        return false;
+    }
+
+    long max_remaining = session_active ? session_remaining : 0L;
+    if (ip_active && ip_remaining > max_remaining) {
+        max_remaining = ip_remaining;
+    }
+
+    if (remaining_seconds != nullptr) {
+        *remaining_seconds = max_remaining;
+    }
+
+    return true;
+}
+
+static void session_asciiart_begin(session_ctx_t *ctx,
+                                   session_asciiart_target_t target)
+{
+    if (ctx == nullptr || target == SESSION_ASCIIART_TARGET_NONE) {
+        return;
+    }
+
+    if (ctx->bbs_post_pending) {
+        if (ctx->editor_mode == SESSION_EDITOR_MODE_ASCIIART) {
+            const char *terminator = session_editor_terminator(ctx);
+            char notice[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(notice, sizeof(notice),
+                     "You are already composing ASCII art. Finish it with %s.",
+                     terminator);
+            session_send_system_line(ctx, notice);
+        } else {
+            session_send_system_line(
+                ctx, "Finish your BBS draft before starting ASCII art.");
+        }
+        return;
+    }
+
+    if (ctx->asciiart_pending) {
+        const char *terminator = session_asciiart_terminator(ctx);
+        char notice[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(notice, sizeof(notice),
+                 "You are already composing ASCII art. Finish it with %s.",
+                 terminator);
+        session_send_system_line(ctx, notice);
+        return;
+    }
+
+    if (target == SESSION_ASCIIART_TARGET_CHAT) {
+        struct timespec now;
+        long remaining = 0L;
+        if (session_asciiart_cooldown_active(ctx, &now, &remaining)) {
+            if (remaining < 1L) {
+                remaining = 1L;
+            }
+            char message[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(message, sizeof(message),
+                     "You can share another ASCII art in %ld second%s.",
+                     remaining, remaining == 1L ? "" : "s");
+            session_send_system_line(ctx, message);
+            return;
+        }
+    }
+
+    session_asciiart_reset(ctx);
+    ctx->asciiart_pending = true;
+    ctx->asciiart_target = target;
+
+    session_bbs_reset_pending_post(ctx);
+    if (!session_asciiart_buffer_acquire(ctx) ||
+        !session_bbs_workspace_acquire(ctx)) {
+        session_send_system_line(
+            ctx, "ASCII art editor is unavailable right now.");
+        session_asciiart_reset(ctx);
+        return;
+    }
+    ctx->editor_mode = SESSION_EDITOR_MODE_ASCIIART;
+    ctx->bbs_post_pending = true;
+
+    size_t ascii_bytes = (size_t)SSH_CHATTER_ASCIIART_BUFFER_LEN;
+    char status[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(status, sizeof(status),
+             "ASCII art composer ready (max %u lines, up to %zu bytes, "
+             "10-minute cooldown per IP).",
+             SSH_CHATTER_ASCIIART_MAX_LINES, ascii_bytes);
+
+    session_bbs_render_editor(ctx, status);
+}
+
+static void session_asciiart_import_from_editor(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (!session_bbs_workspace_acquire(ctx) ||
+        !session_asciiart_buffer_acquire(ctx)) {
+        session_send_system_line(
+            ctx, "ASCII art workspace is unavailable right now.");
+        return;
+    }
+
+    session_bbs_recalculate_line_count(ctx);
+
+    size_t copy_len = ctx->pending_bbs_body_length;
+    if (copy_len >= SSH_CHATTER_ASCIIART_BUFFER_LEN) {
+        copy_len = SSH_CHATTER_ASCIIART_BUFFER_LEN - 1U;
+    }
+
+    if (copy_len > 0U) {
+        memcpy(ctx->asciiart_buffer, ctx->pending_bbs_body, copy_len);
+    }
+    ctx->asciiart_buffer[copy_len] = '\0';
+    ctx->asciiart_length = copy_len;
+    ctx->asciiart_line_count = ctx->pending_bbs_line_count;
+    if (ctx->asciiart_line_count > SSH_CHATTER_ASCIIART_MAX_LINES) {
+        ctx->asciiart_line_count = SSH_CHATTER_ASCIIART_MAX_LINES;
+    }
+}
+
+static void session_asciiart_commit(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || !ctx->asciiart_pending) {
+        return;
+    }
+
+    if (!session_asciiart_buffer_acquire(ctx)) {
+        session_asciiart_reset(ctx);
+        return;
+    }
+
+    if (ctx->asciiart_length == 0U) {
+        session_asciiart_cancel(ctx, "ASCII art draft discarded.");
+        return;
+    }
+
+    if (ctx->owner == nullptr) {
+        session_asciiart_reset(ctx);
+        return;
+    }
+
+    if (session_security_check_text(ctx, "ASCII art", ctx->asciiart_buffer,
+                                    ctx->asciiart_length,
+                                    false) != HOST_SECURITY_SCAN_CLEAN) {
+        session_asciiart_reset(ctx);
+        return;
+    }
+
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        now.tv_sec = time(nullptr);
+        now.tv_nsec = 0L;
+    }
+
+    ctx->last_asciiart_post = now;
+    ctx->asciiart_has_cooldown = true;
+    host_asciiart_register_post(ctx->owner, ctx->client_ip, &now);
+
+    chat_history_entry_t entry = {0};
+    if (!host_history_record_user(ctx->owner, ctx, ctx->asciiart_buffer, true,
+                                  &entry)) {
+        session_asciiart_reset(ctx);
+        return;
+    }
+
+    session_send_history_entry(ctx, &entry);
+    chat_room_broadcast_entry(&ctx->owner->room, &entry, ctx);
+    host_notify_external_clients(ctx->owner, &entry);
+
+    ctx->last_message_time = now;
+    ctx->has_last_message_time = true;
+
+    session_asciiart_reset(ctx);
+}
+
+static void session_asciiart_cancel(session_ctx_t *ctx, const char *reason)
+{
+    if (ctx == nullptr || !ctx->asciiart_pending) {
+        return;
+    }
+
+    const bool used_editor = ctx->editor_mode == SESSION_EDITOR_MODE_ASCIIART;
+    session_asciiart_reset(ctx);
+    if (used_editor) {
+        session_bbs_reset_pending_post(ctx);
+    }
+    if (reason != nullptr && reason[0] != '\0') {
+        session_send_system_line(ctx, reason);
+    }
+}
+
+static bool session_asciiart_capture_continue(const session_ctx_t *ctx)
+{
+    return ctx != nullptr && ctx->asciiart_pending;
+}
+
+static bool session_bbs_capture_continue(const session_ctx_t *ctx)
+{
+    return ctx != nullptr && ctx->bbs_post_pending;
+}
+
+static void session_capture_multiline_text(
+    session_ctx_t *ctx, const char *text, session_text_line_consumer_t consumer,
+    session_text_continue_predicate_t should_continue)
+{
+    if (ctx == nullptr || text == nullptr || consumer == nullptr ||
+        should_continue == nullptr) {
+        return;
+    }
+
+    char line[SSH_CHATTER_MAX_INPUT_LEN];
+    size_t line_length = 0U;
+    bool emitted = false;
+
+    const char *cursor = text;
+    while (*cursor != '\0') {
+        char ch = *cursor++;
+        if (ch == '\r') {
+            if (*cursor == '\n') {
+                ++cursor;
+            }
+            line[line_length] = '\0';
+            consumer(ctx, line);
+            emitted = true;
+            line_length = 0U;
+            if (!should_continue(ctx)) {
+                return;
+            }
+            continue;
+        }
+
+        if (ch == '\n') {
+            line[line_length] = '\0';
+            consumer(ctx, line);
+            emitted = true;
+            line_length = 0U;
+            if (!should_continue(ctx)) {
+                return;
+            }
+            continue;
+        }
+
+        if (line_length + 1U < sizeof(line)) {
+            line[line_length++] = ch;
+        }
+    }
+
+    if (line_length > 0U || !emitted) {
+        line[line_length] = '\0';
+        consumer(ctx, line);
+    }
+}
+
+static void session_asciiart_capture_text(session_ctx_t *ctx, const char *text)
+{
+    if (ctx == nullptr || !ctx->asciiart_pending || text == nullptr) {
+        return;
+    }
+
+    session_capture_multiline_text(ctx, text, session_asciiart_capture_line,
+                                   session_asciiart_capture_continue);
+}
+
+static void session_asciiart_capture_line(session_ctx_t *ctx, const char *line)
+{
+    if (ctx == nullptr || !ctx->asciiart_pending) {
+        return;
+    }
+
+    if (!session_asciiart_buffer_acquire(ctx)) {
+        session_send_system_line(ctx, "ASCII art buffer unavailable.");
+        return;
+    }
+
+    char trimmed[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(trimmed, sizeof(trimmed), "%s", line != nullptr ? line : "");
+    trim_whitespace_inplace(trimmed);
+    if (session_asciiart_matches_terminator(trimmed)) {
+        session_asciiart_commit(ctx);
+        return;
+    }
+
+    if (ctx->asciiart_line_count >= SSH_CHATTER_ASCIIART_MAX_LINES) {
+        session_send_system_line(
+            ctx, "ASCII art line limit reached. Use the terminator to finish.");
+        return;
+    }
+
+    if (line == nullptr) {
+        line = "";
+    }
+
+    const char *full_message =
+        "ASCII art buffer is full. Additional text ignored.";
+    const char *truncate_message =
+        "Line truncated to fit within the ASCII art size limit.";
+
+    size_t buffer_capacity = SSH_CHATTER_ASCIIART_BUFFER_LEN;
+
+    if (ctx->asciiart_length >= buffer_capacity - 1U) {
+        session_send_system_line(ctx, full_message);
+        return;
+    }
+
+    size_t available = buffer_capacity - ctx->asciiart_length - 1U;
+    const size_t newline_cost = ctx->asciiart_length > 0U ? 1U : 0U;
+    if (available < newline_cost) {
+        session_send_system_line(ctx, full_message);
+        return;
+    }
+
+    size_t line_length = strlen(line);
+    size_t max_line_length =
+        (available > newline_cost) ? (available - newline_cost) : 0U;
+    if (line_length > max_line_length) {
+        line_length = max_line_length;
+        session_send_system_line(ctx, truncate_message);
+    }
+
+    if (ctx->asciiart_length > 0U) {
+        ctx->asciiart_buffer[ctx->asciiart_length++] = '\n';
+    }
+
+    if (line_length > 0U) {
+        memcpy(ctx->asciiart_buffer + ctx->asciiart_length, line, line_length);
+        ctx->asciiart_length += line_length;
+    }
+
+    ctx->asciiart_buffer[ctx->asciiart_length] = '\0';
+    ctx->asciiart_line_count += 1U;
+}
+
+//

@@ -16,3 +16,4 @@ leak_test_run/
 build/
 stress-test
 display-model-test
+*.deb

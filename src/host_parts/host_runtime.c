@@ -4457,7 +4457,17 @@ static void session_epoch_free(void *ptr)
     }
 
     if (ctx->output_lock_initialized) {
-        ttak_mutex_destroy(&ctx->output_lock);
+        /*
+         * Do not destroy output_lock here.
+         *
+         * Broadcast paths take room-member snapshots and may still attempt to
+         * lock this mutex briefly after a session begins teardown. Destroying
+         * the mutex in that window can trigger glibc aborts in
+         * __pthread_mutex_lock_full (lock-after-destroy UB).
+         *
+         * The mutex storage is embedded in session_ctx_t, so skipping destroy
+         * does not leak heap memory.
+         */
         ctx->output_lock_initialized = false;
     }
 

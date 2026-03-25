@@ -1,0 +1,44 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct {
+    char user[32];
+    char text[256];
+} chat_event_t;
+
+static int parse_line(const char *line, chat_event_t *event)
+{
+    if (line == NULL || event == NULL) {
+        return -1;
+    }
+
+    const char *sep = strchr(line, ':');
+    if (sep == NULL) {
+        return -1;
+    }
+
+    size_t user_len = (size_t)(sep - line);
+    if (user_len >= sizeof(event->user)) {
+        user_len = sizeof(event->user) - 1;
+    }
+
+    memcpy(event->user, line, user_len);
+    event->user[user_len] = '\0';
+    snprintf(event->text, sizeof(event->text), "%s", sep + 1);
+    return 0;
+}
+
+int main(void)
+{
+    char line[320];
+    chat_event_t event;
+
+    while (fgets(line, sizeof(line), stdin) != NULL) {
+        if (parse_line(line, &event) == 0) {
+            printf("[%s] %s", event.user, event.text);
+        }
+    }
+
+    return 0;
+}

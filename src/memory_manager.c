@@ -80,6 +80,7 @@ struct sshc_memory_context {
 
 static pthread_mutex_t sshc_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool sshc_runtime_initialised = false;
+static pthread_once_t sshc_alloc_limit_once = PTHREAD_ONCE_INIT;
 static sshc_memory_context_t sshc_global_context;
 static sshc_memory_context_t *sshc_contexts = nullptr;
 static sshc_memory_allocation_t *sshc_allocations = nullptr;
@@ -87,6 +88,37 @@ static sshc_memory_allocation_t *sshc_allocations = nullptr;
 static ttak_map_t *sshc_alloc_map = nullptr;
 static __thread sshc_memory_context_t *sshc_tls_context = nullptr;
 static __thread bool sshc_tls_defer_gc_registration = false;
+static size_t sshc_max_single_allocation_bytes = 16U * 1024U * 1024U;
+
+static void sshc_memory_load_alloc_limit_from_env(void)
+{
+    const char *raw = getenv("CHATTER_MAX_ALLOC_BYTES");
+    if (raw == nullptr || raw[0] == '\0') {
+        return;
+    }
+
+    errno = 0;
+    char *end_ptr = nullptr;
+    unsigned long long parsed = strtoull(raw, &end_ptr, 10);
+    if (errno != 0 || end_ptr == raw || (end_ptr != nullptr && *end_ptr != '\0')) {
+        return;
+    }
+    if (parsed == 0U || parsed > (unsigned long long)SIZE_MAX) {
+        return;
+    }
+
+    sshc_max_single_allocation_bytes = (size_t)parsed;
+}
+
+static bool sshc_memory_validate_single_allocation(size_t size)
+{
+    pthread_once(&sshc_alloc_limit_once, sshc_memory_load_alloc_limit_from_env);
+    if (size > sshc_max_single_allocation_bytes) {
+        errno = ENOMEM;
+        return false;
+    }
+    return true;
+}
 
 static bool sshc_env_truthy(const char *value)
 {
@@ -425,6 +457,9 @@ void *sshc_gc_malloc(size_t size)
 {
     sshc_memory_context_t *ctx = sshc_memory_context_current();
     if (size == 0U) size = 1U;
+    if (!sshc_memory_validate_single_allocation(size)) {
+        return nullptr;
+    }
 
     /* ttak_fastalloc: allocates + registers in the per-context epoch GC tree
      * in a single call, replacing the former two-step ttak_mem_alloc +
@@ -463,6 +498,9 @@ void *sshc_gc_realloc(void *ptr, size_t size)
     if (ptr == nullptr) return sshc_gc_malloc(size);
     if (size == 0U) {
         sshc_gc_free(ptr);
+        return nullptr;
+    }
+    if (!sshc_memory_validate_single_allocation(size)) {
         return nullptr;
     }
 
@@ -574,7 +612,11 @@ void *sshc_gc_calloc(size_t count, size_t size)
     /* ttak_mem_alloc (used by ttak_fastalloc) returns zeroed memory; no
      * explicit memset needed.  Use sshc_gc_malloc which calls ttak_fastalloc
      * internally. */
-    return sshc_gc_malloc(count * size);
+    size_t total = count * size;
+    if (!sshc_memory_validate_single_allocation(total)) {
+        return nullptr;
+    }
+    return sshc_gc_malloc(total);
 }
 
 void sshc_gc_free(void *ptr)
@@ -736,6 +778,13 @@ ttak_detachable_context_t *sshc_memory_context_get_detachable(
 
 ttak_detachable_allocation_t sshc_detachable_alloc(size_t size)
 {
+    ttak_detachable_allocation_t empty = {0};
+    if (size == 0U) {
+        size = 1U;
+    }
+    if (!sshc_memory_validate_single_allocation(size)) {
+        return empty;
+    }
     sshc_memory_context_t *ctx = sshc_memory_context_current();
     uint64_t epoch_hint = ctx->epoch_gc.current_epoch;
     return ttak_detachable_mem_alloc(&ctx->detachable, size, epoch_hint);

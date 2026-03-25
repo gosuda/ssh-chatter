@@ -1,0 +1,23 @@
+use std::collections::VecDeque;
+
+#[derive(Debug)]
+struct Job {
+    room: String,
+    text: String,
+}
+
+fn main() {
+    let mut queue = VecDeque::new();
+    queue.push_back(Job {
+        room: "#dev".to_string(),
+        text: "compile finished".to_string(),
+    });
+    queue.push_back(Job {
+        room: "#dev".to_string(),
+        text: "all checks green".to_string(),
+    });
+
+    while let Some(job) = queue.pop_front() {
+        println!("[{}] {}", job.room, job.text);
+    }
+}

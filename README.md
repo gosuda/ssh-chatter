@@ -282,11 +282,19 @@ Supported environment variables include:
 - `CHATTER_SECURITY_FILTER` – Set to `off`/`false`/`0` to disable the layered security filter (enabled by default).
 - `CHATTER_SECURITY_AI` – Set to `on`/`true`/`1` to enable AI moderation (disabled by default).
 - `CHATTER_FILE_STORAGE_ROOT` – Override the managed file storage path (default `/etc/ssh-chatter/user-files`).
+- `CHATTER_MAX_ALLOC_BYTES` – Upper bound for a single contiguous allocation attempt in the internal memory manager (default `16777216`, i.e. 16 MiB). Requests above this limit fail with `ENOMEM` instead of risking abrupt process termination under memory pressure.
 
 **Camouflage Code Snippets:**
-For the Tetris camouflage feature, you need to manually create code snippet files in `/var/lib/ssh-chatter/`.
-Create files named `c.txt`, `cpp.txt`, `java.txt`, `go.txt`, `js.txt`, `ts.txt`, and `rust.txt` in this directory.
-Each file should contain the code you wish to display when the camouflage screen is active.
+For the Tetris camouflage feature, the runtime expects code snippet files in `/var/lib/ssh-chatter/`.
+This repository now includes ready-to-use examples under `./camouflage/` (`c.txt`, `cpp.txt`, `java.txt`, `go.txt`, `js.txt`, `ts.txt`, `rust.txt`).
+Copy them to the runtime directory once during setup:
+
+```bash
+sudo install -d /var/lib/ssh-chatter
+sudo cp camouflage/*.txt /var/lib/ssh-chatter/
+```
+
+You can edit any copied file to customize what appears when the camouflage screen is active.
 
 Translation support now relies on the Google Gemini API.  Set the following in `chatter.env` (or the environment) to enable it:
 

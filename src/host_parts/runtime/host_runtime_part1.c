@@ -690,6 +690,8 @@ static session_ctx_t *session_create(void)
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
         ctx->morse_feed_enabled = false;
         ctx->exit_notice_sent = false;
+        atomic_init(&ctx->room_snapshot_retired, false);
+        atomic_init(&ctx->room_snapshot_refs, 0U);
         ctx->has_last_output_line = false;
         ctx->disable_output_dedup = false;
         ctx->lifetime_units = SESSION_LIFETIME_INITIAL_UNITS;

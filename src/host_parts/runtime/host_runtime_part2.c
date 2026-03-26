@@ -1714,16 +1714,15 @@ static void *session_thread(void *arg)
         }
         host_history_record_system(ctx->owner, part_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
+        atomic_store(&ctx->room_snapshot_retired, true);
         chat_room_remove(&ctx->owner->room, ctx);
         session_manual_gc_tick(ctx);
         host_manual_gc_tick(ctx->owner);
 
-        /* Allow in-flight broadcasts that already captured this session in
-         * their snapshot to finish writing before we destroy the channel
-         * and mutexes.  Without this pause, a concurrent broadcast thread
-         * could dereference the freed channel or a destroyed mutex. */
-        struct timespec drain_delay = {.tv_sec = 0, .tv_nsec = 50000000L};
-        nanosleep(&drain_delay, nullptr);
+        while (atomic_load(&ctx->room_snapshot_refs) > 0U) {
+            struct timespec drain_delay = {.tv_sec = 0, .tv_nsec = 1000000L};
+            nanosleep(&drain_delay, nullptr);
+        }
     }
 
     session_destroy(ctx);

@@ -1474,11 +1474,6 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    ttak_mutex_lock(&ctx->nickname_reserve_lock);
-    strncpy(ctx->reserved_nicknames[ctx->reserved_nicknames_len],
-            ctx->user.name, SSH_CHATTER_USERNAME_LEN);
-    ctx->reserved_nicknames_len++;
-    ttak_mutex_unlock(&ctx->nickname_reserve_lock);
     security_layer_generate_salt(ctx->user_data.password_salt);
     security_layer_hash_password(arguments, ctx->user_data.password_salt,
                                  ctx->user_data.password_hash);

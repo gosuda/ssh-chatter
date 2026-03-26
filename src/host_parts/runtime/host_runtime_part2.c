@@ -1999,6 +1999,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->health_guard.consecutive_errors = 0U;
     host->health_guard.last_error_time.tv_sec = 0;
     host->health_guard.last_error_time.tv_nsec = 0L;
+    host->force_restart_requested = false;
     atomic_store(&host->captcha_enabled, false);
     host->captcha_nonce = 0U;
     host->has_last_captcha = false;
@@ -2006,17 +2007,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->last_captcha_answer[0] = '\0';
     host->last_captcha_generated.tv_sec = 0;
     host->last_captcha_generated.tv_nsec = 0L;
-    host->reserved_nicknames =
-        (char(*)[SSH_CHATTER_USERNAME_LEN])sshc_gc_calloc(
-            SSH_CHATTER_MAX_RESERVED_NAMES,
-            sizeof(host->reserved_nicknames[0]));
-    if (host->reserved_nicknames != nullptr) {
-        host->reserved_nicknames_capacity = SSH_CHATTER_MAX_RESERVED_NAMES;
-    } else {
-        host->reserved_nicknames_capacity = 0U;
-        humanized_log_error("host", "failed to allocate reserved nicknames",
-                            ENOMEM);
-    }
+    host->reserved_nicknames_capacity = 0U;
     if (ttak_mutex_init(&host->nickname_reserve_lock) != 0) {
         humanized_log_error("host", "failed to initialise nickname lock",
                             errno != 0 ? errno : ENOMEM);
@@ -3465,7 +3456,9 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         socket_t bind_fd = ssh_bind_get_fd(bind_handle);
         unsigned int idle_poll_cycles = 0U;
         struct timespec last_gc_run = {0};
+        struct timespec last_pressure_check = {0};
         clock_gettime(CLOCK_MONOTONIC, &last_gc_run);
+        last_pressure_check = last_gc_run;
         struct timespec last_idle_check = last_gc_run;
 
         bool restart_listener = false;
@@ -3484,7 +3477,10 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     poll(&pfd, 1, SSH_CHATTER_ACCEPT_POLL_TIMEOUT_MS);
                 if (poll_rc < 0) {
                     if (errno == EINTR) {
-                        host_gc_cycle(host, &last_gc_run);
+                        if (host_gc_cycle(host, &last_gc_run,
+                                          &last_pressure_check)) {
+                            break;
+                        }
                         continue;
                     }
                     // poll() failed on the bind socket -- treat as fatal
@@ -3495,7 +3491,11 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 }
                 if (poll_rc == 0) {
                     // Timeout: no incoming connection yet
-                    host_gc_cycle(host, &last_gc_run);
+                    if (host_gc_cycle(host, &last_gc_run,
+                                      &last_pressure_check)) {
+                        restart_listener = true;
+                        break;
+                    }
                     ++idle_poll_cycles;
                     if (idle_poll_cycles >=
                         SSH_CHATTER_ACCEPT_HEALTH_CHECK_POLLS) {
@@ -3525,7 +3525,10 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 idle_poll_cycles = 0U;
             }
 
-            host_gc_cycle(host, &last_gc_run);
+            if (host_gc_cycle(host, &last_gc_run, &last_pressure_check)) {
+                restart_listener = true;
+                break;
+            }
             host_idle_state_maintenance(host, &last_idle_check);
 
             ssh_session session = ssh_new();

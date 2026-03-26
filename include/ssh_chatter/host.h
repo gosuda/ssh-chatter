@@ -744,10 +744,6 @@ typedef struct session_ctx {
     bool translation_thread_started;
     bool translation_thread_stop;
     pthread_t translation_thread;
-    char reserved_nicknames[SSH_CHATTER_MAX_RESERVED_NAMES]
-                           [SSH_CHATTER_USERNAME_LEN];
-    size_t reserved_nicknames_len;
-    ttak_mutex_t nickname_reserve_lock;
     struct translation_job *translation_pending_head;
     struct translation_job *translation_pending_tail;
     struct translation_result *translation_ready_head;
@@ -1052,6 +1048,7 @@ typedef struct host {
         unsigned int consecutive_errors;
         struct timespec last_error_time;
     } health_guard;
+    bool force_restart_requested;
     _Atomic bool captcha_enabled;
     uint64_t captcha_nonce;
     bool has_last_captcha;

@@ -16,6 +16,10 @@
 #include <ttak/sync/sync.h>
 #include <ttak/atomic/atomic.h>
 
+#ifndef nullptr
+#define nullptr (void *)(NULL)
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

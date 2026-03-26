@@ -2,7 +2,7 @@
 ENABLE_GC ?= 0
 # LTO currently triggers a TLS type mismatch inside libttak when linking ssh-chatter.
 # Keep it opt-in so the default build remains stable.
-ENABLE_LTO ?= 0
+ENABLE_LTO ?= 1
 
 # The C compiler to use
 CC := gcc
@@ -82,7 +82,7 @@ COMMON_LDFLAGS = \
     -Wl,--no-undefined \
     -Wl,--warn-execstack -Wl,-z,noexecstack \
     -Wl,-z,separate-code \
-    -Wl,-z,stack-size=4194304 \
+    -Wl,-z,stack-size=524288 \
     -Wl,-z,combreloc \
     -Wl,--build-id=none
 

@@ -530,6 +530,7 @@ int main(int argc, char **argv)
             host_serve(host, bind_address, bind_port, host_key_dir,
                        telnet_bind_address, telnet_port, json_bind_address,
                        json_port);
+        const bool force_restart_requested = host->force_restart_requested;
 
         const int serve_errno = errno;
 
@@ -554,7 +555,7 @@ int main(int argc, char **argv)
 
         host = nullptr;
 
-        if (g_shutdown_flag) {
+        if (g_shutdown_flag && !force_restart_requested) {
             printf("[daemon] shutdown signal received, exiting gracefully\n");
             goto cleanup;
         }

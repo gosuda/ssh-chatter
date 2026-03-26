@@ -1128,6 +1128,14 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
                 if (member->no_update) {
                     continue;
                 }
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    continue;
+                }
+                atomic_fetch_add(&member->room_snapshot_refs, 1U);
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+                    continue;
+                }
                 targets[target_count++] = member;
             }
         }
@@ -1143,6 +1151,9 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
+        if (member == nullptr) {
+            continue;
+        }
 
         bool locked = session_output_lock(member);
 
@@ -1157,6 +1168,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
             if (locked) {
                 session_output_unlock(member);
             }
+            atomic_fetch_sub(&member->room_snapshot_refs, 1U);
             continue;
         }
 
@@ -1206,6 +1218,7 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         if (locked) {
             session_output_unlock(member);
         }
+        atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
 
     sshc_gc_free(targets);
@@ -1249,6 +1262,14 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
                 if (member->no_update) {
                     continue;
                 }
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    continue;
+                }
+                atomic_fetch_add(&member->room_snapshot_refs, 1U);
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+                    continue;
+                }
                 targets[target_count++] = member;
             }
         }
@@ -1263,6 +1284,9 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
 
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
+        if (member == nullptr) {
+            continue;
+        }
 
         // For telnet, or SSH sessions using the display model: trigger an
         // incremental history-scroll redraw so the conversation scrolls up
@@ -1271,6 +1295,7 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
             member->display_model_initialized) {
             session_flag_should_sink(member);
             session_channel_flush(member);
+            atomic_fetch_sub(&member->room_snapshot_refs, 1U);
             continue;
         }
 
@@ -1292,6 +1317,7 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
             member->output_lines_since_prompt = 0U;
             session_refresh_input_line(member);
         }
+        atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
 
     // printf("\033[1G[broadcast caption] %s\n", message);
@@ -1354,8 +1380,24 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                 }
                 if (member->no_update) {
                     if (sink_targets != nullptr) {
+                        if (atomic_load(&member->room_snapshot_retired)) {
+                            continue;
+                        }
+                        atomic_fetch_add(&member->room_snapshot_refs, 1U);
+                        if (atomic_load(&member->room_snapshot_retired)) {
+                            atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+                            continue;
+                        }
                         sink_targets[sink_count++] = member;
                     }
+                    continue;
+                }
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    continue;
+                }
+                atomic_fetch_add(&member->room_snapshot_refs, 1U);
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    atomic_fetch_sub(&member->room_snapshot_refs, 1U);
                     continue;
                 }
                 targets[target_count++] = member;
@@ -1366,7 +1408,11 @@ static void chat_room_broadcast_entry(chat_room_t *room,
 
     if (sink_targets != nullptr && sink_count > 0U) {
         for (size_t idx = 0; idx < sink_count; ++idx) {
-            session_flag_should_sink(sink_targets[idx]);
+            session_ctx_t *member = sink_targets[idx];
+            if (member != nullptr) {
+                session_flag_should_sink(member);
+                atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+            }
         }
     }
 
@@ -1380,6 +1426,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
+        if (member == nullptr) {
+            continue;
+        }
 
         // For telnet, or SSH sessions using the display model: trigger an
         // incremental history-scroll redraw so the conversation scrolls up
@@ -1389,6 +1438,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             member->display_model_initialized) {
             session_flag_should_sink(member);
             session_channel_flush(member);
+            atomic_fetch_sub(&member->room_snapshot_refs, 1U);
             continue;
         }
 
@@ -1450,6 +1500,7 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         }
 
         member->capture_realtime_output = previous_capture;
+        atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
 
     sshc_gc_free(targets);

@@ -663,6 +663,8 @@ typedef struct session_ctx {
     bool exit_notice_sent;
     bool username_conflict;
     bool has_joined_room;
+    atomic_bool room_snapshot_retired;
+    atomic_uint room_snapshot_refs;
     bool prelogin_banner_rendered;
     unsigned int channel_error_retries;
     size_t history_scroll_position;

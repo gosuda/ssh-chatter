@@ -47,7 +47,7 @@ static void morse_client_collect_targets(host_t *host, session_ctx_t ***out,
     *out = nullptr;
     *out_count = 0U;
 
-    pthread_mutex_lock(&host->room.lock);
+    ttak_mutex_lock(&host->room.lock);
     size_t expected = host->room.member_count;
     if (expected > 0U) {
         session_ctx_t **targets =
@@ -65,7 +65,7 @@ static void morse_client_collect_targets(host_t *host, session_ctx_t ***out,
             *out = targets;
         }
     }
-    pthread_mutex_unlock(&host->room.lock);
+    ttak_mutex_unlock(&host->room.lock);
 }
 
 static void morse_to_text(const char *morse, char *text, size_t text_len) {

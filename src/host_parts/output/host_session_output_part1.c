@@ -327,40 +327,6 @@ static size_t session_describe_visible_frame(
     return count;
 }
 
-static __attribute__((unused)) size_t
-session_describe_buffer_lines(const char *buffer,
-                              session_screen_line_t *described,
-                              size_t described_capacity)
-{
-    if (buffer == nullptr || described == nullptr || described_capacity == 0U) {
-        return 0U;
-    }
-
-    size_t count = 0U;
-    const char *cursor = buffer;
-    while (*cursor != '\0' && count < described_capacity) {
-        const char *line_start = cursor;
-        while (*cursor != '\0' && *cursor != '\n') {
-            ++cursor;
-        }
-
-        size_t line_length = (size_t)(cursor - line_start);
-        if (line_length > 0U && line_start[line_length - 1U] == '\r') {
-            --line_length;
-        }
-
-        described[count].text = line_start;
-        described[count].length = line_length;
-        ++count;
-
-        if (*cursor == '\n') {
-            ++cursor;
-        }
-    }
-
-    return count;
-}
-
 static bool session_screen_line_matches(const session_screen_line_t *lhs,
                                         const session_screen_line_t *rhs)
 {

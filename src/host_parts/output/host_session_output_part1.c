@@ -525,7 +525,19 @@ static bool session_render_incremental_lines(session_ctx_t *ctx,
         session_channel_write(ctx, kClearLine, sizeof(kClearLine) - 1U);
         session_fill_line_with_theme(ctx);
         if (new_present && new_lines[idx].length > 0U) {
-            session_channel_write(ctx, new_lines[idx].text, new_lines[idx].length);
+            char themed_line[SSH_CHATTER_MESSAGE_LIMIT * 4U];
+            char raw_line[SSH_CHATTER_MESSAGE_LIMIT];
+            size_t copy_len = new_lines[idx].length;
+            if (copy_len >= sizeof(raw_line)) {
+                copy_len = sizeof(raw_line) - 1U;
+            }
+            memcpy(raw_line, new_lines[idx].text, copy_len);
+            raw_line[copy_len] = '\0';
+            size_t themed_len = session_prepare_themed_output(
+                ctx, raw_line, themed_line, sizeof(themed_line));
+            if (themed_len > 0U) {
+                session_channel_write(ctx, themed_line, themed_len);
+            }
         }
     }
 

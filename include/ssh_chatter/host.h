@@ -503,6 +503,12 @@ typedef struct session_game_state {
     uint8_t tetris_prev_cells[SSH_CHATTER_TETRIS_HEIGHT]
                              [SSH_CHATTER_TETRIS_WIDTH];
     bool tetris_prev_cells_valid;
+    unsigned tetris_prev_score;
+    unsigned tetris_prev_lines_cleared;
+    unsigned tetris_prev_round;
+    int tetris_prev_next_piece;
+    bool tetris_prev_game_over;
+    bool tetris_prev_hud_valid;
 } session_game_state_t;
 
 typedef struct othello_multiplayer_slot {

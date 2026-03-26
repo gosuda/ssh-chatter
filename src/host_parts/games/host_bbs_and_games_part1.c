@@ -1058,8 +1058,6 @@ static const char *TETROMINO_COLOR_CODES[7] = {
     ANSI_YELLOW,       ANSI_BRIGHT_GREEN,  ANSI_BRIGHT_MAGENTA,
     ANSI_BRIGHT_RED};
 
-#define SSH_CHATTER_TETRIS_FRAME_TITLE_ROW 2U
-#define SSH_CHATTER_TETRIS_FRAME_TOP_BORDER_ROW 3U
 #define SSH_CHATTER_TETRIS_FRAME_BOARD_FIRST_ROW 4U
 #define SSH_CHATTER_TETRIS_FRAME_BOARD_FIRST_COL 2U
 #define SSH_CHATTER_TETRIS_FRAME_BOTTOM_BORDER_ROW \
@@ -1068,16 +1066,6 @@ static const char *TETROMINO_COLOR_CODES[7] = {
     (SSH_CHATTER_TETRIS_FRAME_BOTTOM_BORDER_ROW + 1U)
 #define SSH_CHATTER_TETRIS_FRAME_CONTROLS_ROW \
     (SSH_CHATTER_TETRIS_FRAME_BOTTOM_BORDER_ROW + 2U)
-
-static unsigned
-session_game_tetris_lines_remaining(const tetris_game_state_t *state)
-{
-    if (state == nullptr || state->round >= SSH_CHATTER_TETRIS_MAX_ROUNDS ||
-        state->next_round_line_goal <= state->lines_cleared) {
-        return 0U;
-    }
-    return state->next_round_line_goal - state->lines_cleared;
-}
 
 static void session_game_tetris_snapshot_hud(session_ctx_t *ctx,
                                              const tetris_game_state_t *state)

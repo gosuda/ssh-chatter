@@ -327,9 +327,10 @@ static size_t session_describe_visible_frame(
     return count;
 }
 
-static size_t session_describe_buffer_lines(const char *buffer,
-                                            session_screen_line_t *described,
-                                            size_t described_capacity)
+static __attribute__((unused)) size_t
+session_describe_buffer_lines(const char *buffer,
+                              session_screen_line_t *described,
+                              size_t described_capacity)
 {
     if (buffer == nullptr || described == nullptr || described_capacity == 0U) {
         return 0U;

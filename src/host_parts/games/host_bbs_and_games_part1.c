@@ -1096,28 +1096,6 @@ static bool session_game_tetris_hud_changed(session_ctx_t *ctx,
            ctx->game.tetris_prev_game_over != state->game_over;
 }
 
-static void session_game_tetris_build_cell_render(uint8_t cell, char *out,
-                                                  size_t out_size)
-{
-    if (out == nullptr || out_size == 0U) {
-        return;
-    }
-
-    out[0] = '\0';
-    if (cell == 0U) {
-        snprintf(out, out_size, " ");
-        return;
-    }
-
-    int index = (int)cell - 1;
-    if (index < 0 || index >= 7) {
-        index = 0;
-    }
-
-    snprintf(out, out_size, "%s%c%s", TETROMINO_COLOR_CODES[index],
-             TETROMINO_DISPLAY_CHARS[index], ANSI_RESET);
-}
-
 static void session_game_tetris_write_themed_at(session_ctx_t *ctx,
                                                 unsigned int row,
                                                 unsigned int column,
@@ -1142,10 +1120,28 @@ static void session_game_tetris_write_themed_at(session_ctx_t *ctx,
     }
 }
 
+static void session_game_tetris_clear_and_fill_line(session_ctx_t *ctx,
+                                                     unsigned int row)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    char move[32];
+    int written = snprintf(move, sizeof(move), "\033[%u;%uH", row, 1U);
+    if (written > 0 && (size_t)written < sizeof(move)) {
+        session_channel_write(ctx, move, (size_t)written);
+    }
+
+    static const char kClearLine[] = "\r" ANSI_CLEAR_LINE;
+    session_channel_write(ctx, kClearLine, sizeof(kClearLine) - 1U);
+    session_fill_line_with_theme(ctx);
+}
+
 static bool session_game_tetris_capture_visible_cells(session_ctx_t *ctx,
                                                        uint8_t out_cells
-                                                           [SSH_CHATTER_TETRIS_HEIGHT]
-                                                           [SSH_CHATTER_TETRIS_WIDTH])
+                                                            [SSH_CHATTER_TETRIS_HEIGHT]
+                                                            [SSH_CHATTER_TETRIS_WIDTH])
 {
     if (ctx == nullptr || out_cells == nullptr || ctx->game.tetris == nullptr) {
         return false;
@@ -1197,6 +1193,11 @@ static void session_game_tetris_render(session_ctx_t *ctx)
 
     char *buffer = ctx->tetris_screen_buffer;
     size_t offset = 0;
+    char board_lines[SSH_CHATTER_TETRIS_HEIGHT]
+                    [SSH_CHATTER_TETRIS_WIDTH * 12 + 16];
+    const char controls_line[] =
+        ANSI_BRIGHT_CYAN "Controls:" ANSI_RESET
+        " left, right, down, Ctrl+R or up: rotate, drop. Blank line = down.";
 
     offset += (size_t)snprintf(
         buffer + offset, SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset, "\n");
@@ -1238,10 +1239,12 @@ static void session_game_tetris_render(session_ctx_t *ctx)
     }
     border[SSH_CHATTER_TETRIS_WIDTH + 1] = '+';
     border[SSH_CHATTER_TETRIS_WIDTH + 2] = '\0';
+    char border_render[64];
+    snprintf(border_render, sizeof(border_render), "%s%s%s", ANSI_BRIGHT_BLACK,
+             border, ANSI_RESET);
     offset += (size_t)snprintf(buffer + offset,
                                SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
-                               "%s%s%s\n", ANSI_BRIGHT_BLACK, border,
-                               ANSI_RESET);
+                               "%s\n", border_render);
 
     for (int row = 0; row < SSH_CHATTER_TETRIS_HEIGHT; ++row) {
         /* Worst case: border(10) + 15 cells * (color5 + char1 + reset4) + border(10) + NUL(1) = 171 bytes */
@@ -1298,20 +1301,18 @@ static void session_game_tetris_render(session_ctx_t *ctx)
         offset += (size_t)snprintf(
             buffer + offset, SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
             "%s\n", line_buffer);
+        snprintf(board_lines[row], sizeof(board_lines[row]), "%s", line_buffer);
     }
 
     offset += (size_t)snprintf(buffer + offset,
                                SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
-                               "%s%s%s\n", ANSI_BRIGHT_BLACK, border,
-                               ANSI_RESET);
+                               "%s\n", border_render);
     offset += (size_t)snprintf(buffer + offset,
                                SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
                                "%s\n", header);
     offset += (size_t)snprintf(buffer + offset,
                                SSH_CHATTER_TETRIS_SCREEN_BUFFER_SIZE - offset,
-                               "%sControls:%s left, right, down, Ctrl+R or up: "
-                               "rotate, drop. Blank line = down.\n",
-                               ANSI_BRIGHT_CYAN, ANSI_RESET);
+                               "%s\n", controls_line);
 
     // Force a full clear+redraw for the very first render (game entry or
     // locker return), then switch to deterministic cell-level updates.
@@ -1336,7 +1337,6 @@ static void session_game_tetris_render(session_ctx_t *ctx)
     session_output_buffer_start(ctx);
     static const char kHideCursor[] = "\033[?25l";
     static const char kShowCursor[] = "\033[?25h";
-    static const char kClearLine[] = "\r" ANSI_CLEAR_LINE;
     session_channel_write(ctx, kHideCursor, sizeof(kHideCursor) - 1U);
 
     if (force_full_redraw) {
@@ -1344,44 +1344,35 @@ static void session_game_tetris_render(session_ctx_t *ctx)
         session_channel_write(ctx, kHomeAndClear, sizeof(kHomeAndClear) - 1U);
         session_send_raw_text(ctx, ctx->tetris_screen_buffer);
     } else {
-        if (has_visible_cells && ctx->game.tetris_prev_cells_valid) {
-            for (int row = 0; row < SSH_CHATTER_TETRIS_HEIGHT; ++row) {
-                for (int col = 0; col < SSH_CHATTER_TETRIS_WIDTH; ++col) {
-                    if (visible_cells[row][col] ==
-                        ctx->game.tetris_prev_cells[row][col]) {
-                        continue;
-                    }
+        session_game_tetris_clear_and_fill_line(
+            ctx, SSH_CHATTER_TETRIS_FRAME_BOARD_FIRST_ROW - 1U);
+        session_game_tetris_write_themed_at(
+            ctx, SSH_CHATTER_TETRIS_FRAME_BOARD_FIRST_ROW - 1U, 1U,
+            border_render);
 
-                    char cell_render[32];
-                    session_game_tetris_build_cell_render(visible_cells[row][col],
-                                                          cell_render,
-                                                          sizeof(cell_render));
-                    session_game_tetris_write_themed_at(
-                        ctx, SSH_CHATTER_TETRIS_FRAME_BOARD_FIRST_ROW + (unsigned int)row,
-                        SSH_CHATTER_TETRIS_FRAME_BOARD_FIRST_COL + (unsigned int)col,
-                        cell_render);
-                }
-            }
-        } else {
-            // If previous board state is unavailable, fall back to complete frame.
-            static const char kHomeAndClear[] = "\033[H\033[2J";
-            session_channel_write(ctx, kHomeAndClear, sizeof(kHomeAndClear) - 1U);
-            session_send_raw_text(ctx, ctx->tetris_screen_buffer);
+        for (int row = 0; row < SSH_CHATTER_TETRIS_HEIGHT; ++row) {
+            const unsigned int frame_row =
+                SSH_CHATTER_TETRIS_FRAME_BOARD_FIRST_ROW + (unsigned int)row;
+            session_game_tetris_clear_and_fill_line(ctx, frame_row);
+            session_game_tetris_write_themed_at(ctx, frame_row, 1U,
+                                                board_lines[row]);
         }
 
-        if (hud_changed) {
-            char move[32];
-            int move_written = snprintf(
-                move, sizeof(move), "\033[%u;%uH",
-                SSH_CHATTER_TETRIS_FRAME_HEADER_ROW, 1U);
-            if (move_written > 0 && (size_t)move_written < sizeof(move)) {
-                session_channel_write(ctx, move, (size_t)move_written);
-            }
-            session_channel_write(ctx, kClearLine, sizeof(kClearLine) - 1U);
-            session_fill_line_with_theme(ctx);
-            session_game_tetris_write_themed_at(
-                ctx, SSH_CHATTER_TETRIS_FRAME_HEADER_ROW, 1U, header);
-        }
+        session_game_tetris_clear_and_fill_line(
+            ctx, SSH_CHATTER_TETRIS_FRAME_BOTTOM_BORDER_ROW);
+        session_game_tetris_write_themed_at(
+            ctx, SSH_CHATTER_TETRIS_FRAME_BOTTOM_BORDER_ROW, 1U, border_render);
+
+        session_game_tetris_clear_and_fill_line(ctx,
+                                                SSH_CHATTER_TETRIS_FRAME_HEADER_ROW);
+        session_game_tetris_write_themed_at(ctx,
+                                            SSH_CHATTER_TETRIS_FRAME_HEADER_ROW,
+                                            1U, header);
+
+        session_game_tetris_clear_and_fill_line(
+            ctx, SSH_CHATTER_TETRIS_FRAME_CONTROLS_ROW);
+        session_game_tetris_write_themed_at(
+            ctx, SSH_CHATTER_TETRIS_FRAME_CONTROLS_ROW, 1U, controls_line);
     }
     char footer_move[32];
     int footer_move_written = snprintf(

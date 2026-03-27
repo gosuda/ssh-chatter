@@ -327,39 +327,6 @@ static size_t session_describe_visible_frame(
     return count;
 }
 
-static size_t session_describe_buffer_lines(const char *buffer,
-                                            session_screen_line_t *described,
-                                            size_t described_capacity)
-{
-    if (buffer == nullptr || described == nullptr || described_capacity == 0U) {
-        return 0U;
-    }
-
-    size_t count = 0U;
-    const char *cursor = buffer;
-    while (*cursor != '\0' && count < described_capacity) {
-        const char *line_start = cursor;
-        while (*cursor != '\0' && *cursor != '\n') {
-            ++cursor;
-        }
-
-        size_t line_length = (size_t)(cursor - line_start);
-        if (line_length > 0U && line_start[line_length - 1U] == '\r') {
-            --line_length;
-        }
-
-        described[count].text = line_start;
-        described[count].length = line_length;
-        ++count;
-
-        if (*cursor == '\n') {
-            ++cursor;
-        }
-    }
-
-    return count;
-}
-
 static bool session_screen_line_matches(const session_screen_line_t *lhs,
                                         const session_screen_line_t *rhs)
 {
@@ -525,7 +492,19 @@ static bool session_render_incremental_lines(session_ctx_t *ctx,
         session_channel_write(ctx, kClearLine, sizeof(kClearLine) - 1U);
         session_fill_line_with_theme(ctx);
         if (new_present && new_lines[idx].length > 0U) {
-            session_channel_write(ctx, new_lines[idx].text, new_lines[idx].length);
+            char themed_line[SSH_CHATTER_MESSAGE_LIMIT * 4U];
+            char raw_line[SSH_CHATTER_MESSAGE_LIMIT];
+            size_t copy_len = new_lines[idx].length;
+            if (copy_len >= sizeof(raw_line)) {
+                copy_len = sizeof(raw_line) - 1U;
+            }
+            memcpy(raw_line, new_lines[idx].text, copy_len);
+            raw_line[copy_len] = '\0';
+            size_t themed_len = session_prepare_themed_output(
+                ctx, raw_line, themed_line, sizeof(themed_line));
+            if (themed_len > 0U) {
+                session_channel_write(ctx, themed_line, themed_len);
+            }
         }
     }
 

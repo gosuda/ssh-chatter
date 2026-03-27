@@ -737,7 +737,12 @@ host_moderation_apply_result(host_t *host, host_moderation_task_t *task,
         return;
     }
 
-    session_ctx_t *session = chat_room_find_user(&host->room, task->username);
+    /*
+     * Moderation tasks run asynchronously. Avoid keeping/using room member
+     * pointers here because the target session may have disconnected before the
+     * worker processes the task.
+     */
+    session_ctx_t *session = nullptr;
 
     if (response->disable_filter != 0U) {
         const char *reason = (message != nullptr && message[0] != '\0')
@@ -776,7 +781,7 @@ static void host_moderation_handle_failure(host_t *host,
                               : "moderation pipeline unavailable";
     host_security_disable_filter(host, message);
 
-    session_ctx_t *session = chat_room_find_user(&host->room, task->username);
+    session_ctx_t *session = nullptr;
     host_security_process_error(host, task->category, message, task->username,
                                 task->client_ip, session, task->post_send);
 }
@@ -811,8 +816,7 @@ static void host_moderation_flush_pending(host_t *host, const char *diagnostic)
 
     while (task != nullptr) {
         host_moderation_task_t *next = task->next;
-        session_ctx_t *session =
-            chat_room_find_user(&host->room, task->username);
+        session_ctx_t *session = nullptr;
         host_security_process_error(host, task->category, message,
                                     task->username, task->client_ip, session,
                                     task->post_send);

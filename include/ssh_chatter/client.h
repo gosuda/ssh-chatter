@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdatomic.h>
 
 struct host;
 struct chat_history_entry;
@@ -22,12 +23,12 @@ typedef struct client_connection {
     client_kind_t kind;
     char identifier[CLIENT_IDENTIFIER_LEN];
     bool receive_system_messages;
-    bool active;
+    _Atomic bool active;
     void (*on_message)(struct client_connection *connection,
                        const struct chat_history_entry *entry);
     void (*on_detach)(struct client_connection *connection);
     void *user_data;
-    client_manager_t *owner;
+    _Atomic(client_manager_t *) owner;
 } client_connection_t;
 
 client_manager_t *client_manager_create(struct host *host);

@@ -8,7 +8,6 @@
 
 #include "ssh_chatter/client.h"
 
-#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -20,10 +19,9 @@
 
 struct client_manager {
     struct host *host;
-    ttak_mutex_t lock;
-    bool lock_initialized;
-    client_connection_t *connections[CLIENT_MANAGER_MAX_CONNECTIONS];
-    size_t connection_count;
+    _Atomic bool shutting_down;
+    _Atomic size_t connection_count;
+    _Atomic(client_connection_t *) connections[CLIENT_MANAGER_MAX_CONNECTIONS];
 };
 
 client_manager_t *client_manager_create(struct host *host)
@@ -35,13 +33,12 @@ client_manager_t *client_manager_create(struct host *host)
     }
 
     manager->host = host;
-    if (ttak_mutex_init(&manager->lock) != 0) {
-        sshc_gc_free(manager);
-        return nullptr;
+    atomic_store_explicit(&manager->shutting_down, false, memory_order_relaxed);
+    atomic_store_explicit(&manager->connection_count, 0U, memory_order_relaxed);
+    for (size_t idx = 0U; idx < CLIENT_MANAGER_MAX_CONNECTIONS; ++idx) {
+        atomic_store_explicit(&manager->connections[idx], nullptr,
+                              memory_order_relaxed);
     }
-    manager->lock_initialized = true;
-    manager->connection_count = 0U;
-    memset(manager->connections, 0, sizeof(manager->connections));
     return manager;
 }
 
@@ -51,91 +48,84 @@ void client_manager_destroy(client_manager_t *manager)
         return;
     }
 
-    if (!manager->lock_initialized) {
-        sshc_gc_free(manager);
-        return;
-    }
+    atomic_store_explicit(&manager->shutting_down, true, memory_order_release);
 
-    ttak_mutex_lock(&manager->lock);
-    client_connection_t *connections[CLIENT_MANAGER_MAX_CONNECTIONS];
-    size_t connection_count = manager->connection_count;
-    for (size_t idx = 0U; idx < connection_count; ++idx) {
-        connections[idx] = manager->connections[idx];
-        manager->connections[idx] = nullptr;
-    }
-    manager->connection_count = 0U;
-    ttak_mutex_unlock(&manager->lock);
-
-    for (size_t idx = 0U; idx < connection_count; ++idx) {
-        client_connection_t *connection = connections[idx];
+    for (size_t idx = 0U; idx < CLIENT_MANAGER_MAX_CONNECTIONS; ++idx) {
+        client_connection_t *connection = atomic_exchange_explicit(
+            &manager->connections[idx], nullptr, memory_order_acq_rel);
         if (connection == nullptr) {
             continue;
         }
-        connection->active = false;
-        connection->owner = nullptr;
+        atomic_fetch_sub_explicit(&manager->connection_count, 1U,
+                                  memory_order_acq_rel);
+        atomic_store_explicit(&connection->active, false, memory_order_release);
+        atomic_store_explicit(&connection->owner, nullptr, memory_order_release);
         if (connection->on_detach != nullptr) {
             connection->on_detach(connection);
         }
     }
 
-    ttak_mutex_destroy(&manager->lock);
-    manager->lock_initialized = false;
     sshc_gc_free(manager);
 }
 
 bool client_manager_register(client_manager_t *manager,
                              client_connection_t *connection)
 {
-    if (manager == nullptr || !manager->lock_initialized ||
-        connection == nullptr || connection->on_message == nullptr) {
+    if (manager == nullptr || connection == nullptr ||
+        connection->on_message == nullptr) {
         return false;
     }
 
-    bool registered = false;
-    ttak_mutex_lock(&manager->lock);
-    if (connection->owner != nullptr) {
-        if (connection->owner == manager) {
-            registered = true;
-        }
-    } else if (manager->connection_count < CLIENT_MANAGER_MAX_CONNECTIONS) {
-        manager->connections[manager->connection_count++] = connection;
-        connection->owner = manager;
-        connection->active = true;
-        registered = true;
+    if (atomic_load_explicit(&manager->shutting_down, memory_order_acquire)) {
+        return false;
     }
-    ttak_mutex_unlock(&manager->lock);
 
-    return registered;
+    client_manager_t *owner =
+        atomic_load_explicit(&connection->owner, memory_order_acquire);
+    if (owner != nullptr) {
+        return owner == manager;
+    }
+
+    for (size_t idx = 0U; idx < CLIENT_MANAGER_MAX_CONNECTIONS; ++idx) {
+        client_connection_t *expected = nullptr;
+        if (!atomic_compare_exchange_strong_explicit(
+                &manager->connections[idx], &expected, connection,
+                memory_order_acq_rel, memory_order_acquire)) {
+            continue;
+        }
+        atomic_store_explicit(&connection->owner, manager, memory_order_release);
+        atomic_store_explicit(&connection->active, true, memory_order_release);
+        atomic_fetch_add_explicit(&manager->connection_count, 1U,
+                                  memory_order_acq_rel);
+        return true;
+    }
+
+    return false;
 }
 
 void client_manager_unregister(client_manager_t *manager,
                                client_connection_t *connection)
 {
-    if (manager == nullptr || !manager->lock_initialized ||
-        connection == nullptr) {
+    if (manager == nullptr || connection == nullptr) {
         return;
     }
 
-    bool had_entry = false;
-    ttak_mutex_lock(&manager->lock);
-    for (size_t idx = 0U; idx < manager->connection_count; ++idx) {
-        if (manager->connections[idx] != connection) {
-            continue;
+    bool detached = false;
+    for (size_t idx = 0U; idx < CLIENT_MANAGER_MAX_CONNECTIONS; ++idx) {
+        client_connection_t *expected = connection;
+        if (atomic_compare_exchange_strong_explicit(
+                &manager->connections[idx], &expected, nullptr,
+                memory_order_acq_rel, memory_order_acquire)) {
+            atomic_fetch_sub_explicit(&manager->connection_count, 1U,
+                                      memory_order_acq_rel);
+            detached = true;
+            break;
         }
-        for (size_t shift = idx; shift + 1U < manager->connection_count;
-             ++shift) {
-            manager->connections[shift] = manager->connections[shift + 1U];
-        }
-        manager->connections[manager->connection_count - 1U] = nullptr;
-        manager->connection_count--;
-        had_entry = true;
-        break;
     }
-    ttak_mutex_unlock(&manager->lock);
 
-    if (had_entry) {
-        connection->active = false;
-        connection->owner = nullptr;
+    if (detached) {
+        atomic_store_explicit(&connection->active, false, memory_order_release);
+        atomic_store_explicit(&connection->owner, nullptr, memory_order_release);
         if (connection->on_detach != nullptr) {
             connection->on_detach(connection);
         }
@@ -145,17 +135,20 @@ void client_manager_unregister(client_manager_t *manager,
 void client_manager_notify_history(client_manager_t *manager,
                                    const struct chat_history_entry *entry)
 {
-    if (manager == nullptr || !manager->lock_initialized || entry == nullptr) {
+    if (manager == nullptr || entry == nullptr) {
         return;
     }
 
     client_connection_t *connections[CLIENT_MANAGER_MAX_CONNECTIONS];
     size_t connection_count = 0U;
 
-    ttak_mutex_lock(&manager->lock);
-    for (size_t idx = 0U; idx < manager->connection_count; ++idx) {
-        client_connection_t *connection = manager->connections[idx];
-        if (connection == nullptr || !connection->active) {
+    for (size_t idx = 0U; idx < CLIENT_MANAGER_MAX_CONNECTIONS; ++idx) {
+        client_connection_t *connection =
+            atomic_load_explicit(&manager->connections[idx], memory_order_acquire);
+        if (connection == nullptr) {
+            continue;
+        }
+        if (!atomic_load_explicit(&connection->active, memory_order_acquire)) {
             continue;
         }
         if (!entry->is_user_message && !connection->receive_system_messages) {
@@ -163,7 +156,6 @@ void client_manager_notify_history(client_manager_t *manager,
         }
         connections[connection_count++] = connection;
     }
-    ttak_mutex_unlock(&manager->lock);
 
     for (size_t idx = 0U; idx < connection_count; ++idx) {
         client_connection_t *connection = connections[idx];

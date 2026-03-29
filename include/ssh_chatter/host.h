@@ -115,6 +115,7 @@
 #define SSH_CHATTER_OTHELLO_MAX_MOVES \
     (SSH_CHATTER_OTHELLO_BOARD_SIZE * SSH_CHATTER_OTHELLO_BOARD_SIZE)
 #define SSH_CHATTER_OTHELLO_MAX_SLOTS 1024
+#define SSH_CHATTER_OTHELLO_MAX_WAIT_QUEUE SSH_CHATTER_OTHELLO_MAX_SLOTS
 #define SSH_CHATTER_GONU_MAX_SLOTS 1024
 #define SSH_CHATTER_OUTPUT_BUFFER_SIZE 32768
 
@@ -765,6 +766,7 @@ typedef struct session_ctx {
     bool asciiart_has_cooldown;
     struct timespec last_asciiart_post;
     session_game_state_t game;
+    bool othello_slot_queued;
     session_block_entry_t block_entries[SSH_CHATTER_MAX_BLOCKED];
     size_t block_entry_count;
     session_block_prompt_t block_pending;
@@ -1007,6 +1009,14 @@ typedef struct host {
     size_t rss_feed_count;
     uint8_t rss_current_window_id;
     othello_multiplayer_slot_t othello_games[SSH_CHATTER_OTHELLO_MAX_SLOTS];
+    size_t othello_slot_side_n;
+    size_t othello_slot_limit;
+    uint64_t othello_slot_mask;
+    struct session_ctx
+        *othello_wait_queue[SSH_CHATTER_OTHELLO_MAX_WAIT_QUEUE];
+    size_t othello_wait_queue_head;
+    size_t othello_wait_queue_tail;
+    size_t othello_wait_queue_count;
     gonu_multiplayer_slot_t gonu_games[SSH_CHATTER_GONU_MAX_SLOTS];
     bool random_seeded;
     client_manager_t *clients;

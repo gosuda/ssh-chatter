@@ -1983,7 +1983,7 @@ static othello_multiplayer_slot_t *host_othello_slot_by_id_locked(host_t *host,
                                                                   int slot_id)
 {
     if (host == nullptr || slot_id <= 0 ||
-        slot_id > (int)SSH_CHATTER_OTHELLO_MAX_SLOTS) {
+        slot_id > (int)host->othello_slot_limit) {
         return nullptr;
     }
 
@@ -1997,7 +1997,7 @@ host_othello_allocate_slot_locked(host_t *host, const char *owner_name)
         return nullptr;
     }
 
-    for (size_t idx = 0U; idx < SSH_CHATTER_OTHELLO_MAX_SLOTS; ++idx) {
+    for (size_t idx = 0U; idx < host->othello_slot_limit; ++idx) {
         othello_multiplayer_slot_t *slot = &host->othello_games[idx];
         if (slot->in_use) {
             continue;
@@ -2018,10 +2018,81 @@ host_othello_allocate_slot_locked(host_t *host, const char *owner_name)
         slot->state.awaiting_opponent = true;
         slot->state.slot_index = (int)slot->slot_id;
         slot->state.player_number = 0U;
+        if (idx < 64U) {
+            host->othello_slot_mask |= (1ULL << idx);
+        }
         return slot;
     }
 
     return nullptr;
+}
+
+static bool host_othello_queue_push_locked(host_t *host, session_ctx_t *ctx)
+{
+    if (host == nullptr || ctx == nullptr ||
+        host->othello_wait_queue_count >= SSH_CHATTER_OTHELLO_MAX_WAIT_QUEUE) {
+        return false;
+    }
+    for (size_t idx = 0U; idx < host->othello_wait_queue_count; ++idx) {
+        size_t pos =
+            (host->othello_wait_queue_head + idx) % SSH_CHATTER_OTHELLO_MAX_WAIT_QUEUE;
+        if (host->othello_wait_queue[pos] == ctx) {
+            return true;
+        }
+    }
+    host->othello_wait_queue[host->othello_wait_queue_tail] = ctx;
+    host->othello_wait_queue_tail =
+        (host->othello_wait_queue_tail + 1U) % SSH_CHATTER_OTHELLO_MAX_WAIT_QUEUE;
+    host->othello_wait_queue_count++;
+    return true;
+}
+
+static void host_othello_try_promote_queue_locked(host_t *host)
+{
+    if (host == nullptr || host->othello_wait_queue_count == 0U) {
+        return;
+    }
+
+    while (host->othello_wait_queue_count > 0U) {
+        session_ctx_t *queued = host->othello_wait_queue[host->othello_wait_queue_head];
+        host->othello_wait_queue[host->othello_wait_queue_head] = nullptr;
+        host->othello_wait_queue_head =
+            (host->othello_wait_queue_head + 1U) % SSH_CHATTER_OTHELLO_MAX_WAIT_QUEUE;
+        host->othello_wait_queue_count--;
+
+        if (queued == nullptr || queued->owner != host || queued->game.active) {
+            continue;
+        }
+
+        othello_multiplayer_slot_t *slot =
+            host_othello_allocate_slot_locked(host, queued->user.name);
+        if (slot == nullptr) {
+            break;
+        }
+        slot->players[0] = queued;
+        queued->othello_slot_queued = false;
+        queued->game.active = true;
+        queued->game.type = SESSION_GAME_OTHELLO;
+        queued->game.is_camouflaged = false;
+        othello_game_state_t *state = &queued->game.othello;
+        session_game_othello_copy_core(state, &slot->state);
+        state->awaiting_mode_selection = false;
+        state->multiplayer = true;
+        state->awaiting_opponent = true;
+        state->slot_index = (int)slot->slot_id;
+        state->player_number = 0U;
+        state->player_turn = false;
+        state->game_over = false;
+
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message),
+                 "Queued match activated. You are now waiting in game #%u.",
+                 slot->slot_id);
+        session_send_system_line(queued, message);
+        session_game_othello_render(queued);
+        session_game_othello_prepare_next_turn(queued);
+        break;
+    }
 }
 
 static void host_othello_release_slot_locked(host_t *host,
@@ -2038,6 +2109,10 @@ static void host_othello_release_slot_locked(host_t *host,
     slot->players[0] = nullptr;
     slot->players[1] = nullptr;
     session_game_othello_reset_state(&slot->state);
+    if (slot->slot_id > 0U && slot->slot_id <= 64U) {
+        host->othello_slot_mask &= ~(1ULL << (slot->slot_id - 1U));
+    }
+    host_othello_try_promote_queue_locked(host);
 }
 
 static void session_game_othello_finish_multiplayer(
@@ -2906,18 +2981,32 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
 
             othello_multiplayer_slot_t *slot = nullptr;
             int slot_id = -1;
+            bool queued_for_slot = false;
             ttak_mutex_lock(&ctx->owner->lock);
             slot =
                 host_othello_allocate_slot_locked(ctx->owner, ctx->user.name);
             if (slot != nullptr) {
                 slot->players[0] = ctx;
                 slot_id = (int)slot->slot_id;
+            } else if (ctx->owner->othello_slot_mask ==
+                       ((ctx->owner->othello_slot_side_n >= 64U)
+                            ? UINT64_MAX
+                            : ((1ULL << ctx->owner->othello_slot_side_n) - 1ULL))) {
+                queued_for_slot = host_othello_queue_push_locked(ctx->owner, ctx);
+                ctx->othello_slot_queued = queued_for_slot;
             }
             ttak_mutex_unlock(&ctx->owner->lock);
 
             if (slot == nullptr) {
-                session_send_system_line(
-                    ctx, "All multiplayer Othello slots are currently in use.");
+                if (queued_for_slot) {
+                    session_send_system_line(
+                        ctx,
+                        "All multiplayer Othello slots are currently full. "
+                        "You have been queued and will be activated automatically.");
+                } else {
+                    session_send_system_line(
+                        ctx, "All multiplayer Othello slots are currently in use.");
+                }
                 return;
             }
 
@@ -3146,12 +3235,16 @@ static void session_othello_list_games(session_ctx_t *ctx)
     size_t count = 0U;
 
     ttak_mutex_lock(&ctx->owner->lock);
-    for (size_t idx = 0U; idx < SSH_CHATTER_OTHELLO_MAX_SLOTS; ++idx) {
+    size_t in_use_count = 0U;
+    for (size_t idx = 0U; idx < ctx->owner->othello_slot_limit; ++idx) {
         othello_multiplayer_slot_t *slot = &ctx->owner->othello_games[idx];
+        if (slot->in_use) {
+            in_use_count++;
+        }
         if (!slot->in_use || slot->active || !slot->awaiting_second_player) {
             continue;
         }
-        if (count < SSH_CHATTER_OTHELLO_MAX_SLOTS) {
+        if (count < ctx->owner->othello_slot_limit) {
             ids[count] = slot->slot_id;
             if (slot->owner[0] != '\0') {
                 snprintf(owners[count], sizeof(owners[count]), "%s",
@@ -3163,6 +3256,15 @@ static void session_othello_list_games(session_ctx_t *ctx)
         }
     }
     ttak_mutex_unlock(&ctx->owner->lock);
+
+    char status_line[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(status_line, sizeof(status_line),
+             "OLS status: O=%zu L=%zu S=%zu, n=%zu, square=%zu, bitmask=0x%016llX",
+             in_use_count, ctx->owner->othello_slot_limit,
+             ctx->owner->othello_wait_queue_count, ctx->owner->othello_slot_side_n,
+             ctx->owner->othello_slot_limit,
+             (unsigned long long)ctx->owner->othello_slot_mask);
+    session_send_system_line(ctx, status_line);
 
     if (count == 0U) {
         session_send_system_line(
@@ -3333,7 +3435,8 @@ static void session_handle_othello_command(session_ctx_t *ctx,
         char *endptr = nullptr;
         unsigned long parsed = strtoul(rest, &endptr, 10);
         if (endptr == rest || (endptr != nullptr && *endptr != '\0') ||
-            parsed == 0UL || parsed > SSH_CHATTER_OTHELLO_MAX_SLOTS) {
+            parsed == 0UL ||
+            (ctx->owner != nullptr && parsed > ctx->owner->othello_slot_limit)) {
             session_send_system_line(ctx, "Provide a valid game number.");
             return;
         }

@@ -1986,6 +1986,27 @@ void host_init(host_t *host, auth_profile_t *auth)
         host_clear_rss_feed(&host->rss_feeds[idx]);
     }
     host->rss_feed_count = 0U;
+    long cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+    if (cpu_count < 1L) {
+        cpu_count = 2L;
+    }
+    size_t slot_side_n = (size_t)(cpu_count / 2L);
+    if (slot_side_n < 1U) {
+        slot_side_n = 1U;
+    }
+    if (slot_side_n > 32U) {
+        slot_side_n = 32U;
+    }
+    host->othello_slot_side_n = slot_side_n;
+    host->othello_slot_limit = slot_side_n * slot_side_n;
+    if (host->othello_slot_limit > SSH_CHATTER_OTHELLO_MAX_SLOTS) {
+        host->othello_slot_limit = SSH_CHATTER_OTHELLO_MAX_SLOTS;
+    }
+    host->othello_slot_mask = 0ULL;
+    memset(host->othello_wait_queue, 0, sizeof(host->othello_wait_queue));
+    host->othello_wait_queue_head = 0U;
+    host->othello_wait_queue_tail = 0U;
+    host->othello_wait_queue_count = 0U;
     for (size_t idx = 0U; idx < SSH_CHATTER_OTHELLO_MAX_SLOTS; ++idx) {
         othello_multiplayer_slot_t *slot = &host->othello_games[idx];
         slot->in_use = false;

@@ -687,6 +687,8 @@ static session_ctx_t *session_create(void)
             sshc_memory_context_push(ctx->memory_context);
 
         ctx->user.is_authenticated = false;
+        ctx->prefer_utf16_output = false;
+        ctx->newline_mode = SESSION_NEWLINE_MODE_AUTO;
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
         ctx->morse_feed_enabled = false;
         ctx->exit_notice_sent = false;
@@ -699,6 +701,11 @@ static session_ctx_t *session_create(void)
         ctx->lifetime_decay_reference = ctx->lifetime_last_activity;
         ctx->lifetime_has_activity = true;
         ctx->lifetime_decay_active = false;
+
+        printf("[encoding-debug] phase=ctx_init transport_kind=%d "
+               "prefer_utf16_output=%d output_kind=%d\n",
+               (int)ctx->transport_kind, (int)ctx->prefer_utf16_output,
+               (int)ctx->output_kind);
 
         if (display_model_init(&ctx->display_model, 256U)) {
             ctx->display_model_initialized = true;
@@ -2402,6 +2409,40 @@ static bool session_parse_command(const char *line, const char *command,
     return false;
 }
 
+static void session_handle_set_lf(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (arguments == nullptr || arguments[0] == '\0') {
+        session_send_system_line(ctx, "Usage: /set-lf <auto|lf|crlf>");
+        return;
+    }
+
+    char mode[16];
+    const char *unused = session_consume_token(arguments, mode, sizeof(mode));
+    (void)unused;
+
+    if (strcasecmp(mode, "auto") == 0) {
+        ctx->newline_mode = SESSION_NEWLINE_MODE_AUTO;
+        session_send_system_line(ctx, "Line ending mode set to auto.");
+        return;
+    }
+    if (strcasecmp(mode, "lf") == 0) {
+        ctx->newline_mode = SESSION_NEWLINE_MODE_LF;
+        session_send_system_line(ctx, "Line ending mode set to LF.");
+        return;
+    }
+    if (strcasecmp(mode, "crlf") == 0) {
+        ctx->newline_mode = SESSION_NEWLINE_MODE_CRLF;
+        session_send_system_line(ctx, "Line ending mode set to CRLF.");
+        return;
+    }
+
+    session_send_system_line(ctx, "Usage: /set-lf <auto|lf|crlf>");
+}
+
 static void session_dispatch_command(session_ctx_t *ctx, const char *line)
 {
     if (ctx == nullptr || line == nullptr) {
@@ -2708,6 +2749,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     } else if (session_parse_command_any(ctx, "/set-ui-lang", effective_line,
                                          &args)) {
         session_handle_set_ui_lang(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/set-lf", effective_line,
+                                         &args)) {
+        session_handle_set_lf(ctx, args);
         return;
     } else if (session_parse_command_any(ctx, "/weather", effective_line,
                                          &args)) {

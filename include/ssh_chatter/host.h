@@ -1009,6 +1009,11 @@ typedef struct host {
     size_t rss_feed_count;
     uint8_t rss_current_window_id;
     othello_multiplayer_slot_t othello_games[SSH_CHATTER_OTHELLO_MAX_SLOTS];
+    size_t cpu_slot_side_n;
+    size_t cpu_slot_limit;
+    size_t cpu_slot_in_use;
+    size_t cpu_slot_waiting;
+    uint64_t cpu_slot_mask;
     size_t othello_slot_side_n;
     size_t othello_slot_limit;
     uint64_t othello_slot_mask;

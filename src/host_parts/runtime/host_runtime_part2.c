@@ -1997,6 +1997,14 @@ void host_init(host_t *host, auth_profile_t *auth)
     if (slot_side_n > 32U) {
         slot_side_n = 32U;
     }
+    host->cpu_slot_side_n = slot_side_n;
+    host->cpu_slot_limit = slot_side_n * slot_side_n;
+    if (host->cpu_slot_limit == 0U) {
+        host->cpu_slot_limit = 1U;
+    }
+    host->cpu_slot_in_use = 0U;
+    host->cpu_slot_waiting = 0U;
+    host->cpu_slot_mask = 0ULL;
     host->othello_slot_side_n = slot_side_n;
     host->othello_slot_limit = slot_side_n * slot_side_n;
     if (host->othello_slot_limit > SSH_CHATTER_OTHELLO_MAX_SLOTS) {

@@ -3875,8 +3875,7 @@ static void session_handle_search(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, listing);
 }
 
-void session_channel_write(session_ctx_t *ctx, const void *data,
-                                  size_t length)
+void session_channel_write(session_ctx_t *ctx, const void *data, size_t length)
 {
     if (ctx == nullptr || data == nullptr || length == 0U || ctx->should_exit ||
         !session_transport_active(ctx)) {
@@ -3906,21 +3905,59 @@ void session_channel_write(session_ctx_t *ctx, const void *data,
     const bool use_retro_output =
         session_output_should_use_retro_encoding(ctx, ctx->output_kind);
 
+    size_t nul_count = 0U;
+    const unsigned char *inspect = (const unsigned char *)data;
+    for (size_t idx = 0U; idx < length; ++idx) {
+        if (inspect[idx] == '\0') {
+            ++nul_count;
+        }
+    }
+
+    printf("[encoding-debug] phase=write_dispatch transport_kind=%d "
+           "prefer_utf16_output=%d prefer_cp437_output=%d "
+           "use_retro_output=%d output_kind=%d active_codepage=%d "
+           "length=%zu nul_count=%zu\n",
+           (int)ctx->transport_kind, (int)ctx->prefer_utf16_output,
+           (int)ctx->prefer_cp437_output, (int)use_retro_output,
+           (int)ctx->output_kind, (int)ctx->active_codepage, length, nul_count);
+
+    const void *write_data = data;
+    size_t write_length = length;
+    unsigned char *sanitized = nullptr;
+    if (!ctx->prefer_utf16_output && nul_count > 0U) {
+        sanitized = (unsigned char *)sshc_gc_malloc(length);
+        if (sanitized != nullptr) {
+            size_t out = 0U;
+            for (size_t idx = 0U; idx < length; ++idx) {
+                if (inspect[idx] != '\0') {
+                    sanitized[out++] = inspect[idx];
+                }
+            }
+            write_data = sanitized;
+            write_length = out;
+        }
+    }
+
     bool prefer_utf8_for_hybrid = false;
     if (ctx->hybrid_output_mode && use_retro_output &&
         ctx->output_kind != SESSION_OUTPUT_KIND_SYSTEM) {
         prefer_utf8_for_hybrid =
-            session_output_requires_utf8((const char *)data, length);
+            session_output_requires_utf8((const char *)write_data, write_length);
     }
 
     if (use_retro_output && !prefer_utf8_for_hybrid) {
         /* Use the generic codepage conversion with the active codepage */
-        success = session_channel_write_codepage(ctx, (const char *)data,
-                                                 length, ctx->active_codepage);
+        success = session_channel_write_codepage(
+            ctx, (const char *)write_data, write_length, ctx->active_codepage);
     } else if (ctx->prefer_utf16_output) {
-        success = session_channel_write_utf16(ctx, (const char *)data, length);
+        success =
+            session_channel_write_utf16(ctx, (const char *)write_data, write_length);
     } else {
-        success = session_channel_write_all(ctx, data, length);
+        success = session_channel_write_all(ctx, write_data, write_length);
+    }
+
+    if (sanitized != nullptr) {
+        sshc_gc_free(sanitized);
     }
 
     if (channel_mutex_locked) {

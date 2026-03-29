@@ -3875,8 +3875,7 @@ static void session_handle_search(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, listing);
 }
 
-void session_channel_write(session_ctx_t *ctx, const void *data,
-                                  size_t length)
+void session_channel_write(session_ctx_t *ctx, const void *data, size_t length)
 {
     if (ctx == nullptr || data == nullptr || length == 0U || ctx->should_exit ||
         !session_transport_active(ctx)) {
@@ -3905,6 +3904,11 @@ void session_channel_write(session_ctx_t *ctx, const void *data,
 
     const bool use_retro_output =
         session_output_should_use_retro_encoding(ctx, ctx->output_kind);
+
+    printf("[encoding-debug] phase=write_dispatch transport_kind=%d "
+           "prefer_utf16_output=%d output_kind=%d\n",
+           (int)ctx->transport_kind, (int)ctx->prefer_utf16_output,
+           (int)ctx->output_kind);
 
     bool prefer_utf8_for_hybrid = false;
     if (ctx->hybrid_output_mode && use_retro_output &&

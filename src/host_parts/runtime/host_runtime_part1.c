@@ -687,6 +687,7 @@ static session_ctx_t *session_create(void)
             sshc_memory_context_push(ctx->memory_context);
 
         ctx->user.is_authenticated = false;
+        ctx->prefer_utf16_output = false;
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
         ctx->morse_feed_enabled = false;
         ctx->exit_notice_sent = false;
@@ -699,6 +700,11 @@ static session_ctx_t *session_create(void)
         ctx->lifetime_decay_reference = ctx->lifetime_last_activity;
         ctx->lifetime_has_activity = true;
         ctx->lifetime_decay_active = false;
+
+        printf("[encoding-debug] phase=ctx_init transport_kind=%d "
+               "prefer_utf16_output=%d output_kind=%d\n",
+               (int)ctx->transport_kind, (int)ctx->prefer_utf16_output,
+               (int)ctx->output_kind);
 
         if (display_model_init(&ctx->display_model, 256U)) {
             ctx->display_model_initialized = true;

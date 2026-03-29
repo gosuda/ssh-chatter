@@ -1401,15 +1401,11 @@ static void session_refresh_output_encoding(session_ctx_t *ctx)
         return;
     }
 
+    /*
+     * UTF-16 output is reserved for explicit local console backends only.
+     * Network transports (SSH/TELNET) must always remain byte-oriented.
+     */
     bool use_utf16 = false;
-    if (ctx->os_name[0] != '\0') {
-        const os_descriptor_t *descriptor =
-            session_lookup_os_descriptor(ctx->os_name);
-        if (descriptor != nullptr &&
-            strcasecmp(descriptor->name, "windows") == 0) {
-            use_utf16 = true;
-        }
-    }
 
     const bool previous_cp437 = ctx->prefer_cp437_output;
     const bool previous_cp437_input = ctx->cp437_input_enabled;
@@ -1477,12 +1473,7 @@ static void session_refresh_output_encoding(session_ctx_t *ctx)
         ctx->cp437_input_enabled = false;
     }
 
-    if (use_cp437) {
-        ctx->prefer_utf16_output = false;
-        return;
-    }
-
-    ctx->prefer_utf16_output = use_utf16;
+    ctx->prefer_utf16_output = (!use_cp437) && use_utf16;
 }
 
 static bool session_detect_retro_client(session_ctx_t *ctx)

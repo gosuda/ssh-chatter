@@ -2644,6 +2644,64 @@ static bool session_prepare_slash_command(const char *input, char *output,
     return true;
 }
 
+static bool session_acquire_cpu_slot(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return true;
+    }
+
+    host_t *host = ctx->owner;
+    for (;;) {
+        bool acquired = false;
+        ttak_mutex_lock(&host->lock);
+        if (host->cpu_slot_in_use < host->cpu_slot_limit) {
+            size_t slot_index = host->cpu_slot_in_use;
+            host->cpu_slot_in_use++;
+            if (slot_index < 64U) {
+                host->cpu_slot_mask |= (1ULL << slot_index);
+            }
+            acquired = true;
+        } else {
+            host->cpu_slot_waiting++;
+        }
+        ttak_mutex_unlock(&host->lock);
+
+        if (acquired) {
+            return true;
+        }
+
+        session_send_system_line(
+            ctx,
+            "Server CPU slots are full. Queued and waiting for available slot...");
+        const struct timespec wait_time = {.tv_sec = 0, .tv_nsec = 20000000L};
+        host_sleep_uninterruptible(&wait_time);
+
+        ttak_mutex_lock(&host->lock);
+        if (host->cpu_slot_waiting > 0U) {
+            host->cpu_slot_waiting--;
+        }
+        ttak_mutex_unlock(&host->lock);
+    }
+}
+
+static void session_release_cpu_slot(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    ttak_mutex_lock(&host->lock);
+    if (host->cpu_slot_in_use > 0U) {
+        size_t slot_index = host->cpu_slot_in_use - 1U;
+        host->cpu_slot_in_use--;
+        if (slot_index < 64U) {
+            host->cpu_slot_mask &= ~(1ULL << slot_index);
+        }
+    }
+    ttak_mutex_unlock(&host->lock);
+}
+
 static void session_process_line(session_ctx_t *ctx, const char *line)
 {
     if (ctx == nullptr || line == nullptr) {
@@ -2689,9 +2747,14 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
         return;
     }
 
+    if (!session_acquire_cpu_slot(ctx)) {
+        return;
+    }
+
     if (ctx->game.active) {
         if (strcmp(normalized, "/suspend!") == 0) {
             session_game_suspend(ctx, "Game suspended.");
+            session_release_cpu_slot(ctx);
             return;
         }
 
@@ -2739,12 +2802,14 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
                 }
                 session_game_show_camouflage(ctx);
             }
+            session_release_cpu_slot(ctx);
             return;
         }
 
         if (normalized[0] == '/') {
             session_send_system_line(
                 ctx, "Finish the current game with /suspend! first.");
+            session_release_cpu_slot(ctx);
             return;
         }
 
@@ -2759,6 +2824,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
         } else if (ctx->game.type == SESSION_GAME_GONU) {
             session_game_gonu_handle_input(ctx, normalized);
         }
+        session_release_cpu_slot(ctx);
         return;
     }
 
@@ -2776,6 +2842,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
                          "Terminate to return to chat.");
             }
         }
+        session_release_cpu_slot(ctx);
         return;
     }
 
@@ -2796,10 +2863,12 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
 
     if (ctx->username_conflict) {
         session_handle_username_conflict_input(ctx, normalized);
+        session_release_cpu_slot(ctx);
         return;
     }
 
     if (ctx->ops == nullptr || ctx->ops->dispatch_command == nullptr) {
+        session_release_cpu_slot(ctx);
         return;
     }
 
@@ -2807,18 +2876,22 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
         if (session_prepare_slash_command(normalized, command_line,
                                           sizeof(command_line))) {
             if (session_try_localized_command_forward(ctx, command_line)) {
+                session_release_cpu_slot(ctx);
                 return;
             }
             ctx->ops->dispatch_command(ctx, command_line);
+            session_release_cpu_slot(ctx);
             return;
         }
     }
 
     if (!translation_bypass && normalized[0] == '/') {
         if (session_try_localized_command_forward(ctx, normalized)) {
+            session_release_cpu_slot(ctx);
             return;
         }
         ctx->ops->dispatch_command(ctx, normalized);
+        session_release_cpu_slot(ctx);
         return;
     }
 
@@ -2845,6 +2918,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
         } else {
             ctx->ops->dispatch_command(ctx, command_text);
         }
+        session_release_cpu_slot(ctx);
         return;
     }
 
@@ -2878,6 +2952,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
             (sec_delta < 0 || (sec_delta == 0 && nsec_delta < 1000000000L))) {
             session_send_system_line(ctx, "Please wait at least one second "
                                           "before sending another message.");
+            session_release_cpu_slot(ctx);
             return;
         }
         if (!translation_throttle && chat_throttle && !ascii_profile_command &&
@@ -2886,6 +2961,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
             session_send_system_line(ctx,
                                      "Please wait at least 300 milliseconds "
                                      "before sending another chat message.");
+            session_release_cpu_slot(ctx);
             return;
         }
     }
@@ -2897,6 +2973,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
         ctx->input_translation_enabled &&
         ctx->input_translation_language[0] != '\0') {
         if (session_translation_queue_input(ctx, normalized)) {
+            session_release_cpu_slot(ctx);
             return;
         }
         session_send_system_line(
@@ -2905,6 +2982,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
 
     printf("[%s] %s\n", ctx->user.name, normalized);
     session_deliver_outgoing_message(ctx, normalized, true);
+    session_release_cpu_slot(ctx);
 }
 
 void host_session_process_line_for_testing(session_ctx_t *ctx, const char *line)

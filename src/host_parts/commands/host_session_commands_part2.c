@@ -268,7 +268,9 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    bool is_operator = ctx->user.is_operator || ctx->user.is_lan_operator;
+    bool is_full_operator = ctx->user.is_operator;
+    bool is_lan_operator = ctx->user.is_lan_operator;
+    bool is_operator = is_full_operator || is_lan_operator;
 
     char delegated_buffer[SSH_CHATTER_MESSAGE_LIMIT];
     if (arguments != nullptr) {
@@ -327,7 +329,7 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
         session_send_system_line(ctx, line);
     }
 
-    if (is_operator) {
+    if (is_full_operator) {
         if (locale != nullptr && locale->help_operator_title != nullptr &&
             locale->help_operator_title[0] != '\0') {
             session_send_system_line(ctx, locale->help_operator_title);
@@ -339,7 +341,10 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
             sizeof(kSessionHelpOperator) / sizeof(kSessionHelpOperator[0]),
             help_buffer, sizeof(help_buffer));
         session_send_raw_text(ctx, help_buffer);
-
+    } else if (is_lan_operator) {
+        session_send_system_line(
+            ctx, "LAN operator mode active: full administrator commands are "
+                 "hidden.");
     } else {
         session_send_system_line(
             ctx,

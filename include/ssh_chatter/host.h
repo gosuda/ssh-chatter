@@ -612,6 +612,12 @@ typedef enum session_output_kind {
     SESSION_OUTPUT_KIND_GENERIC,
 } session_output_kind_t;
 
+typedef enum session_newline_mode {
+    SESSION_NEWLINE_MODE_AUTO = 0,
+    SESSION_NEWLINE_MODE_LF,
+    SESSION_NEWLINE_MODE_CRLF,
+} session_newline_mode_t;
+
 typedef struct session_ctx {
     ssh_session session;
     ssh_channel channel;
@@ -721,6 +727,7 @@ typedef struct session_ctx {
     bool morse_feed_enabled;
     char morse_filter[SSH_CHATTER_MORSE_FILTER_LEN];
     bool prefer_utf16_output;
+    session_newline_mode_t newline_mode;
     bool prefer_cp437_output;
     session_cp437_scope_t cp437_output_scope;
     session_output_kind_t output_kind;

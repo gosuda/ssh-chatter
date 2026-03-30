@@ -2498,6 +2498,11 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         return;
     }
 
+    else if (session_parse_command_any(ctx, "/shell", effective_line, &args)) {
+        session_handle_shell(ctx, args);
+        return;
+    }
+
     else if (session_parse_command_any(ctx, "/kick", effective_line, &args)) {
         session_handle_kick(ctx, args);
         return;
@@ -2890,6 +2895,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
     } else if (session_parse_command_any(ctx, "/grant", effective_line,
                                          &args)) {
         session_handle_grant(ctx, args);
+        return;
+    } else if (session_parse_command_any(ctx, "/shell", effective_line,
+                                         &args)) {
+        session_handle_shell(ctx, args);
         return;
     } else if (session_parse_command_any(ctx, "/revoke", effective_line,
                                          &args)) {

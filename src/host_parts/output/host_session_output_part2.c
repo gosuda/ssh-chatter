@@ -340,15 +340,13 @@ void session_process_pending_sink(session_ctx_t *ctx)
     }
 
     if (!used_incremental_redraw) {
-        static const char kHomeAndClear[] = "\033[H\033[J";
-        if (ctx->display_model_initialized) {
-            ctx->display_model.line_count = 0U;
-            ctx->display_model.dirty = true;
-        }
-        session_channel_write(ctx, kHomeAndClear, sizeof(kHomeAndClear) - 1U);
-        for (size_t idx = 0; idx < copied; ++idx) {
-            session_send_history_entry(ctx, &buffer[idx]);
-        }
+        /*
+         * Avoid full-screen clear fallback for both SSH and TELNET.
+         * When incremental diffing is unavailable, append only the newest
+         * history line so sink updates do not trigger full-frame flicker.
+         */
+        ctx->output_buffer_length = buffer_mark;
+        session_send_history_entry(ctx, &buffer[copied - 1U]);
     }
 
     if (ctx->display_model_initialized) {
@@ -3875,6 +3873,98 @@ static void session_handle_search(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, listing);
 }
 
+static bool session_output_os_is_windows(const session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->os_name[0] == '\0') {
+        return false;
+    }
+
+    return strcasecmp(ctx->os_name, "windows") == 0;
+}
+
+static bool session_output_prefers_crlf(const session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return false;
+    }
+
+    switch (ctx->newline_mode) {
+    case SESSION_NEWLINE_MODE_CRLF:
+        return true;
+    case SESSION_NEWLINE_MODE_LF:
+        return false;
+    case SESSION_NEWLINE_MODE_AUTO:
+    default:
+        return session_output_os_is_windows(ctx);
+    }
+}
+
+static unsigned char *
+session_normalize_output_newlines(const session_ctx_t *ctx, const void *data,
+                                  size_t length, size_t *out_length)
+{
+    if (out_length == nullptr || data == nullptr || length == 0U) {
+        return nullptr;
+    }
+
+    *out_length = length;
+    const unsigned char *input = (const unsigned char *)data;
+    const bool prefer_crlf = session_output_prefers_crlf(ctx);
+
+    bool needs_change = false;
+    for (size_t idx = 0U; idx < length; ++idx) {
+        unsigned char ch = input[idx];
+        if (prefer_crlf) {
+            if (ch == '\n' && (idx == 0U || input[idx - 1U] != '\r')) {
+                needs_change = true;
+                break;
+            }
+        } else {
+            if (ch == '\r') {
+                needs_change = true;
+                break;
+            }
+        }
+    }
+
+    if (!needs_change) {
+        return nullptr;
+    }
+
+    unsigned char *buffer = (unsigned char *)sshc_gc_malloc(length * 2U + 1U);
+    if (buffer == nullptr) {
+        return nullptr;
+    }
+
+    size_t out = 0U;
+    for (size_t idx = 0U; idx < length; ++idx) {
+        unsigned char ch = input[idx];
+        if (prefer_crlf) {
+            if (ch == '\n' && (idx == 0U || input[idx - 1U] != '\r')) {
+                buffer[out++] = '\r';
+                buffer[out++] = '\n';
+            } else {
+                buffer[out++] = ch;
+            }
+            continue;
+        }
+
+        if (ch == '\r') {
+            if (idx + 1U < length && input[idx + 1U] == '\n') {
+                buffer[out++] = '\n';
+                ++idx;
+            } else {
+                buffer[out++] = '\n';
+            }
+            continue;
+        }
+        buffer[out++] = ch;
+    }
+
+    *out_length = out;
+    return buffer;
+}
+
 void session_channel_write(session_ctx_t *ctx, const void *data, size_t length)
 {
     if (ctx == nullptr || data == nullptr || length == 0U || ctx->should_exit ||
@@ -3905,9 +3995,20 @@ void session_channel_write(session_ctx_t *ctx, const void *data, size_t length)
     const bool use_retro_output =
         session_output_should_use_retro_encoding(ctx, ctx->output_kind);
 
+    const void *write_data = data;
+    size_t write_length = length;
+
+    size_t newline_normalized_length = 0U;
+    unsigned char *newline_normalized = session_normalize_output_newlines(
+        ctx, write_data, write_length, &newline_normalized_length);
+    if (newline_normalized != nullptr) {
+        write_data = newline_normalized;
+        write_length = newline_normalized_length;
+    }
+
     size_t nul_count = 0U;
-    const unsigned char *inspect = (const unsigned char *)data;
-    for (size_t idx = 0U; idx < length; ++idx) {
+    const unsigned char *inspect = (const unsigned char *)write_data;
+    for (size_t idx = 0U; idx < write_length; ++idx) {
         if (inspect[idx] == '\0') {
             ++nul_count;
         }
@@ -3919,16 +4020,15 @@ void session_channel_write(session_ctx_t *ctx, const void *data, size_t length)
            "length=%zu nul_count=%zu\n",
            (int)ctx->transport_kind, (int)ctx->prefer_utf16_output,
            (int)ctx->prefer_cp437_output, (int)use_retro_output,
-           (int)ctx->output_kind, (int)ctx->active_codepage, length, nul_count);
+           (int)ctx->output_kind, (int)ctx->active_codepage, write_length,
+           nul_count);
 
-    const void *write_data = data;
-    size_t write_length = length;
     unsigned char *sanitized = nullptr;
     if (!ctx->prefer_utf16_output && nul_count > 0U) {
-        sanitized = (unsigned char *)sshc_gc_malloc(length);
+        sanitized = (unsigned char *)sshc_gc_malloc(write_length);
         if (sanitized != nullptr) {
             size_t out = 0U;
-            for (size_t idx = 0U; idx < length; ++idx) {
+            for (size_t idx = 0U; idx < write_length; ++idx) {
                 if (inspect[idx] != '\0') {
                     sanitized[out++] = inspect[idx];
                 }
@@ -3958,6 +4058,9 @@ void session_channel_write(session_ctx_t *ctx, const void *data, size_t length)
 
     if (sanitized != nullptr) {
         sshc_gc_free(sanitized);
+    }
+    if (newline_normalized != nullptr) {
+        sshc_gc_free(newline_normalized);
     }
 
     if (channel_mutex_locked) {

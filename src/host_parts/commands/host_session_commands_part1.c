@@ -8,6 +8,7 @@
 
 #include "../host_internal.h"
 #include "ssh_chatter/security_layer.h"
+#include <pty.h>
 // Command handlers for chat interactions, media, and user utilities.
 
 static void session_handle_reply(session_ctx_t *ctx, const char *arguments)
@@ -1744,6 +1745,110 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
         session_send_system_line(ctx, message);
     }
 }
+
+static void session_handle_shell(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(
+            ctx, "Only granted operators may use /shell.");
+        return;
+    }
+
+    if (arguments != nullptr) {
+        char trimmed[32];
+        snprintf(trimmed, sizeof(trimmed), "%s", arguments);
+        trim_whitespace_inplace(trimmed);
+        if (trimmed[0] != '\0') {
+            session_send_system_line(ctx, "Usage: /shell");
+            return;
+        }
+    }
+
+    int pty_master = -1;
+    pid_t pid = forkpty(&pty_master, nullptr, nullptr, nullptr);
+    if (pid < 0) {
+        session_send_system_line(ctx, "Failed to start shell.");
+        return;
+    }
+
+    if (pid == 0) {
+        execl("/bin/sh", "sh", "-i", (char *)nullptr);
+        _exit(127);
+    }
+
+    session_send_system_line(
+        ctx, "Launching /bin/sh. Type 'exit' to return to SSH-Chatter.");
+
+    bool input_open = true;
+    bool output_open = true;
+    while (input_open || output_open) {
+        struct pollfd child_out = {
+            .fd = pty_master,
+            .events = output_open ? POLLIN : 0,
+            .revents = 0,
+        };
+
+        if (output_open) {
+            int poll_result = poll(&child_out, 1, 10);
+            if (poll_result > 0 && (child_out.revents & POLLIN)) {
+                char buffer[1024];
+                ssize_t read_len = read(pty_master, buffer, sizeof(buffer));
+                if (read_len > 0) {
+                    session_channel_write(ctx, buffer, (size_t)read_len);
+                } else {
+                    output_open = false;
+                }
+            } else if (poll_result < 0 && errno != EINTR) {
+                output_open = false;
+            } else if (child_out.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                output_open = false;
+            }
+        }
+
+        if (input_open) {
+            if (!session_transport_is_open(ctx) || session_transport_is_eof(ctx)) {
+                input_open = false;
+                continue;
+            }
+
+            char input[512];
+            int received = session_transport_read(ctx, input, sizeof(input), 10);
+            if (received > 0) {
+                ssize_t sent = write(pty_master, input, (size_t)received);
+                if (sent != received) {
+                    input_open = false;
+                }
+            } else if (received == SSH_AGAIN) {
+                // no input available yet
+            } else if (received < 0 || session_transport_is_eof(ctx) ||
+                       !session_transport_is_open(ctx)) {
+                input_open = false;
+            }
+        }
+
+        int status = 0;
+        pid_t wait_result = waitpid(pid, &status, WNOHANG);
+        if (wait_result == pid) {
+            output_open = false;
+            input_open = false;
+            break;
+        }
+    }
+
+    if (pty_master >= 0) {
+        close(pty_master);
+        pty_master = -1;
+    }
+
+    int status = 0;
+    (void)waitpid(pid, &status, 0);
+    session_send_system_line(ctx, "Shell session ended.");
+}
+
 static void session_handle_revoke(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {

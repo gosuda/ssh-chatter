@@ -2714,6 +2714,14 @@ static int session_transport_read(session_ctx_t *ctx, void *buffer,
     const uint32_t chunk =
         (length > UINT32_MAX) ? UINT32_MAX : (uint32_t)length;
 
+    if (ctx->channel == nullptr) {
+        return SSH_ERROR;
+    }
+
+    if (!ssh_channel_is_open(ctx->channel) || ssh_channel_is_eof(ctx->channel)) {
+        return SSH_ERROR;
+    }
+
     if (timeout_ms >= 0) {
         return ssh_channel_read_timeout(ctx->channel, buffer, chunk, 0,
                                         timeout_ms);

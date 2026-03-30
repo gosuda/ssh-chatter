@@ -1294,6 +1294,9 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
         if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
             member->display_model_initialized) {
             session_flag_should_sink(member);
+            if (member->history_scroll_position == 0U && !member->no_update) {
+                session_process_pending_sink(member);
+            }
             session_channel_flush(member);
             atomic_fetch_sub(&member->room_snapshot_refs, 1U);
             continue;
@@ -1437,6 +1440,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
             member->display_model_initialized) {
             session_flag_should_sink(member);
+            if (member->history_scroll_position == 0U && !member->no_update) {
+                session_process_pending_sink(member);
+            }
             session_channel_flush(member);
             atomic_fetch_sub(&member->room_snapshot_refs, 1U);
             continue;

@@ -571,7 +571,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
 
     size_t max_position = 0U;
     if (total > scroll_step) {
-        max_position = total - step;
+        max_position = total - scroll_step;
     }
     if (ctx->history_scroll_position > max_position) {
         ctx->history_scroll_position = max_position;
@@ -674,15 +674,6 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
         goto cleanup;
     }
 
-    if (direction > 0 && at_boundary && new_position == max_position) {
-        if (!ctx->history_oldest_notified) {
-            ctx->history_oldest_notified = true;
-        }
-        session_render_prompt(ctx, false);
-        session_process_pending_sink(ctx);
-        goto cleanup;
-    }
-
     session_scrollback_prepare_display(ctx);
 
     const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
@@ -699,15 +690,6 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
 
     const size_t oldest_visible =
         (newest_visible + 1U > chunk) ? (newest_visible + 1U - chunk) : 0U;
-
-    if (direction > 0 && at_boundary && new_position == max_position) {
-        if (!ctx->history_oldest_notified) {
-            ctx->history_oldest_notified = true;
-        }
-        session_render_prompt(ctx, false);
-        session_process_pending_sink(ctx);
-        goto cleanup;
-    }
 
     if (direction > 0 && reached_oldest) {
         if (!ctx->history_oldest_notified) {
@@ -875,16 +857,6 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         session_render_prompt(ctx, false);
         session_process_pending_sink(ctx);
         ctx->scrollback_rendered_lines = 0U;
-        goto cleanup;
-    }
-
-    if (direction > 0 && at_boundary && new_position == max_position) {
-        if (!ctx->history_oldest_notified) {
-            ctx->history_oldest_notified = true;
-        }
-        // No message for oldest by default, just block
-        session_render_prompt(ctx, false);
-        session_process_pending_sink(ctx);
         goto cleanup;
     }
 
@@ -1213,7 +1185,9 @@ static bool session_consume_escape_sequence(session_ctx_t *ctx, char ch)
                 ctx->input_escape_length = 0U;
                 return true;
             }
-            session_scrollback_navigate(ctx, 1, 100);
+            // Treat PageUp/PageDown as single-page navigation based on the
+            // current viewport height instead of a fixed minimum history size.
+            session_scrollback_navigate(ctx, 1, 0U);
             ctx->input_escape_active = false;
             ctx->input_escape_length = 0U;
             return true;
@@ -1224,7 +1198,9 @@ static bool session_consume_escape_sequence(session_ctx_t *ctx, char ch)
                 ctx->input_escape_length = 0U;
                 return true;
             }
-            session_scrollback_navigate(ctx, -1, 100);
+            // Treat PageUp/PageDown as single-page navigation based on the
+            // current viewport height instead of a fixed minimum history size.
+            session_scrollback_navigate(ctx, -1, 0U);
             ctx->input_escape_active = false;
             ctx->input_escape_length = 0U;
             return true;

@@ -801,6 +801,7 @@ typedef struct session_ctx {
     bool
         no_update; // Flag to prevent automatic message updates when scrolling history
     bool pending_should_sink;
+    size_t last_sink_history_total;
     // Output buffering to prevent flickering
     bool output_buffering_enabled;
     char output_buffer[SSH_CHATTER_OUTPUT_BUFFER_SIZE];

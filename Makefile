@@ -9,6 +9,8 @@ CC := gcc
 
 # Get the number of available CPU cores for parallel LTO processing
 NPROC := $(shell nproc)
+LTO_NPROC := $(shell nproc >/dev/null 2>&1 && nproc || echo 1)
+LTO_JOBS := $(shell jobs=$$(( $(LTO_NPROC) / 4 )); if [ $$jobs -lt 1 ]; then jobs=1; fi; echo $$jobs)
 
 # ==============================================================================
 # CFLAGS: EXTREME Low-Latency and LTO Optimization Flags
@@ -89,8 +91,8 @@ COMMON_LDFLAGS = \
 LDFLAGS = $(COMMON_LDFLAGS) -lssh
 
 ifeq ($(ENABLE_LTO),1)
-CFLAGS += -flto=auto -fuse-linker-plugin
-COMMON_LDFLAGS += -flto=auto -fuse-linker-plugin
+CFLAGS += -flto=$(LTO_JOBS) -fuse-linker-plugin
+COMMON_LDFLAGS += -flto=$(LTO_JOBS) -fuse-linker-plugin
 endif
 
 # Define targets and source files

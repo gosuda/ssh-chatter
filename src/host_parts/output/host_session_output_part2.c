@@ -571,7 +571,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
 
     size_t max_position = 0U;
     if (total > scroll_step) {
-        max_position = total - step;
+        max_position = total - scroll_step;
     }
     if (ctx->history_scroll_position > max_position) {
         ctx->history_scroll_position = max_position;
@@ -1213,7 +1213,9 @@ static bool session_consume_escape_sequence(session_ctx_t *ctx, char ch)
                 ctx->input_escape_length = 0U;
                 return true;
             }
-            session_scrollback_navigate(ctx, 1, 100);
+            // Treat PageUp/PageDown as single-page navigation based on the
+            // current viewport height instead of a fixed minimum history size.
+            session_scrollback_navigate(ctx, 1, 0U);
             ctx->input_escape_active = false;
             ctx->input_escape_length = 0U;
             return true;
@@ -1224,7 +1226,9 @@ static bool session_consume_escape_sequence(session_ctx_t *ctx, char ch)
                 ctx->input_escape_length = 0U;
                 return true;
             }
-            session_scrollback_navigate(ctx, -1, 100);
+            // Treat PageUp/PageDown as single-page navigation based on the
+            // current viewport height instead of a fixed minimum history size.
+            session_scrollback_navigate(ctx, -1, 0U);
             ctx->input_escape_active = false;
             ctx->input_escape_length = 0U;
             return true;

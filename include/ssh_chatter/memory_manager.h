@@ -10,7 +10,6 @@
 #include <ttak/mem/owner.h>
 #include <ttak/mem/epoch_gc.h>
 #include <ttak/mem/epoch.h>
-#include <ttak/mem/detachable.h>
 #include <ttak/mem/fastpath.h>
 #include <ttak/timing/timing.h>
 #include <ttak/sync/sync.h>
@@ -28,7 +27,7 @@ extern "C" {
  * Variable Lifecycle & Ownership Model
  * ====================================================================
  *
- * Every allocation in ssh-chatter flows through four cooperating layers
+ * Every allocation in ssh-chatter flows through three cooperating layers
  * provided by libttak.  Understanding them is essential for safe memory
  * management in a multi-threaded chat server.
  *
@@ -56,21 +55,12 @@ extern "C" {
  *    - sshc_epoch_reclaim() actually frees pointers that are no longer
  *      observable by any thread.
  *
- * 4. Detachable Memory  (ttak_detachable_*)
- *    - Short-lived, arena-like allocations with automatic cache recycling.
- *    - Each sshc_memory_context owns a ttak_detachable_context that
- *      provides fast alloc/free with epoch protection and a small LRU
- *      cache for tiny allocations (<= 16 bytes).
- *    - Use sshc_detachable_alloc() / sshc_detachable_free() for
- *      per-session scratch buffers, temporary strings, or any data whose
- *      lifetime is strictly bounded by the enclosing session.
- *
  * Typical session thread lifecycle:
  *
  *   sshc_epoch_thread_enter();              // register with EBR
  *   sshc_memory_context_push(session_ctx);  // bind TLS to session owner
  *
- *     ... sshc_gc_malloc / sshc_detachable_alloc ...
+ *     ... sshc_gc_malloc ...
  *     ... sshc_epoch_retire(shared_ptr) ...
  *
  *   sshc_memory_context_pop(prev);          // unbind
@@ -99,18 +89,6 @@ sshc_memory_context_t *sshc_memory_context_current(void);
  * @return The owner pointer, or NULL if the context is NULL.
  */
 tt_owner_t *sshc_memory_context_get_owner(sshc_memory_context_t *ctx);
-
-/**
- * @brief Retrieve the detachable context for short-lived allocations.
- *
- * Returns the ttak_detachable_context_t embedded in the memory context.
- * Use it with sshc_detachable_alloc() / sshc_detachable_free() for
- * arena-style scratch memory with automatic epoch protection.
- *
- * @return The detachable context pointer, or NULL if ctx is NULL.
- */
-ttak_detachable_context_t *sshc_memory_context_get_detachable(
-    sshc_memory_context_t *ctx);
 
 /**
  * @brief Rotate the EpochGC associated with a memory context.
@@ -176,33 +154,6 @@ void sshc_epoch_retire_with(void *ptr, void (*cleanup)(void *));
  * from the main accept loop or a background maintenance thread.
  */
 void sshc_epoch_reclaim(void);
-
-/* ------------------------------------------------------------------ */
-/* Detachable memory wrappers                                         */
-/* ------------------------------------------------------------------ */
-
-/**
- * @brief Allocate detachable (short-lived) memory from the current context.
- *
- * The allocation is tracked by the context's detachable arena and
- * protected by epoch-based reclamation.  Tiny allocations (<= 16 bytes)
- * are served from a per-context LRU cache for near-zero overhead.
- *
- * @param size  Number of bytes to allocate (0 is treated as 1).
- * @return Detachable allocation descriptor; check .data for NULL on failure.
- */
-ttak_detachable_allocation_t sshc_detachable_alloc(size_t size);
-
-/**
- * @brief Free a detachable allocation.
- *
- * Small allocations may be returned to the cache instead of being freed
- * immediately.  Larger allocations are retired through EBR for safe
- * deferred reclamation.
- *
- * @param alloc  Pointer to the allocation descriptor (zeroed on return).
- */
-void sshc_detachable_free(ttak_detachable_allocation_t *alloc);
 
 // Internal implementation functions to avoid naming conflicts with libgc
 void *sshc_gc_malloc(size_t size);

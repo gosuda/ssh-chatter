@@ -278,16 +278,20 @@ void session_process_pending_sink(session_ctx_t *ctx)
     // Compute the newest chunk to deliver.
     size_t total = host_history_total(ctx->owner);
     if (total == 0U) {
+        ctx->last_sink_history_total = 0U;
         ctx->pending_should_sink = false;
         return;
     }
 
-    size_t chunk = session_scrollback_line_capacity(ctx);
-    if (chunk > total) {
-        chunk = total;
+    size_t start_index = ctx->last_sink_history_total;
+    if (start_index > total) {
+        start_index = total;
     }
-
-    size_t start_index = (total > 0U && total > chunk) ? (total - chunk) : 0U;
+    if (start_index == total) {
+        ctx->pending_should_sink = false;
+        return;
+    }
+    size_t chunk = total - start_index;
     size_t buffer_capacity = 0U;
     chat_history_entry_t *buffer =
         session_scrollback_reserve_buffer(ctx, chunk, &buffer_capacity);
@@ -342,11 +346,13 @@ void session_process_pending_sink(session_ctx_t *ctx)
     if (!used_incremental_redraw) {
         /*
          * Avoid full-screen clear fallback for both SSH and TELNET.
-         * When incremental diffing is unavailable, append only the newest
-         * history line so sink updates do not trigger full-frame flicker.
+         * When incremental diffing is unavailable, append each newly
+         * committed history line with the same renderer used by scrollback.
          */
         ctx->output_buffer_length = buffer_mark;
-        session_send_history_entry(ctx, &buffer[copied - 1U]);
+        for (size_t idx = 0U; idx < copied; ++idx) {
+            session_send_history_entry(ctx, &buffer[idx]);
+        }
     }
 
     if (ctx->display_model_initialized) {
@@ -359,6 +365,7 @@ void session_process_pending_sink(session_ctx_t *ctx)
     // Reset the realtime line counter so the next batch of live messages
     // does not immediately trigger session_realtime_refresh.
     ctx->realtime_line_count = 0U;
+    ctx->last_sink_history_total = total;
 
     if (buffering_started) {
         session_output_buffer_stop(ctx);

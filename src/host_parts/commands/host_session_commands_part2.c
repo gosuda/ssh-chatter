@@ -270,7 +270,6 @@ static void session_handle_advanced(session_ctx_t *ctx, const char *arguments)
 
     bool is_full_operator = ctx->user.is_operator;
     bool is_lan_operator = ctx->user.is_lan_operator;
-    bool is_operator = is_full_operator || is_lan_operator;
 
     char delegated_buffer[SSH_CHATTER_MESSAGE_LIMIT];
     if (arguments != nullptr) {

@@ -2811,28 +2811,50 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
 
     session_scrollback_reset_position(ctx);
 
-    // Do not emit the sender's new message directly here. Let the pending sink
-    // redraw compare the previous visible frame against the updated latest
-    // history so the viewport can scroll smoothly instead of appending a
-    // standalone line first and then trying to recover.
+    // Append the sender's own message immediately so local UX matches how
+    // remote messages are shown in real time.
+    if (ctx->history_scroll_position == 0U) {
+        char id_label[32] = "-";
+        if (entry.message_id > 0U) {
+            host_compact_id_encode(entry.message_id, id_label,
+                                   sizeof(id_label));
+        }
+
+        char line[SSH_CHATTER_MESSAGE_LIMIT * 2U];
+        snprintf(line, sizeof(line), "[%s] <%s%s%s%s> %s", id_label,
+                 entry.user_color_code[0] != '\0' ? entry.user_color_code
+                                                  : ANSI_RESET,
+                 entry.username, ANSI_RESET,
+                 entry.user_is_bold ? ANSI_BOLD : "", entry.message);
+        session_send_plain_line(ctx, line);
+
+        if (entry.attachment_type != CHAT_ATTACHMENT_NONE &&
+            entry.attachment_target[0] != '\0') {
+            const char *label = chat_attachment_type_label(entry.attachment_type);
+            char attachment_line[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(attachment_line, sizeof(attachment_line),
+                     "    (%s)" ANSI_RESET " %s", label,
+                     entry.attachment_target);
+            session_send_plain_line(ctx, attachment_line);
+
+            if (entry.attachment_caption[0] != '\0') {
+                char caption_line[SSH_CHATTER_MESSAGE_LIMIT];
+                snprintf(caption_line, sizeof(caption_line), "    \342\206\263 %s",
+                         entry.attachment_caption);
+                session_send_plain_line(ctx, caption_line);
+            }
+        }
+    }
 
     if (ctx->history_scroll_position == 0U && !ctx->bracket_paste_active) {
         if (clear_prompt_text) {
             ctx->input_length = 0U;
             ctx->input_buffer[0] = '\0';
         }
-        // session_process_pending_sink() refreshes the prompt after applying
-        // the latest-history redraw for the sender.
     }
     chat_room_broadcast_entry(&ctx->owner->room, &entry, ctx);
     host_notify_external_clients(ctx->owner, &entry);
-
-    // Force-sync the sender's screen after broadcasting.  The broadcast
-    // marks all room members (including the sender) with a pending sink
-    // flag but skips the sender in the delivery loop, leaving the flag
-    // unprocessed until the next keystroke.  Processing it here ensures
-    // the sender's viewport immediately reflects all recent messages.
-    session_process_pending_sink(ctx);
+    session_clear_pending_sink(ctx);
 
     (void)host_eliza_intervene(ctx, trimmed, nullptr, false);
 

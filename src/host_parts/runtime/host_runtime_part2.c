@@ -64,6 +64,62 @@ static void session_log_encoding_state(const char *phase,
            (int)ctx->output_kind);
 }
 
+static uint64_t host_allocate_session_id(host_t *host)
+{
+    if (host == nullptr) {
+        return 0U;
+    }
+
+    return atomic_fetch_add(&host->next_session_id, 1U);
+}
+
+static bool session_runtime_bind(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return false;
+    }
+    if (ctx->session_data != nullptr && ctx->session_id != 0U) {
+        return true;
+    }
+
+    session_runtime_data_t *runtime =
+        (session_runtime_data_t *)sshc_gc_calloc(1U, sizeof(*runtime));
+    if (runtime == nullptr) {
+        return false;
+    }
+
+    const uint64_t session_id = host_allocate_session_id(ctx->owner);
+    if (session_id == 0U) {
+        sshc_gc_free(runtime);
+        return false;
+    }
+
+    runtime->session_id = session_id;
+    atomic_init(&runtime->active, true);
+    runtime->ctx = ctx;
+    ctx->session_id = session_id;
+    ctx->session_data = (void *)runtime;
+    printf("[session] created session_id=%llu\n",
+           (unsigned long long)session_id);
+    return true;
+}
+
+static void session_runtime_unbind(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->session_data == nullptr) {
+        return;
+    }
+
+    session_runtime_data_t *runtime =
+        (session_runtime_data_t *)ctx->session_data;
+    printf("[session] releasing session_id=%llu\n",
+           (unsigned long long)runtime->session_id);
+    atomic_store(&runtime->active, false);
+    runtime->ctx = nullptr;
+    ctx->session_data = nullptr;
+    ctx->session_id = 0U;
+}
+
 static void *host_telnet_thread(void *arg)
 {
     host_t *host = (host_t *)arg;
@@ -607,6 +663,11 @@ static void session_epoch_free(void *ptr)
         ctx->session_owner = nullptr;
     }
 
+    if (ctx->session_data != nullptr) {
+        sshc_gc_free(ctx->session_data);
+        ctx->session_data = nullptr;
+    }
+
     sshc_gc_free(ctx);
 }
 
@@ -616,6 +677,7 @@ static void session_destroy(session_ctx_t *ctx)
         return;
     }
 
+    session_runtime_unbind(ctx);
     session_cleanup(ctx);
     if (ctx->memory_context != nullptr) {
         /*
@@ -685,6 +747,10 @@ session_ctx_t *host_session_create_for_testing(host_t *host,
         return nullptr;
     }
     ctx->channel_mutex_initialized = true;
+    if (!session_runtime_bind(ctx)) {
+        session_destroy(ctx);
+        return nullptr;
+    }
 
     session_apply_theme_defaults(ctx);
 
@@ -724,6 +790,9 @@ static void *session_thread(void *arg)
     } while (0)
 
     ctx->exit_status = EXIT_FAILURE;
+    if (!session_runtime_bind(ctx)) {
+        SESSION_THREAD_ERROR_EXIT();
+    }
     session_apply_theme_defaults(ctx);
 
     bool authenticated = false;
@@ -1788,6 +1857,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     }
 
     chat_room_init(&host->room);
+    atomic_init(&host->next_session_id, 1U);
     host->idle_state_pending = false;
     host->last_room_empty_time = session_now_monotonic();
     host->listener.handle = nullptr;

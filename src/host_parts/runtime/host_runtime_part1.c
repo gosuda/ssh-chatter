@@ -687,6 +687,8 @@ static session_ctx_t *session_create(void)
             sshc_memory_context_push(ctx->memory_context);
 
         ctx->user.is_authenticated = false;
+        ctx->session_id = 0U;
+        ctx->session_data = nullptr;
         ctx->prefer_utf16_output = false;
         ctx->newline_mode = SESSION_NEWLINE_MODE_AUTO;
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */

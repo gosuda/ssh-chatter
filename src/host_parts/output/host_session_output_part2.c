@@ -1981,7 +1981,12 @@ static int session_on_window_change(ssh_session session, ssh_channel channel,
     (void)pxwidth;
     (void)pwheight;
 
-    session_ctx_t *ctx = (session_ctx_t *)userdata;
+    session_runtime_data_t *runtime = (session_runtime_data_t *)userdata;
+    if (runtime == nullptr || !atomic_load(&runtime->active)) {
+        return -1;
+    }
+
+    session_ctx_t *ctx = runtime->ctx;
     if (ctx == nullptr) {
         return -1;
     }
@@ -2001,13 +2006,14 @@ static int session_on_window_change(ssh_session session, ssh_channel channel,
 
 static void session_install_channel_callbacks(session_ctx_t *ctx)
 {
-    if (ctx == nullptr || ctx->channel == nullptr || ctx->channel_cb_installed) {
+    if (ctx == nullptr || ctx->channel == nullptr || ctx->channel_cb_installed ||
+        ctx->session_data == nullptr) {
         return;
     }
 
     memset(&ctx->channel_cb, 0, sizeof(ctx->channel_cb));
     ctx->channel_cb.size = sizeof(ctx->channel_cb);
-    ctx->channel_cb.userdata = ctx;
+    ctx->channel_cb.userdata = ctx->session_data;
     ctx->channel_cb.channel_pty_window_change_function =
         session_on_window_change;
     ssh_callbacks_init(&ctx->channel_cb);

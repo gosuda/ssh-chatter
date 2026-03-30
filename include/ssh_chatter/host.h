@@ -612,6 +612,12 @@ typedef enum session_output_kind {
     SESSION_OUTPUT_KIND_GENERIC,
 } session_output_kind_t;
 
+typedef struct session_runtime_data {
+    uint64_t session_id;
+    _Atomic bool active;
+    struct session_ctx *ctx;
+} session_runtime_data_t;
+
 typedef enum session_newline_mode {
     SESSION_NEWLINE_MODE_AUTO = 0,
     SESSION_NEWLINE_MODE_LF,
@@ -619,6 +625,8 @@ typedef enum session_newline_mode {
 } session_newline_mode_t;
 
 typedef struct session_ctx {
+    uint64_t session_id;
+    void *session_data;
     ssh_session session;
     ssh_channel channel;
     struct ssh_channel_callbacks_struct channel_cb;
@@ -999,6 +1007,7 @@ typedef struct host {
     _Atomic bool geo_language_enabled;
     host_moderation_state_t moderation;
     host_eliza_worker_state_t eliza_worker;
+    atomic_uint_fast64_t next_session_id;
     pthread_t bbs_watchdog_thread;
     bool bbs_watchdog_thread_initialized;
     _Atomic bool bbs_watchdog_thread_running;

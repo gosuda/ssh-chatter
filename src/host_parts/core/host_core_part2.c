@@ -587,6 +587,27 @@ static const session_help_entry_t kSessionHelpExtended[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "set-lf <auto|lf|crlf>",
+        .description =
+            {
+                "Set output line-ending mode (auto follows /os setting).",
+                "출력 줄바꿈 모드를 설정합니다 (auto는 /os 설정을 따릅니다).",
+                "出力改行モードを設定します（auto は /os 設定に従います）。",
+                "设置输出换行模式（auto 跟随 /os 设置）。",
+                "Задать режим окончания строк (auto следует /os).",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "줄바꿈설정 <자동|lf|crlf>",
+                [SESSION_UI_LANGUAGE_JP] = "改行設定 <自動|lf|crlf>",
+                [SESSION_UI_LANGUAGE_ZH] = "换行设置 <自动|lf|crlf>",
+                [SESSION_UI_LANGUAGE_RU] = "режим-строк <авто|lf|crlf>",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "weather <region> <city>",
         .description =
             {

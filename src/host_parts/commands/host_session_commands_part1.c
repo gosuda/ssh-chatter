@@ -1026,6 +1026,16 @@ static void session_handle_os(session_ctx_t *ctx, const char *arguments)
     snprintf(message, sizeof(message), "Recorded your operating system as %s.",
              descriptor->display);
     session_send_system_line(ctx, message);
+
+    if (ctx->newline_mode == SESSION_NEWLINE_MODE_AUTO) {
+        const bool prefers_crlf = (strcasecmp(descriptor->name, "windows") == 0);
+        char newline_notice[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(newline_notice, sizeof(newline_notice),
+                 "Line ending default is now %s (auto mode). Use /set-lf "
+                 "<auto|lf|crlf> to override.",
+                 prefers_crlf ? "CRLF" : "LF");
+        session_send_system_line(ctx, newline_notice);
+    }
 }
 
 static void session_handle_getos(session_ctx_t *ctx, const char *arguments)

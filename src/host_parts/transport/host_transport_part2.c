@@ -1190,11 +1190,13 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
                 (color[0] != '\0') || (highlight[0] != '\0');
 
             if (has_custom_codes) {
-                snprintf(formatted, sizeof(formatted), "[-] <%s%s%s%s%s> %s",
+                snprintf(formatted, sizeof(formatted),
+                         ANSI_CYAN "[-]" ANSI_RESET " <%s%s%s%s%s> %s",
                          highlight, color, bold, from->user.name, ANSI_RESET,
                          message);
             } else {
-                snprintf(formatted, sizeof(formatted), "%s%s [-] <%s>%s %s",
+                snprintf(formatted, sizeof(formatted),
+                         "%s%s " ANSI_CYAN "[-]" ANSI_RESET " <%s>%s %s",
                          color, bold, from->user.name, ANSI_RESET, message);
             }
 
@@ -1465,7 +1467,8 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             }
 
             char line[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-            snprintf(line, sizeof(line), "[%s] <%s%s%s%s> %s", id_label,
+            snprintf(line, sizeof(line),
+                     ANSI_CYAN "[%s]" ANSI_RESET " <%s%s%s%s> %s", id_label,
                      entry->user_color_code[0] != '\0' ? entry->user_color_code
                                                        : ANSI_RESET,
                      entry->username, ANSI_RESET,

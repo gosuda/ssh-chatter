@@ -1469,6 +1469,7 @@ static const char *const kSessionCommandNames[] = {
     "rss",
     "search",
     "setpw",
+    "shell",
     "set-target-lang",
     "set-trans-lang",
     "set-ui-lang",
@@ -2397,6 +2398,13 @@ static const session_command_alias_t kSessionCommandAliases[] = {
             },
     },
     {
+        .canonical = "/shell",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "/쉘",
+            },
+    },
+    {
         .canonical = "/revoke",
         .localized =
             {
@@ -2641,4 +2649,3 @@ static const session_command_alias_t kSessionCommandAliases[] = {
             },
     },
 };
-

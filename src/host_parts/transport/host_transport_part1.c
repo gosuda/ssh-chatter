@@ -2385,6 +2385,7 @@ static bool session_parse_birthday(const char *input, char *normalized,
 static void session_handle_birthday(session_ctx_t *ctx, const char *arguments);
 static void session_handle_setpw(session_ctx_t *ctx, const char *arguments);
 static void session_handle_delpw(session_ctx_t *ctx, const char *arguments);
+static void session_handle_shell(session_ctx_t *ctx, const char *arguments);
 static void session_handle_revoke(session_ctx_t *ctx, const char *arguments);
 static void session_handle_delete_message(session_ctx_t *ctx,
                                           const char *arguments);
@@ -3076,4 +3077,3 @@ static const char *const TETROMINO_SHAPES[7][4] = {
 
 static const char TETROMINO_DISPLAY_CHARS[7] = {'I', 'J', 'L', 'O',
                                                 'S', 'T', 'Z'};
-

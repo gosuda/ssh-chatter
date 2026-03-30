@@ -1245,6 +1245,27 @@ static const session_help_entry_t kSessionHelpOperator[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "shell",
+        .description =
+            {
+                "Drop into /bin/sh for this session (granted admin/LAN ops).",
+                "이 세션에서 /bin/sh 셸로 전환합니다 (권한 부여된 관리자/LAN 운영자).",
+                "このセッションで /bin/sh シェルに入ります（権限付与済み管理者/LAN オペレーター）。",
+                "在当前会话进入 /bin/sh（仅限已授予管理员/LAN 运维）。",
+                "Открыть /bin/sh в текущей сессии (для выданных админов/LAN-операторов).",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "쉘",
+                [SESSION_UI_LANGUAGE_JP] = "シェル",
+                [SESSION_UI_LANGUAGE_ZH] = "shell",
+                [SESSION_UI_LANGUAGE_RU] = "шелл",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "revoke <ip>",
         .description =
             {

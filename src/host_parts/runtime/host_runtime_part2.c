@@ -1178,15 +1178,16 @@ static void *session_thread(void *arg)
         }
 
         char join_message[SSH_CHATTER_MESSAGE_LIMIT];
-        if (ctx->user_data_loaded &&
-            strnlen(ctx->user_data.preferred_nickname,
-                    sizeof(ctx->user_data.preferred_nickname)) != 0U) {
-            snprintf(join_message, sizeof(join_message),
-                     "%s%s*%s [%.*s] has joined the chat", ANSI_RESET, ANSI_BRIGHT_RED, ANSI_RESET, (int)sizeof(ctx->user_data.preferred_nickname), ctx->user_data.preferred_nickname);
-        } else {
-            snprintf(join_message, sizeof(join_message),
-                     "%s%s*%s [%.*s] has joined the chat", ANSI_RESET, ANSI_BRIGHT_RED, ANSI_RESET, (int)sizeof(ctx->user.name), ctx->user.name);
-        }
+        char join_name[SSH_CHATTER_USERNAME_LEN];
+        const char *source_name =
+            (ctx->user_data_loaded &&
+             ctx->user_data.preferred_nickname[0] != '\0')
+                ? ctx->user_data.preferred_nickname
+                : ctx->user.name;
+        snprintf(join_name, sizeof(join_name), "%s", source_name);
+        snprintf(join_message, sizeof(join_message),
+                 "%s%s*%s [%s] has joined the chat", ANSI_RESET,
+                 ANSI_BRIGHT_RED, ANSI_RESET, join_name);
         host_history_record_system(ctx->owner, join_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, join_message, nullptr);
     }
@@ -1789,7 +1790,7 @@ static void *session_thread(void *arg)
     if (ctx->has_joined_room) {
         printf("[part] %s\n", ctx->user.name);
         char part_message[SSH_CHATTER_MESSAGE_LIMIT];
-        if(strnlen(ctx->user_data.preferred_nickname, 256) != 0) {
+        if (ctx->user_data.preferred_nickname[0] != '\0') {
             snprintf(part_message, sizeof(part_message), "%s%s*%s [%s] has left the chat",
                      ANSI_RESET, ANSI_BRIGHT_BLUE, ANSI_RESET, ctx->user_data.preferred_nickname);
         } else {
@@ -2489,7 +2490,6 @@ void host_set_motd(host_t *host, const char *motd)
 
     char normalized[sizeof(host->motd)];
     snprintf(normalized, sizeof(normalized), "%s", motd);
-    session_normalize_newlines(normalized);
 
     ttak_mutex_lock(&host->lock);
     if (motd_path[0] != '\0') {

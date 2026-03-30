@@ -553,6 +553,34 @@ static void session_scrollback_prepare_display(session_ctx_t *ctx)
     session_channel_write(ctx, clear_to_end, sizeof(clear_to_end) - 1U);
 }
 
+static void session_channel_write_line_ending(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || !session_transport_active(ctx)) {
+        return;
+    }
+
+    bool prefer_crlf = false;
+    switch (ctx->newline_mode) {
+    case SESSION_NEWLINE_MODE_CRLF:
+        prefer_crlf = true;
+        break;
+    case SESSION_NEWLINE_MODE_LF:
+        prefer_crlf = false;
+        break;
+    case SESSION_NEWLINE_MODE_AUTO:
+    default:
+        prefer_crlf = (ctx->os_name[0] != '\0' &&
+                       strcasecmp(ctx->os_name, "windows") == 0);
+        break;
+    }
+
+    if (prefer_crlf) {
+        session_channel_write(ctx, "\r\n", 2U);
+    } else {
+        session_channel_write(ctx, "\n", 1U);
+    }
+}
+
 static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
 {
     if (ctx == nullptr || banner == nullptr) {
@@ -577,7 +605,7 @@ static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
         if (length > 0U) {
             session_channel_write(ctx, cursor, length);
         }
-        session_channel_write(ctx, "\r\n", 2U);
+        session_channel_write_line_ending(ctx);
         session_note_output_lines(ctx, 1U);
 
         if (newline == nullptr) {
@@ -3122,7 +3150,7 @@ session_pad_prompt_to_terminal(session_ctx_t *ctx, bool include_separator)
     unsigned int blanks = max_content - used;
     for (unsigned int idx = 0U; idx < blanks; ++idx) {
         session_fill_line_with_theme(ctx);
-        session_channel_write(ctx, "\r\n", 2U);
+        session_channel_write_line_ending(ctx);
     }
 
     session_note_output_lines(ctx, blanks);
@@ -3236,7 +3264,7 @@ static void session_local_echo_char(session_ctx_t *ctx, char ch)
     }
 
     if (ch == '\r' || ch == '\n') {
-        session_channel_write(ctx, "\r\n", 2U);
+        session_channel_write_line_ending(ctx);
         return;
     }
 

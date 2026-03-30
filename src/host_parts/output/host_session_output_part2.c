@@ -2714,7 +2714,6 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
 
     char normalized[SSH_CHATTER_MAX_INPUT_LEN];
     snprintf(normalized, sizeof(normalized), "%s", line);
-    session_normalize_newlines(normalized);
 
     const bool composing_draft = ctx->bbs_post_pending || ctx->asciiart_pending;
 
@@ -3879,98 +3878,6 @@ static void session_handle_search(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, listing);
 }
 
-static bool session_output_os_is_windows(const session_ctx_t *ctx)
-{
-    if (ctx == nullptr || ctx->os_name[0] == '\0') {
-        return false;
-    }
-
-    return strcasecmp(ctx->os_name, "windows") == 0;
-}
-
-static bool session_output_prefers_crlf(const session_ctx_t *ctx)
-{
-    if (ctx == nullptr) {
-        return false;
-    }
-
-    switch (ctx->newline_mode) {
-    case SESSION_NEWLINE_MODE_CRLF:
-        return true;
-    case SESSION_NEWLINE_MODE_LF:
-        return false;
-    case SESSION_NEWLINE_MODE_AUTO:
-    default:
-        return session_output_os_is_windows(ctx);
-    }
-}
-
-static unsigned char *
-session_normalize_output_newlines(const session_ctx_t *ctx, const void *data,
-                                  size_t length, size_t *out_length)
-{
-    if (out_length == nullptr || data == nullptr || length == 0U) {
-        return nullptr;
-    }
-
-    *out_length = length;
-    const unsigned char *input = (const unsigned char *)data;
-    const bool prefer_crlf = session_output_prefers_crlf(ctx);
-
-    bool needs_change = false;
-    for (size_t idx = 0U; idx < length; ++idx) {
-        unsigned char ch = input[idx];
-        if (prefer_crlf) {
-            if (ch == '\n' && (idx == 0U || input[idx - 1U] != '\r')) {
-                needs_change = true;
-                break;
-            }
-        } else {
-            if (ch == '\r') {
-                needs_change = true;
-                break;
-            }
-        }
-    }
-
-    if (!needs_change) {
-        return nullptr;
-    }
-
-    unsigned char *buffer = (unsigned char *)sshc_gc_malloc(length * 2U + 1U);
-    if (buffer == nullptr) {
-        return nullptr;
-    }
-
-    size_t out = 0U;
-    for (size_t idx = 0U; idx < length; ++idx) {
-        unsigned char ch = input[idx];
-        if (prefer_crlf) {
-            if (ch == '\n' && (idx == 0U || input[idx - 1U] != '\r')) {
-                buffer[out++] = '\r';
-                buffer[out++] = '\n';
-            } else {
-                buffer[out++] = ch;
-            }
-            continue;
-        }
-
-        if (ch == '\r') {
-            if (idx + 1U < length && input[idx + 1U] == '\n') {
-                buffer[out++] = '\n';
-                ++idx;
-            } else {
-                buffer[out++] = '\n';
-            }
-            continue;
-        }
-        buffer[out++] = ch;
-    }
-
-    *out_length = out;
-    return buffer;
-}
-
 void session_channel_write(session_ctx_t *ctx, const void *data, size_t length)
 {
     if (ctx == nullptr || data == nullptr || length == 0U || ctx->should_exit ||
@@ -4003,14 +3910,6 @@ void session_channel_write(session_ctx_t *ctx, const void *data, size_t length)
 
     const void *write_data = data;
     size_t write_length = length;
-
-    size_t newline_normalized_length = 0U;
-    unsigned char *newline_normalized = session_normalize_output_newlines(
-        ctx, write_data, write_length, &newline_normalized_length);
-    if (newline_normalized != nullptr) {
-        write_data = newline_normalized;
-        write_length = newline_normalized_length;
-    }
 
     size_t nul_count = 0U;
     const unsigned char *inspect = (const unsigned char *)write_data;
@@ -4065,10 +3964,6 @@ void session_channel_write(session_ctx_t *ctx, const void *data, size_t length)
     if (sanitized != nullptr) {
         sshc_gc_free(sanitized);
     }
-    if (newline_normalized != nullptr) {
-        sshc_gc_free(newline_normalized);
-    }
-
     if (channel_mutex_locked) {
         int unlock_result = ttak_mutex_unlock(&ctx->channel_mutex);
         if (unlock_result != 0) {

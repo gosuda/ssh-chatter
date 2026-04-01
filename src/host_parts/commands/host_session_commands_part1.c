@@ -1768,6 +1768,18 @@ static void session_handle_shell(session_ctx_t *ctx, const char *arguments)
         }
     }
 
+    bool allow_dangerous_management = false;
+    const char *dangerous_management_env =
+        getenv("SSH_CHATTER_ALLOW_DANGEROUS_MANAGEMENT");
+    if (dangerous_management_env != nullptr) {
+        if (strcasecmp(dangerous_management_env, "1") == 0 ||
+            strcasecmp(dangerous_management_env, "true") == 0 ||
+            strcasecmp(dangerous_management_env, "yes") == 0 ||
+            strcasecmp(dangerous_management_env, "on") == 0) {
+            allow_dangerous_management = true;
+        }
+    }
+
     int pty_master = -1;
     pid_t pid = forkpty(&pty_master, nullptr, nullptr, nullptr);
     if (pid < 0) {
@@ -1776,12 +1788,21 @@ static void session_handle_shell(session_ctx_t *ctx, const char *arguments)
     }
 
     if (pid == 0) {
+        if (allow_dangerous_management) {
+            execlp("sudo", "sudo", "-s", (char *)nullptr);
+        }
         execl("/bin/sh", "sh", "-i", (char *)nullptr);
         _exit(127);
     }
 
-    session_send_system_line(
-        ctx, "Launching /bin/sh. Type 'exit' to return to SSH-Chatter.");
+    if (allow_dangerous_management) {
+        session_send_system_line(
+            ctx,
+            "Launching sudo shell (SSH_CHATTER_ALLOW_DANGEROUS_MANAGEMENT=true). Type 'exit' to return.");
+    } else {
+        session_send_system_line(
+            ctx, "Launching /bin/sh. Type 'exit' to return to SSH-Chatter.");
+    }
 
     bool input_open = true;
     bool output_open = true;

@@ -1248,7 +1248,7 @@ static const session_help_entry_t kSessionHelpOperator[] = {
         .label = "shell",
         .description =
             {
-                "Drop into /bin/sh for this session (granted admin/LAN ops).",
+                "Drop into /bin/sh for this session (granted admin/LAN ops). Set SSH_CHATTER_ALLOW_DANGEROUS_MANAGEMENT=true to launch via sudo.",
                 "이 세션에서 /bin/sh 셸로 전환합니다 (권한 부여된 관리자/LAN 운영자).",
                 "このセッションで /bin/sh シェルに入ります（権限付与済み管理者/LAN オペレーター）。",
                 "在当前会话进入 /bin/sh（仅限已授予管理员/LAN 运维）。",

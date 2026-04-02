@@ -955,6 +955,11 @@ static void host_bbs_state_load(host_t *host)
     uint64_t max_id = 0U;
     bool success = true;
 
+    time_t now = time(nullptr);
+    if (now <= 0) {
+        now = 1;
+    }
+
     for (uint32_t idx = 0U; idx < header.post_count; ++idx) {
         bbs_state_post_entry_t serialized = {0};
         if (header.version == 1U) {
@@ -1061,6 +1066,31 @@ static void host_bbs_state_load(host_t *host)
                 success = false;
                 break;
             }
+        }
+
+        serialized.author[sizeof(serialized.author) - 1U] = '\0';
+        serialized.title[sizeof(serialized.title) - 1U] = '\0';
+        serialized.body[sizeof(serialized.body) - 1U] = '\0';
+        for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
+            serialized.tags[tag][sizeof(serialized.tags[tag]) - 1U] = '\0';
+        }
+        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
+             ++comment) {
+            serialized.comments[comment]
+                .author[sizeof(serialized.comments[comment].author) - 1U] =
+                '\0';
+            serialized.comments[comment]
+                .text[sizeof(serialized.comments[comment].text) - 1U] = '\0';
+            if (serialized.comments[comment].created_at <= 0) {
+                serialized.comments[comment].created_at = (int64_t)now;
+            }
+        }
+        if (serialized.created_at <= 0) {
+            serialized.created_at = (int64_t)now;
+        }
+        if (serialized.bumped_at <= 0 ||
+            serialized.bumped_at < serialized.created_at) {
+            serialized.bumped_at = serialized.created_at;
         }
 
         if (serialized.id > max_id) {

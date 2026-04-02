@@ -8,6 +8,7 @@
 
 // Eliza memory management, BBS persistence, and rendering helpers.
 #include "../host_internal.h"
+#include <sys/mman.h>
 
 #ifndef MSG_DONTWAIT
 #define MSG_DONTWAIT 0
@@ -914,19 +915,49 @@ static void host_bbs_state_load(host_t *host)
         return;
     }
 
-    bbs_state_header_t header = {0};
-    if (fread(&header, sizeof(header), 1U, fp) != 1U) {
+    int fd = fileno(fp);
+    if (fd < 0) {
         fclose(fp);
         return;
     }
 
-    if (header.magic != BBS_STATE_MAGIC) {
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size <= 0) {
         fclose(fp);
+        return;
+    }
+
+    size_t mapped_len = (size_t)st.st_size;
+    if (mapped_len < sizeof(bbs_state_header_t)) {
+        fclose(fp);
+        return;
+    }
+
+    unsigned char *mapped = mmap(nullptr, mapped_len, PROT_READ | PROT_WRITE,
+                                 MAP_PRIVATE, fd, 0);
+    fclose(fp);
+    fp = nullptr;
+    if (mapped == MAP_FAILED) {
+        return;
+    }
+
+    const unsigned char *cursor = mapped;
+    size_t remaining = mapped_len;
+
+    bbs_state_header_t header = {0};
+    memcpy(&header, cursor, sizeof(header));
+    cursor += sizeof(header);
+    remaining -= sizeof(header);
+
+    if (header.magic != BBS_STATE_MAGIC) {
+        memset(mapped, 0, mapped_len);
+        munmap(mapped, mapped_len);
         return;
     }
 
     if (header.version == 0U || header.version > BBS_STATE_VERSION) {
-        fclose(fp);
+        memset(mapped, 0, mapped_len);
+        munmap(mapped, mapped_len);
         return;
     }
 
@@ -955,14 +986,22 @@ static void host_bbs_state_load(host_t *host)
     uint64_t max_id = 0U;
     bool success = true;
 
+    time_t now = time(nullptr);
+    if (now <= 0) {
+        now = 1;
+    }
+
     for (uint32_t idx = 0U; idx < header.post_count; ++idx) {
         bbs_state_post_entry_t serialized = {0};
         if (header.version == 1U) {
             bbs_state_post_entry_v1_t legacy = {0};
-            if (fread(&legacy, sizeof(legacy), 1U, fp) != 1U) {
+            if (remaining < sizeof(legacy)) {
                 success = false;
                 break;
             }
+            memcpy(&legacy, cursor, sizeof(legacy));
+            cursor += sizeof(legacy);
+            remaining -= sizeof(legacy);
 
             serialized.id = legacy.id;
             serialized.created_at = legacy.created_at;
@@ -992,10 +1031,13 @@ static void host_bbs_state_load(host_t *host)
             }
         } else if (header.version == 2U) {
             bbs_state_post_entry_v2_t legacy = {0};
-            if (fread(&legacy, sizeof(legacy), 1U, fp) != 1U) {
+            if (remaining < sizeof(legacy)) {
                 success = false;
                 break;
             }
+            memcpy(&legacy, cursor, sizeof(legacy));
+            cursor += sizeof(legacy);
+            remaining -= sizeof(legacy);
 
             serialized.id = legacy.id;
             serialized.created_at = legacy.created_at;
@@ -1025,10 +1067,13 @@ static void host_bbs_state_load(host_t *host)
             }
         } else if (header.version == 3U) {
             bbs_state_post_entry_v3_t legacy = {0};
-            if (fread(&legacy, sizeof(legacy), 1U, fp) != 1U) {
+            if (remaining < sizeof(legacy)) {
                 success = false;
                 break;
             }
+            memcpy(&legacy, cursor, sizeof(legacy));
+            cursor += sizeof(legacy);
+            remaining -= sizeof(legacy);
 
             serialized.id = legacy.id;
             serialized.created_at = legacy.created_at;
@@ -1057,10 +1102,38 @@ static void host_bbs_state_load(host_t *host)
                     legacy.comments[comment].created_at;
             }
         } else {
-            if (fread(&serialized, sizeof(serialized), 1U, fp) != 1U) {
+            if (remaining < sizeof(serialized)) {
                 success = false;
                 break;
             }
+            memcpy(&serialized, cursor, sizeof(serialized));
+            cursor += sizeof(serialized);
+            remaining -= sizeof(serialized);
+        }
+
+        serialized.author[sizeof(serialized.author) - 1U] = '\0';
+        serialized.title[sizeof(serialized.title) - 1U] = '\0';
+        serialized.body[sizeof(serialized.body) - 1U] = '\0';
+        for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
+            serialized.tags[tag][sizeof(serialized.tags[tag]) - 1U] = '\0';
+        }
+        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
+             ++comment) {
+            serialized.comments[comment]
+                .author[sizeof(serialized.comments[comment].author) - 1U] =
+                '\0';
+            serialized.comments[comment]
+                .text[sizeof(serialized.comments[comment].text) - 1U] = '\0';
+            if (serialized.comments[comment].created_at <= 0) {
+                serialized.comments[comment].created_at = (int64_t)now;
+            }
+        }
+        if (serialized.created_at <= 0) {
+            serialized.created_at = (int64_t)now;
+        }
+        if (serialized.bumped_at <= 0 ||
+            serialized.bumped_at < serialized.created_at) {
+            serialized.bumped_at = serialized.created_at;
         }
 
         if (serialized.id > max_id) {
@@ -1144,7 +1217,8 @@ static void host_bbs_state_load(host_t *host)
     }
 
     ttak_mutex_unlock(&host->lock);
-    fclose(fp);
+    memset(mapped, 0, mapped_len);
+    munmap(mapped, mapped_len);
 }
 
 static void host_bbs_watchdog_scan(host_t *host)

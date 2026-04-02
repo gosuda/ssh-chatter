@@ -1098,6 +1098,25 @@ static const session_help_entry_t kSessionHelpExtended[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "saerom [on|off|status]",
+        .description =
+            {
+                "Saerom DataMan CP437 profile: system art uses CP437, chat "
+                "stays UTF-8 with hybrid detection.",
+                "새롬 DataMan CP437 프로파일: 시스템 출력은 CP437, 채팅은 "
+                "UTF-8로 유지되며 자동 감지가 활성화됩니다.",
+                "Saerom DataMan CP437 プロファイル: "
+                "システム出力は CP437、チャットは UTF-8 のままハイブリッド検知。",
+                "새롬 DataMan CP437 配置：系统输出使用 CP437，聊天保持 UTF-8 "
+                "并启用混合检测。",
+                "Профиль CP437 Saerom DataMan: системные сообщения — CP437, "
+                "чат — UTF-8 с гибридным определением.",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "retro <on [ko|en|jp|zh|ru|de|fr|pl]|off|auto|status>",
         .description =
             {

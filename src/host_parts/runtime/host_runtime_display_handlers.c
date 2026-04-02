@@ -44,21 +44,125 @@ void session_handle_hybrid(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, kUsage);
 }
 
-void session_handle_saerom(session_ctx_t *ctx)
+void session_handle_saerom(session_ctx_t *ctx, const char *arguments)
 {
+    static const char *kUsage =
+        "Usage: /saerom [on|off|status]  "
+        "- Saerom DataMan CP437 compatibility profile";
+
     if (ctx == nullptr) {
         return;
     }
 
-    ctx->cp437_output_scope = SESSION_CP437_SCOPE_SYSTEM_ONLY;
-    ctx->cp437_override = SESSION_CP437_OVERRIDE_FORCE_ON;
-    ctx->hybrid_output_mode = true;
-    session_refresh_output_encoding(ctx);
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    if (arguments != nullptr) {
+        snprintf(working, sizeof(working), "%s", arguments);
+        trim_whitespace_inplace(working);
+    } else {
+        working[0] = '\0';
+    }
 
-    session_send_system_line(
-        ctx,
-        "Saerom DataMan profile enabled: system output uses CP437 while chat"
-        " stays UTF-8 with hybrid detection.");
+    /* ── status (default when no argument given) ── */
+    if (working[0] == '\0' || strcasecmp(working, "status") == 0) {
+        const char *override_str = "automatic";
+        if (ctx->cp437_override == SESSION_CP437_OVERRIDE_FORCE_ON) {
+            override_str = "forced on";
+        } else if (ctx->cp437_override == SESSION_CP437_OVERRIDE_FORCE_OFF) {
+            override_str = "forced off";
+        }
+
+        bool is_saerom_profile =
+            ctx->cp437_override == SESSION_CP437_OVERRIDE_FORCE_ON &&
+            ctx->cp437_output_scope == SESSION_CP437_SCOPE_SYSTEM_ONLY &&
+            !ctx->cp437_input_enabled &&
+            ctx->hybrid_output_mode;
+
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        session_send_system_line(ctx, "── Saerom DataMan Profile ──────────────");
+
+        snprintf(line, sizeof(line),
+                 "  Profile active  : %s",
+                 is_saerom_profile ? "yes" : "no (use /saerom on to apply)");
+        session_send_system_line(ctx, line);
+
+        snprintf(line, sizeof(line),
+                 "  CP437 override  : %s", override_str);
+        session_send_system_line(ctx, line);
+
+        snprintf(line, sizeof(line),
+                 "  Output scope    : %s",
+                 session_cp437_scope_label(ctx->cp437_output_scope));
+        session_send_system_line(ctx, line);
+
+        snprintf(line, sizeof(line),
+                 "  Codepage        : %s",
+                 session_codepage_name(ctx->active_codepage));
+        session_send_system_line(ctx, line);
+
+        snprintf(line, sizeof(line),
+                 "  Input encoding  : %s",
+                 ctx->cp437_input_enabled ? "legacy CP437" : "UTF-8");
+        session_send_system_line(ctx, line);
+
+        snprintf(line, sizeof(line),
+                 "  Hybrid mode     : %s",
+                 ctx->hybrid_output_mode ? "enabled" : "disabled");
+        session_send_system_line(ctx, line);
+
+        session_send_system_line(ctx,
+            "  ─────────────────────────────────────");
+        session_send_system_line(ctx,
+            "  Saerom DataMan mode: system prompts use CP437 box-drawing art,");
+        session_send_system_line(ctx,
+            "  chat stays UTF-8, and hybrid detection bridges both encodings.");
+        session_send_system_line(ctx,
+            "  Use /saerom on|off to toggle, /retro for full CP437 control.");
+        return;
+    }
+
+    /* ── on: apply the standard Saerom DataMan profile ── */
+    if (strcasecmp(working, "on") == 0) {
+        ctx->cp437_output_scope = SESSION_CP437_SCOPE_SYSTEM_ONLY;
+        ctx->cp437_override     = SESSION_CP437_OVERRIDE_FORCE_ON;
+        ctx->cp437_input_enabled = false;
+        ctx->hybrid_output_mode  = true;
+
+        /* Default to CP437 if the session has no legacy codepage set yet */
+        if (ctx->active_codepage == SESSION_CODEPAGE_UTF8) {
+            ctx->active_codepage =
+                session_codepage_for_language(ctx->ui_language);
+        }
+
+        session_refresh_output_encoding(ctx);
+
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(line, sizeof(line),
+                 "Saerom DataMan profile enabled "
+                 "(codepage: %s, scope: system-only, input: UTF-8, "
+                 "hybrid: on).",
+                 session_codepage_name(ctx->active_codepage));
+        session_send_system_line(ctx, line);
+        session_send_system_line(ctx,
+            "System output now uses CP437 box-drawing art; "
+            "chat messages stay UTF-8.");
+        session_send_system_line(ctx,
+            "Use /saerom off to revert or /saerom status for details.");
+        return;
+    }
+
+    /* ── off: revert to automatic encoding detection ── */
+    if (strcasecmp(working, "off") == 0) {
+        ctx->cp437_output_scope  = SESSION_CP437_SCOPE_ALL;
+        ctx->cp437_override      = SESSION_CP437_OVERRIDE_NONE;
+        ctx->hybrid_output_mode  = false;
+        session_refresh_output_encoding(ctx);
+        session_send_system_line(ctx,
+            "Saerom DataMan profile disabled. "
+            "Encoding returned to automatic detection.");
+        return;
+    }
+
+    session_send_system_line(ctx, kUsage);
 }
 
 static bool

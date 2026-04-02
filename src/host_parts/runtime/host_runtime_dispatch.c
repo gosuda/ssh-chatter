@@ -387,11 +387,7 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         return;
     } else if (session_parse_command_any(ctx, "/saerom", effective_line,
                                          &args)) {
-        if (*args != '\0') {
-            session_send_system_line(ctx, "Usage: /saerom");
-        } else {
-            session_handle_saerom(ctx);
-        }
+        session_handle_saerom(ctx, args);
         return;
     }
 

@@ -607,6 +607,18 @@ void *sshc_gc_calloc(size_t count, size_t size)
     return sshc_gc_malloc(total);
 }
 
+static void sshc_secure_zero(void *ptr, size_t len)
+{
+    if (ptr == nullptr || len == 0U) {
+        return;
+    }
+
+    volatile unsigned char *p = (volatile unsigned char *)ptr;
+    for (size_t idx = 0U; idx < len; ++idx) {
+        p[idx] = 0U;
+    }
+}
+
 void sshc_gc_free(void *ptr)
 {
     if (ptr == nullptr) return;
@@ -640,6 +652,7 @@ void sshc_gc_free(void *ptr)
         GC_remove_roots(allocation->ptr,
                         (char *)allocation->ptr + allocation->size);
 #endif
+        sshc_secure_zero(allocation->ptr, allocation->size);
         /* Epoch-deferred release: decrement the GC tree node's ref_count.
          * The background rotate thread reclaims the block asynchronously,
          * which is the core "delegate to epochGC" behaviour. */

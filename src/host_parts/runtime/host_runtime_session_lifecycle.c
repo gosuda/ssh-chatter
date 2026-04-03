@@ -409,35 +409,6 @@ static void *session_thread(void *arg)
     session_ctx_t *existing =
         chat_room_find_user(&ctx->owner->room, ctx->user.name);
 
-    // Check if same IP and nickname - allow reconnection by kicking existing session
-    bool should_kick_existing = false;
-    if (existing != nullptr && !banned_username && !system_reserved_username &&
-        !lan_operator_reserved_username) {
-        if (strcmp(existing->client_ip, ctx->client_ip) == 0) {
-            should_kick_existing = true;
-            printf("[reconnect] same IP+nickname detected: %s from %s, kicking "
-                   "existing session\n",
-                   ctx->user.name, ctx->client_ip);
-        }
-    }
-
-    if (should_kick_existing) {
-        // Kick the existing session
-        char kick_message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(kick_message, sizeof(kick_message),
-                 "You have been disconnected because a new connection from the "
-                 "same IP is joining.");
-        session_force_disconnect(existing, kick_message);
-
-        // Wait a moment for the disconnect to process
-        struct timespec disconnect_delay = {.tv_sec = 0,
-                                            .tv_nsec = 100000000L}; // 100ms
-        nanosleep(&disconnect_delay, nullptr);
-
-        // Clear the existing reference as it's being disconnected
-        existing = nullptr;
-    }
-
     if (banned_username || system_reserved_username ||
         (lan_operator_reserved_username && !ctx->user.is_lan_operator) ||
         existing != nullptr || strnlen(ctx->user.name, 64) < 2) {
@@ -1326,4 +1297,3 @@ static void *session_thread(void *arg)
 
 #undef SESSION_THREAD_RETURN
 }
-

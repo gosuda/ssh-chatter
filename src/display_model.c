@@ -7,6 +7,7 @@
 
 #include "ssh_chatter/display_model.h"
 #include <ttak/mem/mem.h>
+#include <ttak/timing/timing.h>
 
 #include <string.h>
 

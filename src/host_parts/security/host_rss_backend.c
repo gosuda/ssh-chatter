@@ -1312,7 +1312,7 @@ static void *host_rss_manual_refresh_worker(void *arg)
     }
 
     host_t *host = request->host;
-    sshc_gc_free(request);
+    ttak_mem_free(request);
     if (host == nullptr) {
         return nullptr;
     }
@@ -1338,12 +1338,14 @@ static bool host_rss_schedule_manual_refresh(host_t *host)
     }
 
     host_rss_refresh_async_request_t *request =
-        (host_rss_refresh_async_request_t *)sshc_gc_calloc(
-            1U, sizeof(*request));
+        (host_rss_refresh_async_request_t *)ttak_mem_alloc(
+            sizeof(*request), __TTAK_UNSAFE_MEM_FOREVER__,
+            ttak_get_tick_count());
     if (request == nullptr) {
         atomic_store(&host->rss_manual_refresh_running, false);
         return false;
     }
+    memset(request, 0, sizeof(*request));
     request->host = host;
 
     pthread_t worker;
@@ -1353,7 +1355,7 @@ static bool host_rss_schedule_manual_refresh(host_t *host)
     if (error != 0) {
         printf("[rss] failed to start manual refresh worker: %s\n",
                strerror(error));
-        sshc_gc_free(request);
+        ttak_mem_free(request);
         atomic_store(&host->rss_manual_refresh_running, false);
         return false;
     }

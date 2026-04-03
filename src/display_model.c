@@ -6,8 +6,8 @@
  */
 
 #include "ssh_chatter/display_model.h"
+#include <ttak/mem/mem.h>
 
-#include <stdlib.h>
 #include <string.h>
 
 static size_t display_model_effective_viewport(const display_model_t *model,
@@ -132,8 +132,9 @@ static bool display_model_ensure_capacity(display_model_t *model,
         new_cap *= 2U;
     }
 
-    display_line_t *new_lines =
-        (display_line_t *)realloc(model->lines, new_cap * sizeof(display_line_t));
+    display_line_t *new_lines = (display_line_t *)ttak_mem_realloc(
+        model->lines, new_cap * sizeof(display_line_t),
+        __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
     if (new_lines == NULL) {
         return false;
     }
@@ -158,11 +159,13 @@ bool display_model_init(display_model_t *model, size_t initial_capacity)
         initial_capacity = 64U;
     }
 
-    model->lines =
-        (display_line_t *)calloc(initial_capacity, sizeof(display_line_t));
+    model->lines = (display_line_t *)ttak_mem_alloc(
+        initial_capacity * sizeof(display_line_t), __TTAK_UNSAFE_MEM_FOREVER__,
+        ttak_get_tick_count());
     if (model->lines == NULL) {
         return false;
     }
+    memset(model->lines, 0, initial_capacity * sizeof(display_line_t));
 
     model->line_capacity = initial_capacity;
     return true;
@@ -174,7 +177,7 @@ void display_model_destroy(display_model_t *model)
         return;
     }
 
-    free(model->lines);
+    ttak_mem_free(model->lines);
     memset(model, 0, sizeof(*model));
 }
 

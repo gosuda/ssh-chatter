@@ -13,7 +13,7 @@
 #endif
 
 #define TELNET_STABLE_RESET_SECONDS 10.0
-#define SSH_CHATTER_TCP_KEEPALIVE_IDLE 60
+#define SSH_CHATTER_TCP_KEEPALIVE_IDLE 30
 #define SSH_CHATTER_TCP_KEEPALIVE_INTERVAL 10
 #define SSH_CHATTER_TCP_KEEPALIVE_COUNT 3
 // Total dead-peer detection time (seconds) for TCP_USER_TIMEOUT.
@@ -240,4 +240,3 @@ void session_manual_gc_tick(session_ctx_t *ctx)
     }
     sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
 }
-

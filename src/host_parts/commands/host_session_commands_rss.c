@@ -5,7 +5,7 @@ static void session_rss_clear(session_ctx_t *ctx)
     }
 
     if (ctx->rss_view.items != nullptr) {
-        sshc_gc_free(ctx->rss_view.items);
+        ttak_mem_free(ctx->rss_view.items);
         ctx->rss_view.items = nullptr;
     }
     ctx->rss_view.active = false;
@@ -105,12 +105,14 @@ static void session_rss_begin(session_ctx_t *ctx, const char *tag,
         count = SSH_CHATTER_RSS_MAX_ITEMS;
     }
 
-    ctx->rss_view.items =
-        (rss_session_item_t *)sshc_gc_calloc(count, sizeof(rss_session_item_t));
+    ctx->rss_view.items = (rss_session_item_t *)ttak_mem_alloc(
+        count * sizeof(rss_session_item_t), __TTAK_UNSAFE_MEM_FOREVER__,
+        ttak_get_tick_count());
     if (ctx->rss_view.items == nullptr) {
         session_send_system_line(ctx, "Unable to open RSS reader right now.");
         return;
     }
+    memset(ctx->rss_view.items, 0, count * sizeof(rss_session_item_t));
 
     ctx->rss_view.active = true;
     ctx->rss_view.item_count = count;
@@ -174,8 +176,9 @@ static void session_rss_list(session_ctx_t *ctx)
             "Refreshing RSS feeds in the background; cached results follow:");
     }
 
-    rss_feed_t *snapshot = (rss_feed_t *)sshc_gc_malloc(
-        sizeof(rss_feed_t) * SSH_CHATTER_RSS_MAX_FEEDS);
+    rss_feed_t *snapshot = (rss_feed_t *)ttak_mem_alloc(
+        sizeof(rss_feed_t) * SSH_CHATTER_RSS_MAX_FEEDS,
+        __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
     size_t count = 0U;
 
     if (snapshot != nullptr) {
@@ -198,7 +201,7 @@ static void session_rss_list(session_ctx_t *ctx)
                                  "No RSS feeds registered. Operators can add "
                                  "one with /rss add <url> <tag>.");
         if (snapshot != nullptr) {
-            sshc_gc_free(snapshot);
+            ttak_mem_free(snapshot);
         }
         return;
     }
@@ -218,7 +221,7 @@ static void session_rss_list(session_ctx_t *ctx)
     }
 
     if (snapshot != nullptr) {
-        sshc_gc_free(snapshot);
+        ttak_mem_free(snapshot);
     }
 }
 
@@ -239,9 +242,12 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
         return;
     }
 
-    rss_feed_t *feed_snapshot = (rss_feed_t *)sshc_gc_malloc(sizeof(rss_feed_t));
-    rss_session_item_t *items = (rss_session_item_t *)sshc_gc_malloc(
-        sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS);
+    rss_feed_t *feed_snapshot = (rss_feed_t *)ttak_mem_alloc(
+        sizeof(rss_feed_t), __TTAK_UNSAFE_MEM_FOREVER__,
+        ttak_get_tick_count());
+    rss_session_item_t *items = (rss_session_item_t *)ttak_mem_alloc(
+        sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS,
+        __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
     size_t item_count = 0U;
 
     if (feed_snapshot != nullptr && items != nullptr) {
@@ -270,10 +276,10 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
                  working);
         session_send_system_line(ctx, message);
         if (feed_snapshot != nullptr) {
-            sshc_gc_free(feed_snapshot);
+            ttak_mem_free(feed_snapshot);
         }
         if (items != nullptr) {
-            sshc_gc_free(items);
+            ttak_mem_free(items);
         }
         return;
     }
@@ -282,14 +288,14 @@ static void session_rss_read(session_ctx_t *ctx, const char *tag)
         session_send_system_line(
             ctx,
             "The feed does not contain any entries for the current window yet.");
-        sshc_gc_free(feed_snapshot);
-        sshc_gc_free(items);
+        ttak_mem_free(feed_snapshot);
+        ttak_mem_free(items);
         return;
     }
 
     session_rss_begin(ctx, feed_snapshot->tag, items, item_count);
-    sshc_gc_free(feed_snapshot);
-    sshc_gc_free(items);
+    ttak_mem_free(feed_snapshot);
+    ttak_mem_free(items);
 }
 
 static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
@@ -463,4 +469,3 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
 
     session_send_system_line(ctx, usage);
 }
-

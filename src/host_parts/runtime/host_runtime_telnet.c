@@ -73,6 +73,43 @@ static uint64_t host_allocate_session_id(host_t *host)
     return atomic_fetch_add(&host->next_session_id, 1U);
 }
 
+static void host_telnet_configure_client_socket(int client_fd)
+{
+    if (client_fd < 0) {
+        return;
+    }
+
+    int enable = 1;
+    (void)setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &enable,
+                     sizeof(enable));
+    (void)setsockopt(client_fd, SOL_SOCKET, SO_KEEPALIVE, &enable,
+                     sizeof(enable));
+
+#if defined(TCP_KEEPIDLE)
+    int keep_idle_seconds = 30;
+    (void)setsockopt(client_fd, IPPROTO_TCP, TCP_KEEPIDLE,
+                     &keep_idle_seconds, sizeof(keep_idle_seconds));
+#endif
+
+#if defined(TCP_KEEPINTVL)
+    int keep_interval_seconds = 10;
+    (void)setsockopt(client_fd, IPPROTO_TCP, TCP_KEEPINTVL,
+                     &keep_interval_seconds, sizeof(keep_interval_seconds));
+#endif
+
+#if defined(TCP_KEEPCNT)
+    int keep_probe_count = 3;
+    (void)setsockopt(client_fd, IPPROTO_TCP, TCP_KEEPCNT, &keep_probe_count,
+                     sizeof(keep_probe_count));
+#endif
+
+#if defined(TCP_USER_TIMEOUT)
+    int user_timeout_ms = 60000;
+    (void)setsockopt(client_fd, IPPROTO_TCP, TCP_USER_TIMEOUT, &user_timeout_ms,
+                     sizeof(user_timeout_ms));
+#endif
+}
+
 static bool session_runtime_bind(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
@@ -292,8 +329,7 @@ static void *host_telnet_thread(void *arg)
             break;
         }
 
-        int flag = 1;
-        setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+        host_telnet_configure_client_socket(client_fd);
 
         char peer_address[NI_MAXHOST];
         host_format_sockaddr((struct sockaddr *)&addr, addr_len, peer_address,

@@ -540,13 +540,15 @@ static void host_bbs_watchdog_scan(host_t *host)
         return;
     }
 
-    bbs_post_t *snapshot =
-        sshc_gc_calloc(SSH_CHATTER_BBS_MAX_POSTS, sizeof(*snapshot));
+    bbs_post_t *snapshot = (bbs_post_t *)ttak_mem_alloc(
+        SSH_CHATTER_BBS_MAX_POSTS * sizeof(*snapshot),
+        __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
     if (snapshot == nullptr) {
         humanized_log_error("bbs", "failed to allocate watchdog snapshot",
                             ENOMEM);
         return;
     }
+    memset(snapshot, 0, SSH_CHATTER_BBS_MAX_POSTS * sizeof(*snapshot));
 
     size_t snapshot_count = 0U;
 
@@ -563,18 +565,20 @@ static void host_bbs_watchdog_scan(host_t *host)
     ttak_mutex_unlock(&host->lock);
 
     if (snapshot_count == 0U) {
-        sshc_gc_free(snapshot);
+        ttak_mem_free(snapshot);
         return;
     }
 
     const size_t content_capacity =
         SSH_CHATTER_BBS_BODY_LEN +
         (SSH_CHATTER_BBS_COMMENT_LEN * SSH_CHATTER_BBS_MAX_COMMENTS) + 1024U;
-    char *content = (char *)sshc_gc_malloc(content_capacity);
+    char *content = (char *)ttak_mem_alloc(content_capacity,
+                                           __TTAK_UNSAFE_MEM_FOREVER__,
+                                           ttak_get_tick_count());
     if (content == nullptr) {
         humanized_log_error("bbs", "failed to allocate watchdog buffer",
                             ENOMEM);
-        sshc_gc_free(snapshot);
+        ttak_mem_free(snapshot);
         return;
     }
 
@@ -701,8 +705,8 @@ static void host_bbs_watchdog_scan(host_t *host)
         chat_room_broadcast(&host->room, notice, nullptr);
     }
 
-    sshc_gc_free(content);
-    sshc_gc_free(snapshot);
+    ttak_mem_free(content);
+    ttak_mem_free(snapshot);
 }
 
 static void *host_bbs_watchdog_thread(void *arg)
@@ -773,4 +777,3 @@ static void host_bbs_start_watchdog(host_t *host)
 
     host->bbs_watchdog_thread_initialized = true;
 }
-

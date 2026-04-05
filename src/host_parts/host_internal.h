@@ -243,4 +243,48 @@ chat_history_entry_display_name(const chat_history_entry_t *entry)
     return entry->username;
 }
 
+static inline void chat_history_entry_format_user_line(
+    const chat_history_entry_t *entry, char *buffer, size_t length,
+    bool append_message)
+{
+    if (buffer == nullptr || length == 0U) {
+        return;
+    }
+
+    buffer[0] = '\0';
+    if (entry == nullptr || !entry->is_user_message) {
+        return;
+    }
+
+    const char *highlight = (entry->user_highlight_code[0] != '\0')
+                                ? entry->user_highlight_code
+                                : "";
+    const char *color =
+        (entry->user_color_code[0] != '\0') ? entry->user_color_code : "";
+    const char *bold = entry->user_is_bold ? ANSI_BOLD : "";
+    const bool has_custom_codes = (color[0] != '\0') || (highlight[0] != '\0');
+
+    char id_label[32] = "-";
+    if (entry->message_id > 0U) {
+        host_compact_id_encode(entry->message_id, id_label, sizeof(id_label));
+    }
+
+    const char *display_name = chat_history_entry_display_name(entry);
+    if (has_custom_codes) {
+        snprintf(buffer, length,
+                 ANSI_CYAN "[%s]" ANSI_RESET " <%s%s%s%s%s>%s%s", id_label,
+                 highlight, color, bold, display_name, ANSI_RESET,
+                 append_message ? " " : "",
+                 (append_message && entry->message[0] != '\0') ? entry->message
+                                                                : "");
+    } else {
+        snprintf(buffer, length,
+                 "%s%s%s " ANSI_CYAN "[%s]" ANSI_RESET " <%s>%s%s%s",
+                 highlight, bold, color, id_label, display_name, ANSI_RESET,
+                 append_message ? " " : "",
+                 (append_message && entry->message[0] != '\0') ? entry->message
+                                                                : "");
+    }
+}
+
 #endif // SSH_CHATTER_HOST_INTERNAL_H

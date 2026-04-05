@@ -902,19 +902,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             (member->history_scroll_position == 0U) && !member->no_update;
 
         if (entry->is_user_message) {
-            char id_label[32] = "-";
-            if (entry->message_id > 0U) {
-                host_compact_id_encode(entry->message_id, id_label,
-                                       sizeof(id_label));
-            }
-
             char line[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-            snprintf(line, sizeof(line),
-                     ANSI_CYAN "[%s]" ANSI_RESET " <%s%s%s%s> %s", id_label,
-                     entry->user_color_code[0] != '\0' ? entry->user_color_code
-                                                       : ANSI_RESET,
-                     entry->username, ANSI_RESET,
-                     entry->user_is_bold ? ANSI_BOLD : "", entry->message);
+            chat_history_entry_format_user_line(entry, line, sizeof(line),
+                                                true);
             session_send_plain_line(member, line);
 
             if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&

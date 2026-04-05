@@ -27,6 +27,59 @@ static bool session_attempt_handshake_restart(session_ctx_t *ctx,
     return true;
 }
 
+static void session_release_interaction_state(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    /*
+     * Explicitly scrub and reset user-interaction state when a session
+     * disconnects so transient conversation/editor buffers are reclaimed
+     * immediately instead of waiting for process-wide GC pressure.
+     */
+    memset(ctx->input_buffer, 0, sizeof(ctx->input_buffer));
+    ctx->input_length = 0U;
+    memset(ctx->input_history, 0, sizeof(ctx->input_history));
+    memset(ctx->input_history_is_command, 0, sizeof(ctx->input_history_is_command));
+    ctx->input_history_count = 0U;
+    ctx->input_history_position = -1;
+    memset(ctx->input_escape_buffer, 0, sizeof(ctx->input_escape_buffer));
+    ctx->input_escape_length = 0U;
+    memset(ctx->multibyte_input_buffer, 0, sizeof(ctx->multibyte_input_buffer));
+    ctx->multibyte_input_length = 0U;
+    memset(ctx->status_message, 0, sizeof(ctx->status_message));
+    memset(ctx->output_buffer, 0, sizeof(ctx->output_buffer));
+    ctx->output_buffer_length = 0U;
+    memset(ctx->realtime_recent_lines, 0, sizeof(ctx->realtime_recent_lines));
+    memset(ctx->last_output_line, 0, sizeof(ctx->last_output_line));
+    ctx->has_last_output_line = false;
+    ctx->realtime_recent_count = 0U;
+    ctx->realtime_recent_start = 0U;
+    ctx->realtime_line_count = 0U;
+}
+
+static void session_release_transport_state(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (ctx->transport_kind == SESSION_TRANSPORT_SSH &&
+        ctx->channel != nullptr) {
+        ssh_channel_request_send_exit_status(ctx->channel, ctx->exit_status);
+    }
+    session_close_channel(ctx);
+
+    if (ctx->session != nullptr) {
+        ssh_disconnect(ctx->session);
+        ssh_free(ctx->session);
+        ctx->session = nullptr;
+    }
+
+    session_safe_free((void **)&ctx->session_data);
+}
+
 static void session_cleanup(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {
@@ -104,12 +157,8 @@ static void session_cleanup(session_ctx_t *ctx)
     session_game_release_saved_tetris(ctx);
     session_safe_free((void **)&ctx->scrollback_buffer);
     ctx->scrollback_buffer_capacity = 0U;
-
-    if (ctx->transport_kind == SESSION_TRANSPORT_SSH &&
-        ctx->channel != nullptr) {
-        ssh_channel_request_send_exit_status(ctx->channel, ctx->exit_status);
-    }
-    session_close_channel(ctx);
+    session_release_interaction_state(ctx);
+    session_release_transport_state(ctx);
 }
 
 static void session_epoch_free(void *ptr)
@@ -139,12 +188,6 @@ static void session_epoch_free(void *ptr)
         ctx->output_lock_initialized = false;
     }
 
-    if (ctx->session != nullptr) {
-        ssh_disconnect(ctx->session);
-        ssh_free(ctx->session);
-        ctx->session = nullptr;
-    }
-
     if (ctx->memory_context != nullptr) {
         sshc_memory_context_destroy(ctx->memory_context);
         ctx->memory_context = nullptr;
@@ -153,11 +196,6 @@ static void session_epoch_free(void *ptr)
     if (ctx->session_owner != nullptr) {
         ttak_owner_destroy(ctx->session_owner);
         ctx->session_owner = nullptr;
-    }
-
-    if (ctx->session_data != nullptr) {
-        sshc_gc_free(ctx->session_data);
-        ctx->session_data = nullptr;
     }
 
     sshc_gc_free(ctx);
@@ -178,8 +216,10 @@ static void session_destroy(session_ctx_t *ctx)
          * deferred heaps while waiting for epoch reclamation.
          */
         sshc_memory_context_reset(ctx->memory_context);
+        sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
     }
     session_manual_gc_tick(ctx);
+    sshc_epoch_reclaim();
     if (ctx->owner != nullptr) {
         host_manual_gc_tick(ctx->owner);
     }

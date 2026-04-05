@@ -49,6 +49,21 @@
 static pthread_once_t g_host_memory_pressure_limit_once = PTHREAD_ONCE_INIT;
 static size_t g_host_memory_pressure_limit_bytes = 0U;
 
+static void host_memory_pressure_aggressive_cleanup(host_t *host)
+{
+    /* Rotate the host memory context aggressively so deferred allocations
+     * become immediately reclaimable before we tear down the listeners. */
+    for (int pass = 0; pass < 4; ++pass) {
+        if (host != nullptr && host->memory_context != nullptr) {
+            sshc_memory_context_epoch_gc_rotate(host->memory_context);
+        }
+        sshc_epoch_reclaim();
+    }
+#if defined(__GLIBC__)
+    malloc_trim(0);
+#endif
+}
+
 static inline void session_safe_free(void **ptr)
 {
     if (ptr != nullptr && *ptr != nullptr) {
@@ -198,10 +213,12 @@ static bool host_memory_pressure_restart(host_t *host,
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(notice, sizeof(notice),
              "* [system] memory pressure detected (%zuMB > %zuMB). "
-             "Restarting server immediately for cleanup.",
+             "Locking room, disconnecting all sessions, and restarting "
+             "immediately for cleanup.",
              rss_mb, limit_mb);
     host_history_record_system(host, notice, nullptr);
     chat_room_broadcast(&host->room, notice, nullptr);
+    host_memory_pressure_aggressive_cleanup(host);
     host->force_restart_requested = true;
     *host->shutdown_flag = 1;
     return true;

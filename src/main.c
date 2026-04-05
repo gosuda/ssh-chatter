@@ -31,6 +31,10 @@
 #include <time.h>
 #include <signal.h>
 
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
+
 #define HOST_STABLE_RESET_SECONDS 10.0
 #define SSH_CHATTER_MAX_HOST_RESTARTS 2U
 
@@ -102,6 +106,29 @@ static void sleep_before_restart(unsigned int attempts)
         }
 
         request = remaining;
+    }
+}
+
+static void daemon_extreme_gc_collect(void)
+{
+    for (int pass = 0; pass < 4; ++pass) {
+        sshc_epoch_reclaim();
+        sshc_epoch_reclaim();
+#if defined(__GLIBC__)
+        malloc_trim(0);
+#endif
+
+        struct timespec pause = {
+            .tv_sec = 0,
+            .tv_nsec = 20 * 1000 * 1000L,
+        };
+        struct timespec remaining = {0};
+        while (nanosleep(&pause, &remaining) != 0) {
+            if (errno != EINTR) {
+                break;
+            }
+            pause = remaining;
+        }
     }
 }
 
@@ -555,7 +582,16 @@ int main(int argc, char **argv)
 
         host = nullptr;
 
-        if (g_shutdown_flag && !force_restart_requested) {
+        if (force_restart_requested) {
+            printf("[daemon] memory pressure cleanup complete; restarting "
+                   "listeners without exiting the process\n");
+            daemon_extreme_gc_collect();
+            g_shutdown_flag = 0;
+            restart_attempts = 0U;
+            continue;
+        }
+
+        if (g_shutdown_flag) {
             printf("[daemon] shutdown signal received, exiting gracefully\n");
             goto cleanup;
         }

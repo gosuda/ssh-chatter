@@ -186,7 +186,15 @@ static void session_destroy(session_ctx_t *ctx)
 #if defined(__GLIBC__)
     (void)malloc_trim(0);
 #endif
-    sshc_epoch_retire_with(ctx, session_epoch_free);
+    /*
+     * Free the session object immediately after teardown.
+     *
+     * We already synchronously remove the session from room snapshots before
+     * entering this path, so direct release keeps RSS stable across
+     * join/leave churn (e.g. 150 -> 174 -> 150) instead of waiting for
+     * deferred epoch retirement.
+     */
+    session_epoch_free(ctx);
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,

@@ -58,6 +58,24 @@ static void host_strip_column_reset(char *text)
     *dst = '\0';
 }
 
+static bool host_bbs_serialized_has_required_fields(
+    const bbs_state_post_entry_t *serialized)
+{
+    if (serialized == nullptr) {
+        return false;
+    }
+
+    if (serialized->id == 0U) {
+        return false;
+    }
+
+    if (serialized->author[0] == '\0' || serialized->title[0] == '\0') {
+        return false;
+    }
+
+    return true;
+}
+
 static void host_bbs_state_save_locked(host_t *host)
 {
     if (!host_bbs_storage_ready(host)) {
@@ -439,6 +457,10 @@ static void host_bbs_state_load(host_t *host)
         if (serialized.bumped_at <= 0 ||
             serialized.bumped_at < serialized.created_at) {
             serialized.bumped_at = serialized.created_at;
+        }
+
+        if (!host_bbs_serialized_has_required_fields(&serialized)) {
+            continue;
         }
 
         if (serialized.id > max_id) {

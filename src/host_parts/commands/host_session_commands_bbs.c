@@ -11,6 +11,23 @@ static void bbs_format_time(time_t value, char *buffer, size_t length)
     strftime(buffer, length, "%Y-%m-%d %H:%M", &tm_value);
 }
 
+static bool bbs_post_has_required_fields(const bbs_post_t *post)
+{
+    if (post == nullptr || !post->in_use) {
+        return false;
+    }
+
+    if (post->id == 0U) {
+        return false;
+    }
+
+    if (post->author[0] == '\0' || post->title[0] == '\0') {
+        return false;
+    }
+
+    return true;
+}
+
 // Return a post by identifier while the host lock is held.
 static bbs_post_t *host_find_bbs_post_locked(host_t *host, uint64_t id)
 {
@@ -18,7 +35,7 @@ static bbs_post_t *host_find_bbs_post_locked(host_t *host, uint64_t id)
         return nullptr;
     }
     for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
-        if (!host->bbs_posts[idx].in_use) {
+        if (!bbs_post_has_required_fields(&host->bbs_posts[idx])) {
             continue;
         }
         if (host->bbs_posts[idx].id == id) {
@@ -283,7 +300,7 @@ static void session_bbs_list(session_ctx_t *ctx)
     size_t capacity = host_bbs_loop_limit(host);
     for (size_t idx = 0U; idx < capacity; ++idx) {
         const bbs_post_t *post = &host->bbs_posts[idx];
-        if (!post->in_use) {
+        if (!bbs_post_has_required_fields(post)) {
             continue;
         }
         listings[count].id = post->id;
@@ -478,7 +495,7 @@ static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
     size_t capacity = host_bbs_loop_limit(host);
     for (size_t idx = 0U; idx < capacity; ++idx) {
         const bbs_post_t *post = &host->bbs_posts[idx];
-        if (!post->in_use) {
+        if (!bbs_post_has_required_fields(post)) {
             continue;
         }
         listings[count].id = post->id;
@@ -1419,4 +1436,3 @@ static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id)
 
     session_bbs_render_post(ctx, &snapshot, "Post bumped to the top.", false);
 }
-

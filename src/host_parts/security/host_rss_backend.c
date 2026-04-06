@@ -701,12 +701,30 @@ static size_t host_rss_write_callback(void *contents, size_t size, size_t nmemb,
                                       void *userp)
 {
     host_rss_buffer_t *buffer = (host_rss_buffer_t *)userp;
-    const size_t total = size * nmemb;
-    if (buffer == nullptr || total == 0U) {
+    if (buffer == nullptr || contents == nullptr || size == 0U ||
+        nmemb == 0U) {
         return 0U;
     }
 
-    char *resized = ttak_mem_realloc(buffer->data, buffer->length + total + 1U,
+    if (nmemb > (SIZE_MAX / size)) {
+        return 0U;
+    }
+
+    const size_t total = size * nmemb;
+    if (total == 0U) {
+        return 0U;
+    }
+
+    if (buffer->length > SIZE_MAX - total - 1U) {
+        return 0U;
+    }
+
+    const size_t next_length = buffer->length + total;
+    if (next_length > (size_t)SSH_CHATTER_RSS_DOWNLOAD_MAX_BYTES) {
+        return 0U;
+    }
+
+    char *resized = ttak_mem_realloc(buffer->data, next_length + 1U,
                                      __TTAK_UNSAFE_MEM_FOREVER__,
                                      ttak_get_tick_count());
     if (resized == nullptr) {
@@ -715,7 +733,7 @@ static size_t host_rss_write_callback(void *contents, size_t size, size_t nmemb,
 
     buffer->data = resized;
     memcpy(buffer->data + buffer->length, contents, total);
-    buffer->length += total;
+    buffer->length = next_length;
     buffer->data[buffer->length] = '\0';
     return total;
 }

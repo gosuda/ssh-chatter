@@ -1,3 +1,34 @@
+static void host_fix_overlapping_bbs_rss_paths(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    if (host->bbs_state_file_path[0] == '\0' ||
+        host->rss_state_file_path[0] == '\0') {
+        return;
+    }
+
+    if (strcmp(host->bbs_state_file_path, host->rss_state_file_path) != 0) {
+        return;
+    }
+
+    const char *fallback = "rss_state.dat";
+    int written = snprintf(host->rss_state_file_path,
+                           sizeof(host->rss_state_file_path), "%s", fallback);
+    if (written < 0 || (size_t)written >= sizeof(host->rss_state_file_path)) {
+        host->rss_state_file_path[0] = '\0';
+        humanized_log_error("rss",
+                            "rss state file path is too long after overlap fix",
+                            ENAMETOOLONG);
+        return;
+    }
+
+    printf("[rss] CHATTER_RSS_FILE matched CHATTER_BBS_FILE. "
+           "Using '%s' to keep storage separated.\n",
+           host->rss_state_file_path);
+}
+
 void host_init(host_t *host, auth_profile_t *auth)
 {
     if (host == nullptr) {
@@ -187,6 +218,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->file_storage_ready = host_file_storage_init(host);
     host->rss_state_file_path[0] = '\0';
     host_rss_resolve_path(host);
+    host_fix_overlapping_bbs_rss_paths(host);
     host->eliza_memory_file_path[0] = '\0';
     host_eliza_memory_resolve_path(host);
     host->eliza_state_file_path[0] = '\0';
@@ -1544,4 +1576,3 @@ void host_shutdown_for_testing(host_t *host)
 {
     host_shutdown_internal(host, false);
 }
-

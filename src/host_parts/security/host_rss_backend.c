@@ -502,12 +502,11 @@ static void host_rss_state_save_locked(host_t *host)
             snprintf(record->last_item_key, sizeof(record->last_item_key), "%s",
                      entry->last_item_key);
             record->window_id = entry->window_id;
-            record->item_count = (uint32_t)entry->stored_item_count;
-    
             size_t items_to_copy = entry->stored_item_count;
             if (items_to_copy > SSH_CHATTER_RSS_MAX_ITEMS) {
                 items_to_copy = SSH_CHATTER_RSS_MAX_ITEMS;
             }
+            record->item_count = (uint32_t)items_to_copy;
     
             if (items_to_copy > 0U) {
                 memcpy(record->items, entry->stored_items,
@@ -665,12 +664,11 @@ static void host_rss_state_load(host_t *host)
                  record->last_item_key);
         slot->last_checked = 0;
         slot->window_id = record->window_id;
-        slot->stored_item_count = (size_t)record->item_count;
-
-        size_t items_to_copy = slot->stored_item_count;
+        size_t items_to_copy = (size_t)record->item_count;
         if (items_to_copy > SSH_CHATTER_RSS_MAX_ITEMS) {
             items_to_copy = SSH_CHATTER_RSS_MAX_ITEMS;
         }
+        slot->stored_item_count = items_to_copy;
 
         if (items_to_copy > 0U) {
             memcpy(slot->stored_items, record->items,

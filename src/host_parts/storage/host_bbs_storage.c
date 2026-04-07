@@ -76,6 +76,52 @@ static bool host_bbs_serialized_has_required_fields(
     return true;
 }
 
+static bool host_bbs_text_has_disallowed_controls(const char *text)
+{
+    if (text == nullptr) {
+        return true;
+    }
+
+    for (size_t idx = 0U; text[idx] != '\0'; ++idx) {
+        unsigned char value = (unsigned char)text[idx];
+        if (value == '\n' || value == '\r' || value == '\t') {
+            continue;
+        }
+        if (value < 0x20U || value == 0x7FU) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool host_bbs_serialized_is_sane(const bbs_state_post_entry_t *serialized,
+                                        time_t now)
+{
+    if (serialized == nullptr) {
+        return false;
+    }
+
+    if (host_bbs_text_has_disallowed_controls(serialized->author) ||
+        host_bbs_text_has_disallowed_controls(serialized->title)) {
+        return false;
+    }
+
+    const int64_t min_valid = 946684800; /* 2000-01-01 00:00:00 UTC */
+    const int64_t max_valid = (int64_t)now + (7 * 24 * 60 * 60);
+    if (serialized->created_at < min_valid ||
+        serialized->bumped_at < serialized->created_at ||
+        serialized->bumped_at > max_valid) {
+        return false;
+    }
+
+    if (strstr(serialized->title, "[BREAKING NEWS]") != nullptr) {
+        return false;
+    }
+
+    return true;
+}
+
 static void host_bbs_state_save_locked(host_t *host)
 {
     if (!host_bbs_storage_ready(host)) {
@@ -459,7 +505,8 @@ static void host_bbs_state_load(host_t *host)
             serialized.bumped_at = serialized.created_at;
         }
 
-        if (!host_bbs_serialized_has_required_fields(&serialized)) {
+        if (!host_bbs_serialized_has_required_fields(&serialized) ||
+            !host_bbs_serialized_is_sane(&serialized, now)) {
             continue;
         }
 

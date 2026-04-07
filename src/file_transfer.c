@@ -186,6 +186,20 @@ static bool path_buffer_join(char *dest, size_t dest_len, const char *base,
     return true;
 }
 
+static bool file_transfer_is_root_reference(const char *virtual_path)
+{
+    if (virtual_path == nullptr) {
+        return false;
+    }
+    while (*virtual_path != '\0') {
+        if (*virtual_path != '/' && *virtual_path != '.') {
+            return false;
+        }
+        ++virtual_path;
+    }
+    return true;
+}
+
 static void host_file_storage_list_recursive(const char *root_path,
                                              const char *relative_path,
                                              int depth, char *buffer,
@@ -464,6 +478,9 @@ bool file_transfer_resolve_path(host_t *host, const char *virtual_path,
     }
 
     if (sanitized_len == 0U) {
+        if (!file_transfer_is_root_reference(working)) {
+            return false;
+        }
         if (!path_buffer_copy(resolved, resolved_len, host->file_storage_root)) {
             return false;
         }

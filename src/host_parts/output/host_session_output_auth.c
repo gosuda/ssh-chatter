@@ -340,7 +340,9 @@ static int session_prepare_shell(session_ctx_t *ctx)
                         ssh_message_channel_request_subsystem(message);
                     if (subsystem != nullptr &&
                         strcmp(subsystem, "sftp") == 0) {
-                        humanized_log_error("session", "SFTP subsystem requested but not yet implemented (modern scp defaults to SFTP)", 0);
+                        humanized_log_error("session",
+                                            "SFTP subsystem requested.",
+                                            0);
                         ssh_message_channel_request_reply_success(message);
                         int result = file_transfer_handle_sftp(ctx);
                         ctx->exit_status =

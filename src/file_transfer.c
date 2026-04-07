@@ -108,10 +108,14 @@ bool host_file_storage_init(host_t *host)
         return false;
     }
 
-    const char *override = getenv("CHATTER_FILE_STORAGE_ROOT");
-    const char *root = (override != nullptr && override[0] != '\0')
-                           ? override
-                           : SSH_CHATTER_FILE_STORAGE_ROOT;
+    const char *override_filestore = getenv("CHATTER_FILESTORE_PATH");
+    const char *override_legacy = getenv("CHATTER_FILE_STORAGE_ROOT");
+    const char *root =
+        (override_filestore != nullptr && override_filestore[0] != '\0')
+            ? override_filestore
+            : ((override_legacy != nullptr && override_legacy[0] != '\0')
+                   ? override_legacy
+                   : SSH_CHATTER_FILE_STORAGE_ROOT);
 
     if (root[0] != '/') {
         humanized_log_error("files", "file storage path must be absolute",
@@ -460,7 +464,15 @@ bool file_transfer_resolve_path(host_t *host, const char *virtual_path,
     }
 
     if (sanitized_len == 0U) {
-        return false;
+        if (!path_buffer_copy(resolved, resolved_len, host->file_storage_root)) {
+            return false;
+        }
+        if (display != nullptr && display_len > 0U) {
+            if (snprintf(display, display_len, "/") >= (int)display_len) {
+                return false;
+            }
+        }
+        return true;
     }
 
     if (!path_buffer_join(resolved, resolved_len, host->file_storage_root,

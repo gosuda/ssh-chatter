@@ -227,7 +227,7 @@ static void session_handle_filestore(session_ctx_t *ctx, const char *arguments)
     }
 
     session_send_system_line(
-        ctx, "SSH/SCP users: scp <file> user@host:/name | TELNET users: "
+        ctx, "SSH/SCP users: scp <file> user@host:/name (root is CHATTER_FILESTORE_PATH) | TELNET users: "
              "/filestore-upload [/<path>] or /filestore-download <name>");
 }
 
@@ -602,4 +602,3 @@ static void session_handle_files(session_ctx_t *ctx, const char *arguments)
     chat_room_broadcast_entry(&ctx->owner->room, &stored, ctx);
     host_notify_external_clients(ctx->owner, &stored);
 }
-

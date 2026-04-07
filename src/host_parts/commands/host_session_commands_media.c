@@ -227,8 +227,10 @@ static void session_handle_filestore(session_ctx_t *ctx, const char *arguments)
     }
 
     session_send_system_line(
-        ctx, "SSH/SCP users: scp <file> user@host:/name (root via CHATTER_FILESTORE_PATH or CHATTER_FILE_STORAGE_ROOT) | TELNET users: "
+        ctx, "SSH/SCP users: scp <file> user@host:/name | TELNET users: "
              "/filestore-upload [/<path>] or /filestore-download <name>");
+    session_send_system_line(
+        ctx, "Filestore root: CHATTER_FILESTORE_PATH (legacy: CHATTER_FILE_STORAGE_ROOT).");
 }
 
 static void session_handle_filestore_upload(session_ctx_t *ctx,

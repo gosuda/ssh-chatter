@@ -191,13 +191,29 @@ static bool file_transfer_is_root_reference(const char *virtual_path)
     if (virtual_path == nullptr) {
         return false;
     }
-    while (*virtual_path != '\0') {
-        if (*virtual_path != '/' && *virtual_path != '.') {
+    const char *cursor = virtual_path;
+    bool saw_component = false;
+
+    while (*cursor != '\0') {
+        while (*cursor == '/') {
+            ++cursor;
+        }
+        if (*cursor == '\0') {
+            return saw_component || strchr(virtual_path, '/') != nullptr;
+        }
+
+        const char *component_start = cursor;
+        while (*cursor != '\0' && *cursor != '/') {
+            ++cursor;
+        }
+        size_t component_len = (size_t)(cursor - component_start);
+        saw_component = true;
+        if (component_len != 1U || component_start[0] != '.') {
             return false;
         }
-        ++virtual_path;
     }
-    return true;
+
+    return saw_component;
 }
 
 static void host_file_storage_list_recursive(const char *root_path,

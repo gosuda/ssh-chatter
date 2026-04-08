@@ -485,44 +485,6 @@ cleanup:
     return success;
 }
 
-static bool session_text_has_unicode(const char *data, size_t length)
-{
-    if (data == nullptr || length == 0U) {
-        return false;
-    }
-
-    size_t idx = 0U;
-    while (idx < length) {
-        unsigned char byte = (unsigned char)data[idx];
-        if (byte < 0x80U) {
-            ++idx;
-            continue;
-        }
-
-        /* Basic UTF-8 sequence validation to avoid false positives */
-        if ((byte & 0xE0U) == 0xC0U && idx + 1U < length &&
-            ((unsigned char)data[idx + 1U] & 0xC0U) == 0x80U) {
-            return true;
-        }
-        if ((byte & 0xF0U) == 0xE0U && idx + 2U < length &&
-            ((unsigned char)data[idx + 1U] & 0xC0U) == 0x80U &&
-            ((unsigned char)data[idx + 2U] & 0xC0U) == 0x80U) {
-            return true;
-        }
-        if ((byte & 0xF8U) == 0xF0U && idx + 3U < length &&
-            ((unsigned char)data[idx + 1U] & 0xC0U) == 0x80U &&
-            ((unsigned char)data[idx + 2U] & 0xC0U) == 0x80U &&
-            ((unsigned char)data[idx + 3U] & 0xC0U) == 0x80U) {
-            return true;
-        }
-
-        /* Any other high-bit byte is treated as non-ASCII content */
-        return true;
-    }
-
-    return false;
-}
-
 static bool session_channel_write_codepage(session_ctx_t *ctx, const char *data,
                                            size_t length,
                                            session_codepage_t codepage)
@@ -538,7 +500,7 @@ static bool session_channel_write_codepage(session_ctx_t *ctx, const char *data,
 
     const bool hybrid_auto =
         ctx != nullptr && ctx->cp437_override == SESSION_CP437_OVERRIDE_NONE;
-    const bool contains_unicode = session_text_has_unicode(data, length);
+    const bool contains_unicode = sshc_chardet_prefers_utf8(data, length);
 
     if (hybrid_auto && contains_unicode && !ctx->prefer_cp437_output) {
         /* Hybrid mode: leave Unicode intact when retro is not preferred */
@@ -1061,4 +1023,3 @@ static bool session_utf8_to_utf16le(const char *input, size_t length,
     }
     return true;
 }
-

@@ -385,6 +385,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
                                          &args)) {
         session_handle_hybrid(ctx, args);
         return;
+    } else if (session_parse_command_any(ctx, "/iyagi", effective_line,
+                                         &args)) {
+        session_handle_iyagi(ctx, args);
+        return;
     } else if (session_parse_command_any(ctx, "/saerom", effective_line,
                                          &args)) {
         session_handle_saerom(ctx, args);

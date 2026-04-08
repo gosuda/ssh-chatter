@@ -44,6 +44,49 @@ void session_handle_hybrid(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, kUsage);
 }
 
+void session_handle_iyagi(session_ctx_t *ctx, const char *arguments)
+{
+    static const char *kUsage = "Usage: /iyagi <on|off|status>";
+
+    if (ctx == nullptr) {
+        return;
+    }
+
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    if (arguments != nullptr) {
+        snprintf(working, sizeof(working), "%s", arguments);
+        trim_whitespace_inplace(working);
+    } else {
+        working[0] = '\0';
+    }
+
+    if (working[0] == '\0' || strcasecmp(working, "status") == 0) {
+        session_send_system_line(
+            ctx,
+            ctx->hybrid_output_mode
+                ? "IYAGI mode is enabled. Input stays modern UTF-8 and "
+                  "rendering auto-detects UTF-8 versus retro output."
+                : "IYAGI mode is disabled. Rendering follows explicit /retro "
+                  "settings only.");
+        return;
+    }
+
+    if (strcasecmp(working, "on") == 0) {
+        ctx->hybrid_output_mode = true;
+        session_send_system_line(
+            ctx, "IYAGI mode enabled (modern input + auto rendering detect).");
+        return;
+    }
+
+    if (strcasecmp(working, "off") == 0) {
+        ctx->hybrid_output_mode = false;
+        session_send_system_line(ctx, "IYAGI mode disabled.");
+        return;
+    }
+
+    session_send_system_line(ctx, kUsage);
+}
+
 void session_handle_saerom(session_ctx_t *ctx, const char *arguments)
 {
     static const char *kUsage =
@@ -78,7 +121,7 @@ void session_handle_saerom(session_ctx_t *ctx, const char *arguments)
             ctx->hybrid_output_mode;
 
         char line[SSH_CHATTER_MESSAGE_LIMIT];
-        session_send_system_line(ctx, "── Saerom DataMan Profile ──────────────");
+        session_send_system_line(ctx, "-- Saerom DataMan Profile --------------");
 
         snprintf(line, sizeof(line),
                  "  Profile active  : %s",
@@ -110,7 +153,7 @@ void session_handle_saerom(session_ctx_t *ctx, const char *arguments)
         session_send_system_line(ctx, line);
 
         session_send_system_line(ctx,
-            "  ─────────────────────────────────────");
+            "  -------------------------------------");
         session_send_system_line(ctx,
             "  Saerom DataMan mode: system prompts use CP437 box-drawing art,");
         session_send_system_line(ctx,
@@ -529,8 +572,9 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
 
 void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 {
-    static const char *kUsage = "Usage: /retro <on [ko|en|jp|zh|ru|de|fr|pl] "
-                                "[system|chat|all]|off|auto|status>";
+    static const char *kUsage =
+        "Usage: /retro <on [ko|en|jp|zh|ru|de|fr|pl] [system|chat|all]|off|"
+        "auto|status|keyboard <on|off|status>|ui <system|chat|all|status>>";
 
     if (ctx == nullptr) {
         return;
@@ -597,6 +641,96 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
                 ctx, "Hybrid retro/Unicode auto-conversion is active for all "
                      "languages when automatic detection is enabled.");
         }
+        return;
+    }
+
+    if (strncasecmp(working, "keyboard", 8) == 0 &&
+        (working[8] == '\0' || isspace((unsigned char)working[8]) != 0)) {
+        const char *arg = working + 8;
+        while (*arg != '\0' && isspace((unsigned char)*arg) != 0) {
+            ++arg;
+        }
+
+        if (*arg == '\0' || strcasecmp(arg, "status") == 0) {
+            session_send_system_line(
+                ctx, ctx->cp437_input_enabled
+                         ? "Retro keyboard is enabled (legacy CP437 input)."
+                         : "Retro keyboard is disabled (modern UTF-8 input).");
+            return;
+        }
+
+        if (strcasecmp(arg, "on") == 0) {
+            ctx->cp437_input_enabled = true;
+            session_send_system_line(
+                ctx, "Retro keyboard enabled (legacy CP437 input).");
+            return;
+        }
+
+        if (strcasecmp(arg, "off") == 0) {
+            ctx->cp437_input_enabled = false;
+            session_send_system_line(
+                ctx, "Retro keyboard disabled (modern UTF-8 input).");
+            return;
+        }
+
+        session_send_system_line(ctx, "Usage: /retro keyboard <on|off|status>");
+        return;
+    }
+
+    if (strncasecmp(working, "ui", 2) == 0 &&
+        (working[2] == '\0' || isspace((unsigned char)working[2]) != 0)) {
+        const char *arg = working + 2;
+        while (*arg != '\0' && isspace((unsigned char)*arg) != 0) {
+            ++arg;
+        }
+
+        if (*arg == '\0' || strcasecmp(arg, "status") == 0) {
+            char message[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(message, sizeof(message),
+                     "Retro UI scope is %s. Hybrid mode is %s.",
+                     session_cp437_scope_label(ctx->cp437_output_scope),
+                     ctx->hybrid_output_mode ? "enabled" : "disabled");
+            session_send_system_line(ctx, message);
+            return;
+        }
+
+        if (strcasecmp(arg, "hybrid") == 0) {
+            ctx->hybrid_output_mode = true;
+            session_send_system_line(ctx,
+                                     "Retro UI hybrid mode enabled.");
+            return;
+        }
+        if (strcasecmp(arg, "utf8") == 0 || strcasecmp(arg, "modern") == 0) {
+            ctx->hybrid_output_mode = false;
+            session_send_system_line(ctx,
+                                     "Retro UI hybrid mode disabled.");
+            return;
+        }
+        if (strcasecmp(arg, "jp") == 0 || strcasecmp(arg, "japanese") == 0) {
+            ctx->ui_language = SESSION_UI_LANGUAGE_JP;
+            ctx->active_codepage = session_codepage_for_language(ctx->ui_language);
+            if (ctx->owner != nullptr) {
+                host_store_ui_language(ctx->owner, ctx);
+            }
+            session_send_system_line(ctx,
+                                     "Retro UI language set to Japanese mode.");
+            return;
+        }
+
+        session_cp437_scope_t parsed_scope = ctx->cp437_output_scope;
+        if (!session_cp437_scope_parse(arg, &parsed_scope)) {
+            session_send_system_line(
+                ctx,
+                "Usage: /retro ui <system|chat|all|status|hybrid|utf8|jp>");
+            return;
+        }
+
+        ctx->cp437_output_scope = parsed_scope;
+        session_refresh_output_encoding(ctx);
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message), "Retro UI scope set to %s.",
+                 session_cp437_scope_label(parsed_scope));
+        session_send_system_line(ctx, message);
         return;
     }
 

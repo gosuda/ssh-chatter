@@ -26,6 +26,7 @@
 #include "theme.h"
 #include "security_layer.h"
 #include "codepage.h"
+#include "chardet.h"
 #include "display_model.h"
 
 #define HOST_GRANTS_CLEAR_SIZE 4512
@@ -1167,5 +1168,6 @@ void host_session_process_line_for_testing(session_ctx_t *ctx,
 
 void session_handle_retro(session_ctx_t *ctx, const char *arguments);
 void session_handle_hybrid(session_ctx_t *ctx, const char *arguments);
+void session_handle_iyagi(session_ctx_t *ctx, const char *arguments);
 void session_handle_saerom(session_ctx_t *ctx, const char *arguments);
 #endif

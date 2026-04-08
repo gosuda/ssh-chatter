@@ -76,7 +76,7 @@ confirm the build still succeeds before pushing the result.
 
 ## File storage and transfers
 
-- All user-managed files now live under `/etc/ssh-chatter/user-files` (override with `CHATTER_FILE_STORAGE_ROOT`). The daemon creates the directory if needed and keeps uploads confined to it.
+- All user-managed files now live under `/etc/ssh-chatter/user-files` (override with `CHATTER_FILESTORE_PATH`, legacy fallback: `CHATTER_FILE_STORAGE_ROOT`). The daemon creates the directory if needed and keeps uploads confined to it.
 - SSH clients use standard `scp` without any custom wrapper. Treat `/name.ext` as the root of the storage tree: `scp my.zip user@host:/demos/my.zip` writes to `/etc/ssh-chatter/user-files/demos/my.zip` while `scp user@host:/readme.txt ./` downloads `/etc/ssh-chatter/user-files/readme.txt`.
 - TELNET clients use the new `/filestore` commands. `/filestore` lists available files, `/filestore-upload` starts an `rz` session, and `/filestore-download <name>` starts an `sz` session. Install `lrzsz` (or any package that provides `rz`/`sz`) on the server so the ZMODEM backend can spawn those helpers.
 - `/filestore-upload` accepts an optional destination (for example `/filestore-upload /kitten/meow.png`). SSH-Chatter creates the `/kitten` directory automatically and places the uploaded file there, mirroring how SCP uses paths like `user@host:/kitten/meow.png`.
@@ -281,7 +281,8 @@ Supported environment variables include:
 - `CHATTER_GEMINI_COOLDOWN_FILE` – Path to the Gemini cooldown state file (default `gemini_cooldown.dat`).
 - `CHATTER_SECURITY_FILTER` – Set to `off`/`false`/`0` to disable the layered security filter (enabled by default).
 - `CHATTER_SECURITY_AI` – Set to `on`/`true`/`1` to enable AI moderation (disabled by default).
-- `CHATTER_FILE_STORAGE_ROOT` – Override the managed file storage path (default `/etc/ssh-chatter/user-files`).
+- `CHATTER_FILESTORE_PATH` – Override the managed file storage path (default `/etc/ssh-chatter/user-files`).
+- `CHATTER_FILE_STORAGE_ROOT` – Legacy fallback for the managed file storage path.
 - `CHATTER_MAX_ALLOC_BYTES` – Upper bound for a single contiguous allocation attempt in the internal memory manager (default `16777216`, i.e. 16 MiB). Requests above this limit fail with `ENOMEM` instead of risking abrupt process termination under memory pressure.
 
 **Camouflage Code Snippets:**

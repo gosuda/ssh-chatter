@@ -108,10 +108,14 @@ bool host_file_storage_init(host_t *host)
         return false;
     }
 
-    const char *override = getenv("CHATTER_FILE_STORAGE_ROOT");
-    const char *root = (override != nullptr && override[0] != '\0')
-                           ? override
-                           : SSH_CHATTER_FILE_STORAGE_ROOT;
+    const char *override_filestore = getenv("CHATTER_FILESTORE_PATH");
+    const char *override_legacy = getenv("CHATTER_FILE_STORAGE_ROOT");
+    const char *root =
+        (override_filestore != nullptr && override_filestore[0] != '\0')
+            ? override_filestore
+            : ((override_legacy != nullptr && override_legacy[0] != '\0')
+                   ? override_legacy
+                   : SSH_CHATTER_FILE_STORAGE_ROOT);
 
     if (root[0] != '/') {
         humanized_log_error("files", "file storage path must be absolute",
@@ -180,6 +184,36 @@ static bool path_buffer_join(char *dest, size_t dest_len, const char *base,
     memcpy(dest + base_len + 1U, suffix, suffix_len);
     dest[base_len + 1U + suffix_len] = '\0';
     return true;
+}
+
+static bool file_transfer_is_root_reference(const char *virtual_path)
+{
+    if (virtual_path == nullptr) {
+        return false;
+    }
+    const char *cursor = virtual_path;
+    bool saw_component = false;
+
+    while (*cursor != '\0') {
+        while (*cursor == '/') {
+            ++cursor;
+        }
+        if (*cursor == '\0') {
+            return saw_component || strchr(virtual_path, '/') != nullptr;
+        }
+
+        const char *component_start = cursor;
+        while (*cursor != '\0' && *cursor != '/') {
+            ++cursor;
+        }
+        size_t component_len = (size_t)(cursor - component_start);
+        saw_component = true;
+        if (component_len != 1U || component_start[0] != '.') {
+            return false;
+        }
+    }
+
+    return saw_component;
 }
 
 static void host_file_storage_list_recursive(const char *root_path,
@@ -460,7 +494,18 @@ bool file_transfer_resolve_path(host_t *host, const char *virtual_path,
     }
 
     if (sanitized_len == 0U) {
-        return false;
+        if (!file_transfer_is_root_reference(working)) {
+            return false;
+        }
+        if (!path_buffer_copy(resolved, resolved_len, host->file_storage_root)) {
+            return false;
+        }
+        if (display != nullptr && display_len > 0U) {
+            if (snprintf(display, display_len, "/") >= (int)display_len) {
+                return false;
+            }
+        }
+        return true;
     }
 
     if (!path_buffer_join(resolved, resolved_len, host->file_storage_root,

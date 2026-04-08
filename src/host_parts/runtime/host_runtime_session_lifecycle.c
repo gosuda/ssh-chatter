@@ -1222,7 +1222,13 @@ static void *session_thread(void *arg)
             if (ch == '\b' || ch == 0x7f) {
                 ctx->input_history_position = -1;
                 session_scrollback_reset_position(ctx);
-                session_local_backspace(ctx);
+                if (ctx->bbs_post_pending && ctx->pending_bbs_editing_line &&
+                    !ctx->bbs_search_active) {
+                    session_local_backspace(ctx);
+                    session_bbs_render_editor(ctx, nullptr);
+                } else {
+                    session_local_backspace(ctx);
+                }
                 /* Reset multi-byte buffer on backspace */
                 ctx->multibyte_input_length = 0U;
                 continue;
@@ -1236,7 +1242,13 @@ static void *session_thread(void *arg)
                     ctx->input_history_position = -1;
                     session_scrollback_reset_position(ctx);
                     ctx->input_buffer[ctx->input_length++] = ' ';
-                    session_local_echo_char(ctx, ' ');
+                    if (ctx->bbs_post_pending && ctx->pending_bbs_editing_line &&
+                        !ctx->bbs_search_active) {
+                        ctx->input_buffer[ctx->input_length] = '\0';
+                        session_bbs_render_editor(ctx, nullptr);
+                    } else {
+                        session_local_echo_char(ctx, ' ');
+                    }
                 }
                 continue;
             }
@@ -1278,8 +1290,14 @@ static void *session_thread(void *arg)
                        encoded_len);
                 ctx->input_length += encoded_len;
                 ctx->input_buffer[ctx->input_length] = '\0';
-                for (size_t echo_idx = 0U; echo_idx < encoded_len; ++echo_idx) {
-                    session_local_echo_char(ctx, encoded[echo_idx]);
+                if (ctx->bbs_post_pending && ctx->pending_bbs_editing_line &&
+                    !ctx->bbs_search_active) {
+                    session_bbs_render_editor(ctx, nullptr);
+                } else {
+                    for (size_t echo_idx = 0U; echo_idx < encoded_len;
+                         ++echo_idx) {
+                        session_local_echo_char(ctx, encoded[echo_idx]);
+                    }
                 }
             }
         }

@@ -1164,26 +1164,13 @@ static void *session_thread(void *arg)
 
             if (ch == '\r' && ctx->bbs_post_pending &&
                 ctx->pending_bbs_editing_line && ctx->input_length == 0U &&
-                !ctx->bbs_line_edit_mode && !ctx->bracket_paste_active) {
-                session_bbs_recalculate_line_count(ctx);
-                char status[SSH_CHATTER_MESSAGE_LIMIT];
-                status[0] = '\0';
-                if (ctx->pending_bbs_line_count == 0U) {
-                    snprintf(status, sizeof(status),
-                             "No lines available to edit.");
-                } else {
-                    size_t target = ctx->pending_bbs_cursor_line;
-                    if (target >= ctx->pending_bbs_line_count) {
-                        target = ctx->pending_bbs_line_count - 1U;
-                    }
-                    session_bbs_set_cursor(ctx, target, true);
-                    ctx->bbs_line_edit_mode = true;
-                    ctx->bbs_line_edit_target = target;
-                    snprintf(status, sizeof(status),
-                             "Line edit mode for line %zu. Ctrl+L to apply.",
-                             target + 1U);
+                !ctx->bracket_paste_active) {
+                session_process_line(ctx, "");
+                session_clear_input_without_prompt(ctx);
+                if (ctx->should_exit) {
+                    break;
                 }
-                session_bbs_render_editor(ctx, status);
+                session_render_prompt(ctx, false);
                 continue;
             }
 

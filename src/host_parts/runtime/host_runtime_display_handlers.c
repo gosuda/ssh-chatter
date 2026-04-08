@@ -44,11 +44,9 @@ void session_handle_hybrid(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, kUsage);
 }
 
-void session_handle_saerom(session_ctx_t *ctx, const char *arguments)
+void session_handle_iyagi(session_ctx_t *ctx, const char *arguments)
 {
-    static const char *kUsage =
-        "Usage: /saerom [on|off|status]  "
-        "- Saerom DataMan CP437 compatibility profile";
+    static const char *kUsage = "Usage: /iyagi <on|off|status>";
 
     if (ctx == nullptr) {
         return;
@@ -62,103 +60,52 @@ void session_handle_saerom(session_ctx_t *ctx, const char *arguments)
         working[0] = '\0';
     }
 
-    /* ── status (default when no argument given) ── */
     if (working[0] == '\0' || strcasecmp(working, "status") == 0) {
-        const char *override_str = "automatic";
-        if (ctx->cp437_override == SESSION_CP437_OVERRIDE_FORCE_ON) {
-            override_str = "forced on";
-        } else if (ctx->cp437_override == SESSION_CP437_OVERRIDE_FORCE_OFF) {
-            override_str = "forced off";
-        }
-
-        bool is_saerom_profile =
+        const bool iyagi_active =
             ctx->cp437_override == SESSION_CP437_OVERRIDE_FORCE_ON &&
             ctx->cp437_output_scope == SESSION_CP437_SCOPE_SYSTEM_ONLY &&
-            !ctx->cp437_input_enabled &&
-            ctx->hybrid_output_mode;
+            !ctx->cp437_input_enabled && ctx->hybrid_output_mode &&
+            ctx->active_codepage == SESSION_CODEPAGE_CP949;
 
-        char line[SSH_CHATTER_MESSAGE_LIMIT];
-        session_send_system_line(ctx, "── Saerom DataMan Profile ──────────────");
-
-        snprintf(line, sizeof(line),
-                 "  Profile active  : %s",
-                 is_saerom_profile ? "yes" : "no (use /saerom on to apply)");
-        session_send_system_line(ctx, line);
-
-        snprintf(line, sizeof(line),
-                 "  CP437 override  : %s", override_str);
-        session_send_system_line(ctx, line);
-
-        snprintf(line, sizeof(line),
-                 "  Output scope    : %s",
-                 session_cp437_scope_label(ctx->cp437_output_scope));
-        session_send_system_line(ctx, line);
-
-        snprintf(line, sizeof(line),
-                 "  Codepage        : %s",
-                 session_codepage_name(ctx->active_codepage));
-        session_send_system_line(ctx, line);
-
-        snprintf(line, sizeof(line),
-                 "  Input encoding  : %s",
-                 ctx->cp437_input_enabled ? "legacy CP437" : "UTF-8");
-        session_send_system_line(ctx, line);
-
-        snprintf(line, sizeof(line),
-                 "  Hybrid mode     : %s",
+        char status[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(status, sizeof(status),
+                 "IYAGI profile: %s (ui scope: %s, keyboard: %s, codepage: %s, "
+                 "hybrid: %s).",
+                 iyagi_active ? "enabled" : "disabled",
+                 session_cp437_scope_label(ctx->cp437_output_scope),
+                 ctx->cp437_input_enabled ? "legacy" : "modern UTF-8",
+                 session_codepage_name(ctx->active_codepage),
                  ctx->hybrid_output_mode ? "enabled" : "disabled");
-        session_send_system_line(ctx, line);
-
-        session_send_system_line(ctx,
-            "  ─────────────────────────────────────");
-        session_send_system_line(ctx,
-            "  Saerom DataMan mode: system prompts use CP437 box-drawing art,");
-        session_send_system_line(ctx,
-            "  chat stays UTF-8, and hybrid detection bridges both encodings.");
-        session_send_system_line(ctx,
-            "  Use /saerom on|off to toggle, /retro for full CP437 control.");
+        session_send_system_line(ctx, status);
+        session_send_system_line(
+            ctx, "Windows 11 + legacy CP949 app profile: system UI renders in "
+                 "legacy codepage, chat stays UTF-8.");
         return;
     }
 
-    /* ── on: apply the standard Saerom DataMan profile ── */
     if (strcasecmp(working, "on") == 0) {
         ctx->cp437_output_scope = SESSION_CP437_SCOPE_SYSTEM_ONLY;
-        ctx->cp437_override     = SESSION_CP437_OVERRIDE_FORCE_ON;
+        ctx->cp437_override = SESSION_CP437_OVERRIDE_FORCE_ON;
         ctx->cp437_input_enabled = false;
-        ctx->hybrid_output_mode  = true;
-
-        /* Default to CP437 if the session has no legacy codepage set yet */
-        if (ctx->active_codepage == SESSION_CODEPAGE_UTF8) {
-            ctx->active_codepage =
-                session_codepage_for_language(ctx->ui_language);
+        ctx->hybrid_output_mode = true;
+        ctx->active_codepage = SESSION_CODEPAGE_CP949;
+        ctx->ui_language = SESSION_UI_LANGUAGE_KO;
+        if (ctx->owner != nullptr) {
+            host_store_ui_language(ctx->owner, ctx);
         }
-
         session_refresh_output_encoding(ctx);
-
-        char line[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(line, sizeof(line),
-                 "Saerom DataMan profile enabled "
-                 "(codepage: %s, scope: system-only, input: UTF-8, "
-                 "hybrid: on).",
-                 session_codepage_name(ctx->active_codepage));
-        session_send_system_line(ctx, line);
-        session_send_system_line(ctx,
-            "System output now uses CP437 box-drawing art; "
-            "chat messages stay UTF-8.");
-        session_send_system_line(ctx,
-            "Use /saerom off to revert or /saerom status for details.");
+        session_send_system_line(
+            ctx, "IYAGI mode enabled (Windows 11 legacy CP949 profile).");
         return;
     }
 
-    /* ── off: revert to automatic encoding detection ── */
     if (strcasecmp(working, "off") == 0) {
-        ctx->cp437_output_scope  = SESSION_CP437_SCOPE_ALL;
-        ctx->cp437_override      = SESSION_CP437_OVERRIDE_NONE;
-        ctx->hybrid_output_mode  = false;
+        ctx->cp437_output_scope = SESSION_CP437_SCOPE_ALL;
+        ctx->cp437_override = SESSION_CP437_OVERRIDE_NONE;
+        ctx->cp437_input_enabled = false;
+        ctx->hybrid_output_mode = false;
         session_refresh_output_encoding(ctx);
-        session_send_system_line(ctx,
-            "Saerom DataMan profile disabled. "
-            "Encoding returned to automatic detection.");
+        session_send_system_line(ctx, "IYAGI mode disabled.");
         return;
     }
 
@@ -529,8 +476,10 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
 
 void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 {
-    static const char *kUsage = "Usage: /retro <on [ko|en|jp|zh|ru|de|fr|pl] "
-                                "[system|chat|all]|off|auto|status>";
+    static const char *kUsage =
+        "Usage: /retro <on [ko|en|jp|zh|ru|de|fr|pl] [system|chat|all]|off|"
+        "auto|status|keyboard <on|off|status|cp437|cp949|cp932|cp936|cp1251|"
+        "cp850|cp852>|ui <system|chat|all|status>>";
 
     if (ctx == nullptr) {
         return;
@@ -597,6 +546,141 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
                 ctx, "Hybrid retro/Unicode auto-conversion is active for all "
                      "languages when automatic detection is enabled.");
         }
+        return;
+    }
+
+    if (strncasecmp(working, "keyboard", 8) == 0 &&
+        (working[8] == '\0' || isspace((unsigned char)working[8]) != 0)) {
+        const char *arg = working + 8;
+        while (*arg != '\0' && isspace((unsigned char)*arg) != 0) {
+            ++arg;
+        }
+
+        session_codepage_t requested_codepage = ctx->active_codepage;
+        bool has_codepage = false;
+        if (strcasecmp(arg, "cp437") == 0) {
+            requested_codepage = SESSION_CODEPAGE_CP437;
+            has_codepage = true;
+        } else if (strcasecmp(arg, "cp949") == 0) {
+            requested_codepage = SESSION_CODEPAGE_CP949;
+            has_codepage = true;
+        } else if (strcasecmp(arg, "cp932") == 0) {
+            requested_codepage = SESSION_CODEPAGE_CP932;
+            has_codepage = true;
+        } else if (strcasecmp(arg, "cp936") == 0) {
+            requested_codepage = SESSION_CODEPAGE_CP936;
+            has_codepage = true;
+        } else if (strcasecmp(arg, "cp1251") == 0) {
+            requested_codepage = SESSION_CODEPAGE_CP1251;
+            has_codepage = true;
+        } else if (strcasecmp(arg, "cp850") == 0) {
+            requested_codepage = SESSION_CODEPAGE_CP850;
+            has_codepage = true;
+        } else if (strcasecmp(arg, "cp852") == 0) {
+            requested_codepage = SESSION_CODEPAGE_CP852;
+            has_codepage = true;
+        }
+
+        if (*arg == '\0' || strcasecmp(arg, "status") == 0) {
+            char status[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(status, sizeof(status),
+                     "Retro keyboard is %s (%s).",
+                     ctx->cp437_input_enabled ? "enabled" : "disabled",
+                     session_codepage_name(ctx->active_codepage));
+            session_send_system_line(
+                ctx, status);
+            return;
+        }
+
+        if (strcasecmp(arg, "on") == 0) {
+            ctx->cp437_input_enabled = true;
+            char status[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(status, sizeof(status),
+                     "Retro keyboard enabled (%s input).",
+                     session_codepage_name(ctx->active_codepage));
+            session_send_system_line(
+                ctx, status);
+            return;
+        }
+
+        if (strcasecmp(arg, "off") == 0) {
+            ctx->cp437_input_enabled = false;
+            session_send_system_line(
+                ctx, "Retro keyboard disabled (modern UTF-8 input).");
+            return;
+        }
+
+        if (has_codepage) {
+            ctx->active_codepage = requested_codepage;
+            ctx->cp437_input_enabled = true;
+            char status[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(status, sizeof(status),
+                     "Retro keyboard enabled with %s input.",
+                     session_codepage_name(requested_codepage));
+            session_send_system_line(ctx, status);
+            return;
+        }
+
+        session_send_system_line(
+            ctx, "Usage: /retro keyboard <on|off|status|cp437|cp949|cp932|"
+                 "cp936|cp1251|cp850|cp852>");
+        return;
+    }
+
+    if (strncasecmp(working, "ui", 2) == 0 &&
+        (working[2] == '\0' || isspace((unsigned char)working[2]) != 0)) {
+        const char *arg = working + 2;
+        while (*arg != '\0' && isspace((unsigned char)*arg) != 0) {
+            ++arg;
+        }
+
+        if (*arg == '\0' || strcasecmp(arg, "status") == 0) {
+            char message[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(message, sizeof(message),
+                     "Retro UI scope is %s. Hybrid mode is %s.",
+                     session_cp437_scope_label(ctx->cp437_output_scope),
+                     ctx->hybrid_output_mode ? "enabled" : "disabled");
+            session_send_system_line(ctx, message);
+            return;
+        }
+
+        if (strcasecmp(arg, "hybrid") == 0) {
+            ctx->hybrid_output_mode = true;
+            session_send_system_line(ctx,
+                                     "Retro UI hybrid mode enabled.");
+            return;
+        }
+        if (strcasecmp(arg, "utf8") == 0 || strcasecmp(arg, "modern") == 0) {
+            ctx->hybrid_output_mode = false;
+            session_send_system_line(ctx,
+                                     "Retro UI hybrid mode disabled.");
+            return;
+        }
+        if (strcasecmp(arg, "jp") == 0 || strcasecmp(arg, "japanese") == 0) {
+            ctx->ui_language = SESSION_UI_LANGUAGE_JP;
+            ctx->active_codepage = session_codepage_for_language(ctx->ui_language);
+            if (ctx->owner != nullptr) {
+                host_store_ui_language(ctx->owner, ctx);
+            }
+            session_send_system_line(ctx,
+                                     "Retro UI language set to Japanese mode.");
+            return;
+        }
+
+        session_cp437_scope_t parsed_scope = ctx->cp437_output_scope;
+        if (!session_cp437_scope_parse(arg, &parsed_scope)) {
+            session_send_system_line(
+                ctx,
+                "Usage: /retro ui <system|chat|all|status|hybrid|utf8|jp>");
+            return;
+        }
+
+        ctx->cp437_output_scope = parsed_scope;
+        session_refresh_output_encoding(ctx);
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message), "Retro UI scope set to %s.",
+                 session_cp437_scope_label(parsed_scope));
+        session_send_system_line(ctx, message);
         return;
     }
 

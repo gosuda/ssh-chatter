@@ -1098,41 +1098,36 @@ static const session_help_entry_t kSessionHelpExtended[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "saerom [on|off|status]",
+        .label = "iyagi [on|off|status]",
         .description =
             {
-                "Saerom DataMan CP437 profile: system art uses CP437, chat "
-                "stays UTF-8 with hybrid detection.",
-                "새롬 DataMan CP437 프로파일: 시스템 출력은 CP437, 채팅은 "
-                "UTF-8로 유지되며 자동 감지가 활성화됩니다.",
-                "Saerom DataMan CP437 プロファイル: "
-                "システム出力は CP437、チャットは UTF-8 のままハイブリッド検知。",
-                "새롬 DataMan CP437 配置：系统输出使用 CP437，聊天保持 UTF-8 "
-                "并启用混合检测。",
-                "Профиль CP437 Saerom DataMan: системные сообщения — CP437, "
-                "чат — UTF-8 с гибридным определением.",
+                "Enable the Windows 11 legacy CP949 profile: modern UTF-8 "
+                "input, legacy UI rendering, and hybrid output detection.",
+                "Windows 11 레거시 CP949 프로파일을 켭니다: 입력은 UTF-8, "
+                "UI는 레거시 렌더링, 출력은 하이브리드 자동 감지.",
+                "Windows 11 の旧式 CP949 プロファイルを有効化: 入力は UTF-8、"
+                "UI はレガシー描画、出力はハイブリッド自動検知。",
+                "启用 Windows 11 旧版 CP949 配置：输入保持 UTF-8，UI 使用旧式"
+                "渲染，输出启用混合检测。",
+                "Включить профиль Windows 11 с legacy CP949: ввод UTF-8, "
+                "UI в legacy-режиме, гибридное автоопределение вывода.",
             },
         .label_arg_count = 0U,
         .label_args = {},
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "retro <on [ko|en|jp|zh|ru|de|fr|pl]|off|auto|status>",
+        .label = "retro <...|keyboard <on|off|status|cp437|cp949|cp932|cp936|cp1251|cp850|cp852>|ui <system|chat|all|status|hybrid|utf8|jp>>",
         .description =
             {
-                "Toggle retro CP437 terminal encoding with optional language.",
-                "선택적 언어와 함께 레트로 CP437 터미널 인코딩을 전환합니다.",
-                "オプションの言語でレトロ CP437 "
-                "ターミナルエンコーディングを切り替えます。",
-                "使用可选语言切换复古 CP437 终端编码。",
-                "Переключить ретро CP437 кодировку терминала с необязательным "
-                "языком.",
-                "Retro CP437-Terminalcodierung mit optionaler Sprache "
-                "umschalten.",
-                "Basculer l'encodage de terminal rétro CP437 avec une langue "
-                "optionnelle.",
-                "Przełącz kodowanie terminala retro CP437 z opcjonalnym "
-                "językiem.",
+                "Toggle retro terminal encoding, keyboard codepage, and UI scope.",
+                "레트로 터미널 인코딩, 키보드 코드페이지, UI 범위를 전환합니다.",
+                "レトロ端末エンコーディング、キーボードコードページ、UI 範囲を切り替えます。",
+                "切换复古终端编码、键盘代码页与 UI 范围。",
+                "Переключить ретро-кодировку терминала, кодировку клавиатуры и область UI.",
+                "Retro-Terminalcodierung, Tastatur-Codepage und UI-Bereich umschalten.",
+                "Basculer l'encodage du terminal rétro, le codepage clavier et la portée UI.",
+                "Przełącz kodowanie terminala retro, kodowanie klawiatury i zakres UI.",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -1498,4 +1493,3 @@ static const session_help_entry_t kSessionHelpOperator[] = {
 };
 
 static const int kSessionHelpLabelWidth = 26;
-

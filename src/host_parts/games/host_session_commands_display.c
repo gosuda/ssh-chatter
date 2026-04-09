@@ -1207,10 +1207,10 @@ static size_t session_weather_write_callback(void *contents, size_t size,
     return total;
 }
 
-static bool session_fetch_weather_summary(const char *region, const char *city,
+static bool session_fetch_weather_summary(const char *city,
                                           char *summary, size_t summary_len)
 {
-    if (region == nullptr || city == nullptr || summary == nullptr ||
+    if (city == nullptr || summary == nullptr ||
         summary_len == 0U) {
         return false;
     }
@@ -1223,7 +1223,7 @@ static bool session_fetch_weather_summary(const char *region, const char *city,
     bool success = false;
     session_weather_buffer_t buffer = {0};
     char query[128];
-    snprintf(query, sizeof(query), "%s %s", region, city);
+    snprintf(query, sizeof(query), "%s", city);
 
     char *escaped = curl_easy_escape(curl, query, 0);
     if (escaped == nullptr) {
@@ -1401,7 +1401,7 @@ static void session_handle_weather(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    static const char *kUsage = "Usage: /weather <region> <city>";
+    static const char *kUsage = "Usage: /weather <city>";
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/weather", kUsage, usage, sizeof(usage));
     if (arguments == nullptr || *arguments == '\0') {
@@ -1410,45 +1410,19 @@ static void session_handle_weather(session_ctx_t *ctx, const char *arguments)
     }
 
     const char *cursor = arguments;
-    while (*cursor != '\0' && !isspace((unsigned char)*cursor)) {
-        ++cursor;
-    }
-
-    if (*cursor == '\0') {
-        session_send_system_line(ctx, usage);
-        return;
-    }
-
-    size_t region_len = (size_t)(cursor - arguments);
-    char region[64];
-    if (region_len >= sizeof(region)) {
-        session_send_system_line(ctx, "Region name is too long.");
-        return;
-    }
-    memcpy(region, arguments, region_len);
-    region[region_len] = '\0';
-    trim_whitespace_inplace(region);
-
-    while (*cursor != '\0' && isspace((unsigned char)*cursor)) {
-        ++cursor;
-    }
-
-    if (*cursor == '\0') {
-        session_send_system_line(ctx, usage);
-        return;
-    }
 
     char city[64];
     snprintf(city, sizeof(city), "%s", cursor);
     trim_whitespace_inplace(city);
 
-    if (region[0] == '\0' || city[0] == '\0') {
-        session_send_system_line(ctx, usage);
-        return;
+    for(unsigned i = 0; i < strnlen(city, 63); i++) {
+        if(isspace(city[i])) {
+            city[i] = '+';
+        }
     }
 
     char summary[256];
-    if (!session_fetch_weather_summary(region, city, summary,
+    if (!session_fetch_weather_summary(city, summary,
                                        sizeof(summary))) {
         session_send_system_line(
             ctx,

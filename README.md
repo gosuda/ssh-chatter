@@ -18,7 +18,7 @@ SSH-Chatter has started from a C reimplementation of the Go [`ssh-chat`](https:/
 - Chat UI refresh with a clean divider between history and input, instant input clearing after send, and a friendly "Wait for a moment..." banner
 - Friendly multilingual captcha featuring easy comparisons and language-based name counts.
 - Expanded nickname support for non-Latin characters plus `/ban` upgrades that accept raw IP addresses alongside usernames.
-- `/weather <region> <city>` for quick global forecasts.
+- `/weather <city>` for quick global forecasts.
 - Simplified experience with polls, status messages, and the Eliza moderator removed.
 
 # Preview

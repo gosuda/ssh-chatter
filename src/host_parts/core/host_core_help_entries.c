@@ -557,8 +557,7 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 [SESSION_UI_LANGUAGE_KO] = "번역언어설정 <언어|끄기>",
                 [SESSION_UI_LANGUAGE_JP] = "翻訳言語設定 <言語|オフ>",
                 [SESSION_UI_LANGUAGE_ZH] = "设置翻译语言 <语言|关闭>",
-                [SESSION_UI_LANGUAGE_RU] =
-                    "установить-язык-перевода <язык|выкл>",
+                [SESSION_UI_LANGUAGE_RU] = "установить-язык-перевода <язык|выкл>",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -608,21 +607,21 @@ static const session_help_entry_t kSessionHelpExtended[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "weather <region> <city>",
+        .label = "weather <city>",
         .description =
             {
                 "Show weather for a region and city.",
-                "지역과 도시의 날씨를 보여줍니다.",
-                "地域と都市の天気を表示します。",
-                "显示指定地区和城市的天气。",
-                "Показать погоду для региона и города.",
+                "도시의 날씨를 보여줍니다.",
+                "都市の天気を表示します。",
+                "显示城市的天气。",
+                "Показать погоду для города.",
             },
         .label_translations =
             {
-                [SESSION_UI_LANGUAGE_KO] = "날씨 <지역> <도시>",
-                [SESSION_UI_LANGUAGE_JP] = "天気 <地域> <都市>",
-                [SESSION_UI_LANGUAGE_ZH] = "天气 <地区> <城市>",
-                [SESSION_UI_LANGUAGE_RU] = "погода <регион> <город>",
+                [SESSION_UI_LANGUAGE_KO] = "날씨 <도시>",
+                [SESSION_UI_LANGUAGE_JP] = "天気 <都市>",
+                [SESSION_UI_LANGUAGE_ZH] = "天气 <城市>",
+                [SESSION_UI_LANGUAGE_RU] = "погода <город>",
             },
         .label_arg_count = 0U,
         .label_args = {},

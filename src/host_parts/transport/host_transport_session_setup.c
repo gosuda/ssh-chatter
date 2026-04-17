@@ -2871,8 +2871,18 @@ static bool host_ensure_private_data_path(host_t *host, const char *path,
     }
 
     struct stat file_stat;
-    if (lstat(path, &file_stat) == 0) {
+    int state_fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (state_fd >= 0) {
+        if (fstat(state_fd, &file_stat) != 0) {
+            int saved_errno = errno;
+            close(state_fd);
+            humanized_log_error("host", "failed to inspect bbs state path",
+                                saved_errno != 0 ? saved_errno : EIO);
+            return false;
+        }
+
         if (!S_ISREG(file_stat.st_mode)) {
+            close(state_fd);
             humanized_log_error(
                 "host", "bbs state path does not reference a regular file",
                 EINVAL);
@@ -2880,19 +2890,24 @@ static bool host_ensure_private_data_path(host_t *host, const char *path,
         }
 
         if ((file_stat.st_mode & (S_IWOTH | S_IWGRP)) != 0U) {
-            if (chmod(path, S_IRUSR | S_IWUSR) != 0) {
+            if (fchmod(state_fd, S_IRUSR | S_IWUSR) != 0) {
+                int saved_errno = errno;
+                close(state_fd);
                 humanized_log_error("host",
                                     "failed to tighten bbs state permissions",
-                                    errno != 0 ? errno : EACCES);
+                                    saved_errno != 0 ? saved_errno : EACCES);
                 return false;
             }
         }
 
         if (file_stat.st_uid != geteuid()) {
+            close(state_fd);
             humanized_log_error("host", "bbs state file ownership mismatch",
                                 EPERM);
             return false;
         }
+
+        close(state_fd);
     } else if (errno != ENOENT) {
         humanized_log_error("host", "failed to inspect bbs state path",
                             errno != 0 ? errno : EIO);

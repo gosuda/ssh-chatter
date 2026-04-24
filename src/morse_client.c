@@ -9,10 +9,13 @@
 #include "host_parts/host_internal.h"
 
 #include <sys/select.h>
+#include <netinet/tcp.h>
 
 #define MORSE_HOST "telnet.reversebeacon.net"
 #define MORSE_PORT "7000"
 #define MORSE_RECONNECT_SECONDS 30U
+#define MORSE_RECONNECT_SECONDS_SLOW 60U
+#define MORSE_RECONNECT_SECONDS_VERY_SLOW 90U
 #define MORSE_SELECT_TIMEOUT_SECONDS 5U
 
 struct morse_client {
@@ -23,6 +26,7 @@ struct morse_client {
     _Atomic bool thread_stop;
     _Atomic bool thread_running;
     _Atomic bool connected;
+    _Atomic unsigned int reconnect_delay_seconds;
 };
 
 static void morse_client_close_socket(morse_client_t *client)
@@ -229,8 +233,33 @@ static bool morse_client_connect(morse_client_t *client)
 
     client->socket_fd = fd;
     atomic_store(&client->connected, true);
+    atomic_store(&client->reconnect_delay_seconds, MORSE_RECONNECT_SECONDS);
     printf("[morse] connected to %s:%s\n", MORSE_HOST, MORSE_PORT);
     return true;
+}
+
+static unsigned int morse_client_compute_reconnect_delay(morse_client_t *client)
+{
+    if (client == nullptr || client->socket_fd < 0) {
+        return MORSE_RECONNECT_SECONDS;
+    }
+
+    struct tcp_info info;
+    socklen_t info_len = (socklen_t)sizeof(info);
+    memset(&info, 0, sizeof(info));
+    if (getsockopt(client->socket_fd, IPPROTO_TCP, TCP_INFO, &info, &info_len) !=
+        0) {
+        return MORSE_RECONNECT_SECONDS;
+    }
+
+    unsigned int rtt_ms = info.tcpi_rtt / 1000U;
+    if (rtt_ms >= 1200U) {
+        return MORSE_RECONNECT_SECONDS_VERY_SLOW;
+    }
+    if (rtt_ms >= 600U) {
+        return MORSE_RECONNECT_SECONDS_SLOW;
+    }
+    return MORSE_RECONNECT_SECONDS;
 }
 
 static void morse_client_preview_handshake_output(morse_client_t *client)
@@ -380,10 +409,15 @@ static void *morse_client_thread(void *arg)
 
     atomic_store(&client->thread_running, true);
     while (!atomic_load(&client->thread_stop)) {
+        unsigned int delay = atomic_load(&client->reconnect_delay_seconds);
+        if (delay == 0U) {
+            delay = MORSE_RECONNECT_SECONDS;
+        }
+
         if (!atomic_load(&client->connected)) {
             morse_client_close_socket(client);
             if (!morse_client_connect(client)) {
-                morse_client_sleep_seconds(MORSE_RECONNECT_SECONDS);
+                morse_client_sleep_seconds(delay);
                 continue;
             }
 
@@ -391,8 +425,11 @@ static void *morse_client_thread(void *arg)
         }
 
         morse_client_handle_stream(client);
+        atomic_store(&client->reconnect_delay_seconds,
+                     morse_client_compute_reconnect_delay(client));
         morse_client_close_socket(client);
-        morse_client_sleep_seconds(MORSE_RECONNECT_SECONDS);
+        morse_client_sleep_seconds(
+            atomic_load(&client->reconnect_delay_seconds));
     }
 
     atomic_store(&client->thread_running, false);
@@ -416,6 +453,7 @@ morse_client_t *morse_client_create(host_t *host)
     atomic_store(&client->thread_stop, false);
     atomic_store(&client->thread_running, false);
     atomic_store(&client->connected, false);
+    atomic_store(&client->reconnect_delay_seconds, MORSE_RECONNECT_SECONDS);
 
     int error = pthread_create(&client->thread, nullptr, morse_client_thread, client);
     if (error != 0) {

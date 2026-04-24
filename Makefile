@@ -70,7 +70,7 @@ CFLAGS = -std=c2x -Ofast \
 # ==============================================================================
 COMMON_LDFLAGS = \
     -L$(TTAK_DIR)/lib \
-    -lpthread -ldl -lcurl -lm -lcrypto -lttak -lc \
+    -lpthread -ldl -lcurl -lm -lcrypto -llz4 -lttak -lc \
     -Wl,-Ofast \
     -Wl,--hash-style=gnu \
     -Wl,--sort-common \

@@ -791,15 +791,15 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, kUsage);
 }
 
-static void session_handle_ai_chat(session_ctx_t *ctx, const char *arguments)
+static void session_handle_ai_member(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
     if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
-        session_send_system_line(ctx,
-                                 "Only operators may control ai-eliza.");
+        session_send_system_line(
+            ctx, "Only operators may control AI member participation.");
         return;
     }
 
@@ -812,15 +812,12 @@ static void session_handle_ai_chat(session_ctx_t *ctx, const char *arguments)
     }
 
     if (token[0] == '\0') {
-        bool enabled = atomic_load(&ctx->owner->ai_chat_enabled);
+        bool enabled = host_ai_member_is_enabled(ctx->owner);
         char status[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(status, sizeof(status), "ai-eliza is currently %s.",
+        snprintf(status, sizeof(status), "AI members (kaka/dada) are %s.",
                  enabled ? "enabled" : "disabled");
         session_send_system_line(ctx, status);
-        session_send_system_line(ctx, "Usage: /ai-chat <on|off>");
-        session_send_system_line(
-            ctx, "When enabled, mention \"ai-eliza\" in chat to start a "
-                 "conversation.");
+        session_send_system_line(ctx, "Usage: /ai-member <on|off>");
         return;
     }
 
@@ -834,24 +831,17 @@ static void session_handle_ai_chat(session_ctx_t *ctx, const char *arguments)
     }
 
     if (!recognized) {
-        session_send_system_line(ctx, "Usage: /ai-chat <on|off>");
+        session_send_system_line(ctx, "Usage: /ai-member <on|off>");
         return;
     }
 
+    host_ai_member_set_enabled(ctx->owner, requested_enable);
     if (requested_enable) {
-        if (host_ai_chat_enable(ctx->owner)) {
-            session_send_system_line(ctx,
-                                     "ai-eliza is now active for casual chat.");
-        } else {
-            session_send_system_line(ctx, "ai-eliza is already chatting.");
-        }
-        return;
-    }
-
-    if (host_ai_chat_disable(ctx->owner)) {
-        session_send_system_line(ctx, "ai-eliza has been muted.");
+        session_send_system_line(
+            ctx, "AI members enabled. kaka/dada may join public conversation.");
     } else {
-        session_send_system_line(ctx, "ai-eliza is already inactive.");
+        session_send_system_line(
+            ctx, "AI members disabled. kaka/dada will stay quiet.");
     }
 }
 
@@ -863,8 +853,8 @@ static void session_handle_ollama_model(session_ctx_t *ctx,
     }
 
     if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
-        session_send_system_line(
-            ctx, "Only operators may configure the Ollama model.");
+        session_send_system_line(ctx,
+                                 "Only operators may view Ollama bot settings.");
         return;
     }
 
@@ -876,37 +866,14 @@ static void session_handle_ollama_model(session_ctx_t *ctx,
         working[0] = '\0';
     }
 
-    host_t *host = ctx->owner;
-    if (working[0] == '\0') {
-        char model[sizeof(host->ai_chat_model)];
-        host_ai_chat_snapshot_state(host, model, sizeof(model), nullptr);
-        char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "Current Ollama model: %s%s.",
-                 model,
-                 (strcasecmp(model, host_ai_chat_default_model()) == 0)
-                     ? " (default)"
-                     : "");
-        session_send_system_line(ctx, message);
-        session_send_system_line(ctx, "Usage: /ollama-model <model_name>");
-        return;
-    }
-
-    size_t length = strlen(working);
-    if (length >= sizeof(host->ai_chat_model)) {
-        session_send_system_line(ctx, "Model name is too long.");
-        return;
-    }
-
-    ttak_mutex_lock(&host->lock);
-    snprintf(host->ai_chat_model, sizeof(host->ai_chat_model), "%s", working);
-    ttak_mutex_unlock(&host->lock);
-
+    (void)working;
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(message, sizeof(message),
-             "Ollama model updated to '%s'. ai-eliza will use it on the next "
-             "reply.",
-             working);
+             "kaka/dada use a fixed Ollama model: %s.",
+             host_ai_chat_default_model());
     session_send_system_line(ctx, message);
+    session_send_system_line(
+        ctx, "Model changes are disabled for these bots.");
 }
 
 static bool find_reserved_names(session_ctx_t *ctx, const char *nick)

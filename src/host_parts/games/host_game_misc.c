@@ -162,6 +162,7 @@ static void session_game_liar_handle_line(session_ctx_t *ctx, const char *line)
         if (ctx->game.is_camouflaged) {
             ctx->game.is_camouflaged = false;
             ctx->game.saved_liar_state = ctx->game.liar;
+            session_clear_screen(ctx);
             session_game_liar_present_round(ctx);
         } else {
             ctx->game.is_camouflaged = true;
@@ -211,4 +212,3 @@ static void session_game_liar_handle_line(session_ctx_t *ctx, const char *line)
     state->awaiting_guess = false;
     session_game_liar_present_round(ctx);
 }
-

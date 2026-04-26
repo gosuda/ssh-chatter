@@ -1037,15 +1037,19 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
                     }
                     ctx->game.tetris->gravity_timer_initialized = false;
                     ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
+                    session_clear_screen(ctx);
                     session_game_tetris_render(ctx);
                 } else if (ctx->game.type == SESSION_GAME_LIARGAME) {
                     ctx->game.liar = ctx->game.saved_liar_state;
+                    session_clear_screen(ctx);
                     session_game_liar_present_round(ctx);
                 } else if (ctx->game.type == SESSION_GAME_ALPHA) {
                     ctx->game.alpha = ctx->game.saved_alpha_state;
+                    session_clear_screen(ctx);
                     session_game_alpha_present_stage(ctx);
                 } else if (ctx->game.type == SESSION_GAME_OTHELLO) {
                     ctx->game.othello = ctx->game.saved_othello_state;
+                    session_clear_screen(ctx);
                     session_game_othello_render(ctx);
                     session_game_othello_prepare_next_turn(ctx);
                 }

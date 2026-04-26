@@ -758,6 +758,7 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx,
         if (ctx->game.is_camouflaged) {
             ctx->game.is_camouflaged = false;
             ctx->game.saved_gonu_state = ctx->game.gonu;
+            session_clear_screen(ctx);
             session_game_gonu_render(ctx);
         } else {
             ctx->game.is_camouflaged = true;

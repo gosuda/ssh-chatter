@@ -1386,6 +1386,7 @@ static void host_ai_chat_consider_reply(host_t *host,
         } else {
             return;
         }
+        return;
     }
 
     if (!success || reply[0] == '\0') {

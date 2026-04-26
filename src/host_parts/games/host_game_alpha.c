@@ -1448,6 +1448,7 @@ static void session_game_alpha_handle_line(session_ctx_t *ctx, const char *line)
         if (ctx->game.is_camouflaged) {
             ctx->game.is_camouflaged = false;
             ctx->game.saved_alpha_state = ctx->game.alpha;
+            session_clear_screen(ctx);
             session_game_alpha_refresh_navigation(ctx);
         } else {
             ctx->game.is_camouflaged = true;
@@ -1675,4 +1676,3 @@ static void session_game_start_alpha(session_ctx_t *ctx)
     session_game_alpha_sync_to_save(ctx);
     session_game_alpha_present_stage(ctx);
 }
-

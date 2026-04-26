@@ -566,6 +566,7 @@ static bool session_game_tetris_process_raw_input(session_ctx_t *ctx, char ch)
             ctx->tetris_prev_screen_buffer[0] = '\0';
             // Re-enable alternate screen buffer when returning to game
             session_enable_alternate_screen(ctx);
+            session_clear_screen(ctx);
             session_game_tetris_render(ctx);
         } else {
             ctx->game.is_camouflaged = true;
@@ -831,7 +832,8 @@ static void session_game_show_camouflage(session_ctx_t *ctx)
         return;
     }
 
-    // Clear scrollback buffer so the existing game screen is fully hidden
+    // Clear scrollback buffer and visible screen so the game state is hidden
+    // before rendering camouflage output.
     static const char kClearScrollback[] = "\033[3J";
     session_channel_write(ctx, kClearScrollback, sizeof(kClearScrollback) - 1U);
 
@@ -1407,4 +1409,3 @@ static void session_game_start_tetris(session_ctx_t *ctx)
 
     ctx->translation_suppress_output = previous_translation_suppress;
 }
-

@@ -1164,6 +1164,16 @@ static const session_command_alias_t kSessionCommandAliases[] = {
             },
     },
     {
+        .canonical = "/ai-member",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "/ai-멤버",
+                [SESSION_UI_LANGUAGE_JP] = "/aiメンバー",
+                [SESSION_UI_LANGUAGE_ZH] = "/ai成员",
+                [SESSION_UI_LANGUAGE_RU] = "/ai-участник",
+            },
+    },
+    {
         .canonical = "/ollama-model",
         .localized =
             {

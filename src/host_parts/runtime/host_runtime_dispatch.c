@@ -348,6 +348,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
                                          &args)) {
         session_handle_eliza(ctx, args);
         return;
+    } else if (session_parse_command_any(ctx, "/ai-member", effective_line,
+                                         &args)) {
+        session_handle_ai_member(ctx, args);
+        return;
     } else if (session_parse_command_any(ctx, "/ollama-model", effective_line,
                                          &args)) {
         session_handle_ollama_model(ctx, args);

@@ -791,6 +791,60 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, kUsage);
 }
 
+static void session_handle_ai_member(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(
+            ctx, "Only operators may control AI member participation.");
+        return;
+    }
+
+    char token[32];
+    if (arguments != nullptr) {
+        snprintf(token, sizeof(token), "%s", arguments);
+        trim_whitespace_inplace(token);
+    } else {
+        token[0] = '\0';
+    }
+
+    if (token[0] == '\0') {
+        bool enabled = atomic_load(&ctx->owner->ai_chat_enabled);
+        char status[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(status, sizeof(status), "AI members (kaka/dada) are %s.",
+                 enabled ? "enabled" : "disabled");
+        session_send_system_line(ctx, status);
+        session_send_system_line(ctx, "Usage: /ai-member <on|off>");
+        return;
+    }
+
+    bool requested_enable = false;
+    bool recognized = false;
+    if (session_argument_is_disable(token)) {
+        recognized = true;
+        requested_enable = false;
+    } else {
+        recognized = parse_bool_token(token, &requested_enable);
+    }
+
+    if (!recognized) {
+        session_send_system_line(ctx, "Usage: /ai-member <on|off>");
+        return;
+    }
+
+    atomic_store(&ctx->owner->ai_chat_enabled, requested_enable);
+    if (requested_enable) {
+        session_send_system_line(
+            ctx, "AI members enabled. kaka/dada may join public conversation.");
+    } else {
+        session_send_system_line(
+            ctx, "AI members disabled. kaka/dada will stay quiet.");
+    }
+}
+
 static void session_handle_ollama_model(session_ctx_t *ctx,
                                         const char *arguments)
 {

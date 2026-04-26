@@ -942,6 +942,28 @@ static void host_ai_chat_update_last_reply(host_t *host,
     ttak_mutex_unlock(&host->lock);
 }
 
+static bool host_ai_member_is_enabled(host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+    return atomic_load(&host->ai_chat_enabled);
+}
+
+static void host_ai_member_set_enabled(host_t *host, bool enabled)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    atomic_store(&host->ai_chat_enabled, enabled);
+
+    if (enabled) {
+        struct timespec now = session_now_monotonic();
+        host_ai_chat_update_last_reply(host, &now);
+    }
+}
+
 static size_t host_ai_chat_memory_collect_tokens(const char *prompt,
                                                  char tokens[][32],
                                                  size_t max_tokens)
@@ -1236,6 +1258,9 @@ static void host_ai_chat_consider_reply(host_t *host,
                                         const chat_history_entry_t *entry)
 {
     if (host == nullptr || entry == nullptr) {
+        return;
+    }
+    if (!host_ai_member_is_enabled(host)) {
         return;
     }
     if (!host_ai_chat_should_respond(entry)) {

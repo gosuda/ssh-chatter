@@ -812,7 +812,7 @@ static void session_handle_ai_member(session_ctx_t *ctx, const char *arguments)
     }
 
     if (token[0] == '\0') {
-        bool enabled = atomic_load(&ctx->owner->ai_chat_enabled);
+        bool enabled = host_ai_member_is_enabled(ctx->owner);
         char status[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(status, sizeof(status), "AI members (kaka/dada) are %s.",
                  enabled ? "enabled" : "disabled");
@@ -835,7 +835,7 @@ static void session_handle_ai_member(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    atomic_store(&ctx->owner->ai_chat_enabled, requested_enable);
+    host_ai_member_set_enabled(ctx->owner, requested_enable);
     if (requested_enable) {
         session_send_system_line(
             ctx, "AI members enabled. kaka/dada may join public conversation.");

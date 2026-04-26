@@ -800,6 +800,11 @@ static const char *host_ai_chat_default_model(void)
     return "gemma2:2b";
 }
 
+static const char *host_ai_chat_skip_token(void)
+{
+    return "cucumber-ballet-fly-tetromino";
+}
+
 static bool host_ai_chat_message_mentions(const char *text, const char *needle)
 {
     if (text == nullptr || text[0] == '\0' || needle == nullptr ||
@@ -1290,18 +1295,19 @@ static void host_ai_chat_consider_reply(host_t *host,
                  "%s %s Keep replies under three sentences and avoid "
                  "moderation or BBS topics. If you decide this message does "
                  "not need a reply, output exactly: "
-                 "cucumber-ballet-fly-tetromino",
+                 "%s",
                  context_snippet, username_snippet, message_snippet,
-                 tone_instruction, language_instruction);
+                 tone_instruction, language_instruction,
+                 host_ai_chat_skip_token());
     } else {
         snprintf(prompt, sizeof(prompt),
                  "User %s says: %s\n"
                  "%s %s Keep replies under three sentences and avoid "
                  "moderation or BBS topics. If you decide this message does "
                  "not need a reply, output exactly: "
-                 "cucumber-ballet-fly-tetromino",
+                 "%s",
                  username_snippet, message_snippet, tone_instruction,
-                 language_instruction);
+                 language_instruction, host_ai_chat_skip_token());
     }
 
     char reply[SSH_CHATTER_MESSAGE_LIMIT];
@@ -1320,8 +1326,8 @@ static void host_ai_chat_consider_reply(host_t *host,
     if (!success || reply[0] == '\0') {
         return;
     }
-    if (string_contains_case_insensitive(reply,
-                                         "cucumber-ballet-fly-tetromino")) {
+    if (string_contains_case_insensitive(reply, host_ai_chat_skip_token())) {
+        printf("[ai-chat] skipped bot relay due to skip token.\n");
         return;
     }
 

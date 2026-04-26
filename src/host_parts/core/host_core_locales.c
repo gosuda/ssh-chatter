@@ -1164,13 +1164,13 @@ static const session_command_alias_t kSessionCommandAliases[] = {
             },
     },
     {
-        .canonical = "/ai-chat",
+        .canonical = "/ai-member",
         .localized =
             {
-                [SESSION_UI_LANGUAGE_KO] = "/ai-채팅",
-                [SESSION_UI_LANGUAGE_JP] = "/aiチャット",
-                [SESSION_UI_LANGUAGE_ZH] = "/ai聊天",
-                [SESSION_UI_LANGUAGE_RU] = "/ai-чат",
+                [SESSION_UI_LANGUAGE_KO] = "/ai-멤버",
+                [SESSION_UI_LANGUAGE_JP] = "/aiメンバー",
+                [SESSION_UI_LANGUAGE_ZH] = "/ai成员",
+                [SESSION_UI_LANGUAGE_RU] = "/ai-участник",
             },
     },
     {

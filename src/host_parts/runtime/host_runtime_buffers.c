@@ -480,10 +480,10 @@ unload_idle_state:
     host->last_room_empty_time = now;
 }
 
-static bool host_ai_chat_enable(host_t *host);
-static bool host_ai_chat_disable(host_t *host);
 static void host_ai_chat_consider_reply(host_t *host,
                                         const chat_history_entry_t *entry);
+static bool host_ai_member_is_enabled(host_t *host);
+static void host_ai_member_set_enabled(host_t *host, bool enabled);
 static void host_ai_chat_snapshot_state(host_t *host, char *model,
                                         size_t model_len,
                                         struct timespec *last_reply);

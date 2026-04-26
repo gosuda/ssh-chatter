@@ -1366,7 +1366,6 @@ static void host_ai_chat_consider_reply(host_t *host,
         return;
     }
     if (host_ai_chat_reply_is_skip_token(reply)) {
-        printf("[ai-chat] skipped bot relay due to skip token.\n");
         return;
     }
 

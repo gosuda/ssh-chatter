@@ -814,6 +814,18 @@ static bool host_ai_chat_message_mentions(const char *text, const char *needle)
     return string_contains_case_insensitive(text, needle);
 }
 
+static bool host_ai_chat_reply_is_skip_token(const char *reply)
+{
+    if (reply == nullptr || reply[0] == '\0') {
+        return false;
+    }
+
+    char trimmed[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(trimmed, sizeof(trimmed), "%s", reply);
+    trim_whitespace_inplace(trimmed);
+    return strcasecmp(trimmed, host_ai_chat_skip_token()) == 0;
+}
+
 static bool host_ai_chat_message_looks_korean(const char *text)
 {
     if (text == nullptr || text[0] == '\0') {
@@ -864,10 +876,12 @@ static ai_chat_bot_persona_t host_ai_chat_choose_persona(
         return AI_CHAT_BOT_NONE;
     }
 
-    if (host_ai_chat_message_mentions(entry->message, "kaka")) {
+    if (host_ai_chat_message_mentions(entry->message, "kaka") ||
+        host_ai_chat_message_mentions(entry->message, "카카")) {
         return AI_CHAT_BOT_KAKA;
     }
-    if (host_ai_chat_message_mentions(entry->message, "dada")) {
+    if (host_ai_chat_message_mentions(entry->message, "dada") ||
+        host_ai_chat_message_mentions(entry->message, "다다")) {
         return AI_CHAT_BOT_DADA;
     }
 
@@ -1351,8 +1365,7 @@ static void host_ai_chat_consider_reply(host_t *host,
     if (!success || reply[0] == '\0') {
         return;
     }
-    if (string_contains_case_insensitive(reply, host_ai_chat_skip_token())) {
-        printf("[ai-chat] skipped bot relay due to skip token.\n");
+    if (host_ai_chat_reply_is_skip_token(reply)) {
         return;
     }
 

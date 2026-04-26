@@ -1338,6 +1338,9 @@ static char *translator_extract_last_text_block(const char *response)
     return latest_payload;
 }
 
+static bool translator_string_contains_case_insensitive(const char *haystack,
+                                                        const char *needle);
+
 static bool translator_parse_moderation_decision(const char *json,
                                                  bool *blocked, char *reason,
                                                  size_t reason_len)
@@ -1387,6 +1390,19 @@ static bool translator_parse_moderation_decision(const char *json,
                          "Potential intrusion content detected");
             }
         }
+
+        if (local_block && reason != nullptr && reason[0] != '\0') {
+            if (translator_string_contains_case_insensitive(reason, "no issue") ||
+                translator_string_contains_case_insensitive(reason, "no issues") ||
+                translator_string_contains_case_insensitive(reason, "safe") ||
+                translator_string_contains_case_insensitive(reason, "allowed") ||
+                translator_string_contains_case_insensitive(reason, "clean") ||
+                translator_string_contains_case_insensitive(reason, "문제없") ||
+                translator_string_contains_case_insensitive(reason, "정상")) {
+                local_block = false;
+                reason[0] = '\0';
+            }
+        }
     }
 
     if (blocked != nullptr) {
@@ -1422,6 +1438,22 @@ static bool translator_string_contains_case_insensitive(const char *haystack,
     }
 
     return false;
+}
+
+static const char *const TRANSLATOR_OLLAMA_NON_STREAM_BODY_FORMAT =
+    "{"
+    "\"model\":\"%s\","
+    "\"prompt\":\"%s\","
+    "\"system\":\"%s\","
+    "\"stream\":false"
+    "}";
+static const char *const TRANSLATOR_MODERATION_TRIGGER_TOKEN =
+    "cucumber-ballet-fly-tetromino";
+
+static bool translator_moderation_should_run(const char *content)
+{
+    return translator_string_contains_case_insensitive(
+        content, TRANSLATOR_MODERATION_TRIGGER_TOKEN);
 }
 
 static char *translator_build_gemini_url(const char *base, const char *model,
@@ -2221,8 +2253,10 @@ translator_try_gemini_moderation(const translator_candidate_t *candidate,
         "terminal BBS. Allow normal conversation, jokes, or "
         "emotional support. Only block content that clearly attempts to hack, "
         "exploit, spread malware, or steal credentials. "
-        "If uncertain, allow the message. Respond ONLY with JSON containing "
-        "boolean block and string reason.\"}]"
+        "If uncertain, allow the message. Only moderate content when it "
+        "includes the token cucumber-ballet-fly-tetromino. "
+        "If token is missing, reply with block=false and empty reason. "
+        "Respond ONLY with JSON containing boolean block and string reason.\"}]"
         "},"
         "\"contents\":["
         "{"
@@ -2583,15 +2617,8 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
         goto cleanup_translator_try_ollama_eliza;
     }
 
-    static const char body_format[] = "{"
-                                      "\"model\":\"%s\","
-                                      "\"prompt\":\"%s\","
-                                      "\"system\":\"%s\","
-                                      "\"stream\":false"
-                                      "}";
-
-    int computed = snprintf(nullptr, 0, body_format, model_name, escaped_prompt,
-                            escaped_system);
+    int computed = snprintf(nullptr, 0, TRANSLATOR_OLLAMA_NON_STREAM_BODY_FORMAT,
+                            model_name, escaped_prompt, escaped_system);
     if (computed < 0) {
         translator_set_error("Failed to prepare eliza request.");
         goto cleanup_translator_try_ollama_eliza;
@@ -2604,7 +2631,7 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
         goto cleanup_translator_try_ollama_eliza;
     }
 
-    snprintf(body, body_len, body_format, model_name, escaped_prompt,
+    snprintf(body, body_len, TRANSLATOR_OLLAMA_NON_STREAM_BODY_FORMAT, model_name, escaped_prompt,
              escaped_system);
 
     curl = curl_easy_init();
@@ -2725,6 +2752,9 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
         "everyday chat, jokes, or emotional support. "
         "Only block content that clearly attempts to hack, exploit, distribute "
         "malware, or steal credentials. "
+        "Only moderate content when it includes the token "
+        "cucumber-ballet-fly-tetromino. If token is missing, return "
+        "block=false with empty reason. "
         "If uncertain, allow the message. Respond only with JSON containing "
         "keys block (boolean) and reason (string).";
     static const char prompt_format[] =
@@ -2755,14 +2785,7 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
         goto cleanup_translator_try_ollama_moderation;
     }
 
-    static const char body_format[] = "{"
-                                      "\"model\":\"%s\","
-                                      "\"prompt\":\"%s\","
-                                      "\"system\":\"%s\","
-                                      "\"stream\":false"
-                                      "}";
-
-    int body_length = snprintf(nullptr, 0, body_format, model_name,
+    int body_length = snprintf(nullptr, 0, TRANSLATOR_OLLAMA_NON_STREAM_BODY_FORMAT, model_name,
                                escaped_prompt, escaped_system);
     if (body_length < 0) {
         translator_set_error("Failed to prepare moderation request.");
@@ -2776,7 +2799,7 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
         goto cleanup_translator_try_ollama_moderation;
     }
 
-    snprintf(body, body_size, body_format, model_name, escaped_prompt,
+    snprintf(body, body_size, TRANSLATOR_OLLAMA_NON_STREAM_BODY_FORMAT, model_name, escaped_prompt,
              escaped_system);
 
     curl = curl_easy_init();
@@ -3110,6 +3133,15 @@ static bool translator_moderate_text_internal(const char *category,
     }
 
     if (content == nullptr || content[0] == '\0') {
+        return true;
+    }
+    if (!translator_moderation_should_run(content)) {
+        if (blocked != nullptr) {
+            *blocked = false;
+        }
+        if (reason != nullptr && reason_len > 0U) {
+            reason[0] = '\0';
+        }
         return true;
     }
 

@@ -1173,6 +1173,27 @@ static const session_help_entry_t kSessionHelpOperator[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "ai-member <on|off>",
+        .description =
+            {
+                "Toggle AI member participation (operator only).",
+                "AI 멤버 참여를 전환합니다 (운영자 전용).",
+                "AI メンバーの参加を切り替えます（オペレーター専用）。",
+                "切换 AI 成员参与（仅限管理员）。",
+                "Включить/выключить участие AI-участников (оператор).",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "ai-멤버 <켜기|끄기>",
+                [SESSION_UI_LANGUAGE_JP] = "aiメンバー <オン|オフ>",
+                [SESSION_UI_LANGUAGE_ZH] = "ai成员 <开|关>",
+                [SESSION_UI_LANGUAGE_RU] = "ai-участник <вкл|выкл>",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "gemini <on|off>",
         .description =
             {

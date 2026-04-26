@@ -1238,9 +1238,6 @@ static void host_ai_chat_consider_reply(host_t *host,
     if (host == nullptr || entry == nullptr) {
         return;
     }
-    if (!atomic_load(&host->ai_chat_enabled)) {
-        return;
-    }
     if (!host_ai_chat_should_respond(entry)) {
         return;
     }

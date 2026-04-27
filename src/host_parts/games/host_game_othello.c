@@ -1142,16 +1142,7 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
 
     // Handle camouflage toggle with 't' command
     if (strcmp(working, "t") == 0) {
-        if (ctx->game.is_camouflaged) {
-            ctx->game.is_camouflaged = false;
-            ctx->game.saved_othello_state = ctx->game.othello;
-            session_clear_screen(ctx);
-            session_game_othello_render(ctx);
-        } else {
-            ctx->game.is_camouflaged = true;
-            ctx->game.saved_othello_state = ctx->game.othello;
-            session_game_show_camouflage(ctx);
-        }
+        session_game_toggle_camouflage(ctx);
         return;
     }
 

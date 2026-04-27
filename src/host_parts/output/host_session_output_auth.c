@@ -1028,53 +1028,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
         }
 
         if (normalized[0] == 't' && normalized[1] == '\0') {
-            if (ctx->game.is_camouflaged) {
-                ctx->game.is_camouflaged = false;
-                if (ctx->game.type == SESSION_GAME_TETRIS) {
-                    if (ctx->game.tetris != nullptr &&
-                        ctx->game.saved_tetris_state != nullptr) {
-                        *ctx->game.tetris = *ctx->game.saved_tetris_state;
-                    }
-                    ctx->game.tetris->gravity_timer_initialized = false;
-                    ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
-                    session_clear_screen(ctx);
-                    session_game_tetris_render(ctx);
-                } else if (ctx->game.type == SESSION_GAME_LIARGAME) {
-                    ctx->game.liar = ctx->game.saved_liar_state;
-                    session_clear_screen(ctx);
-                    session_game_liar_present_round(ctx);
-                } else if (ctx->game.type == SESSION_GAME_ALPHA) {
-                    ctx->game.alpha = ctx->game.saved_alpha_state;
-                    session_clear_screen(ctx);
-                    session_game_alpha_present_stage(ctx);
-                } else if (ctx->game.type == SESSION_GAME_OTHELLO) {
-                    ctx->game.othello = ctx->game.saved_othello_state;
-                    session_clear_screen(ctx);
-                    session_game_othello_render(ctx);
-                    session_game_othello_prepare_next_turn(ctx);
-                }
-            } else {
-                ctx->game.is_camouflaged = true;
-                if (ctx->game.type == SESSION_GAME_TETRIS) {
-                    if (ctx->game.tetris != nullptr &&
-                        ctx->game.saved_tetris_state != nullptr) {
-                        *ctx->game.saved_tetris_state = *ctx->game.tetris;
-                        ctx->game.saved_tetris_state->gravity_timer_initialized =
-                            false;
-                        ctx->game.saved_tetris_state
-                            ->gravity_timer_accumulator_ns = 0U;
-                    }
-                    ctx->game.tetris->gravity_timer_initialized = false;
-                    ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
-                } else if (ctx->game.type == SESSION_GAME_LIARGAME) {
-                    ctx->game.saved_liar_state = ctx->game.liar;
-                } else if (ctx->game.type == SESSION_GAME_ALPHA) {
-                    ctx->game.saved_alpha_state = ctx->game.alpha;
-                } else if (ctx->game.type == SESSION_GAME_OTHELLO) {
-                    ctx->game.saved_othello_state = ctx->game.othello;
-                }
-                session_game_show_camouflage(ctx);
-            }
+            session_game_toggle_camouflage(ctx);
             session_release_cpu_slot(ctx);
             return;
         }

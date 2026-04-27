@@ -1445,16 +1445,7 @@ static void session_game_alpha_handle_line(session_ctx_t *ctx, const char *line)
 
     // Handle camouflage toggle with 't' command
     if (strcasecmp(command, "t") == 0) {
-        if (ctx->game.is_camouflaged) {
-            ctx->game.is_camouflaged = false;
-            ctx->game.saved_alpha_state = ctx->game.alpha;
-            session_clear_screen(ctx);
-            session_game_alpha_refresh_navigation(ctx);
-        } else {
-            ctx->game.is_camouflaged = true;
-            ctx->game.saved_alpha_state = ctx->game.alpha;
-            session_game_show_camouflage(ctx);
-        }
+        session_game_toggle_camouflage(ctx);
         return;
     }
 

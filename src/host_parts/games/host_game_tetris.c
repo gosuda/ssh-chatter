@@ -550,40 +550,7 @@ static bool session_game_tetris_process_raw_input(session_ctx_t *ctx, char ch)
     }
 
     if (lowered == 't') {
-        if (ctx->game.is_camouflaged) {
-            ctx->game.is_camouflaged = false;
-            if (ctx->game.tetris != nullptr &&
-                ctx->game.saved_tetris_state != nullptr) {
-                *ctx->game.tetris = *ctx->game.saved_tetris_state;
-            }
-            ctx->game.tetris->gravity_timer_initialized = false;
-            ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
-            // Force full clear+redraw when returning from the screen locker:
-            // reset the render counter so the next two frames are full
-            // redraws, and clear the previous buffer so the comparison always
-            // triggers a redraw even if the game state is unchanged.
-            ctx->game.tetris_render_count = 0U;
-            ctx->tetris_prev_screen_buffer[0] = '\0';
-            // Re-enable alternate screen buffer when returning to game
-            session_enable_alternate_screen(ctx);
-            session_clear_screen(ctx);
-            session_game_tetris_render(ctx);
-        } else {
-            ctx->game.is_camouflaged = true;
-            if (ctx->game.tetris != nullptr &&
-                ctx->game.saved_tetris_state != nullptr) {
-                *ctx->game.saved_tetris_state = *ctx->game.tetris;
-                ctx->game.saved_tetris_state->gravity_timer_initialized =
-                    false;
-                ctx->game.saved_tetris_state->gravity_timer_accumulator_ns =
-                    0U;
-            }
-            ctx->game.tetris->gravity_timer_initialized = false;
-            ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
-            // Disable alternate screen buffer when showing camouflage
-            session_disable_alternate_screen(ctx);
-            session_game_show_camouflage(ctx);
-        }
+        session_game_toggle_camouflage(ctx);
         return true;
     }
 

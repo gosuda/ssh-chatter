@@ -80,7 +80,7 @@ static void session_release_transport_state(session_ctx_t *ctx)
     session_safe_free((void **)&ctx->session_data);
 }
 
-static void session_cleanup(session_ctx_t *ctx)
+static void session_detach_external_state(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {
         return;
@@ -93,10 +93,6 @@ static void session_cleanup(session_ctx_t *ctx)
     }
 
     session_translation_worker_shutdown(ctx);
-
-    /* Release per-session RSS snapshot cache if the user disconnects while
-     * browsing feeds. */
-    session_rss_clear(ctx);
 
     /* Ensure multiplayer slot references are detached before the session
      * object is reclaimed so stale pointers do not remain in host state. */
@@ -145,6 +141,19 @@ static void session_cleanup(session_ctx_t *ctx)
         }
     }
 
+    session_release_transport_state(ctx);
+}
+
+static void session_cleanup(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    /* Release per-session RSS snapshot cache after the session has already
+     * stopped claiming runtime resources. */
+    session_rss_clear(ctx);
+
     if (ctx->display_model_initialized) {
         display_model_destroy(&ctx->display_model);
         ctx->display_model_initialized = false;
@@ -158,7 +167,6 @@ static void session_cleanup(session_ctx_t *ctx)
     session_safe_free((void **)&ctx->scrollback_buffer);
     ctx->scrollback_buffer_capacity = 0U;
     session_release_interaction_state(ctx);
-    session_release_transport_state(ctx);
 }
 
 static void session_epoch_free(void *ptr)
@@ -167,6 +175,8 @@ static void session_epoch_free(void *ptr)
     if (ctx == nullptr) {
         return;
     }
+
+    session_cleanup(ctx);
 
     if (ctx->channel_mutex_initialized) {
         ttak_mutex_destroy(&ctx->channel_mutex);
@@ -208,20 +218,24 @@ static void session_destroy(session_ctx_t *ctx)
     }
 
     session_runtime_unbind(ctx);
-    session_cleanup(ctx);
+    session_detach_external_state(ctx);
     if (ctx->memory_context != nullptr) {
         /*
-         * Explicitly reset per-session allocations before EBR-retiring the
-         * session object. This keeps join/leave bursts from accumulating large
-         * deferred heaps while waiting for epoch reclamation.
+         * Rotate the session context a few times before retiring the session so
+         * epoch-deferred allocations drain in order without forcing an eager
+         * reset on disconnect.
          */
-        sshc_memory_context_reset(ctx->memory_context);
-        sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
+        for (unsigned int pass = 0U; pass < 3U; ++pass) {
+            sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
+            sshc_epoch_reclaim();
+        }
+    } else {
+        sshc_epoch_reclaim();
     }
-    session_manual_gc_tick(ctx);
-    sshc_epoch_reclaim();
     if (ctx->owner != nullptr) {
-        host_manual_gc_tick(ctx->owner);
+        for (unsigned int pass = 0U; pass < 2U; ++pass) {
+            host_manual_gc_tick(ctx->owner);
+        }
     }
 #if defined(__GLIBC__)
     (void)malloc_trim(0);
@@ -232,9 +246,12 @@ static void session_destroy(session_ctx_t *ctx)
      * TELNET reconnect bursts still leave a small window where late output
      * paths can observe the retiring session pointer. Retiring the context
      * avoids use-after-free corruption in write_dispatch while keeping the
-     * heavy per-session allocations already reset above.
+     * heavy per-session allocations under epoch control until all claimants
+     * have dropped them.
      */
     sshc_epoch_retire_with(ctx, session_epoch_free);
+    sshc_epoch_reclaim();
+    sshc_epoch_reclaim();
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,

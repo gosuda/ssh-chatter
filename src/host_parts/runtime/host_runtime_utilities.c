@@ -240,11 +240,12 @@ static inline bool host_gc_cycle(host_t *host, struct timespec *last_gc_run,
     const long elapsed_nsec = now.tv_nsec - last_gc_run->tv_nsec;
     const long long elapsed_total_ns =
         (long long)elapsed_sec * 1000000000LL + (long long)elapsed_nsec;
-    if (elapsed_total_ns < 1000000000LL) {
+    if (elapsed_total_ns < 250000000LL) {
         return host_memory_pressure_restart(host, last_pressure_check);
     }
 
     sshc_memory_context_epoch_gc_rotate(host->memory_context);
+    sshc_epoch_reclaim();
     sshc_epoch_reclaim();
     *last_gc_run = now;
     return host_memory_pressure_restart(host, last_pressure_check);
@@ -256,4 +257,5 @@ void session_manual_gc_tick(session_ctx_t *ctx)
         return;
     }
     sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
+    sshc_epoch_reclaim();
 }

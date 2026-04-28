@@ -24,6 +24,8 @@ bool translator_eliza_respond(const char *prompt, char *reply,
 
 bool translator_ollama_smalltalk(const char *prompt, const char *model_name,
                                  char *reply, size_t reply_len);
+bool translator_gemini_smalltalk(const char *prompt, const char *model_name,
+                                 char *reply, size_t reply_len);
 
 bool translator_moderate_text(const char *category, const char *content,
                               bool *blocked, char *reason, size_t reason_len);

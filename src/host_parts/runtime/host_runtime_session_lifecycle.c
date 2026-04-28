@@ -227,14 +227,14 @@ static void session_destroy(session_ctx_t *ctx)
     (void)malloc_trim(0);
 #endif
     /*
-     * Free the session object immediately after teardown.
+     * Defer the final session object release through EBR.
      *
-     * We already synchronously remove the session from room snapshots before
-     * entering this path, so direct release keeps RSS stable across
-     * join/leave churn (e.g. 150 -> 174 -> 150) instead of waiting for
-     * deferred epoch retirement.
+     * TELNET reconnect bursts still leave a small window where late output
+     * paths can observe the retiring session pointer. Retiring the context
+     * avoids use-after-free corruption in write_dispatch while keeping the
+     * heavy per-session allocations already reset above.
      */
-    session_epoch_free(ctx);
+    sshc_epoch_retire_with(ctx, session_epoch_free);
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,
@@ -1342,6 +1342,10 @@ static void *session_thread(void *arg)
                 }
             }
         }
+    }
+
+    if (ctx->owner != nullptr) {
+        host_nickname_claim_release(ctx->owner, ctx, nullptr);
     }
 
     session_destroy(ctx);

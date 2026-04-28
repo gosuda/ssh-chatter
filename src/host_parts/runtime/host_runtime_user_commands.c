@@ -57,11 +57,6 @@ static void session_handle_nick(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    if (find_reserved_names(ctx, new_name)) {
-        session_send_system_line(ctx, "That name is reserved.");
-        return;
-    }
-
     if (host_username_reserved(ctx->owner, new_name) &&
         !ctx->user.is_lan_operator) {
         session_send_system_line(ctx,
@@ -79,8 +74,8 @@ static void session_handle_nick(session_ctx_t *ctx, const char *arguments)
             strcasecmp(ctx->user_data.username, new_name) == 0;
     }
 
-    if (!owns_requested_name &&
-        host_username_has_password(ctx->owner, new_name)) {
+    if (!owns_requested_name && host_username_has_password(ctx->owner, new_name) &&
+        !host_nickname_claim_can_use(ctx->owner, ctx, new_name)) {
         session_send_system_line(
             ctx, "That nickname is password-protected. Log in as that user.");
         return;
@@ -94,6 +89,7 @@ static void session_handle_nick(session_ctx_t *ctx, const char *arguments)
 
     char old_name[SSH_CHATTER_USERNAME_LEN];
     snprintf(old_name, sizeof(old_name), "%s", ctx->user.name);
+    host_nickname_claim_release(ctx->owner, ctx, old_name);
     snprintf(ctx->user.name, sizeof(ctx->user.name), "%s", new_name);
 
     if (ctx->user_data_loaded) {
@@ -773,4 +769,3 @@ static void session_handle_set_lf(session_ctx_t *ctx, const char *arguments)
         session_send_system_line(ctx, "Line ending mode set to CRLF.");
         return;
     }
-

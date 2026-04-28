@@ -3120,6 +3120,39 @@ bool translator_ollama_smalltalk(const char *prompt, const char *model_name,
     return result;
 }
 
+bool translator_gemini_smalltalk(const char *prompt, const char *model_name,
+                                 char *reply, size_t reply_len)
+{
+    if (reply != nullptr && reply_len > 0U) {
+        reply[0] = '\0';
+    }
+
+    if (prompt == nullptr || reply == nullptr || reply_len == 0U) {
+        translator_set_error("Invalid Gemini prompt.");
+        return false;
+    }
+
+    translator_memory_scope_t memory_scope = translator_memory_scope_enter();
+    translator_global_init();
+    translator_set_error(nullptr);
+
+    const char *api_key = getenv("GEMINI_API_KEY");
+    translator_candidate_t candidate = {
+        .provider = TRANSLATOR_PROVIDER_GEMINI,
+        .model = (model_name != nullptr && model_name[0] != '\0')
+                     ? model_name
+                     : "gemini-2.5-flash-lite",
+        .api_key = api_key,
+        .api_key_name = "GEMINI_API_KEY",
+    };
+
+    bool retryable = false;
+    bool result = translator_try_gemini_eliza(&candidate, prompt, reply,
+                                              reply_len, &retryable);
+    translator_memory_scope_exit(&memory_scope);
+    return result;
+}
+
 static bool translator_moderate_text_internal(const char *category,
                                               const char *content,
                                               bool *blocked, char *reason,

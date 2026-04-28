@@ -148,6 +148,18 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "pm <username> <message>",
+        .description =
+            {
+                "Send a private message to one connected user.",
+                "한 명의 접속 사용자에게 귓속말을 보냅니다.",
+                "接続中のユーザー1人にプライベートメッセージを送ります。",
+                "向一名在线用户发送私信。",
+                "Отправить личное сообщение подключённому пользователю.",
+            },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "color (text;highlight[;bold])",
         .description =
             {
@@ -756,6 +768,18 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label_args = {},
     },
 
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "password [secret] [ip-wide true|false]",
+        .description =
+            {
+                "Set or clear your password and create a runtime nickname claim.",
+                "비밀번호를 설정/삭제하고 런타임 닉네임 점유를 만듭니다.",
+                "パスワードを設定/削除し、実行中のニック占有を作成します。",
+                "设置/清除密码，并创建运行时昵称占用。",
+                "Задать/очистить пароль и создать активное удержание ника.",
+            },
+    },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "date <timezone>",

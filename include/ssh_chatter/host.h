@@ -22,6 +22,7 @@
 #include <libssh/libssh.h>
 #include <libssh/server.h>
 #include <libssh/callbacks.h>
+#include <ttak/container/pool.h>
 
 #include "theme.h"
 #include "security_layer.h"
@@ -120,6 +121,7 @@
 #define SSH_CHATTER_OTHELLO_MAX_WAIT_QUEUE SSH_CHATTER_OTHELLO_MAX_SLOTS
 #define SSH_CHATTER_GONU_MAX_SLOTS 1024
 #define SSH_CHATTER_OUTPUT_BUFFER_SIZE 32768
+#define SSH_CHATTER_MAX_NICKNAME_CLAIMS 1024
 
 #include "user_data.h"
 
@@ -620,6 +622,15 @@ typedef struct session_runtime_data {
     struct session_ctx *ctx;
 } session_runtime_data_t;
 
+typedef struct nickname_claim {
+    char nickname[SSH_CHATTER_USERNAME_LEN];
+    char owner_ip[SSH_CHATTER_IP_LEN];
+    uint8_t password_salt[SECURITY_LAYER_SALT_LEN];
+    uint8_t password_hash[SECURITY_LAYER_HASH_LEN];
+    uint64_t owner_session_id;
+    bool ip_wide;
+} nickname_claim_t;
+
 typedef enum session_newline_mode {
     SESSION_NEWLINE_MODE_AUTO = 0,
     SESSION_NEWLINE_MODE_LF,
@@ -1056,6 +1067,7 @@ typedef struct host {
     char eliza_state_file_path[PATH_MAX];
     char eliza_memory_file_path[PATH_MAX];
     _Atomic bool ai_chat_enabled;
+    bool ai_chat_use_gemini;
     char ai_chat_model[64];
     struct timespec ai_chat_last_reply;
     ai_chat_memory_entry_t ai_chat_memory[SSH_CHATTER_AI_MEMORY_MAX];
@@ -1111,11 +1123,15 @@ typedef struct host {
     _Atomic bool archive_thread_stop;
     struct timespec archive_last_run;
 
-    // Add members for managing reserved nicknames
+    // Legacy reserved nickname list
     char (*reserved_nicknames)[SSH_CHATTER_USERNAME_LEN];
     size_t reserved_nicknames_len;
     size_t reserved_nicknames_capacity;
     ttak_mutex_t nickname_reserve_lock;
+    // Runtime nickname claims guarded by libttak object pool
+    ttak_object_pool_t *nickname_claim_pool;
+    nickname_claim_t *nickname_claims[SSH_CHATTER_MAX_NICKNAME_CLAIMS];
+    size_t nickname_claim_count;
     volatile sig_atomic_t *shutdown_flag;
 } host_t;
 
@@ -1129,6 +1145,14 @@ bool host_user_data_load_existing(host_t *host, const char *username,
                                   const char *ip, user_data_record_t *record,
                                   bool create_if_missing);
 bool host_username_has_password(host_t *host, const char *nick);
+bool host_nickname_claim_can_use(host_t *host, const session_ctx_t *ctx,
+                                 const char *nick);
+bool host_nickname_claim_upsert(host_t *host, const session_ctx_t *ctx,
+                                const char *nick, const uint8_t *salt,
+                                const uint8_t *hash, bool ip_wide);
+void host_nickname_claim_release(host_t *host, const session_ctx_t *ctx,
+                                 const char *nick);
+void host_nickname_claim_remove(host_t *host, const char *nick);
 void trim_whitespace_inplace(char *text);
 
 void session_send_raw_text(session_ctx_t *ctx, const char *text);

@@ -602,13 +602,78 @@ static bool session_pw_auth_update(host_t *host, const char *username,
     return true;
 }
 
+static void session_parse_password_arguments(const char *arguments,
+                                             char *password,
+                                             size_t password_len,
+                                             bool *ip_wide,
+                                             bool *ip_wide_explicit)
+{
+    if (password != nullptr && password_len > 0U) {
+        password[0] = '\0';
+    }
+    if (ip_wide != nullptr) {
+        *ip_wide = false;
+    }
+    if (ip_wide_explicit != nullptr) {
+        *ip_wide_explicit = false;
+    }
+    if (arguments == nullptr || password == nullptr || password_len == 0U) {
+        return;
+    }
+
+    snprintf(password, password_len, "%s", arguments);
+    trim_whitespace_inplace(password);
+    if (password[0] == '\0') {
+        return;
+    }
+
+    char *marker = strstr(password, " ip-wide ");
+    if (marker == nullptr) {
+        return;
+    }
+
+    char value[16];
+    snprintf(value, sizeof(value), "%s", marker + strlen(" ip-wide "));
+    trim_whitespace_inplace(value);
+
+    bool parsed = false;
+    bool parsed_value = false;
+    if (value[0] != '\0') {
+        parsed = parse_bool_token(value, &parsed_value);
+        if (!parsed && session_argument_is_disable(value)) {
+            parsed = true;
+            parsed_value = false;
+        }
+    }
+
+    if (!parsed) {
+        return;
+    }
+
+    *marker = '\0';
+    trim_whitespace_inplace(password);
+    if (ip_wide != nullptr) {
+        *ip_wide = parsed_value;
+    }
+    if (ip_wide_explicit != nullptr) {
+        *ip_wide_explicit = true;
+    }
+}
+
 static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
 
-    if (arguments != nullptr && strlen(arguments) > 128) {
+    char parsed_password[256];
+    bool ip_wide = false;
+    bool ip_wide_explicit = false;
+    session_parse_password_arguments(arguments, parsed_password,
+                                     sizeof(parsed_password), &ip_wide,
+                                     &ip_wide_explicit);
+
+    if (parsed_password[0] != '\0' && strlen(parsed_password) > 128) {
         session_send_system_line(ctx,
                                  "Password is too long (max 128 characters).");
         return;
@@ -619,7 +684,7 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    if (arguments == nullptr || arguments[0] == '\0') {
+    if (parsed_password[0] == '\0') {
         memset(ctx->user_data.password_salt, 0,
                sizeof(ctx->user_data.password_salt));
         memset(ctx->user_data.password_hash, 0,
@@ -627,6 +692,7 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
 
         if (session_user_data_commit(ctx)) {
             session_send_system_line(ctx, "Password removed.");
+            host_nickname_claim_remove(ctx->owner, ctx->user.name);
             if (!session_pw_auth_update(ctx->owner, ctx->user.name, nullptr, 0U,
                                         nullptr, 0U, false)) {
                 session_send_system_line(
@@ -639,7 +705,7 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
     }
 
     security_layer_generate_salt(ctx->user_data.password_salt);
-    security_layer_hash_password(arguments, ctx->user_data.password_salt,
+    security_layer_hash_password(parsed_password, ctx->user_data.password_salt,
                                  ctx->user_data.password_hash);
 
     if (session_user_data_commit(ctx)) {
@@ -652,29 +718,17 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
             session_send_system_line(ctx,
                                      "Warning: unable to update pw_auth.dat.");
         }
-
-        // Add user's nickname to reserved list if password was set
-        if (ctx->owner != nullptr && ctx->owner->reserved_nicknames != nullptr &&
-            ctx->owner->reserved_nicknames_len <
-                ctx->owner->reserved_nicknames_capacity) {
-            ttak_mutex_lock(&ctx->owner->nickname_reserve_lock);
-            // Check if nickname is already reserved to avoid duplicates
-            bool already_reserved = false;
-            for (size_t i = 0; i < ctx->owner->reserved_nicknames_len; ++i) {
-                if (strncmp(ctx->owner->reserved_nicknames[i], ctx->user.name,
-                            SSH_CHATTER_USERNAME_LEN) == 0) {
-                    already_reserved = true;
-                    break;
-                }
-            }
-            if (!already_reserved) {
-                strncpy(ctx->owner->reserved_nicknames
-                            [ctx->owner->reserved_nicknames_len],
-                        ctx->user.name, SSH_CHATTER_USERNAME_LEN);
-                ctx->owner->reserved_nicknames_len++;
-            }
-            ttak_mutex_unlock(&ctx->owner->nickname_reserve_lock);
+        if (!host_nickname_claim_upsert(
+                ctx->owner, ctx, ctx->user.name, ctx->user_data.password_salt,
+                ctx->user_data.password_hash,
+                ip_wide_explicit ? ip_wide : false)) {
+            session_send_system_line(
+                ctx, "Warning: unable to create runtime nickname claim.");
         }
+        session_send_system_line(
+            ctx, (ip_wide_explicit && ip_wide)
+                     ? "Nickname claim enabled for this session (IP-wide)."
+                     : "Nickname claim enabled for this session.");
 
     } else {
         session_send_system_line(ctx, "Failed to save password.");
@@ -767,29 +821,7 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
             session_send_system_line(ctx, message);
         }
 
-        // Remove from reserved nicknames if password was deleted
-        if (ctx->owner != nullptr && ctx->owner->reserved_nicknames != nullptr &&
-            ctx->owner->reserved_nicknames_len > 0U) {
-            ttak_mutex_lock(&ctx->owner->nickname_reserve_lock);
-            for (size_t i = 0; i < ctx->owner->reserved_nicknames_len; ++i) {
-                if (strncmp(ctx->owner->reserved_nicknames[i], target_user,
-                            SSH_CHATTER_USERNAME_LEN) == 0) {
-                    // Shift elements to the left to fill the gap
-                    memmove(&ctx->owner->reserved_nicknames[i],
-                            &ctx->owner->reserved_nicknames[i + 1],
-                            (ctx->owner->reserved_nicknames_len - i - 1) *
-                                sizeof(ctx->owner->reserved_nicknames[0]));
-                    // Decrement the count
-                    ctx->owner->reserved_nicknames_len--;
-                    // Zero out the last used slot to prevent stale data
-                    memset(&ctx->owner->reserved_nicknames
-                                [ctx->owner->reserved_nicknames_len],
-                           0, sizeof(ctx->owner->reserved_nicknames[0]));
-                    break; // Found and removed, exit loop
-                }
-            }
-            ttak_mutex_unlock(&ctx->owner->nickname_reserve_lock);
-        }
+        host_nickname_claim_remove(ctx->owner, target_user);
 
         if (!session_pw_auth_update(ctx->owner, target_user, nullptr, 0U,
                                     nullptr, 0U, false)) {
@@ -884,6 +916,7 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
             session_send_system_line(ctx,
                                      "Warning: unable to update pw_auth.dat.");
         }
+        host_nickname_claim_remove(ctx->owner, target_nickname);
 
         // If the user is currently online, notify them or clear their session password state
         if (target_session != nullptr) {
@@ -1222,4 +1255,3 @@ static void session_handle_delete_message(session_ctx_t *ctx,
     host_history_record_system(ctx->owner, notice, nullptr);
     chat_room_broadcast(&ctx->owner->room, notice, nullptr);
 }
-

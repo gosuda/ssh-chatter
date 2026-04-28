@@ -436,7 +436,9 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
                                          &args)) {
         session_handle_birthday(ctx, args);
         return;
-    } else if (session_parse_command_any(ctx, "/setpw", effective_line,
+    } else if (session_parse_command_any(ctx, "/password", effective_line,
+                                         &args) ||
+               session_parse_command_any(ctx, "/setpw", effective_line,
                                          &args)) {
         session_handle_setpw(ctx, args);
         return;

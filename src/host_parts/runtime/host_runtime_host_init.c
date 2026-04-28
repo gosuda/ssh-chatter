@@ -323,6 +323,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->reserved_nicknames = nullptr;
     host->reserved_nicknames_len = 0U;
     host->reserved_nicknames_capacity = 0U;
+    host->nickname_claim_pool = nullptr;
+    memset(host->nickname_claims, 0, sizeof(host->nickname_claims));
+    host->nickname_claim_count = 0U;
     host->next_join_ready_time = (struct timespec){0, 0};
     host->join_throttle_initialised = false;
     host->join_progress_length = 0U;
@@ -348,11 +351,18 @@ void host_init(host_t *host, auth_profile_t *auth)
         humanized_log_error("host", "failed to initialise nickname lock",
                             errno != 0 ? errno : ENOMEM);
     }
+    host->nickname_claim_pool = ttak_object_pool_create(
+        SSH_CHATTER_MAX_NICKNAME_CLAIMS, sizeof(nickname_claim_t));
+    if (host->nickname_claim_pool == nullptr) {
+        humanized_log_error("host", "failed to create nickname claim pool",
+                            errno != 0 ? errno : ENOMEM);
+    }
     atomic_store(&host->eliza_enabled, false);
     atomic_store(&host->eliza_announced, false);
     host->eliza_last_action.tv_sec = 0;
     host->eliza_last_action.tv_nsec = 0L;
     atomic_store(&host->ai_chat_enabled, true);
+    host->ai_chat_use_gemini = false;
     host->ai_chat_last_reply.tv_sec = 0;
     host->ai_chat_last_reply.tv_nsec = 0L;
     host->ai_chat_model[0] = '\0';
@@ -800,6 +810,11 @@ static const char *host_ai_chat_default_model(void)
     return "gemma2:2b";
 }
 
+static const char *host_ai_chat_default_gemini_model(void)
+{
+    return "gemini-2.5-flash-lite";
+}
+
 static const char *host_ai_chat_skip_token(void)
 {
     return "cucumber-ballet-fly-tetromino";
@@ -921,12 +936,15 @@ static bool host_ai_chat_should_respond(const chat_history_entry_t *entry)
 }
 
 static void host_ai_chat_snapshot_state(host_t *host, char *model,
-                                        size_t model_len,
+                                        size_t model_len, bool *use_gemini,
                                         struct timespec *last_reply)
 {
     if (host == nullptr) {
         if (model != nullptr && model_len > 0U) {
             snprintf(model, model_len, "%s", host_ai_chat_default_model());
+        }
+        if (use_gemini != nullptr) {
+            *use_gemini = false;
         }
         if (last_reply != nullptr) {
             last_reply->tv_sec = 0;
@@ -937,7 +955,13 @@ static void host_ai_chat_snapshot_state(host_t *host, char *model,
 
     ttak_mutex_lock(&host->lock);
     if (model != nullptr && model_len > 0U) {
-        snprintf(model, model_len, "%s", host_ai_chat_default_model());
+        snprintf(model, model_len, "%s",
+                 host->ai_chat_use_gemini
+                     ? host_ai_chat_default_gemini_model()
+                     : host_ai_chat_default_model());
+    }
+    if (use_gemini != nullptr) {
+        *use_gemini = host->ai_chat_use_gemini;
     }
     if (last_reply != nullptr) {
         *last_reply = host->ai_chat_last_reply;
@@ -1283,7 +1307,10 @@ static void host_ai_chat_consider_reply(host_t *host,
 
     struct timespec now = session_now_monotonic();
     struct timespec last_reply = {0, 0};
-    host_ai_chat_snapshot_state(host, nullptr, 0U, &last_reply);
+    char model[64];
+    bool use_gemini = false;
+    host_ai_chat_snapshot_state(host, model, sizeof(model), &use_gemini,
+                                &last_reply);
 
     double cooldown = session_timespec_elapsed_seconds(&now, &last_reply);
     if (cooldown < 3.0) {
@@ -1350,8 +1377,11 @@ static void host_ai_chat_consider_reply(host_t *host,
     }
 
     char reply[SSH_CHATTER_MESSAGE_LIMIT];
-    bool success = translator_ollama_smalltalk(
-        prompt, host_ai_chat_default_model(), reply, sizeof(reply));
+    bool success = use_gemini
+                       ? translator_gemini_smalltalk(
+                             prompt, model, reply, sizeof(reply))
+                       : translator_ollama_smalltalk(
+                             prompt, model, reply, sizeof(reply));
     if (!success) {
         const char *error = translator_last_error();
         if (error != nullptr && error[0] != '\0') {
@@ -1642,8 +1672,16 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         host->rss_refresh_lock_initialized = false;
     }
 
+    if (host->nickname_claim_pool != nullptr) {
+        ttak_object_pool_destroy(host->nickname_claim_pool);
+        host->nickname_claim_pool = nullptr;
+    }
+    memset(host->nickname_claims, 0, sizeof(host->nickname_claims));
+    host->nickname_claim_count = 0U;
+
     ttak_mutex_destroy(&host->room.lock);
     ttak_mutex_destroy(&host->lock);
+    ttak_mutex_destroy(&host->nickname_reserve_lock);
 
     if (memory_scope != nullptr) {
         sshc_memory_context_pop(memory_scope);

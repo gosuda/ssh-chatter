@@ -155,6 +155,7 @@ static void session_runtime_unbind(session_ctx_t *ctx)
     runtime->ctx = nullptr;
     ctx->session_data = nullptr;
     ctx->session_id = 0U;
+    sshc_gc_free(runtime);
 }
 
 static void *host_telnet_thread(void *arg)

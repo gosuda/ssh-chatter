@@ -397,6 +397,11 @@ session_channel_write_cp437(session_ctx_t *ctx, const char *data, size_t length)
         return session_channel_write_all(ctx, data, length);
     }
 
+    if (length > (SIZE_MAX - 16U) / 4U) {
+        iconv_close(descriptor);
+        return session_channel_write_all(ctx, data, length);
+    }
+
     size_t capacity = (length > 0U ? length : 1U) * 4U + 16U;
     char *buffer = (char *)sshc_gc_malloc(capacity);
     if (buffer == nullptr) {
@@ -514,6 +519,11 @@ static bool session_channel_write_codepage(session_ctx_t *ctx, const char *data,
 
     iconv_t descriptor = iconv_open(iconv_name, "UTF-8");
     if (descriptor == (iconv_t)(-1)) {
+        return session_channel_write_all(ctx, data, length);
+    }
+
+    if (length > (SIZE_MAX - 16U) / 4U) {
+        iconv_close(descriptor);
         return session_channel_write_all(ctx, data, length);
     }
 
@@ -865,6 +875,10 @@ static bool session_channel_write_utf16_segment(session_ctx_t *ctx,
 {
     if (ctx == nullptr || data == nullptr || length == 0U) {
         return true;
+    }
+
+    if (length > SIZE_MAX / 4U) {
+        return session_channel_write_all(ctx, data, length);
     }
 
     size_t max_output = length * 4U;

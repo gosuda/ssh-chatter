@@ -209,6 +209,13 @@ void session_flag_should_sink(session_ctx_t *ctx);
 void session_mark_should_sink(session_ctx_t *ctx);
 void session_clear_pending_sink(session_ctx_t *ctx);
 void session_send_system_line(session_ctx_t *ctx, const char *message);
+void session_handle_wall(session_ctx_t *ctx, const char *arguments);
+void session_wall_render(session_ctx_t *ctx, const char *status);
+void session_wall_exit(session_ctx_t *ctx, const char *status);
+bool session_wall_process_line(session_ctx_t *ctx, const char *line,
+                               size_t length);
+bool session_wall_process_escape(session_ctx_t *ctx, const char *sequence,
+                                 size_t length);
 
 session_ui_language_t session_ui_language_from_code(const char *code);
 void host_store_ui_language(host_t *host, const session_ctx_t *ctx);

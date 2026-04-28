@@ -4,6 +4,7 @@
  */
 
 #include "storage/host_eliza_memory.c"
+#include "storage/host_wall_storage.c"
 #include "storage/host_bbs_storage.c"
 #include "storage/host_session_user_data.c"
 #include "storage/host_translation_worker.c"

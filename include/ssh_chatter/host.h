@@ -97,6 +97,8 @@
 #define SSH_CHATTER_ASCIIART_MAX_LINES 700
 #define SSH_CHATTER_ASCIIART_BUFFER_LEN SSH_CHATTER_BBS_BODY_LEN
 #define SSH_CHATTER_ASCIIART_COOLDOWN_SECONDS 600
+#define SSH_CHATTER_WALL_WIDTH 80
+#define SSH_CHATTER_WALL_HEIGHT 24
 #define SSH_CHATTER_ELIZA_MEMORY_MAX 128
 #define SSH_CHATTER_AI_MEMORY_MAX 64
 #define SSH_CHATTER_TETRIS_WIDTH 15
@@ -577,6 +579,12 @@ typedef struct rss_session_item {
     char summary[SSH_CHATTER_RSS_SUMMARY_LEN];
 } rss_session_item_t;
 
+typedef struct ascii_pixel {
+    char ch;
+    char color_name[SSH_CHATTER_COLOR_NAME_LEN];
+    int64_t updated_at_ns;
+} ascii_pixel_t;
+
 typedef struct rss_feed {
     bool in_use;
     char tag[SSH_CHATTER_RSS_TAG_LEN];
@@ -803,6 +811,12 @@ typedef struct session_ctx {
     bool user_data_loaded;
     user_data_record_t user_data;
     bool password_not_set; // Flag to indicate if user needs to set a password
+    bool wall_active;
+    bool wall_command_mode;
+    uint8_t wall_cursor_x;
+    uint8_t wall_cursor_y;
+    char wall_brush_char;
+    char wall_brush_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char *tetris_screen_buffer;
     char *tetris_prev_screen_buffer;
     const session_ops_t *ops;
@@ -1002,6 +1016,7 @@ typedef struct host {
     ttak_mutex_t lock;
     char state_file_path[PATH_MAX];
     char sync_state_file_path[PATH_MAX];
+    char wall_state_file_path[PATH_MAX];
     char bbs_state_file_path[PATH_MAX];
     char vote_state_file_path[PATH_MAX];
     char ban_state_file_path[PATH_MAX];
@@ -1035,6 +1050,7 @@ typedef struct host {
     size_t bbs_post_capacity;
     uint64_t next_bbs_id;
     bool bbs_cache_loaded;
+    ascii_pixel_t wall[SSH_CHATTER_WALL_HEIGHT][SSH_CHATTER_WALL_WIDTH];
     rss_feed_t rss_feeds[SSH_CHATTER_RSS_MAX_FEEDS];
     size_t rss_feed_count;
     uint8_t rss_current_window_id;

@@ -875,7 +875,13 @@ static void *session_thread(void *arg)
             }
 
             if (ch == 0x01) {
-                if (ctx->bbs_post_pending || ctx->asciiart_pending) {
+                if (ctx->wall_active) {
+                    session_wall_exit(ctx, "Exited graffiti wall.");
+                    if (ctx->should_exit) {
+                        break;
+                    }
+                    session_render_prompt(ctx, false);
+                } else if (ctx->bbs_post_pending || ctx->asciiart_pending) {
                     ctx->input_buffer[ctx->input_length] = '\0';
                     session_apply_background_fill(ctx);
                     if (ctx->bbs_post_pending) {
@@ -1195,6 +1201,19 @@ static void *session_thread(void *arg)
                 session_apply_background_fill(ctx);
                 const bool composing_draft =
                     ctx->bbs_post_pending || ctx->asciiart_pending;
+                if (ctx->wall_active) {
+                    ctx->input_buffer[ctx->input_length] = '\0';
+                    session_wall_process_line(ctx, ctx->input_buffer,
+                                              ctx->input_length);
+                    session_clear_input_without_prompt(ctx);
+                    if (ctx->should_exit) {
+                        break;
+                    }
+                    if (!ctx->wall_active && !ctx->bracket_paste_active) {
+                        session_render_prompt(ctx, false);
+                    }
+                    continue;
+                }
                 if (ctx->bbs_search_active) {
                     ctx->input_buffer[ctx->input_length] = '\0';
                     char status[SSH_CHATTER_MESSAGE_LIMIT];
@@ -1226,7 +1245,14 @@ static void *session_thread(void *arg)
             if (ch == '\b' || ch == 0x7f) {
                 ctx->input_history_position = -1;
                 session_scrollback_reset_position(ctx);
-                if (ctx->bbs_post_pending && ctx->pending_bbs_editing_line &&
+                if (ctx->wall_active && ctx->wall_command_mode) {
+                    if (ctx->input_length > 0U) {
+                        ctx->input_length -= 1U;
+                        ctx->input_buffer[ctx->input_length] = '\0';
+                    }
+                    session_wall_render(ctx, nullptr);
+                } else if (ctx->bbs_post_pending &&
+                           ctx->pending_bbs_editing_line &&
                     !ctx->bbs_search_active) {
                     session_local_backspace(ctx);
                     session_bbs_render_editor(ctx, nullptr);
@@ -1239,6 +1265,14 @@ static void *session_thread(void *arg)
             }
 
             if (ch == '\t') {
+                if (ctx->wall_active && ctx->wall_command_mode) {
+                    if (ctx->input_length + 1U < sizeof(ctx->input_buffer)) {
+                        ctx->input_buffer[ctx->input_length++] = ' ';
+                        ctx->input_buffer[ctx->input_length] = '\0';
+                    }
+                    session_wall_render(ctx, nullptr);
+                    continue;
+                }
                 if (session_try_command_completion(ctx)) {
                     continue;
                 }
@@ -1274,6 +1308,33 @@ static void *session_thread(void *arg)
             } else {
                 encoded[0] = ch;
                 encoded_len = 1U;
+            }
+
+            if (ctx->wall_active) {
+                if (!ctx->wall_command_mode) {
+                    if (encoded_len == 1U && encoded[0] == ':') {
+                        ctx->wall_command_mode = true;
+                        session_clear_input_without_prompt(ctx);
+                        session_wall_render(ctx, nullptr);
+                        continue;
+                    }
+                    if (encoded_len == 1U &&
+                        (unsigned char)encoded[0] >= 0x20U &&
+                        (unsigned char)encoded[0] <= 0x7eU) {
+                        char wall_input[2] = {encoded[0], '\0'};
+                        session_wall_process_line(ctx, wall_input, 1U);
+                    }
+                    continue;
+                }
+
+                if (ctx->input_length + encoded_len < sizeof(ctx->input_buffer)) {
+                    memcpy(&ctx->input_buffer[ctx->input_length], encoded,
+                           encoded_len);
+                    ctx->input_length += encoded_len;
+                    ctx->input_buffer[ctx->input_length] = '\0';
+                }
+                session_wall_render(ctx, nullptr);
+                continue;
             }
 
             if (ctx->input_length + encoded_len >= sizeof(ctx->input_buffer)) {

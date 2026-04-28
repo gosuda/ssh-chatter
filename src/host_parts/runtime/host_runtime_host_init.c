@@ -183,6 +183,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_state_resolve_path(host);
     host->sync_state_file_path[0] = '\0';
     host_sync_state_resolve_path(host);
+    host->wall_state_file_path[0] = '\0';
+    host_wall_resolve_path(host);
     host->bbs_state_file_path[0] = '\0';
     host_bbs_resolve_path(host);
     host->vote_state_file_path[0] = '\0';
@@ -251,6 +253,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     memset(host->protected_ips, 0, sizeof(host->protected_ips));
     host->protected_ip_count = 0U;
     ttak_mutex_init(&host->lock);
+    host_wall_reset_locked(host);
     host_protected_ips_bootstrap(host);
     poll_state_reset(&host->poll);
     for (size_t idx = 0U; idx < SSH_CHATTER_MAX_NAMED_POLLS; ++idx) {
@@ -373,6 +376,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_state_load(host);
     host->history_cache_loaded =
         host->history != nullptr && host->history_capacity > 0U;
+    host_wall_state_load(host);
     host_ui_language_state_load(host);
     host_vote_state_load(host);
     host_bbs_state_load(host);

@@ -595,6 +595,11 @@ static bool session_consume_escape_sequence(session_ctx_t *ctx, char ch)
     }
 
     if (length == 3U && sequence[1] == '[') {
+        if (session_wall_process_escape(ctx, sequence, length)) {
+            ctx->input_escape_active = false;
+            ctx->input_escape_length = 0U;
+            return true;
+        }
         int dx = 0;
         int dy = 0;
         switch (sequence[2]) {
@@ -678,6 +683,11 @@ static bool session_consume_escape_sequence(session_ctx_t *ctx, char ch)
     }
 
     if (length == 3U && sequence[1] == 'O') {
+        if (session_wall_process_escape(ctx, sequence, length)) {
+            ctx->input_escape_active = false;
+            ctx->input_escape_length = 0U;
+            return true;
+        }
         int dx = 0;
         int dy = 0;
         switch (sequence[2]) {
@@ -1291,4 +1301,3 @@ static const char *chat_attachment_type_label(chat_attachment_type_t type)
         return "attachment";
     }
 }
-

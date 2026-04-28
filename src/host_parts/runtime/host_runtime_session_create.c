@@ -107,6 +107,9 @@ static session_ctx_t *session_create(void)
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
         ctx->morse_feed_enabled = false;
         ctx->exit_notice_sent = false;
+        ctx->wall_brush_char = '#';
+        snprintf(ctx->wall_brush_color_name,
+                 sizeof(ctx->wall_brush_color_name), "%s", "white");
         atomic_init(&ctx->room_snapshot_retired, false);
         atomic_init(&ctx->room_snapshot_refs, 0U);
         ctx->has_last_output_line = false;

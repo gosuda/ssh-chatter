@@ -280,6 +280,8 @@ static size_t session_capture_visible_display_lines(
         snapshot[idx] = frame.lines[idx];
     }
 
+    display_model_release_visible(&frame);
+
     return count;
 }
 
@@ -552,4 +554,3 @@ static void session_scrollback_prepare_display(session_ctx_t *ctx)
     static const char clear_to_end[] = "\033[J";
     session_channel_write(ctx, clear_to_end, sizeof(clear_to_end) - 1U);
 }
-

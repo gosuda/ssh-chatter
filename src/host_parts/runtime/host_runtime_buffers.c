@@ -308,7 +308,7 @@ static bool host_bbs_acquire_storage(host_t *host)
             host->bbs_posts[idx].comments[comment].created_at = 0;
         }
     }
-    host->bbs_cache_loaded = true;
+    host->bbs_cache_loaded = false;
     ttak_mutex_unlock(&host->lock);
     return true;
 }
@@ -424,7 +424,6 @@ static __attribute__((unused)) void host_reload_cached_state(host_t *host)
 
         if (!restored && host_bbs_acquire_storage(host)) {
             host_bbs_state_load(host);
-            host->bbs_cache_loaded = host_bbs_storage_ready(host);
         }
     }
 }

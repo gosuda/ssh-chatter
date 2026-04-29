@@ -1,3 +1,5 @@
+#include "ssh_chatter/abstract_byte_buffer.h"
+
 static void session_channel_log_write_failure(session_ctx_t *ctx,
                                               const char *reason)
 {
@@ -298,16 +300,8 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
         return nullptr;
     }
 
-    size_t capacity = length + 16U;
-    char *buffer = (char *)sshc_gc_malloc(capacity);
-    if (buffer == nullptr) {
-        if (normalized_length != nullptr) {
-            *normalized_length = length;
-        }
-        return nullptr;
-    }
-
-    size_t output = 0U;
+    sshc_abstract_byte_buffer_t buffer;
+    sshc_abstract_byte_buffer_init(&buffer);
     bool modified = false;
     const unsigned char *cursor = (const unsigned char *)data;
     size_t remaining = length;
@@ -325,45 +319,22 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
         if (replacement != nullptr) {
             modified = true;
             size_t rep_len = strlen(replacement);
-            size_t needed = output + rep_len + 1U;
-            if (needed > capacity) {
-                size_t new_capacity = capacity * 2U;
-                if (new_capacity < needed) {
-                    new_capacity = needed + 16U;
+            if (!sshc_abstract_byte_buffer_append(&buffer, replacement,
+                                                  rep_len)) {
+                sshc_abstract_byte_buffer_free(&buffer);
+                if (normalized_length != nullptr) {
+                    *normalized_length = length;
                 }
-                char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
-                if (resized == nullptr) {
-                    sshc_gc_free(buffer);
-                    if (normalized_length != nullptr) {
-                        *normalized_length = length;
-                    }
-                    return nullptr;
-                }
-                buffer = resized;
-                capacity = new_capacity;
+                return nullptr;
             }
-            memcpy(buffer + output, replacement, rep_len);
-            output += rep_len;
         } else {
-            size_t needed = output + consumed + 1U;
-            if (needed > capacity) {
-                size_t new_capacity = capacity * 2U;
-                if (new_capacity < needed) {
-                    new_capacity = needed + 16U;
+            if (!sshc_abstract_byte_buffer_append(&buffer, cursor, consumed)) {
+                sshc_abstract_byte_buffer_free(&buffer);
+                if (normalized_length != nullptr) {
+                    *normalized_length = length;
                 }
-                char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
-                if (resized == nullptr) {
-                    sshc_gc_free(buffer);
-                    if (normalized_length != nullptr) {
-                        *normalized_length = length;
-                    }
-                    return nullptr;
-                }
-                buffer = resized;
-                capacity = new_capacity;
+                return nullptr;
             }
-            memcpy(buffer + output, cursor, consumed);
-            output += consumed;
         }
 
         cursor += consumed;
@@ -371,18 +342,30 @@ static char *session_cp437_normalize_utf8(const char *data, size_t length,
     }
 
     if (!modified) {
-        sshc_gc_free(buffer);
+        sshc_abstract_byte_buffer_free(&buffer);
         if (normalized_length != nullptr) {
             *normalized_length = length;
         }
         return nullptr;
     }
 
-    buffer[output] = '\0';
-    if (normalized_length != nullptr) {
-        *normalized_length = output;
+    char *copy = sshc_gc_malloc(buffer.length + 1U);
+    if (copy == nullptr ||
+        !sshc_abstract_byte_buffer_copy_out(&buffer, copy, buffer.length + 1U)) {
+        if (copy != nullptr) {
+            sshc_gc_free(copy);
+        }
+        sshc_abstract_byte_buffer_free(&buffer);
+        if (normalized_length != nullptr) {
+            *normalized_length = length;
+        }
+        return nullptr;
     }
-    return buffer;
+    if (normalized_length != nullptr) {
+        *normalized_length = buffer.length;
+    }
+    sshc_abstract_byte_buffer_free(&buffer);
+    return copy;
 }
 
 static bool __attribute__((unused))
@@ -403,8 +386,9 @@ session_channel_write_cp437(session_ctx_t *ctx, const char *data, size_t length)
     }
 
     size_t capacity = (length > 0U ? length : 1U) * 4U + 16U;
-    char *buffer = (char *)sshc_gc_malloc(capacity);
-    if (buffer == nullptr) {
+    sshc_abstract_byte_buffer_t buffer;
+    sshc_abstract_byte_buffer_init(&buffer);
+    if (!sshc_abstract_byte_buffer_reserve_total(&buffer, capacity)) {
         iconv_close(descriptor);
         return session_channel_write_all(ctx, data, length);
     }
@@ -415,30 +399,33 @@ session_channel_write_cp437(session_ctx_t *ctx, const char *data, size_t length)
 
     const char *input_cursor = normalized != nullptr ? normalized : data;
     size_t input_remaining = normalized != nullptr ? normalized_length : length;
-    char *output_cursor = buffer;
-    size_t output_remaining = capacity;
-
     bool fallback_to_plaintext = false;
+    size_t produced = 0U;
 
     while (input_remaining > 0U) {
+        if (!sshc_abstract_byte_buffer_reserve_total(&buffer, capacity)) {
+            fallback_to_plaintext = true;
+            break;
+        }
+        ttak_abstract_map_t write_map = {0};
+        if (ttak_abstract_map(buffer.storage, produced, buffer.capacity - produced,
+                              TTAK_ABSTRACT_ACCESS_WRITE, &write_map) != 0) {
+            fallback_to_plaintext = true;
+            break;
+        }
+        char *output_cursor = (char *)write_map.data;
+        size_t output_remaining = buffer.capacity - produced;
         size_t result =
             iconv(descriptor, (char **)&input_cursor, &input_remaining,
                   &output_cursor, &output_remaining);
+        produced = buffer.capacity - output_remaining;
+        ttak_abstract_unmap(&write_map);
         if (result == (size_t)-1) {
             if (errno == E2BIG) {
-                size_t produced = capacity - output_remaining;
                 size_t new_capacity = capacity * 2U;
                 if (new_capacity <= capacity) {
                     new_capacity = capacity + length + 32U;
                 }
-                char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
-                if (resized == nullptr) {
-                    fallback_to_plaintext = true;
-                    goto cleanup;
-                }
-                buffer = resized;
-                output_cursor = buffer + produced;
-                output_remaining = new_capacity - produced;
                 capacity = new_capacity;
                 continue;
             }
@@ -446,31 +433,26 @@ session_channel_write_cp437(session_ctx_t *ctx, const char *data, size_t length)
                 ++input_cursor;
                 --input_remaining;
                 if (output_remaining == 0U) {
-                    size_t produced = capacity - output_remaining;
                     size_t new_capacity = capacity * 2U;
                     if (new_capacity <= capacity) {
                         new_capacity = capacity + length + 32U;
                     }
-                    char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
-                    if (resized == nullptr) {
-                        fallback_to_plaintext = true;
-                        goto cleanup;
-                    }
-                    buffer = resized;
-                    output_cursor = buffer + produced;
-                    output_remaining = new_capacity - produced;
                     capacity = new_capacity;
+                    continue;
                 }
-                *output_cursor++ = '?';
-                output_remaining -= 1U;
+                if (!sshc_abstract_byte_buffer_append(&buffer, "?", 1U)) {
+                    fallback_to_plaintext = true;
+                    break;
+                }
+                produced += 1U;
                 continue;
             }
             fallback_to_plaintext = true;
-            goto cleanup;
+            break;
         }
     }
+    buffer.length = produced;
 
-cleanup:
     iconv_close(descriptor);
     bool success = false;
     if (fallback_to_plaintext) {
@@ -480,10 +462,17 @@ cleanup:
         success =
             session_channel_write_all(ctx, fallback_data, fallback_length);
     } else {
-        size_t produced = capacity - output_remaining;
-        success = session_channel_write_all(ctx, buffer, produced);
+        ttak_abstract_map_t read_map = {0};
+        if (produced == 0U ||
+            ttak_abstract_map(buffer.storage, 0U, produced,
+                              TTAK_ABSTRACT_ACCESS_READ, &read_map) != 0) {
+            success = true;
+        } else {
+            success = session_channel_write_all(ctx, read_map.data, produced);
+        }
+        ttak_abstract_unmap(&read_map);
     }
-    sshc_gc_free(buffer);
+    sshc_abstract_byte_buffer_free(&buffer);
     if (normalized != nullptr) {
         sshc_gc_free(normalized);
     }
@@ -528,8 +517,9 @@ static bool session_channel_write_codepage(session_ctx_t *ctx, const char *data,
     }
 
     size_t capacity = (length > 0U ? length : 1U) * 4U + 16U;
-    char *buffer = (char *)sshc_gc_malloc(capacity);
-    if (buffer == nullptr) {
+    sshc_abstract_byte_buffer_t buffer;
+    sshc_abstract_byte_buffer_init(&buffer);
+    if (!sshc_abstract_byte_buffer_reserve_total(&buffer, capacity)) {
         iconv_close(descriptor);
         return session_channel_write_all(ctx, data, length);
     }
@@ -544,30 +534,33 @@ static bool session_channel_write_codepage(session_ctx_t *ctx, const char *data,
 
     const char *input_cursor = normalized != nullptr ? normalized : data;
     size_t input_remaining = normalized != nullptr ? normalized_length : length;
-    char *output_cursor = buffer;
-    size_t output_remaining = capacity;
-
     bool fallback_to_plaintext = false;
+    size_t produced = 0U;
 
     while (input_remaining > 0U) {
+        if (!sshc_abstract_byte_buffer_reserve_total(&buffer, capacity)) {
+            fallback_to_plaintext = true;
+            break;
+        }
+        ttak_abstract_map_t write_map = {0};
+        if (ttak_abstract_map(buffer.storage, produced, buffer.capacity - produced,
+                              TTAK_ABSTRACT_ACCESS_WRITE, &write_map) != 0) {
+            fallback_to_plaintext = true;
+            break;
+        }
+        char *output_cursor = (char *)write_map.data;
+        size_t output_remaining = buffer.capacity - produced;
         size_t result =
             iconv(descriptor, (char **)&input_cursor, &input_remaining,
                   &output_cursor, &output_remaining);
+        produced = buffer.capacity - output_remaining;
+        ttak_abstract_unmap(&write_map);
         if (result == (size_t)-1) {
             if (errno == E2BIG) {
-                size_t produced = capacity - output_remaining;
                 size_t new_capacity = capacity * 2U;
                 if (new_capacity <= capacity) {
                     new_capacity = capacity + length + 32U;
                 }
-                char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
-                if (resized == nullptr) {
-                    fallback_to_plaintext = true;
-                    goto cleanup;
-                }
-                buffer = resized;
-                output_cursor = buffer + produced;
-                output_remaining = new_capacity - produced;
                 capacity = new_capacity;
                 continue;
             }
@@ -575,31 +568,26 @@ static bool session_channel_write_codepage(session_ctx_t *ctx, const char *data,
                 ++input_cursor;
                 --input_remaining;
                 if (output_remaining == 0U) {
-                    size_t produced = capacity - output_remaining;
                     size_t new_capacity = capacity * 2U;
                     if (new_capacity <= capacity) {
                         new_capacity = capacity + length + 32U;
                     }
-                    char *resized = (char *)sshc_gc_realloc(buffer, new_capacity);
-                    if (resized == nullptr) {
-                        fallback_to_plaintext = true;
-                        goto cleanup;
-                    }
-                    buffer = resized;
-                    output_cursor = buffer + produced;
-                    output_remaining = new_capacity - produced;
                     capacity = new_capacity;
+                    continue;
                 }
-                *output_cursor++ = '?';
-                output_remaining -= 1U;
+                if (!sshc_abstract_byte_buffer_append(&buffer, "?", 1U)) {
+                    fallback_to_plaintext = true;
+                    break;
+                }
+                produced += 1U;
                 continue;
             }
             fallback_to_plaintext = true;
-            goto cleanup;
+            break;
         }
     }
+    buffer.length = produced;
 
-cleanup:
     iconv_close(descriptor);
     bool success = false;
     if (fallback_to_plaintext) {
@@ -609,10 +597,17 @@ cleanup:
         success =
             session_channel_write_all(ctx, fallback_data, fallback_length);
     } else {
-        size_t produced = capacity - output_remaining;
-        success = session_channel_write_all(ctx, buffer, produced);
+        ttak_abstract_map_t read_map = {0};
+        if (produced == 0U ||
+            ttak_abstract_map(buffer.storage, 0U, produced,
+                              TTAK_ABSTRACT_ACCESS_READ, &read_map) != 0) {
+            success = true;
+        } else {
+            success = session_channel_write_all(ctx, read_map.data, produced);
+        }
+        ttak_abstract_unmap(&read_map);
     }
-    sshc_gc_free(buffer);
+    sshc_abstract_byte_buffer_free(&buffer);
     if (normalized != nullptr) {
         sshc_gc_free(normalized);
     }

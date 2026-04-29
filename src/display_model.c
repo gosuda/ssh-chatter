@@ -6,7 +6,6 @@
  */
 
 #include "ssh_chatter/display_model.h"
-#include <ttak/mem/mem.h>
 #include <ttak/timing/timing.h>
 
 #include <string.h>
@@ -29,6 +28,63 @@ static size_t display_model_effective_viewport(const display_model_t *model,
 }
 
 /* ---- Internal helpers ---- */
+
+static inline size_t display_model_storage_bytes(size_t line_count)
+{
+    return line_count * sizeof(display_line_t);
+}
+
+static bool display_model_view_lines(const display_model_t *model,
+                                     size_t start_line, size_t line_count,
+                                     ttak_abstract_map_t *view,
+                                     const display_line_t **lines_out)
+{
+    if (view == NULL || lines_out == NULL) {
+        return false;
+    }
+
+    memset(view, 0, sizeof(*view));
+    *lines_out = NULL;
+    if (model == NULL || model->line_storage == NULL) {
+        return false;
+    }
+
+    size_t offset = display_model_storage_bytes(start_line);
+    size_t bytes = display_model_storage_bytes(line_count);
+    if (ttak_abstract_map(model->line_storage, offset, bytes,
+                          TTAK_ABSTRACT_ACCESS_READ, view) != 0) {
+        return false;
+    }
+
+    *lines_out = (const display_line_t *)view->data;
+    return true;
+}
+
+static bool display_model_view_lines_mut(display_model_t *model,
+                                         size_t start_line, size_t line_count,
+                                         ttak_abstract_map_t *view,
+                                         display_line_t **lines_out)
+{
+    if (view == NULL || lines_out == NULL) {
+        return false;
+    }
+
+    memset(view, 0, sizeof(*view));
+    *lines_out = NULL;
+    if (model == NULL || model->line_storage == NULL) {
+        return false;
+    }
+
+    size_t offset = display_model_storage_bytes(start_line);
+    size_t bytes = display_model_storage_bytes(line_count);
+    if (ttak_abstract_map(model->line_storage, offset, bytes,
+                          TTAK_ABSTRACT_ACCESS_WRITE, view) != 0) {
+        return false;
+    }
+
+    *lines_out = (display_line_t *)view->data;
+    return true;
+}
 
 /**
  * @desc Count the display width of a UTF-8 character starting at *p.
@@ -133,14 +189,11 @@ static bool display_model_ensure_capacity(display_model_t *model,
         new_cap *= 2U;
     }
 
-    display_line_t *new_lines = (display_line_t *)ttak_mem_realloc(
-        model->lines, new_cap * sizeof(display_line_t),
-        __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
-    if (new_lines == NULL) {
+    size_t target_bytes = new_cap * sizeof(display_line_t);
+    if (ttak_abstract_resize(model->line_storage, target_bytes) != 0) {
         return false;
     }
 
-    model->lines = new_lines;
     model->line_capacity = new_cap;
     return true;
 }
@@ -160,13 +213,11 @@ bool display_model_init(display_model_t *model, size_t initial_capacity)
         initial_capacity = 64U;
     }
 
-    model->lines = (display_line_t *)ttak_mem_alloc(
-        initial_capacity * sizeof(display_line_t), __TTAK_UNSAFE_MEM_FOREVER__,
-        ttak_get_tick_count());
-    if (model->lines == NULL) {
+    model->line_storage = ttak_abstract_alloc(initial_capacity *
+                                              sizeof(display_line_t));
+    if (model->line_storage == NULL) {
         return false;
     }
-    memset(model->lines, 0, initial_capacity * sizeof(display_line_t));
 
     model->line_capacity = initial_capacity;
     return true;
@@ -178,7 +229,7 @@ void display_model_destroy(display_model_t *model)
         return;
     }
 
-    ttak_mem_free(model->lines);
+    ttak_abstract_free(model->line_storage);
     memset(model, 0, sizeof(*model));
 }
 
@@ -288,8 +339,14 @@ bool display_model_recompute_layout(display_model_t *model,
             return false;
         }
 
-        memcpy(model->lines + model->line_count, tmp,
-               wrapped * sizeof(display_line_t));
+        ttak_abstract_map_t write_view;
+        display_line_t *lines = NULL;
+        if (!display_model_view_lines_mut(model, model->line_count, wrapped,
+                                          &write_view, &lines)) {
+            return false;
+        }
+        memcpy(lines, tmp, wrapped * sizeof(display_line_t));
+        ttak_abstract_unmap(&write_view);
         model->line_count += wrapped;
     }
 
@@ -313,8 +370,14 @@ bool display_model_append_message(display_model_t *model,
         return false;
     }
 
-    memcpy(model->lines + model->line_count, tmp,
-           wrapped * sizeof(display_line_t));
+    ttak_abstract_map_t write_view;
+    display_line_t *lines = NULL;
+    if (!display_model_view_lines_mut(model, model->line_count, wrapped,
+                                      &write_view, &lines)) {
+        return false;
+    }
+    memcpy(lines, tmp, wrapped * sizeof(display_line_t));
+    ttak_abstract_unmap(&write_view);
     model->line_count += wrapped;
     model->layout_width = width;
 
@@ -328,17 +391,26 @@ size_t display_model_resolve_anchor(const display_model_t *model,
         return SIZE_MAX;
     }
 
+    ttak_abstract_map_t read_view;
+    const display_line_t *lines = NULL;
+    if (!display_model_view_lines(model, 0U, model->line_count, &read_view,
+                                  &lines)) {
+        return SIZE_MAX;
+    }
+
     /* Search for exact match */
     for (size_t i = 0U; i < model->line_count; ++i) {
-        if (model->lines[i].message_id == anchor->message_id &&
-            model->lines[i].subline_index == anchor->subline_index) {
+        if (lines[i].message_id == anchor->message_id &&
+            lines[i].subline_index == anchor->subline_index) {
+            ttak_abstract_unmap(&read_view);
             return i;
         }
     }
 
     /* If exact subline not found, find the first subline of this message */
     for (size_t i = 0U; i < model->line_count; ++i) {
-        if (model->lines[i].message_id == anchor->message_id) {
+        if (lines[i].message_id == anchor->message_id) {
+            ttak_abstract_unmap(&read_view);
             return i;
         }
     }
@@ -346,12 +418,14 @@ size_t display_model_resolve_anchor(const display_model_t *model,
     /* Anchor message was deleted or evicted: find the closest message_id */
     uint64_t target = anchor->message_id;
     for (size_t i = 0U; i < model->line_count; ++i) {
-        if (model->lines[i].message_id >= target) {
+        if (lines[i].message_id >= target) {
+            ttak_abstract_unmap(&read_view);
             return i;
         }
     }
 
     /* All messages are older than anchor: clamp to end */
+    ttak_abstract_unmap(&read_view);
     return model->line_count - 1U;
 }
 
@@ -386,8 +460,6 @@ void display_model_compute_visible(display_model_t *model,
         /* Show the last vp lines */
         size_t start = (total > vp) ? (total - vp) : 0U;
         size_t count = total - start;
-
-        frame->lines = model->lines + start;
         frame->count = count;
         frame->first_global_index = start;
         frame->at_tail = true;
@@ -410,17 +482,34 @@ void display_model_compute_visible(display_model_t *model,
         if (count > vp) {
             count = vp;
         }
-
-        frame->lines = model->lines + anchor_idx;
         frame->count = count;
         frame->first_global_index = anchor_idx;
         frame->at_tail = (anchor_idx + count >= total);
         frame->at_head = (anchor_idx == 0U);
     }
 
+    if (!display_model_view_lines(model, frame->first_global_index, frame->count,
+                                  &frame->storage_map, &frame->lines)) {
+        memset(frame, 0, sizeof(*frame));
+        frame->at_tail = true;
+        frame->at_head = true;
+        return;
+    }
+
     model->last_viewport_height = viewport_height;
     model->last_visible_start = frame->first_global_index;
     model->has_last_visible_frame = true;
+}
+
+void display_model_release_visible(display_visible_frame_t *frame)
+{
+    if (frame == NULL) {
+        return;
+    }
+
+    ttak_abstract_unmap(&frame->storage_map);
+    frame->lines = NULL;
+    frame->count = 0U;
 }
 
 void display_model_scroll_up(display_model_t *model, size_t lines)
@@ -459,9 +548,14 @@ void display_model_scroll_up(display_model_t *model, size_t lines)
         current_idx = 0U;
     }
 
-    model->view.anchor.message_id = model->lines[current_idx].message_id;
-    model->view.anchor.subline_index =
-        model->lines[current_idx].subline_index;
+    ttak_abstract_map_t read_view;
+    const display_line_t *line = NULL;
+    if (!display_model_view_lines(model, current_idx, 1U, &read_view, &line)) {
+        return;
+    }
+    model->view.anchor.message_id = line[0].message_id;
+    model->view.anchor.subline_index = line[0].subline_index;
+    ttak_abstract_unmap(&read_view);
 }
 
 void display_model_scroll_down(display_model_t *model, size_t lines)
@@ -499,9 +593,15 @@ void display_model_scroll_down(display_model_t *model, size_t lines)
         return;
     }
 
-    model->view.anchor.message_id = model->lines[new_idx].message_id;
-    model->view.anchor.subline_index =
-        model->lines[new_idx].subline_index;
+    ttak_abstract_map_t read_view;
+    const display_line_t *line = NULL;
+    if (!display_model_view_lines(model, new_idx, 1U, &read_view, &line)) {
+        display_model_follow_tail(model);
+        return;
+    }
+    model->view.anchor.message_id = line[0].message_id;
+    model->view.anchor.subline_index = line[0].subline_index;
+    ttak_abstract_unmap(&read_view);
 }
 
 void display_model_follow_tail(display_model_t *model)

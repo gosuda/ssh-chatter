@@ -379,8 +379,6 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_wall_state_load(host);
     host_ui_language_state_load(host);
     host_vote_state_load(host);
-    host_bbs_state_load(host);
-    host->bbs_cache_loaded = host_bbs_storage_ready(host);
     host_ban_state_load(host);
     host_reply_state_load(host);
     host_rss_state_load(host);

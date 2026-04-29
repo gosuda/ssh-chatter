@@ -25,6 +25,7 @@
 #include <ctype.h>
 #include <time.h>
 
+#include "ssh_chatter/abstract_byte_buffer.h"
 #include "ssh_chatter/memory_manager.h"
 
 #define TRANSLATOR_MAX_RESPONSE 1 << 20
@@ -35,9 +36,46 @@
 #define TRANSLATOR_TOTAL_TIMEOUT_MS 15000L
 
 typedef struct translator_buffer {
-    char *data;
-    size_t length;
+    sshc_abstract_byte_buffer_t bytes;
 } translator_buffer_t;
+
+static void translator_buffer_init(translator_buffer_t *buffer)
+{
+    if (buffer == nullptr) {
+        return;
+    }
+    sshc_abstract_byte_buffer_init(&buffer->bytes);
+}
+
+static void translator_buffer_reset(translator_buffer_t *buffer)
+{
+    if (buffer == nullptr) {
+        return;
+    }
+    buffer->bytes.length = 0U;
+}
+
+static void translator_buffer_free(translator_buffer_t *buffer)
+{
+    if (buffer == nullptr) {
+        return;
+    }
+    sshc_abstract_byte_buffer_free(&buffer->bytes);
+}
+
+static bool translator_buffer_has_data(const translator_buffer_t *buffer)
+{
+    return buffer != nullptr && buffer->bytes.storage != nullptr;
+}
+
+static bool translator_buffer_map_read(translator_buffer_t *buffer,
+                                       sshc_abstract_byte_buffer_view_t *view)
+{
+    if (buffer == nullptr) {
+        return false;
+    }
+    return sshc_abstract_byte_buffer_map_cstr(&buffer->bytes, view);
+}
 
 typedef enum translator_provider {
     TRANSLATOR_PROVIDER_GEMINI,
@@ -1029,20 +1067,13 @@ static size_t translator_write_callback(void *contents, size_t size,
         return 0U;
     }
 
-    if (buffer->length + total + 1U > TRANSLATOR_MAX_RESPONSE) {
+    if (buffer->bytes.length + total + 1U > TRANSLATOR_MAX_RESPONSE) {
         return 0U;
     }
 
-    char *resized = sshc_gc_realloc(buffer->data, buffer->length + total + 1U);
-    if (resized == nullptr) {
-        return 0U;
-    }
-
-    buffer->data = resized;
-    memcpy(buffer->data + buffer->length, contents, total);
-    buffer->length += total;
-    buffer->data[buffer->length] = '\0';
-    return total;
+    return sshc_abstract_byte_buffer_append(&buffer->bytes, contents, total)
+               ? total
+               : 0U;
 }
 
 static char *translator_escape_string(const char *input)
@@ -1527,8 +1558,7 @@ static CURLcode translator_issue_gemini_request(
         return CURLE_FAILED_INIT;
     }
 
-    buffer->data = nullptr;
-    buffer->length = 0U;
+    translator_buffer_reset(buffer);
 
     long local_status = 0L;
     long *status_out = status != nullptr ? status : &local_status;
@@ -1626,8 +1656,7 @@ static CURLcode translator_issue_json_post(
         return CURLE_FAILED_INIT;
     }
 
-    buffer->data = nullptr;
-    buffer->length = 0U;
+    translator_buffer_reset(buffer);
 
     long local_status = 0L;
     long *status_out = status != nullptr ? status : &local_status;
@@ -1880,8 +1909,10 @@ static bool translator_try_gemini(const translator_candidate_t *candidate,
         return false;
     }
 
-    translator_buffer_t buffer = {0};
-    translator_buffer_t stream_buffer = {0};
+    translator_buffer_t buffer;
+    translator_buffer_t stream_buffer;
+    translator_buffer_init(&buffer);
+    translator_buffer_init(&stream_buffer);
     bool success = false;
     bool attempted_request = false;
     bool request_failed = false;
@@ -1901,12 +1932,16 @@ static bool translator_try_gemini(const translator_candidate_t *candidate,
             cancelled = true;
             translator_set_error("Translation canceled.");
         } else if (stream_result == CURLE_OK && stream_status >= 200L &&
-                   stream_status < 300L && stream_buffer.data != nullptr) {
-            if (translator_handle_payload(stream_buffer.data, translation,
+                   stream_status < 300L &&
+                   translator_buffer_has_data(&stream_buffer)) {
+            sshc_abstract_byte_buffer_view_t stream_view = {0};
+            if (translator_buffer_map_read(&stream_buffer, &stream_view) &&
+                translator_handle_payload(stream_view.data, translation,
                                           translation_len, detected_language,
                                           detected_len)) {
                 success = true;
             }
+            sshc_abstract_byte_buffer_unmap(&stream_view);
         }
     }
 
@@ -1927,13 +1962,17 @@ static bool translator_try_gemini(const translator_candidate_t *candidate,
                 *retryable = true;
             }
             request_failed = true;
-        } else if (status < 200L || status >= 300L || buffer.data == nullptr) {
+        } else if (status < 200L || status >= 300L ||
+                   !translator_buffer_has_data(&buffer)) {
             char message[256];
             message[0] = '\0';
-            if (buffer.data != nullptr) {
-                (void)translator_extract_json_value(buffer.data, "\"message\"",
-                                                    message, sizeof(message));
+            sshc_abstract_byte_buffer_view_t buffer_view = {0};
+            if (translator_buffer_map_read(&buffer, &buffer_view)) {
+                (void)translator_extract_json_value(buffer_view.data,
+                                                    "\"message\"", message,
+                                                    sizeof(message));
             }
+            sshc_abstract_byte_buffer_unmap(&buffer_view);
             const bool quota_like =
                 status == 429L ||
                 translator_string_contains_case_insensitive(message, "quota") ||
@@ -1964,12 +2003,17 @@ static bool translator_try_gemini(const translator_candidate_t *candidate,
                 translator_mark_quota_exhausted();
             }
             request_failed = true;
-        } else if (translator_handle_payload(buffer.data, translation,
-                                             translation_len, detected_language,
-                                             detected_len)) {
-            success = true;
         } else {
-            request_failed = true;
+            sshc_abstract_byte_buffer_view_t buffer_view = {0};
+            if (translator_buffer_map_read(&buffer, &buffer_view) &&
+                translator_handle_payload(buffer_view.data, translation,
+                                          translation_len,
+                                          detected_language, detected_len)) {
+                success = true;
+            } else {
+                request_failed = true;
+            }
+            sshc_abstract_byte_buffer_unmap(&buffer_view);
         }
     }
 
@@ -1984,12 +2028,8 @@ static bool translator_try_gemini(const translator_candidate_t *candidate,
         }
     }
 
-    if (stream_buffer.data != nullptr) {
-        sshc_gc_free(stream_buffer.data);
-    }
-    if (buffer.data != nullptr) {
-        sshc_gc_free(buffer.data);
-    }
+    translator_buffer_free(&stream_buffer);
+    translator_buffer_free(&buffer);
     curl_easy_cleanup(curl);
 
     return success;
@@ -2110,7 +2150,8 @@ static bool translator_try_gemini_eliza(const translator_candidate_t *candidate,
         return false;
     }
 
-    translator_buffer_t buffer = {0};
+    translator_buffer_t buffer;
+    translator_buffer_init(&buffer);
     long status = 0L;
     bool success = false;
     bool request_failed = false;
@@ -2125,13 +2166,16 @@ static bool translator_try_gemini_eliza(const translator_candidate_t *candidate,
             *retryable = true;
         }
         request_failed = true;
-    } else if (status < 200L || status >= 300L || buffer.data == nullptr) {
+    } else if (status < 200L || status >= 300L ||
+               !translator_buffer_has_data(&buffer)) {
         char message[256];
         message[0] = '\0';
-        if (buffer.data != nullptr) {
-            (void)translator_extract_json_value(buffer.data, "\"message\"",
+        sshc_abstract_byte_buffer_view_t buffer_view = {0};
+        if (translator_buffer_map_read(&buffer, &buffer_view)) {
+            (void)translator_extract_json_value(buffer_view.data, "\"message\"",
                                                 message, sizeof(message));
         }
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
 
         const bool quota_like =
             status == 429L ||
@@ -2164,13 +2208,18 @@ static bool translator_try_gemini_eliza(const translator_candidate_t *candidate,
             translator_mark_quota_exhausted();
         }
         request_failed = true;
-    } else if (!translator_extract_plaintext_response(buffer.data, reply,
-                                                      reply_len)) {
-        translator_set_error("Gemini response did not include text output.");
-        request_failed = true;
     } else {
-        translator_set_error(nullptr);
-        success = true;
+        sshc_abstract_byte_buffer_view_t buffer_view = {0};
+        if (!translator_buffer_map_read(&buffer, &buffer_view) ||
+            !translator_extract_plaintext_response(buffer_view.data, reply,
+                                                   reply_len)) {
+            translator_set_error("Gemini response did not include text output.");
+            request_failed = true;
+        } else {
+            translator_set_error(nullptr);
+            success = true;
+        }
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
     }
 
     if (success) {
@@ -2184,9 +2233,7 @@ static bool translator_try_gemini_eliza(const translator_candidate_t *candidate,
         }
     }
 
-    if (buffer.data != nullptr) {
-        sshc_gc_free(buffer.data);
-    }
+    translator_buffer_free(&buffer);
     curl_easy_cleanup(curl);
 
     return success;
@@ -2297,7 +2344,8 @@ translator_try_gemini_moderation(const translator_candidate_t *candidate,
         return false;
     }
 
-    translator_buffer_t buffer = {0};
+    translator_buffer_t buffer;
+    translator_buffer_init(&buffer);
     long status = 0L;
     CURLcode result = translator_issue_gemini_request(
         curl, api_url, api_key, body, false, nullptr, &buffer, &status);
@@ -2309,13 +2357,16 @@ translator_try_gemini_moderation(const translator_candidate_t *candidate,
         if (retryable != nullptr) {
             *retryable = true;
         }
-    } else if (status < 200L || status >= 300L || buffer.data == nullptr) {
+    } else if (status < 200L || status >= 300L ||
+               !translator_buffer_has_data(&buffer)) {
         char message[256];
         message[0] = '\0';
-        if (buffer.data != nullptr) {
-            (void)translator_extract_json_value(buffer.data, "\"message\"",
+        sshc_abstract_byte_buffer_view_t buffer_view = {0};
+        if (translator_buffer_map_read(&buffer, &buffer_view)) {
+            (void)translator_extract_json_value(buffer_view.data, "\"message\"",
                                                 message, sizeof(message));
         }
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
         if (status == 429L || status == 404L ||
             translator_string_contains_case_insensitive(message, "quota") ||
             translator_string_contains_case_insensitive(message, "limit") ||
@@ -2336,7 +2387,11 @@ translator_try_gemini_moderation(const translator_candidate_t *candidate,
                                  model_name);
         }
     } else {
-        char *payload = translator_extract_last_text_block(buffer.data);
+        sshc_abstract_byte_buffer_view_t buffer_view = {0};
+        char *payload = nullptr;
+        if (translator_buffer_map_read(&buffer, &buffer_view)) {
+            payload = translator_extract_last_text_block(buffer_view.data);
+        }
         if (payload == nullptr) {
             translator_set_error(
                 "Gemini moderation response did not include text output.");
@@ -2349,11 +2404,10 @@ translator_try_gemini_moderation(const translator_candidate_t *candidate,
             translator_set_error(nullptr);
             success = true;
         }
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
     }
 
-    if (buffer.data != nullptr) {
-        sshc_gc_free(buffer.data);
-    }
+    translator_buffer_free(&buffer);
     curl_easy_cleanup(curl);
 
     return success;
@@ -2393,7 +2447,8 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
     char *escaped_system = nullptr;
     char *body = nullptr;
     CURL *curl = nullptr;
-    translator_buffer_t buffer = {0};
+    translator_buffer_t buffer;
+    translator_buffer_init(&buffer);
     long status = 0L;
 
     const char *model_name =
@@ -2483,17 +2538,20 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
         if (retryable != nullptr) {
             *retryable = true;
         }
-    } else if (status < 200L || status >= 300L || buffer.data == nullptr) {
+    } else if (status < 200L || status >= 300L ||
+               !translator_buffer_has_data(&buffer)) {
         char message[256];
         message[0] = '\0';
-        if (buffer.data != nullptr) {
-            (void)translator_extract_json_value(buffer.data, "\"error\"",
+        sshc_abstract_byte_buffer_view_t buffer_view = {0};
+        if (translator_buffer_map_read(&buffer, &buffer_view)) {
+            (void)translator_extract_json_value(buffer_view.data, "\"error\"",
                                                 message, sizeof(message));
             if (message[0] == '\0') {
-                (void)translator_extract_json_value(buffer.data, "\"message\"",
+                (void)translator_extract_json_value(buffer_view.data, "\"message\"",
                                                     message, sizeof(message));
             }
         }
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
 
         if (retryable != nullptr && (status == 0L || status >= 500L)) {
             *retryable = true;
@@ -2512,8 +2570,10 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
     } else {
         char content[TRANSLATOR_MAX_RESPONSE];
         content[0] = '\0';
-        if (!translator_extract_json_value(buffer.data, "\"response\"", content,
-                                           sizeof(content))) {
+        sshc_abstract_byte_buffer_view_t buffer_view = {0};
+        if (!translator_buffer_map_read(&buffer, &buffer_view) ||
+            !translator_extract_json_value(buffer_view.data, "\"response\"",
+                                           content, sizeof(content))) {
             translator_set_error(
                 "Ollama response did not include translation content.");
         } else {
@@ -2538,12 +2598,11 @@ static bool translator_try_ollama(const translator_candidate_t *candidate,
                 success = true;
             }
         }
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
     }
 
 cleanup_translator_try_ollama:
-    if (buffer.data != nullptr) {
-        sshc_gc_free(buffer.data);
-    }
+    translator_buffer_free(&buffer);
     if (curl != nullptr) {
         curl_easy_cleanup(curl);
     }
@@ -2590,7 +2649,8 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
     char *escaped_system = nullptr;
     char *body = nullptr;
     CURL *curl = nullptr;
-    translator_buffer_t buffer = {0};
+    translator_buffer_t buffer;
+    translator_buffer_init(&buffer);
 
     const char *model_name =
         candidate->model != nullptr && candidate->model[0] != '\0'
@@ -2650,17 +2710,20 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
         if (retryable != nullptr) {
             *retryable = true;
         }
-    } else if (status < 200L || status >= 300L || buffer.data == nullptr) {
+    } else if (status < 200L || status >= 300L ||
+               !translator_buffer_has_data(&buffer)) {
         char message[256];
         message[0] = '\0';
-        if (buffer.data != nullptr) {
-            (void)translator_extract_json_value(buffer.data, "\"error\"",
+        sshc_abstract_byte_buffer_view_t buffer_view = {0};
+        if (translator_buffer_map_read(&buffer, &buffer_view)) {
+            (void)translator_extract_json_value(buffer_view.data, "\"error\"",
                                                 message, sizeof(message));
             if (message[0] == '\0') {
-                (void)translator_extract_json_value(buffer.data, "\"message\"",
+                (void)translator_extract_json_value(buffer_view.data, "\"message\"",
                                                     message, sizeof(message));
             }
         }
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
         if (status == 0L || status >= 500L) {
             if (retryable != nullptr) {
                 *retryable = true;
@@ -2676,8 +2739,10 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
     } else {
         char payload[TRANSLATOR_MAX_RESPONSE];
         payload[0] = '\0';
-        if (!translator_extract_json_value(buffer.data, "\"response\"", payload,
-                                           sizeof(payload))) {
+        sshc_abstract_byte_buffer_view_t buffer_view = {0};
+        if (!translator_buffer_map_read(&buffer, &buffer_view) ||
+            !translator_extract_json_value(buffer_view.data, "\"response\"",
+                                           payload, sizeof(payload))) {
             translator_set_error(
                 "Ollama response did not include text output.");
         } else {
@@ -2685,12 +2750,11 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
             translator_set_error(nullptr);
             success = true;
         }
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
     }
 
 cleanup_translator_try_ollama_eliza:
-    if (buffer.data != nullptr) {
-        sshc_gc_free(buffer.data);
-    }
+    translator_buffer_free(&buffer);
     if (curl != nullptr) {
         curl_easy_cleanup(curl);
     }
@@ -2732,7 +2796,8 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
     char *escaped_system = nullptr;
     char *body = nullptr;
     CURL *curl = nullptr;
-    translator_buffer_t buffer = {0};
+    translator_buffer_t buffer;
+    translator_buffer_init(&buffer);
 
     const char *model_name =
         candidate->model != nullptr && candidate->model[0] != '\0'
@@ -2818,17 +2883,20 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
         if (retryable != nullptr) {
             *retryable = true;
         }
-    } else if (status < 200L || status >= 300L || buffer.data == nullptr) {
+    } else if (status < 200L || status >= 300L ||
+               !translator_buffer_has_data(&buffer)) {
         char message[256];
         message[0] = '\0';
-        if (buffer.data != nullptr) {
-            (void)translator_extract_json_value(buffer.data, "\"error\"",
+        sshc_abstract_byte_buffer_view_t buffer_view = {0};
+        if (translator_buffer_map_read(&buffer, &buffer_view)) {
+            (void)translator_extract_json_value(buffer_view.data, "\"error\"",
                                                 message, sizeof(message));
             if (message[0] == '\0') {
-                (void)translator_extract_json_value(buffer.data, "\"message\"",
+                (void)translator_extract_json_value(buffer_view.data, "\"message\"",
                                                     message, sizeof(message));
             }
         }
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
         if (status == 0L || status >= 500L) {
             if (retryable != nullptr) {
                 *retryable = true;
@@ -2844,8 +2912,10 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
     } else {
         char payload[TRANSLATOR_MAX_RESPONSE];
         payload[0] = '\0';
-        if (!translator_extract_json_value(buffer.data, "\"response\"", payload,
-                                           sizeof(payload))) {
+        sshc_abstract_byte_buffer_view_t buffer_view = {0};
+        if (!translator_buffer_map_read(&buffer, &buffer_view) ||
+            !translator_extract_json_value(buffer_view.data, "\"response\"",
+                                           payload, sizeof(payload))) {
             translator_set_error(
                 "Ollama moderation response did not include text output.");
         } else {
@@ -2857,12 +2927,11 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
             translator_set_error(nullptr);
             success = true;
         }
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
     }
 
 cleanup_translator_try_ollama_moderation:
-    if (buffer.data != nullptr) {
-        sshc_gc_free(buffer.data);
-    }
+    translator_buffer_free(&buffer);
     if (curl != nullptr) {
         curl_easy_cleanup(curl);
     }

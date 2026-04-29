@@ -300,39 +300,49 @@ static void host_bbs_state_save_locked(host_t *host)
 
 static void host_bbs_state_load(host_t *host)
 {
+    if (host == nullptr) {
+        return;
+    }
+    host->bbs_cache_loaded = false;
     if (!host_bbs_storage_ready(host)) {
         return;
     }
 
     if (host->bbs_state_file_path[0] == '\0') {
+        host->bbs_cache_loaded = true;
         return;
     }
 
     if (!host_ensure_private_data_path(host, host->bbs_state_file_path,
                                        false)) {
+        host->bbs_cache_loaded = true;
         return;
     }
 
     FILE *fp = fopen(host->bbs_state_file_path, "rb");
     if (fp == nullptr) {
+        host->bbs_cache_loaded = true;
         return;
     }
 
     int fd = fileno(fp);
     if (fd < 0) {
         fclose(fp);
+        host->bbs_cache_loaded = true;
         return;
     }
 
     struct stat st;
     if (fstat(fd, &st) != 0 || st.st_size <= 0) {
         fclose(fp);
+        host->bbs_cache_loaded = true;
         return;
     }
 
     size_t mapped_len = (size_t)st.st_size;
     if (mapped_len < sizeof(bbs_state_header_t)) {
         fclose(fp);
+        host->bbs_cache_loaded = true;
         return;
     }
 
@@ -341,6 +351,7 @@ static void host_bbs_state_load(host_t *host)
     fclose(fp);
     fp = nullptr;
     if (mapped == MAP_FAILED) {
+        host->bbs_cache_loaded = true;
         return;
     }
 
@@ -355,12 +366,14 @@ static void host_bbs_state_load(host_t *host)
     if (header.magic != BBS_STATE_MAGIC) {
         memset(mapped, 0, mapped_len);
         munmap(mapped, mapped_len);
+        host->bbs_cache_loaded = true;
         return;
     }
 
     if (header.version == 0U || header.version > BBS_STATE_VERSION) {
         memset(mapped, 0, mapped_len);
         munmap(mapped, mapped_len);
+        host->bbs_cache_loaded = true;
         return;
     }
 
@@ -627,6 +640,7 @@ static void host_bbs_state_load(host_t *host)
     ttak_mutex_unlock(&host->lock);
     memset(mapped, 0, mapped_len);
     munmap(mapped, mapped_len);
+    host->bbs_cache_loaded = true;
 }
 
 static void host_bbs_watchdog_scan(host_t *host)

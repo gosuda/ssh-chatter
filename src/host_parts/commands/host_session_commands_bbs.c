@@ -11,6 +11,9 @@ static void bbs_format_time(time_t value, char *buffer, size_t length)
     strftime(buffer, length, "%Y-%m-%d %H:%M", &tm_value);
 }
 
+static bool host_bbs_acquire_storage(host_t *host);
+static void host_bbs_state_load(host_t *host);
+
 static bool bbs_post_has_required_fields(const bbs_post_t *post)
 {
     if (post == nullptr || !post->in_use) {
@@ -37,6 +40,20 @@ typedef struct bbs_listing {
     time_t created_at;
     time_t bumped_at;
 } bbs_listing_t;
+
+static bool session_bbs_ensure_live_storage(host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+    if (!host_bbs_acquire_storage(host)) {
+        return false;
+    }
+    if (!host->bbs_cache_loaded) {
+        host_bbs_state_load(host);
+    }
+    return host_bbs_storage_ready(host);
+}
 
 static bool session_bbs_read_serialized_entry(
     const unsigned char **cursor_ptr, size_t *remaining_ptr, uint32_t version,
@@ -340,6 +357,46 @@ static bool session_bbs_collect_listings_from_state(host_t *host,
     return true;
 }
 
+static bool session_bbs_collect_listings(host_t *host, bbs_listing_t *listings,
+                                         size_t *count)
+{
+    if (host == nullptr || listings == nullptr || count == nullptr) {
+        return false;
+    }
+
+    *count = 0U;
+    if (host_bbs_storage_ready(host) && host->bbs_cache_loaded) {
+        ttak_mutex_lock(&host->lock);
+        size_t capacity = host_bbs_loop_limit(host);
+        for (size_t idx = 0U;
+             idx < capacity && *count < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+            const bbs_post_t *post = &host->bbs_posts[idx];
+            if (!bbs_post_has_required_fields(post)) {
+                continue;
+            }
+
+            bbs_listing_t *entry = &listings[*count];
+            memset(entry, 0, sizeof(*entry));
+            entry->id = post->id;
+            entry->tag_count = post->tag_count;
+            entry->created_at = post->created_at;
+            entry->bumped_at = post->bumped_at;
+            snprintf(entry->title, sizeof(entry->title), "%s", post->title);
+            snprintf(entry->author, sizeof(entry->author), "%s",
+                     post->author);
+            for (size_t tag = 0U; tag < post->tag_count; ++tag) {
+                snprintf(entry->tags[tag], sizeof(entry->tags[tag]), "%s",
+                         post->tags[tag]);
+            }
+            *count += 1U;
+        }
+        ttak_mutex_unlock(&host->lock);
+        return true;
+    }
+
+    return session_bbs_collect_listings_from_state(host, listings, count);
+}
+
 static bool session_bbs_load_post_from_state(host_t *host, uint64_t id,
                                              bbs_post_t *post)
 {
@@ -407,6 +464,28 @@ static bool session_bbs_load_post_from_state(host_t *host, uint64_t id,
 
     munmap(mapped, mapped_len);
     return found;
+}
+
+static bool session_bbs_load_post(host_t *host, uint64_t id, bbs_post_t *post)
+{
+    if (host == nullptr || post == nullptr || id == 0U) {
+        return false;
+    }
+
+    memset(post, 0, sizeof(*post));
+    if (host_bbs_storage_ready(host) && host->bbs_cache_loaded) {
+        ttak_mutex_lock(&host->lock);
+        bbs_post_t *live = host_find_bbs_post_locked(host, id);
+        if (live != nullptr && live->in_use) {
+            *post = *live;
+        }
+        ttak_mutex_unlock(&host->lock);
+        if (post->in_use) {
+            return true;
+        }
+    }
+
+    return session_bbs_load_post_from_state(host, id, post);
 }
 
 // Return a post by identifier while the host lock is held.
@@ -527,19 +606,9 @@ static bool session_bbs_refresh_view(session_ctx_t *ctx)
     }
 
     host_t *host = ctx->owner;
-    if (!host_bbs_storage_ready(host)) {
-        session_send_system_line(ctx, "BBS storage is unavailable.");
-        return false;
-    }
-    ttak_mutex_lock(&host->lock);
-    bbs_post_t *post = host_find_bbs_post_locked(host, ctx->bbs_view_post_id);
     bbs_post_t snapshot = {0};
-    if (post != nullptr) {
-        snapshot = *post;
-    }
-    ttak_mutex_unlock(&host->lock);
-
-    if (post == nullptr || !snapshot.in_use) {
+    if (!session_bbs_load_post(host, ctx->bbs_view_post_id, &snapshot) ||
+        !snapshot.in_use) {
         ctx->bbs_view_active = false;
         ctx->bbs_view_post_id = 0U;
         ctx->bbs_view_total_lines = 0U;
@@ -662,7 +731,7 @@ static void session_bbs_list(session_ctx_t *ctx)
     size_t count = 0U;
 
     host_t *host = ctx->owner;
-    if (!session_bbs_collect_listings_from_state(host, listings, &count)) {
+    if (!session_bbs_collect_listings(host, listings, &count)) {
         session_send_system_line(ctx, "BBS storage is unavailable.");
         session_translation_pop_scope_override(ctx, previous_override);
         return;
@@ -821,7 +890,7 @@ static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
     size_t count = 0U;
 
     host_t *host = ctx->owner;
-    if (!session_bbs_collect_listings_from_state(host, listings, &count)) {
+    if (!session_bbs_collect_listings(host, listings, &count)) {
         session_send_system_line(ctx, "BBS storage is unavailable.");
         session_translation_pop_scope_override(ctx, previous_override);
         return;
@@ -933,7 +1002,7 @@ static void session_bbs_read(session_ctx_t *ctx, uint64_t id)
         return;
     }
 
-    if (!session_bbs_load_post_from_state(host, id, snapshot)) {
+    if (!session_bbs_load_post(host, id, snapshot)) {
         sshc_gc_free(snapshot);
         snapshot = nullptr;
         session_send_system_line(ctx, "No post exists with that identifier.");
@@ -1174,6 +1243,12 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
         session_bbs_reset_pending_post(ctx);
         return;
     }
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        session_bbs_reset_pending_post(ctx);
+        return;
+    }
 
     ttak_mutex_lock(&host->lock);
     bbs_post_t snapshot = {0};
@@ -1273,6 +1348,11 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
     ctx->bbs_view_post_id = 0U;
 
     if (ctx->owner == nullptr) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
+    if (!session_bbs_ensure_live_storage(ctx->owner)) {
         session_send_system_line(
             ctx, "The bulletin board is unavailable right now.");
         return;
@@ -1546,6 +1626,11 @@ static void session_bbs_begin_edit(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
     ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     bbs_post_t snapshot = {0};
@@ -1649,6 +1734,11 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
     }
 
     host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
     ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     if (post == nullptr || !post->in_use) {
@@ -1698,6 +1788,11 @@ static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
     ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     if (post == nullptr || !post->in_use) {
@@ -1731,6 +1826,11 @@ static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
     ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     if (post == nullptr || !post->in_use) {

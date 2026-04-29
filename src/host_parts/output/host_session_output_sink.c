@@ -333,6 +333,7 @@ void session_process_pending_sink(session_ctx_t *ctx)
                                       &current_frame);
         size_t current_count = session_describe_visible_frame(
             &current_frame, current_lines, SSH_CHATTER_SCROLLBACK_MAX_CHUNK);
+        display_model_release_visible(&current_frame);
         if (current_count > 0U) {
             ctx->output_buffer_length = buffer_mark;
             used_incremental_redraw = session_render_incremental_lines(

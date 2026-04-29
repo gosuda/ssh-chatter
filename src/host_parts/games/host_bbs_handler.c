@@ -20,12 +20,6 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    if (!host_bbs_storage_ready(ctx->owner)) {
-        session_send_system_line(ctx,
-                                 "BBS storage is currently unavailable.");
-        return;
-    }
-
     if (arguments == nullptr || *arguments == '\0') {
         session_bbs_show_dashboard(ctx);
         return;
@@ -167,4 +161,3 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
             ctx, "Unknown /bbs subcommand. Try /bbs for usage.");
     }
 }
-

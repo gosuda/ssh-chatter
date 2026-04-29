@@ -1,3 +1,4 @@
+#include "ssh_chatter/abstract_byte_buffer.h"
 
 static const uint32_t RSS_STATE_MAGIC = 0x52535331U; /* 'RSS1' */
 static const uint32_t RSS_STATE_VERSION = 2U;
@@ -691,8 +692,7 @@ static void host_rss_state_load(host_t *host)
 }
 
 typedef struct host_rss_buffer {
-    char *data;
-    size_t length;
+    sshc_abstract_byte_buffer_t bytes;
 } host_rss_buffer_t;
 
 static size_t host_rss_write_callback(void *contents, size_t size, size_t nmemb,
@@ -713,27 +713,18 @@ static size_t host_rss_write_callback(void *contents, size_t size, size_t nmemb,
         return 0U;
     }
 
-    if (buffer->length > SIZE_MAX - total - 1U) {
+    if (buffer->bytes.length > SIZE_MAX - total - 1U) {
         return 0U;
     }
 
-    const size_t next_length = buffer->length + total;
+    const size_t next_length = buffer->bytes.length + total;
     if (next_length > (size_t)SSH_CHATTER_RSS_DOWNLOAD_MAX_BYTES) {
         return 0U;
     }
 
-    char *resized = ttak_mem_realloc(buffer->data, next_length + 1U,
-                                     __TTAK_UNSAFE_MEM_FOREVER__,
-                                     ttak_get_tick_count());
-    if (resized == nullptr) {
-        return 0U;
-    }
-
-    buffer->data = resized;
-    memcpy(buffer->data + buffer->length, contents, total);
-    buffer->length = next_length;
-    buffer->data[buffer->length] = '\0';
-    return total;
+    return sshc_abstract_byte_buffer_append(&buffer->bytes, contents, total)
+               ? total
+               : 0U;
 }
 
 static bool host_rss_download(const char *url, char **payload, size_t *length)
@@ -758,6 +749,7 @@ static bool host_rss_download(const char *url, char **payload, size_t *length)
         }
 
         host_rss_buffer_t buffer = {0};
+        sshc_abstract_byte_buffer_init(&buffer.bytes);
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS,
                          (long)SSH_CHATTER_RSS_TRANSFER_TIMEOUT_MS);
@@ -774,22 +766,32 @@ static bool host_rss_download(const char *url, char **payload, size_t *length)
         if (result == CURLE_OK) {
             long status = 0;
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-            if (status >= 200L && status < 300L && buffer.data != nullptr) {
+            if (status >= 200L && status < 300L &&
+                buffer.bytes.storage != nullptr) {
                 if (payload != nullptr) {
-                    *payload = buffer.data;
+                    char *copy = (char *)ttak_mem_alloc(
+                        buffer.bytes.length + 1U,
+                        __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
+                    if (copy == nullptr ||
+                        !sshc_abstract_byte_buffer_copy_out(
+                            &buffer.bytes, copy, buffer.bytes.length + 1U)) {
+                        if (copy != nullptr) {
+                            ttak_mem_free(copy);
+                        }
+                    } else {
+                        *payload = copy;
+                    }
                 }
-                if (length != nullptr) {
-                    *length = buffer.length;
+                if (payload == nullptr || *payload != nullptr) {
+                    if (length != nullptr) {
+                        *length = buffer.bytes.length;
+                    }
+                    success = true;
                 }
-                buffer.data = nullptr;
-                success = true;
             }
         }
 
-        if (!success && buffer.data != nullptr) {
-            ttak_mem_free(buffer.data);
-        }
-
+        sshc_abstract_byte_buffer_free(&buffer.bytes);
         curl_easy_cleanup(curl);
     }
 

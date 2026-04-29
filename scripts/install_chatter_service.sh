@@ -88,6 +88,7 @@ Environment=CHATTER_BIND_ADDRESS=0.0.0.0
 Environment=CHATTER_PORT=2222
 Environment=CHATTER_MOTD_FILE=$CONFIG_DIR/motd
 Environment=CHATTER_HOST_KEY_DIR=$STATE_DIR
+Environment=CHATTER_STATE_DIR=$STATE_DIR
 Environment=CHATTER_EXTRA_ARGS=
 EnvironmentFile=-$CONFIG_DIR/chatter.env
 Restart=on-failure

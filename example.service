@@ -26,6 +26,7 @@ Environment=CHATTER_BIND_ADDRESS=0.0.0.0
 Environment=CHATTER_PORT=2222
 Environment=CHATTER_MOTD_FILE=/etc/ssh-chatter/motd
 Environment=CHATTER_HOST_KEY_DIR=/var/lib/ssh-chatter
+Environment=CHATTER_STATE_DIR=/var/lib/ssh-chatter
 Environment=CHATTER_EXTRA_ARGS=
 EnvironmentFile=-/etc/ssh-chatter/chatter.env
 # Security and capabilities

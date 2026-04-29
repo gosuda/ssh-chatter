@@ -103,6 +103,8 @@ static bool session_parse_color_arguments(char *working, char **tokens,
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "ssh_chatter/abstract_byte_buffer.h"
+
 static bool session_valid_ansi_256_sequence(const char *sequence)
 {
     if (sequence == NULL) {
@@ -1322,8 +1324,7 @@ static void session_handle_history(session_ctx_t *ctx, const char *arguments)
 }
 
 typedef struct session_weather_buffer {
-    char *data;
-    size_t length;
+    sshc_abstract_byte_buffer_t bytes;
 } session_weather_buffer_t;
 
 static size_t session_weather_write_callback(void *contents, size_t size,
@@ -1335,16 +1336,9 @@ static size_t session_weather_write_callback(void *contents, size_t size,
         return 0U;
     }
 
-    char *resized = sshc_gc_realloc(buffer->data, buffer->length + total + 1U);
-    if (resized == nullptr) {
-        return 0U;
-    }
-
-    buffer->data = resized;
-    memcpy(buffer->data + buffer->length, contents, total);
-    buffer->length += total;
-    buffer->data[buffer->length] = '\0';
-    return total;
+    return sshc_abstract_byte_buffer_append(&buffer->bytes, contents, total)
+               ? total
+               : 0U;
 }
 
 static bool session_fetch_weather_summary(const char *city,
@@ -1362,6 +1356,7 @@ static bool session_fetch_weather_summary(const char *city,
 
     bool success = false;
     session_weather_buffer_t buffer = {0};
+    sshc_abstract_byte_buffer_init(&buffer.bytes);
     char query[128];
     snprintf(query, sizeof(query), "%s", city);
 
@@ -1394,11 +1389,16 @@ static bool session_fetch_weather_summary(const char *city,
 
     long status = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-    if (status < 200L || status >= 300L || buffer.data == nullptr) {
+    if (status < 200L || status >= 300L || buffer.bytes.storage == nullptr) {
         goto cleanup;
     }
 
-    char *trimmed = buffer.data;
+    sshc_abstract_byte_buffer_view_t buffer_view = {0};
+    if (!sshc_abstract_byte_buffer_map_cstr(&buffer.bytes, &buffer_view)) {
+        goto cleanup;
+    }
+
+    char *trimmed = buffer_view.data;
     while (*trimmed != '\0' && isspace((unsigned char)*trimmed)) {
         ++trimmed;
     }
@@ -1408,13 +1408,16 @@ static bool session_fetch_weather_summary(const char *city,
     }
 
     if (trimmed[0] == '\0') {
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
         goto cleanup;
     }
 
     snprintf(summary, summary_len, "%s", trimmed);
     success = true;
+    sshc_abstract_byte_buffer_unmap(&buffer_view);
 
 cleanup:
+    sshc_abstract_byte_buffer_free(&buffer.bytes);
     curl_easy_cleanup(curl);
     return success;
 }

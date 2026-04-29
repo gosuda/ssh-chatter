@@ -165,7 +165,9 @@ static void session_detach_external_state(session_ctx_t *ctx)
                 if (had_snapshot) {
                     session_game_othello_sync_player_from_snapshot(
                         opponent, &snapshot, opponent_index, -1, false);
-                    opponent->game.othello.game_over = true;
+                    if (opponent->game.othello != nullptr) {
+                        opponent->game.othello->game_over = true;
+                    }
                 }
                 session_game_suspend(opponent,
                                      "Opponent disconnected. Game ended.");
@@ -196,6 +198,14 @@ static void session_cleanup(session_ctx_t *ctx)
     session_tetris_buffers_release(ctx);
     session_game_release_tetris(ctx);
     session_game_release_saved_tetris(ctx);
+    session_game_release_liar(ctx);
+    session_game_release_saved_liar(ctx);
+    session_game_release_alpha(ctx);
+    session_game_release_saved_alpha(ctx);
+    session_game_release_othello(ctx);
+    session_game_release_saved_othello(ctx);
+    session_game_release_gonu(ctx);
+    session_game_release_saved_gonu(ctx);
     session_safe_free((void **)&ctx->scrollback_buffer);
     ctx->scrollback_buffer_capacity = 0U;
     session_release_interaction_state(ctx);
@@ -958,7 +968,8 @@ static void *session_thread(void *arg)
                 } else if (ctx->game.active) {
                     bool handled = false;
                     if (ctx->game.type == SESSION_GAME_OTHELLO &&
-                        ctx->game.othello.multiplayer) {
+                        ctx->game.othello != nullptr &&
+                        ctx->game.othello->multiplayer) {
                         handled = session_game_othello_handle_forced_exit(ctx);
                     }
                     if (!handled) {

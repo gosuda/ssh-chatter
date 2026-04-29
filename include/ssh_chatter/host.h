@@ -50,6 +50,7 @@
 #define SSH_CHATTER_INPUT_HISTORY_LIMIT 32
 #define SSH_CHATTER_SCROLLBACK_CHUNK 30
 #define SSH_CHATTER_SCROLLBACK_MAX_CHUNK 64
+#define SSH_CHATTER_TOPOLOGY_LEN 256
 #define MSG_SHOULDSINK 0x1U
 #define SSH_CHATTER_MAX_PREFERENCES 1024
 #define SSH_CHATTER_ATTACHMENT_TARGET_LEN 256
@@ -241,6 +242,7 @@ typedef struct chat_history_entry {
     char username[SSH_CHATTER_USERNAME_LEN];
     char raw_username[SSH_CHATTER_USERNAME_LEN];
     char user_ip[SSH_CHATTER_IP_LEN];
+    char user_topology[SSH_CHATTER_TOPOLOGY_LEN];
     char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
     char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
     bool user_is_bold;
@@ -495,15 +497,15 @@ typedef struct session_game_state {
     tetris_game_state_t *tetris;
     bool is_camouflaged;
     tetris_game_state_t *saved_tetris_state;
-    liar_game_state_t saved_liar_state;
-    alpha_centauri_game_state_t saved_alpha_state;
-    othello_game_state_t saved_othello_state;
-    gonu_game_state_t saved_gonu_state;
+    liar_game_state_t *saved_liar_state;
+    alpha_centauri_game_state_t *saved_alpha_state;
+    othello_game_state_t *saved_othello_state;
+    gonu_game_state_t *saved_gonu_state;
     char chosen_camouflage_language[SSH_CHATTER_CAMOUFLAGE_LANGUAGE_LEN];
-    liar_game_state_t liar;
-    alpha_centauri_game_state_t alpha;
-    othello_game_state_t othello;
-    gonu_game_state_t gonu;
+    liar_game_state_t *liar;
+    alpha_centauri_game_state_t *alpha;
+    othello_game_state_t *othello;
+    gonu_game_state_t *gonu;
     uint64_t rng_state;
     bool rng_seeded;
     unsigned tetris_render_count;

@@ -1190,12 +1190,19 @@ static void session_handle_delete_message(session_ctx_t *ctx,
         }
 
         const bool name_match = strcasecmp(entry.username, ctx->user.name) == 0;
+        char current_topology[SSH_CHATTER_TOPOLOGY_LEN];
+        session_build_network_topology_key(ctx, current_topology,
+                                           sizeof(current_topology));
         const bool ip_match = entry.user_ip[0] != '\0' &&
                               ctx->client_ip[0] != '\0' &&
                               strcmp(entry.user_ip, ctx->client_ip) == 0;
-        if (!(name_match && ip_match)) {
+        const bool topology_match =
+            entry.user_topology[0] != '\0' && current_topology[0] != '\0' &&
+            strcmp(entry.user_topology, current_topology) == 0;
+        if (!(name_match && (ip_match || topology_match))) {
             session_send_system_line(
-                ctx, "You can only delete your own messages from this IP.");
+                ctx, "You can only delete your own messages from the same "
+                     "connection topology.");
             return;
         }
     }

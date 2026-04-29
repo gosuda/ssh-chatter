@@ -283,14 +283,12 @@ void session_process_pending_sink(session_ctx_t *ctx)
         return;
     }
 
-    size_t start_index = ctx->last_sink_history_total;
-    if (start_index > total) {
-        start_index = total;
+    size_t visible_messages = session_scrollback_line_capacity(ctx);
+    if (visible_messages == 0U) {
+        visible_messages = 1U;
     }
-    if (start_index == total) {
-        ctx->pending_should_sink = false;
-        return;
-    }
+    size_t start_index = (total > visible_messages) ? (total - visible_messages)
+                                                    : 0U;
     size_t chunk = total - start_index;
     size_t buffer_capacity = 0U;
     chat_history_entry_t *buffer =
@@ -422,4 +420,3 @@ void session_clear_pending_sink(session_ctx_t *ctx)
 
     ctx->pending_should_sink = false;
 }
-

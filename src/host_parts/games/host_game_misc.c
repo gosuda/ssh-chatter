@@ -47,18 +47,36 @@ static void session_game_toggle_camouflage(session_ctx_t *ctx)
             session_enable_alternate_screen(ctx);
             session_game_tetris_render(ctx);
         } else if (ctx->game.type == SESSION_GAME_LIARGAME) {
-            ctx->game.liar = ctx->game.saved_liar_state;
-            session_game_liar_present_round(ctx);
+            liar_game_state_t *live = session_game_ensure_liar(ctx);
+            liar_game_state_t *saved = session_game_ensure_saved_liar(ctx);
+            if (live != nullptr && saved != nullptr) {
+                *live = *saved;
+                session_game_liar_present_round(ctx);
+            }
         } else if (ctx->game.type == SESSION_GAME_ALPHA) {
-            ctx->game.alpha = ctx->game.saved_alpha_state;
-            session_game_alpha_present_stage(ctx);
+            alpha_centauri_game_state_t *live = session_game_ensure_alpha(ctx);
+            alpha_centauri_game_state_t *saved =
+                session_game_ensure_saved_alpha(ctx);
+            if (live != nullptr && saved != nullptr) {
+                *live = *saved;
+                session_game_alpha_present_stage(ctx);
+            }
         } else if (ctx->game.type == SESSION_GAME_OTHELLO) {
-            ctx->game.othello = ctx->game.saved_othello_state;
-            session_game_othello_render(ctx);
-            session_game_othello_prepare_next_turn(ctx);
+            othello_game_state_t *live = session_game_ensure_othello(ctx);
+            othello_game_state_t *saved =
+                session_game_ensure_saved_othello(ctx);
+            if (live != nullptr && saved != nullptr) {
+                *live = *saved;
+                session_game_othello_render(ctx);
+                session_game_othello_prepare_next_turn(ctx);
+            }
         } else if (ctx->game.type == SESSION_GAME_GONU) {
-            ctx->game.gonu = ctx->game.saved_gonu_state;
-            session_game_gonu_render(ctx);
+            gonu_game_state_t *live = session_game_ensure_gonu(ctx);
+            gonu_game_state_t *saved = session_game_ensure_saved_gonu(ctx);
+            if (live != nullptr && saved != nullptr) {
+                *live = *saved;
+                session_game_gonu_render(ctx);
+            }
         }
         return;
     }
@@ -78,13 +96,29 @@ static void session_game_toggle_camouflage(session_ctx_t *ctx)
         }
         session_disable_alternate_screen(ctx);
     } else if (ctx->game.type == SESSION_GAME_LIARGAME) {
-        ctx->game.saved_liar_state = ctx->game.liar;
+        liar_game_state_t *live = ctx->game.liar;
+        liar_game_state_t *saved = session_game_ensure_saved_liar(ctx);
+        if (live != nullptr && saved != nullptr) {
+            *saved = *live;
+        }
     } else if (ctx->game.type == SESSION_GAME_ALPHA) {
-        ctx->game.saved_alpha_state = ctx->game.alpha;
+        alpha_centauri_game_state_t *live = ctx->game.alpha;
+        alpha_centauri_game_state_t *saved = session_game_ensure_saved_alpha(ctx);
+        if (live != nullptr && saved != nullptr) {
+            *saved = *live;
+        }
     } else if (ctx->game.type == SESSION_GAME_OTHELLO) {
-        ctx->game.saved_othello_state = ctx->game.othello;
+        othello_game_state_t *live = ctx->game.othello;
+        othello_game_state_t *saved = session_game_ensure_saved_othello(ctx);
+        if (live != nullptr && saved != nullptr) {
+            *saved = *live;
+        }
     } else if (ctx->game.type == SESSION_GAME_GONU) {
-        ctx->game.saved_gonu_state = ctx->game.gonu;
+        gonu_game_state_t *live = ctx->game.gonu;
+        gonu_game_state_t *saved = session_game_ensure_saved_gonu(ctx);
+        if (live != nullptr && saved != nullptr) {
+            *saved = *live;
+        }
     }
 
     session_clear_screen(ctx);
@@ -161,9 +195,16 @@ static void session_game_start_liargame(session_ctx_t *ctx)
     ctx->game.type = SESSION_GAME_LIARGAME;
     ctx->game.active = true;
     ctx->game.is_camouflaged = false;
-    ctx->game.liar.round_number = 0U;
-    ctx->game.liar.score = 0U;
-    ctx->game.liar.awaiting_guess = false;
+    liar_game_state_t *state = session_game_ensure_liar(ctx);
+    if (state == nullptr) {
+        session_send_system_line(ctx, "Unable to allocate liar game state.");
+        ctx->game.active = false;
+        ctx->game.type = SESSION_GAME_NONE;
+        return;
+    }
+    state->round_number = 0U;
+    state->score = 0U;
+    state->awaiting_guess = false;
     session_send_system_line(ctx, "");
     session_send_system_line(ctx, "Liar Game started. Guess which statement is "
                                   "the lie by typing 1, 2, or 3.");
@@ -185,15 +226,21 @@ static void session_game_liar_present_round(session_ctx_t *ctx)
 
     unsigned index =
         (unsigned)session_game_random_range(ctx, (int)prompt_count);
-    ctx->game.liar.current_prompt_index = index;
-    ctx->game.liar.liar_index = LIAR_PROMPTS[index].liar_index % 3U;
-    ctx->game.liar.round_number += 1U;
-    ctx->game.liar.awaiting_guess = true;
+    liar_game_state_t *state = ctx->game.liar;
+    if (state == nullptr) {
+        session_game_suspend(ctx, "Liar game state is unavailable.");
+        return;
+    }
+
+    state->current_prompt_index = index;
+    state->liar_index = LIAR_PROMPTS[index].liar_index % 3U;
+    state->round_number += 1U;
+    state->awaiting_guess = true;
 
     session_render_separator(ctx, "Liar Game");
     char header[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(header, sizeof(header), "Round %u - which statement is the lie?",
-             ctx->game.liar.round_number);
+             state->round_number);
     session_send_system_line(ctx, header);
 
     const liar_prompt_t *prompt = &LIAR_PROMPTS[index];
@@ -214,7 +261,11 @@ static void session_game_liar_handle_line(session_ctx_t *ctx, const char *line)
         return;
     }
 
-    liar_game_state_t *state = &ctx->game.liar;
+    liar_game_state_t *state = ctx->game.liar;
+    if (state == nullptr) {
+        session_game_suspend(ctx, "Liar game state is unavailable.");
+        return;
+    }
     char command[32];
     if (line == nullptr) {
         command[0] = '\0';

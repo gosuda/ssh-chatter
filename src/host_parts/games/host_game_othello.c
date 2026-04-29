@@ -173,7 +173,7 @@ static void session_game_othello_sync_player_from_snapshot(
     player->game.type = SESSION_GAME_OTHELLO;
     player->game.is_camouflaged = false;
 
-    othello_game_state_t *state = &player->game.othello;
+    othello_game_state_t *state = player->game.othello;
     session_game_othello_copy_core(state, snapshot);
     state->awaiting_mode_selection = false;
     state->multiplayer = true;
@@ -280,7 +280,7 @@ static void host_othello_try_promote_queue_locked(host_t *host)
         queued->game.active = true;
         queued->game.type = SESSION_GAME_OTHELLO;
         queued->game.is_camouflaged = false;
-        othello_game_state_t *state = &queued->game.othello;
+        othello_game_state_t *state = queued->game.othello;
         session_game_othello_copy_core(state, &slot->state);
         state->awaiting_mode_selection = false;
         state->multiplayer = true;
@@ -350,7 +350,9 @@ static void session_game_othello_finish_multiplayer(
         }
         session_game_othello_sync_player_from_snapshot(player, &snapshot, idx,
                                                        -1, false);
-        player->game.othello.game_over = true;
+        if (player->game.othello != nullptr) {
+            player->game.othello->game_over = true;
+        }
         session_game_suspend(player, reasons[idx]);
     }
 }
@@ -443,7 +445,7 @@ static void session_game_othello_handle_line_multiplayer(session_ctx_t *ctx,
         return;
     }
 
-    othello_game_state_t *session_state = &ctx->game.othello;
+    othello_game_state_t *session_state = ctx->game.othello;
     host_t *host = ctx->owner;
 
     if (session_state->awaiting_opponent) {
@@ -744,7 +746,7 @@ bool session_game_othello_handle_forced_exit(session_ctx_t *ctx)
         return false;
     }
 
-    othello_game_state_t *state = &ctx->game.othello;
+    othello_game_state_t *state = ctx->game.othello;
     if (!state->multiplayer || state->slot_index <= 0) {
         return false;
     }
@@ -814,7 +816,7 @@ static void session_game_othello_render(session_ctx_t *ctx)
         return;
     }
 
-    othello_game_state_t *state = &ctx->game.othello;
+    othello_game_state_t *state = ctx->game.othello;
     session_game_othello_count_scores(state, &state->red_score,
                                       &state->green_score);
 
@@ -852,8 +854,10 @@ static void session_game_othello_render(session_ctx_t *ctx)
     const char *red_label = "Red";
     const char *green_label = "Green";
     if (state->multiplayer) {
-        bool is_player_one = ctx->game.othello.player_number == 1U;
-        bool is_player_two = ctx->game.othello.player_number == 2U;
+        bool is_player_one =
+            ctx->game.othello != nullptr && ctx->game.othello->player_number == 1U;
+        bool is_player_two =
+            ctx->game.othello != nullptr && ctx->game.othello->player_number == 2U;
         red_label = is_player_one ? "1P (You)" : "1P";
         green_label = is_player_two ? "2P (You)" : "2P";
     }
@@ -896,7 +900,7 @@ static void session_game_othello_finish(session_ctx_t *ctx, const char *reason)
         return;
     }
 
-    othello_game_state_t *state = &ctx->game.othello;
+    othello_game_state_t *state = ctx->game.othello;
     if (!state->game_over) {
         session_game_othello_count_scores(state, &state->red_score,
                                           &state->green_score);
@@ -937,7 +941,7 @@ static void session_game_othello_prepare_next_turn(session_ctx_t *ctx)
         return;
     }
 
-    othello_game_state_t *state = &ctx->game.othello;
+    othello_game_state_t *state = ctx->game.othello;
     if (state->game_over) {
         return;
     }
@@ -949,7 +953,7 @@ static void session_game_othello_prepare_next_turn(session_ctx_t *ctx)
             return;
         }
 
-        if (ctx->game.othello.player_number == 0U) {
+        if (ctx->game.othello == nullptr || ctx->game.othello->player_number == 0U) {
             session_send_system_line(ctx,
                                      "Waiting for multiplayer assignment.");
             return;
@@ -960,7 +964,8 @@ static void session_game_othello_prepare_next_turn(session_ctx_t *ctx)
                                      "Enter your move (e.g., d3). Type 'pass' "
                                      "if no moves.");
         } else {
-            if (ctx->game.othello.player_number == 1U) {
+            if (ctx->game.othello != nullptr &&
+                ctx->game.othello->player_number == 1U) {
                 session_send_system_line(ctx, "Waiting for 2P's move.");
             } else {
                 session_send_system_line(ctx, "Waiting for 1P's move.");
@@ -1017,7 +1022,7 @@ static void session_game_othello_handle_ai_turn(session_ctx_t *ctx)
         return;
     }
 
-    othello_game_state_t *state = &ctx->game.othello;
+    othello_game_state_t *state = ctx->game.othello;
     if (state->multiplayer) {
         return;
     }
@@ -1125,7 +1130,7 @@ static void session_game_othello_handle_line(session_ctx_t *ctx,
         return;
     }
 
-    othello_game_state_t *state = &ctx->game.othello;
+    othello_game_state_t *state = ctx->game.othello;
 
     char working[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(working, sizeof(working), "%s", line);
@@ -1412,9 +1417,14 @@ static void session_game_start_othello(session_ctx_t *ctx)
     ctx->game.type = SESSION_GAME_OTHELLO;
     ctx->game.is_camouflaged = false;
     session_game_seed_rng(ctx);
-    session_game_othello_reset_state(&ctx->game.othello);
-    ctx->game.othello.awaiting_mode_selection = true;
-    ctx->game.othello.player_turn = false;
+    othello_game_state_t *state = session_game_ensure_othello(ctx);
+    if (state == nullptr) {
+        session_send_system_line(ctx, "Unable to allocate Othello state.");
+        return;
+    }
+    session_game_othello_reset_state(state);
+    state->awaiting_mode_selection = true;
+    state->player_turn = false;
     session_send_system_line(ctx, "");
     session_send_system_line(
         ctx,
@@ -1520,7 +1530,8 @@ static void session_othello_accept_game(session_ctx_t *ctx, unsigned slot_id)
     session_ctx_t *creator = slot->players[0];
     if (creator == nullptr || creator->owner != host ||
         creator->game.type != SESSION_GAME_OTHELLO ||
-        !creator->game.othello.multiplayer) {
+        creator->game.othello == nullptr ||
+        !creator->game.othello->multiplayer) {
         host_othello_release_slot_locked(host, slot);
         ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "That game is no longer available.");

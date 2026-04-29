@@ -1777,6 +1777,8 @@ static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
     snprintf(entry->raw_username, sizeof(entry->raw_username), "%s",
              raw_username);
     snprintf(entry->user_ip, sizeof(entry->user_ip), "%s", from->client_ip);
+    session_build_network_topology_key(from, entry->user_topology,
+                                       sizeof(entry->user_topology));
     if (from->user_color_code[0] != '\0') {
         snprintf(entry->user_color_code, sizeof(entry->user_color_code), "%s",
                  from->user_color_code);

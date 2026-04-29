@@ -647,3 +647,177 @@ void session_game_release_saved_tetris(session_ctx_t *ctx)
     }
     session_safe_free((void **)&ctx->game.saved_tetris_state);
 }
+
+liar_game_state_t *session_game_ensure_liar(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.liar == nullptr) {
+        ctx->game.liar =
+            (liar_game_state_t *)sshc_gc_calloc(1U, sizeof(*ctx->game.liar));
+    }
+    return ctx->game.liar;
+}
+
+liar_game_state_t *session_game_ensure_saved_liar(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.saved_liar_state == nullptr) {
+        ctx->game.saved_liar_state = (liar_game_state_t *)sshc_gc_calloc(
+            1U, sizeof(*ctx->game.saved_liar_state));
+    }
+    return ctx->game.saved_liar_state;
+}
+
+void session_game_release_liar(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.liar);
+}
+
+void session_game_release_saved_liar(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.saved_liar_state);
+}
+
+alpha_centauri_game_state_t *session_game_ensure_alpha(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.alpha == nullptr) {
+        ctx->game.alpha = (alpha_centauri_game_state_t *)sshc_gc_calloc(
+            1U, sizeof(*ctx->game.alpha));
+    }
+    return ctx->game.alpha;
+}
+
+alpha_centauri_game_state_t *session_game_ensure_saved_alpha(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.saved_alpha_state == nullptr) {
+        ctx->game.saved_alpha_state =
+            (alpha_centauri_game_state_t *)sshc_gc_calloc(
+                1U, sizeof(*ctx->game.saved_alpha_state));
+    }
+    return ctx->game.saved_alpha_state;
+}
+
+void session_game_release_alpha(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.alpha);
+}
+
+void session_game_release_saved_alpha(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.saved_alpha_state);
+}
+
+othello_game_state_t *session_game_ensure_othello(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.othello == nullptr) {
+        ctx->game.othello = (othello_game_state_t *)sshc_gc_calloc(
+            1U, sizeof(*ctx->game.othello));
+        if (ctx->game.othello != nullptr) {
+            ctx->game.othello->slot_index = -1;
+        }
+    }
+    return ctx->game.othello;
+}
+
+othello_game_state_t *session_game_ensure_saved_othello(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.saved_othello_state == nullptr) {
+        ctx->game.saved_othello_state =
+            (othello_game_state_t *)sshc_gc_calloc(
+                1U, sizeof(*ctx->game.saved_othello_state));
+        if (ctx->game.saved_othello_state != nullptr) {
+            ctx->game.saved_othello_state->slot_index = -1;
+        }
+    }
+    return ctx->game.saved_othello_state;
+}
+
+void session_game_release_othello(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.othello);
+}
+
+void session_game_release_saved_othello(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.saved_othello_state);
+}
+
+gonu_game_state_t *session_game_ensure_gonu(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.gonu == nullptr) {
+        ctx->game.gonu =
+            (gonu_game_state_t *)sshc_gc_calloc(1U, sizeof(*ctx->game.gonu));
+        if (ctx->game.gonu != nullptr) {
+            ctx->game.gonu->slot_index = -1;
+        }
+    }
+    return ctx->game.gonu;
+}
+
+gonu_game_state_t *session_game_ensure_saved_gonu(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.saved_gonu_state == nullptr) {
+        ctx->game.saved_gonu_state = (gonu_game_state_t *)sshc_gc_calloc(
+            1U, sizeof(*ctx->game.saved_gonu_state));
+        if (ctx->game.saved_gonu_state != nullptr) {
+            ctx->game.saved_gonu_state->slot_index = -1;
+        }
+    }
+    return ctx->game.saved_gonu_state;
+}
+
+void session_game_release_gonu(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.gonu);
+}
+
+void session_game_release_saved_gonu(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.saved_gonu_state);
+}

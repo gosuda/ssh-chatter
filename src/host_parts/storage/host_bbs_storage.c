@@ -1,22 +1,56 @@
 
+static bool host_path_is_absolute(const char *path)
+{
+    return path != nullptr && path[0] == '/';
+}
+
+static void host_resolve_state_path(char *output, size_t output_size,
+                                    const char *override_env,
+                                    const char *default_name,
+                                    const char *log_component)
+{
+    if (output == nullptr || output_size == 0U || default_name == nullptr ||
+        log_component == nullptr) {
+        return;
+    }
+
+    const char *configured = nullptr;
+    if (override_env != nullptr && override_env[0] != '\0') {
+        configured = getenv(override_env);
+    }
+
+    if (configured == nullptr || configured[0] == '\0') {
+        configured = default_name;
+    }
+
+    const char *state_dir = getenv("CHATTER_STATE_DIR");
+    bool use_state_dir = state_dir != nullptr && state_dir[0] != '\0' &&
+                         !host_path_is_absolute(configured);
+
+    int written = 0;
+    if (use_state_dir) {
+        written =
+            snprintf(output, output_size, "%s/%s", state_dir, configured);
+    } else {
+        written = snprintf(output, output_size, "%s", configured);
+    }
+
+    if (written < 0 || (size_t)written >= output_size) {
+        humanized_log_error(log_component, "bbs state file path is too long",
+                            ENAMETOOLONG);
+        output[0] = '\0';
+    }
+}
+
 static void host_bbs_resolve_path(host_t *host)
 {
     if (host == nullptr) {
         return;
     }
 
-    const char *bbs_path = getenv("CHATTER_BBS_FILE");
-    if (bbs_path == nullptr || bbs_path[0] == '\0') {
-        bbs_path = "bbs_state.dat";
-    }
-
-    int written = snprintf(host->bbs_state_file_path,
-                           sizeof(host->bbs_state_file_path), "%s", bbs_path);
-    if (written < 0 || (size_t)written >= sizeof(host->bbs_state_file_path)) {
-        humanized_log_error("host", "bbs state file path is too long",
-                            ENAMETOOLONG);
-        host->bbs_state_file_path[0] = '\0';
-    }
+    host_resolve_state_path(host->bbs_state_file_path,
+                            sizeof(host->bbs_state_file_path),
+                            "CHATTER_BBS_FILE", "bbs_state.dat", "bbs");
 }
 
 static size_t host_column_reset_sequence_length(const char *text)

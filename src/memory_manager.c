@@ -44,6 +44,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <ttak/ht/map.h>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 typedef struct sshc_memory_allocation {
     void *ptr;
@@ -709,6 +712,27 @@ void sshc_memory_context_epoch_gc_rotate(sshc_memory_context_t *ctx)
 {
     if (ctx == nullptr) return;
     ttak_epoch_gc_rotate(&ctx->epoch_gc);
+}
+
+void sshc_memory_context_collect(sshc_memory_context_t *ctx,
+                                 unsigned int rotate_passes)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (rotate_passes == 0U) {
+        rotate_passes = 1U;
+    }
+
+    for (unsigned int pass = 0U; pass < rotate_passes; ++pass) {
+        ttak_epoch_gc_rotate(&ctx->epoch_gc);
+        ttak_epoch_reclaim();
+    }
+
+#if defined(__GLIBC__)
+    (void)malloc_trim(0);
+#endif
 }
 
 void sshc_gc_init(void) 

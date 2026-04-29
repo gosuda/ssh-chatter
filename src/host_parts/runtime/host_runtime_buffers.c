@@ -45,6 +45,8 @@ typedef struct sshc_bbs_cold_meta {
     uint64_t next_bbs_id;
 } sshc_bbs_cold_meta_t;
 
+#define SESSION_IDLE_OPTIONAL_RELEASE_SECONDS 30.0
+
 static void session_lz4_blob_discard(sshc_lz4_blob_t *blob)
 {
     if (blob == nullptr) {
@@ -796,6 +798,64 @@ void session_scrollback_buffer_release(session_ctx_t *ctx)
 
     session_safe_free((void **)&ctx->scrollback_buffer);
     ctx->scrollback_buffer_capacity = 0U;
+}
+
+bool session_release_optional_buffers_if_idle(session_ctx_t *ctx,
+                                              const struct timespec *now)
+{
+    if (ctx == nullptr || now == nullptr || ctx->memory_context == nullptr) {
+        return false;
+    }
+
+    if (ctx->lifetime_has_activity &&
+        session_timespec_elapsed_seconds(now, &ctx->lifetime_last_activity) <
+            SESSION_IDLE_OPTIONAL_RELEASE_SECONDS) {
+        return false;
+    }
+
+    bool released = false;
+
+    if (!ctx->asciiart_pending && ctx->asciiart_buffer != nullptr) {
+        session_asciiart_buffer_release(ctx);
+        released = true;
+    }
+
+    if (!ctx->bbs_post_pending && !ctx->bbs_view_active) {
+        if (ctx->bbs_view_notice != nullptr) {
+            session_bbs_view_notice_release(ctx);
+            released = true;
+        }
+    }
+
+    if (!ctx->game.active || ctx->game.type != SESSION_GAME_TETRIS) {
+        if (ctx->tetris_screen_buffer != nullptr ||
+            ctx->tetris_prev_screen_buffer != nullptr) {
+            session_tetris_buffers_release(ctx);
+            released = true;
+        }
+    }
+
+    if (ctx->history_scroll_position == 0U &&
+        ctx->scrollback_buffer != nullptr) {
+        session_scrollback_buffer_release(ctx);
+        released = true;
+    }
+
+    if (!ctx->in_rss_mode && ctx->rss_view.items != nullptr) {
+        ttak_mem_free(ctx->rss_view.items);
+        ctx->rss_view.items = nullptr;
+        ctx->rss_view.active = false;
+        ctx->rss_view.tag[0] = '\0';
+        ctx->rss_view.item_count = 0U;
+        ctx->rss_view.cursor = 0U;
+        released = true;
+    }
+
+    if (released) {
+        sshc_memory_context_collect(ctx->memory_context, 2U);
+    }
+
+    return released;
 }
 
 bool session_tetris_buffers_acquire(session_ctx_t *ctx)

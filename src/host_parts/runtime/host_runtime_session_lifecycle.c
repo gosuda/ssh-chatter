@@ -34,10 +34,8 @@ static bool session_attempt_handshake_restart(session_ctx_t *ctx,
 static void session_drain_reclamation(sshc_memory_context_t *memory_context,
                                       host_t *owner)
 {
-    for (unsigned int pass = 0U; pass < SESSION_GC_ROTATE_PASSES; ++pass) {
-        if (memory_context != nullptr) {
-            sshc_memory_context_epoch_gc_rotate(memory_context);
-        }
+    if (memory_context != nullptr) {
+        sshc_memory_context_collect(memory_context, SESSION_GC_ROTATE_PASSES);
     }
 
     if (owner != nullptr) {
@@ -51,7 +49,6 @@ static void session_drain_reclamation(sshc_memory_context_t *memory_context,
             host_sleep_uninterruptible(&pause);
         }
     }
-
 }
 
 static void session_release_interaction_state(session_ctx_t *ctx)
@@ -254,9 +251,6 @@ static void session_destroy(session_ctx_t *ctx)
     session_runtime_unbind(ctx);
     session_detach_external_state(ctx);
     session_drain_reclamation(ctx->memory_context, ctx->owner);
-#if defined(__GLIBC__)
-    (void)malloc_trim(0);
-#endif
     session_manual_free(ctx);
 }
 
@@ -739,6 +733,7 @@ static void *session_thread(void *arg)
         if (session_enforce_lifetime(ctx, &lifetime_now)) {
             break;
         }
+        (void)session_release_optional_buffers_if_idle(ctx, &lifetime_now);
         session_translation_flush_ready(ctx);
 
         if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {

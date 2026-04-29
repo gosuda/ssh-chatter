@@ -79,6 +79,8 @@ sshc_memory_context_t *sshc_memory_context_push(sshc_memory_context_t *ctx);
 void sshc_memory_context_pop(sshc_memory_context_t *previous);
 void sshc_memory_context_reset(sshc_memory_context_t *ctx);
 sshc_memory_context_t *sshc_memory_context_current(void);
+void sshc_memory_context_collect(sshc_memory_context_t *ctx,
+                                 unsigned int rotate_passes);
 
 /**
  * @brief Retrieve the owner associated with a memory context.

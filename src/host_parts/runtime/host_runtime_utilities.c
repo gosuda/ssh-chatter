@@ -53,15 +53,9 @@ static void host_memory_pressure_aggressive_cleanup(host_t *host)
 {
     /* Rotate the host memory context aggressively so deferred allocations
      * become immediately reclaimable before we tear down the listeners. */
-    for (int pass = 0; pass < 4; ++pass) {
-        if (host != nullptr && host->memory_context != nullptr) {
-            sshc_memory_context_epoch_gc_rotate(host->memory_context);
-        }
-        sshc_epoch_reclaim();
+    if (host != nullptr && host->memory_context != nullptr) {
+        sshc_memory_context_collect(host->memory_context, 4U);
     }
-#if defined(__GLIBC__)
-    malloc_trim(0);
-#endif
 }
 
 static inline void session_safe_free(void **ptr)
@@ -244,8 +238,7 @@ static inline bool host_gc_cycle(host_t *host, struct timespec *last_gc_run,
         return host_memory_pressure_restart(host, last_pressure_check);
     }
 
-    sshc_memory_context_epoch_gc_rotate(host->memory_context);
-    sshc_epoch_reclaim();
+    sshc_memory_context_collect(host->memory_context, 1U);
     sshc_epoch_reclaim();
     *last_gc_run = now;
     return host_memory_pressure_restart(host, last_pressure_check);
@@ -256,6 +249,5 @@ void session_manual_gc_tick(session_ctx_t *ctx)
     if (ctx == nullptr || ctx->memory_context == nullptr) {
         return;
     }
-    sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
-    sshc_epoch_reclaim();
+    sshc_memory_context_collect(ctx->memory_context, 1U);
 }

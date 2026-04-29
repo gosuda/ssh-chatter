@@ -283,6 +283,8 @@ gonu_game_state_t *session_game_ensure_saved_gonu(session_ctx_t *ctx);
 void session_game_release_gonu(session_ctx_t *ctx);
 void session_game_release_saved_gonu(session_ctx_t *ctx);
 void session_game_handle_screen_cleared(session_ctx_t *ctx);
+bool session_release_optional_buffers_if_idle(session_ctx_t *ctx,
+                                              const struct timespec *now);
 void session_mark_activity(session_ctx_t *ctx);
 bool session_enforce_lifetime(session_ctx_t *ctx, const struct timespec *now);
 

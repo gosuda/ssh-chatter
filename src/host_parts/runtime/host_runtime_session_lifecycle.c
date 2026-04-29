@@ -450,9 +450,13 @@ static void *session_thread(void *arg)
                      "%s", preferred_nickname);
         }
 
-        const char *nick_to_apply = preferred_nickname_raw[0] != '\0'
-                                        ? preferred_nickname_raw
-                                        : preferred_nickname;
+        const bool preferred_has_ansi =
+            strchr(preferred_nickname_raw, '\x1b') != nullptr;
+        const char *nick_to_apply =
+            (preferred_has_ansi && preferred_nickname[0] != '\0')
+                ? preferred_nickname
+                : (preferred_nickname_raw[0] != '\0' ? preferred_nickname_raw
+                                                     : preferred_nickname);
 
         if (nick_to_apply[0] != '\0' &&
             strcasecmp(ctx->user.name, nick_to_apply) != 0) {

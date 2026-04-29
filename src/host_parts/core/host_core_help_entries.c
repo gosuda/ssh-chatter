@@ -181,6 +181,29 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "fixnick",
+        .description =
+            {
+                "Persist an IP-wide reserved nickname as one fixed ANSI handle.",
+                "IP-wide 예약 닉네임의 현재 색을 하나의 고정 ANSI 닉네임으로 "
+                "저장합니다.",
+                "IP-wide 予約ニックの現在色を固定 ANSI ハンドルとして保存します。",
+                "将 IP-wide 预留昵称的当前颜色固化为固定 ANSI 昵称。",
+                "Сохраняет текущий цвет IP-wide зарезервированного ника как "
+                "единый ANSI-ник.",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "닉고정",
+                [SESSION_UI_LANGUAGE_JP] = "ニック固定",
+                [SESSION_UI_LANGUAGE_ZH] = "固定昵称",
+                [SESSION_UI_LANGUAGE_RU] = "фиксник",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "systemcolor (fg;background[;highlight][;bold])",
         .description =
             {
@@ -523,6 +546,29 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 [SESSION_UI_LANGUAGE_JP] = "色 (テキスト;ハイライト[;太字])",
                 [SESSION_UI_LANGUAGE_ZH] = "颜色 (文本;高亮[;粗体])",
                 [SESSION_UI_LANGUAGE_RU] = "цвет (текст;выделение[;жирный])",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "fixnick",
+        .description =
+            {
+                "Persist an IP-wide reserved nickname as one fixed ANSI handle.",
+                "IP-wide 예약 닉네임의 현재 색을 하나의 고정 ANSI 닉네임으로 "
+                "저장합니다.",
+                "IP-wide 予約ニックの現在色を固定 ANSI ハンドルとして保存します。",
+                "将 IP-wide 预留昵称的当前颜色固化为固定 ANSI 昵称。",
+                "Сохраняет текущий цвет IP-wide зарезервированного ника как "
+                "единый ANSI-ник.",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "닉고정",
+                [SESSION_UI_LANGUAGE_JP] = "ニック固定",
+                [SESSION_UI_LANGUAGE_ZH] = "固定昵称",
+                [SESSION_UI_LANGUAGE_RU] = "фиксник",
             },
         .label_arg_count = 0U,
         .label_args = {},

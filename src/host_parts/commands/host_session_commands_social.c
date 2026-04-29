@@ -689,6 +689,7 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
                sizeof(ctx->user_data.password_salt));
         memset(ctx->user_data.password_hash, 0,
                sizeof(ctx->user_data.password_hash));
+        user_data_set_reserved_nickname_ip_wide(&ctx->user_data, false);
 
         if (session_user_data_commit(ctx)) {
             session_send_system_line(ctx, "Password removed.");
@@ -707,6 +708,8 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
     security_layer_generate_salt(ctx->user_data.password_salt);
     security_layer_hash_password(parsed_password, ctx->user_data.password_salt,
                                  ctx->user_data.password_hash);
+    user_data_set_reserved_nickname_ip_wide(
+        &ctx->user_data, ip_wide_explicit && ip_wide);
 
     if (session_user_data_commit(ctx)) {
         session_send_system_line(ctx, "Password set successfully.");
@@ -801,6 +804,7 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
 
     memset(user_data.password_salt, 0, sizeof(user_data.password_salt));
     memset(user_data.password_hash, 0, sizeof(user_data.password_hash));
+    user_data_set_reserved_nickname_ip_wide(&user_data, false);
 
     bool success;
     if (self_delete) {
@@ -900,6 +904,7 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
     // Clear the password salt and hash
     memset(user_data.password_salt, 0, sizeof(user_data.password_salt));
     memset(user_data.password_hash, 0, sizeof(user_data.password_hash));
+    user_data_set_reserved_nickname_ip_wide(&user_data, false);
 
     // Save the modified user data
     bool success =

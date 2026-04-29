@@ -111,5 +111,10 @@ void user_data_set_ssh_chat_server_config(user_data_record_t *restrict record,
 void user_data_get_ssh_chat_server_config(
     const user_data_record_t *restrict record, char *restrict url,
     size_t url_len, uint16_t *restrict port);
+bool user_data_has_password(const user_data_record_t *restrict record);
+bool user_data_reserved_nickname_is_ip_wide(
+    const user_data_record_t *restrict record);
+void user_data_set_reserved_nickname_ip_wide(
+    user_data_record_t *restrict record, bool enabled);
 
 #endif /* SSH_CHATTER_USER_DATA_H */

@@ -75,15 +75,13 @@ bool session_enforce_lifetime(session_ctx_t *ctx,
 
 static session_ctx_t *session_create(void)
 {
-    // Initially allocate session context in the current (likely global) scope
-    session_ctx_t *ctx =
-        (session_ctx_t *)sshc_gc_calloc(1U, sizeof(session_ctx_t));
+    session_ctx_t *ctx = (session_ctx_t *)calloc(1U, sizeof(session_ctx_t));
 
     if (ctx != nullptr) {
         // Create a dedicated memory context for this session
         ctx->memory_context = sshc_memory_context_create("session");
         if (ctx->memory_context == nullptr) {
-            sshc_gc_free(ctx);
+            free(ctx);
             return nullptr;
         }
 
@@ -91,7 +89,7 @@ static session_ctx_t *session_create(void)
         ctx->session_owner = ttak_owner_create(TTAK_OWNER_STRICT_ISOLATION);
         if (ctx->session_owner == nullptr) {
             sshc_memory_context_destroy(ctx->memory_context);
-            sshc_gc_free(ctx);
+            free(ctx);
             return nullptr;
         }
 
@@ -138,7 +136,7 @@ static session_ctx_t *session_create(void)
                 ttak_owner_destroy(ctx->session_owner);
             }
             sshc_memory_context_destroy(ctx->memory_context);
-            sshc_gc_free(ctx);
+            free(ctx);
             return nullptr;
         }
 

@@ -120,14 +120,14 @@ static bool session_runtime_bind(session_ctx_t *ctx)
     }
 
     session_runtime_data_t *runtime =
-        (session_runtime_data_t *)sshc_gc_calloc(1U, sizeof(*runtime));
+        (session_runtime_data_t *)calloc(1U, sizeof(*runtime));
     if (runtime == nullptr) {
         return false;
     }
 
     const uint64_t session_id = host_allocate_session_id(ctx->owner);
     if (session_id == 0U) {
-        sshc_gc_free(runtime);
+        free(runtime);
         return false;
     }
 
@@ -155,7 +155,7 @@ static void session_runtime_unbind(session_ctx_t *ctx)
     runtime->ctx = nullptr;
     ctx->session_data = nullptr;
     ctx->session_id = 0U;
-    sshc_gc_free(runtime);
+    free(runtime);
 }
 
 static void *host_telnet_thread(void *arg)

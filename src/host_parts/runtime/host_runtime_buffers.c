@@ -45,6 +45,93 @@ typedef struct sshc_bbs_cold_meta {
     uint64_t next_bbs_id;
 } sshc_bbs_cold_meta_t;
 
+static void session_lz4_blob_discard(sshc_lz4_blob_t *blob)
+{
+    if (blob == nullptr) {
+        return;
+    }
+    if (blob->data != nullptr) {
+        sshc_gc_free(blob->data);
+    }
+    memset(blob, 0, sizeof(*blob));
+}
+
+static bool session_lz4_blob_store(sshc_lz4_blob_t *blob, const void *source,
+                                   size_t bytes, size_t element_size,
+                                   size_t element_count)
+{
+    if (blob == nullptr) {
+        return false;
+    }
+
+    session_lz4_blob_discard(blob);
+    if (source == nullptr || bytes == 0U || bytes > (size_t)INT_MAX ||
+        element_size == 0U || element_size > UINT32_MAX ||
+        element_count > UINT32_MAX) {
+        return false;
+    }
+
+    const int bound = LZ4_compressBound((int)bytes);
+    if (bound <= 0) {
+        return false;
+    }
+
+    char *compressed = (char *)sshc_gc_malloc((size_t)bound);
+    if (compressed == nullptr) {
+        return false;
+    }
+
+    const int compressed_len =
+        LZ4_compress_default((const char *)source, compressed, (int)bytes,
+                             bound);
+    if (compressed_len <= 0 || (size_t)compressed_len >= bytes) {
+        sshc_gc_free(compressed);
+        return false;
+    }
+
+    blob->data = (unsigned char *)compressed;
+    blob->compressed_size = (uint32_t)compressed_len;
+    blob->original_size = (uint32_t)bytes;
+    blob->element_size = (uint32_t)element_size;
+    blob->element_count = (uint32_t)element_count;
+    return true;
+}
+
+static void *session_lz4_blob_restore(sshc_lz4_blob_t *blob,
+                                      size_t expected_element_size,
+                                      size_t minimum_element_count,
+                                      size_t *out_element_count)
+{
+    if (out_element_count != nullptr) {
+        *out_element_count = 0U;
+    }
+    if (blob == nullptr || blob->data == nullptr || blob->compressed_size == 0U ||
+        blob->original_size == 0U || blob->element_size != expected_element_size ||
+        blob->element_count < minimum_element_count ||
+        blob->compressed_size > INT_MAX || blob->original_size > INT_MAX) {
+        return nullptr;
+    }
+
+    char *restored = (char *)sshc_gc_malloc(blob->original_size);
+    if (restored == nullptr) {
+        return nullptr;
+    }
+
+    const int restored_len = LZ4_decompress_safe(
+        (const char *)blob->data, restored, (int)blob->compressed_size,
+        (int)blob->original_size);
+    if (restored_len <= 0 || (uint32_t)restored_len != blob->original_size) {
+        sshc_gc_free(restored);
+        return nullptr;
+    }
+
+    if (out_element_count != nullptr) {
+        *out_element_count = blob->element_count;
+    }
+    session_lz4_blob_discard(blob);
+    return restored;
+}
+
 static bool host_cold_file_path(char *out, size_t out_len, const char *base_path,
                                 const char *suffix)
 {
@@ -503,12 +590,22 @@ bool session_bbs_workspace_acquire(session_ctx_t *ctx)
             SSH_CHATTER_BBS_MAX_TAGS, sizeof(*ctx->pending_bbs_tags));
     }
     if (ctx->pending_bbs_body == nullptr) {
-        ctx->pending_bbs_body =
-            (char *)sshc_gc_calloc(SSH_CHATTER_BBS_BODY_LEN, sizeof(char));
+        ctx->pending_bbs_body = (char *)session_lz4_blob_restore(
+            &ctx->pending_bbs_body_cache, sizeof(char),
+            SSH_CHATTER_BBS_BODY_LEN, nullptr);
+        if (ctx->pending_bbs_body == nullptr) {
+            ctx->pending_bbs_body =
+                (char *)sshc_gc_calloc(SSH_CHATTER_BBS_BODY_LEN, sizeof(char));
+        }
     }
     if (ctx->bbs_editor_clipboard == nullptr) {
-        ctx->bbs_editor_clipboard =
-            (char *)sshc_gc_calloc(SSH_CHATTER_BBS_BODY_LEN, sizeof(char));
+        ctx->bbs_editor_clipboard = (char *)session_lz4_blob_restore(
+            &ctx->bbs_editor_clipboard_cache, sizeof(char),
+            SSH_CHATTER_BBS_BODY_LEN, nullptr);
+        if (ctx->bbs_editor_clipboard == nullptr) {
+            ctx->bbs_editor_clipboard =
+                (char *)sshc_gc_calloc(SSH_CHATTER_BBS_BODY_LEN, sizeof(char));
+        }
     }
 
     bool ok = ctx->pending_bbs_title != nullptr &&
@@ -532,7 +629,23 @@ void session_bbs_workspace_release(session_ctx_t *ctx)
 
     session_safe_free((void **)&ctx->pending_bbs_title);
     session_safe_free((void **)&ctx->pending_bbs_tags);
+    if (ctx->pending_bbs_body != nullptr) {
+        (void)session_lz4_blob_store(&ctx->pending_bbs_body_cache,
+                                     ctx->pending_bbs_body,
+                                     SSH_CHATTER_BBS_BODY_LEN, sizeof(char),
+                                     SSH_CHATTER_BBS_BODY_LEN);
+    } else {
+        session_lz4_blob_discard(&ctx->pending_bbs_body_cache);
+    }
     session_safe_free((void **)&ctx->pending_bbs_body);
+    if (ctx->bbs_editor_clipboard != nullptr) {
+        (void)session_lz4_blob_store(&ctx->bbs_editor_clipboard_cache,
+                                     ctx->bbs_editor_clipboard,
+                                     SSH_CHATTER_BBS_BODY_LEN, sizeof(char),
+                                     SSH_CHATTER_BBS_BODY_LEN);
+    } else {
+        session_lz4_blob_discard(&ctx->bbs_editor_clipboard_cache);
+    }
     session_safe_free((void **)&ctx->bbs_editor_clipboard);
 }
 
@@ -562,8 +675,13 @@ bool session_asciiart_buffer_acquire(session_ctx_t *ctx)
         return false;
     }
     if (ctx->asciiart_buffer == nullptr) {
-        ctx->asciiart_buffer = (char *)sshc_gc_calloc(
-            SSH_CHATTER_ASCIIART_BUFFER_LEN, sizeof(char));
+        ctx->asciiart_buffer = (char *)session_lz4_blob_restore(
+            &ctx->asciiart_buffer_cache, sizeof(char),
+            SSH_CHATTER_ASCIIART_BUFFER_LEN, nullptr);
+        if (ctx->asciiart_buffer == nullptr) {
+            ctx->asciiart_buffer = (char *)sshc_gc_calloc(
+                SSH_CHATTER_ASCIIART_BUFFER_LEN, sizeof(char));
+        }
     }
     return ctx->asciiart_buffer != nullptr;
 }
@@ -573,7 +691,111 @@ void session_asciiart_buffer_release(session_ctx_t *ctx)
     if (ctx == nullptr) {
         return;
     }
+    if (ctx->asciiart_buffer != nullptr) {
+        (void)session_lz4_blob_store(&ctx->asciiart_buffer_cache,
+                                     ctx->asciiart_buffer,
+                                     SSH_CHATTER_ASCIIART_BUFFER_LEN,
+                                     sizeof(char),
+                                     SSH_CHATTER_ASCIIART_BUFFER_LEN);
+    } else {
+        session_lz4_blob_discard(&ctx->asciiart_buffer_cache);
+    }
     session_safe_free((void **)&ctx->asciiart_buffer);
+}
+
+void session_compressed_buffers_discard(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    session_lz4_blob_discard(&ctx->pending_bbs_body_cache);
+    session_lz4_blob_discard(&ctx->bbs_editor_clipboard_cache);
+    session_lz4_blob_discard(&ctx->asciiart_buffer_cache);
+    session_lz4_blob_discard(&ctx->scrollback_buffer_cache);
+}
+
+chat_history_entry_t *session_scrollback_buffer_acquire(session_ctx_t *ctx,
+                                                        size_t minimum_capacity,
+                                                        size_t *out_capacity)
+{
+    if (ctx == nullptr) {
+        if (out_capacity != nullptr) {
+            *out_capacity = 0U;
+        }
+        return nullptr;
+    }
+
+    size_t target = minimum_capacity > 0U ? minimum_capacity : 1U;
+
+    if (ctx->scrollback_buffer != nullptr &&
+        ctx->scrollback_buffer_capacity >= target) {
+        if (out_capacity != nullptr) {
+            *out_capacity = ctx->scrollback_buffer_capacity;
+        }
+        return ctx->scrollback_buffer;
+    }
+
+    if (ctx->scrollback_buffer == nullptr &&
+        ctx->scrollback_buffer_cache.data != nullptr) {
+        size_t restored_capacity = 0U;
+        chat_history_entry_t *restored =
+            (chat_history_entry_t *)session_lz4_blob_restore(
+                &ctx->scrollback_buffer_cache, sizeof(chat_history_entry_t),
+                target, &restored_capacity);
+        if (restored != nullptr) {
+            ctx->scrollback_buffer = restored;
+            ctx->scrollback_buffer_capacity = restored_capacity;
+            if (out_capacity != nullptr) {
+                *out_capacity = restored_capacity;
+            }
+            return restored;
+        }
+        if (ctx->scrollback_buffer_cache.data != nullptr &&
+            ctx->scrollback_buffer_cache.element_count < target) {
+            session_lz4_blob_discard(&ctx->scrollback_buffer_cache);
+        }
+    }
+
+    chat_history_entry_t *fresh = (chat_history_entry_t *)sshc_gc_calloc(
+        target, sizeof(chat_history_entry_t));
+    if (fresh == nullptr) {
+        if (out_capacity != nullptr) {
+            *out_capacity = 0U;
+        }
+        return nullptr;
+    }
+
+    if (ctx->scrollback_buffer != nullptr) {
+        sshc_gc_free(ctx->scrollback_buffer);
+    }
+    ctx->scrollback_buffer = fresh;
+    ctx->scrollback_buffer_capacity = target;
+    if (out_capacity != nullptr) {
+        *out_capacity = target;
+    }
+    return ctx->scrollback_buffer;
+}
+
+void session_scrollback_buffer_release(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (ctx->scrollback_buffer != nullptr && ctx->scrollback_buffer_capacity > 0U) {
+        const size_t bytes =
+            ctx->scrollback_buffer_capacity * sizeof(*ctx->scrollback_buffer);
+        (void)session_lz4_blob_store(&ctx->scrollback_buffer_cache,
+                                     ctx->scrollback_buffer, bytes,
+                                     sizeof(*ctx->scrollback_buffer),
+                                     ctx->scrollback_buffer_capacity);
+    } else {
+        session_lz4_blob_discard(&ctx->scrollback_buffer_cache);
+    }
+
+    session_safe_free((void **)&ctx->scrollback_buffer);
+    ctx->scrollback_buffer_capacity = 0U;
 }
 
 bool session_tetris_buffers_acquire(session_ctx_t *ctx)

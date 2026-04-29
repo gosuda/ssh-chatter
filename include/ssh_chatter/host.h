@@ -647,6 +647,14 @@ typedef enum session_newline_mode {
     SESSION_NEWLINE_MODE_CRLF,
 } session_newline_mode_t;
 
+typedef struct sshc_lz4_blob {
+    unsigned char *data;
+    uint32_t compressed_size;
+    uint32_t original_size;
+    uint32_t element_size;
+    uint32_t element_count;
+} sshc_lz4_blob_t;
+
 typedef struct session_ctx {
     uint64_t session_id;
     void *session_data;
@@ -729,6 +737,7 @@ typedef struct session_ctx {
     char (*pending_bbs_tags)[SSH_CHATTER_BBS_TAG_LEN];
     size_t pending_bbs_tag_count;
     char *pending_bbs_body;
+    sshc_lz4_blob_t pending_bbs_body_cache;
     size_t pending_bbs_body_length;
     size_t pending_bbs_line_count;
     size_t pending_bbs_cursor_line;
@@ -739,6 +748,7 @@ typedef struct session_ctx {
     size_t bbs_editor_selection_end;
     bool bbs_editor_selection_end_set;
     char *bbs_editor_clipboard;
+    sshc_lz4_blob_t bbs_editor_clipboard_cache;
     size_t bbs_editor_clipboard_length;
     size_t bbs_editor_clipboard_lines;
     bool bbs_line_edit_mode;
@@ -799,6 +809,7 @@ typedef struct session_ctx {
     bool asciiart_pending;
     session_asciiart_target_t asciiart_target;
     char *asciiart_buffer;
+    sshc_lz4_blob_t asciiart_buffer_cache;
     size_t asciiart_length;
     size_t asciiart_line_count;
     bool asciiart_has_cooldown;
@@ -826,6 +837,7 @@ typedef struct session_ctx {
     bool history_latest_notified;
     size_t scrollback_rendered_lines;
     chat_history_entry_t *scrollback_buffer;
+    sshc_lz4_blob_t scrollback_buffer_cache;
     size_t scrollback_buffer_capacity;
     bool
         no_update; // Flag to prevent automatic message updates when scrolling history

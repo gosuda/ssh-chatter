@@ -254,6 +254,11 @@ bool session_bbs_view_notice_acquire(session_ctx_t *ctx);
 void session_bbs_view_notice_release(session_ctx_t *ctx);
 bool session_asciiart_buffer_acquire(session_ctx_t *ctx);
 void session_asciiart_buffer_release(session_ctx_t *ctx);
+void session_compressed_buffers_discard(session_ctx_t *ctx);
+chat_history_entry_t *session_scrollback_buffer_acquire(session_ctx_t *ctx,
+                                                        size_t minimum_capacity,
+                                                        size_t *out_capacity);
+void session_scrollback_buffer_release(session_ctx_t *ctx);
 bool session_tetris_buffers_acquire(session_ctx_t *ctx);
 void session_tetris_buffers_release(session_ctx_t *ctx);
 tetris_game_state_t *session_game_ensure_tetris(session_ctx_t *ctx);

@@ -233,32 +233,7 @@ session_scrollback_reserve_buffer(session_ctx_t *ctx, size_t minimum_capacity,
         target = 1U;
     }
 
-    if (ctx->scrollback_buffer != nullptr &&
-        ctx->scrollback_buffer_capacity >= target) {
-        if (out_capacity != nullptr) {
-            *out_capacity = ctx->scrollback_buffer_capacity;
-        }
-        return ctx->scrollback_buffer;
-    }
-
-    chat_history_entry_t *fresh = (chat_history_entry_t *)sshc_gc_calloc(
-        target, sizeof(chat_history_entry_t));
-    if (fresh == nullptr) {
-        if (out_capacity != nullptr) {
-            *out_capacity = 0U;
-        }
-        return nullptr;
-    }
-
-    if (ctx->scrollback_buffer != nullptr) {
-        sshc_gc_free(ctx->scrollback_buffer);
-    }
-    ctx->scrollback_buffer = fresh;
-    ctx->scrollback_buffer_capacity = target;
-    if (out_capacity != nullptr) {
-        *out_capacity = target;
-    }
-    return ctx->scrollback_buffer;
+    return session_scrollback_buffer_acquire(ctx, target, out_capacity);
 }
 
 static size_t session_capture_visible_display_lines(

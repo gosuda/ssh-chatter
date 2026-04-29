@@ -27,7 +27,6 @@ static bool session_attempt_handshake_restart(session_ctx_t *ctx,
     return true;
 }
 
-#define SESSION_EBR_DRAIN_PASSES 8U
 #define SESSION_GC_ROTATE_PASSES 6U
 #define SESSION_MANUAL_GC_WAIT_PASSES 6U
 #define SESSION_MANUAL_GC_WAIT_NS 5000000L
@@ -39,7 +38,6 @@ static void session_drain_reclamation(sshc_memory_context_t *memory_context,
         if (memory_context != nullptr) {
             sshc_memory_context_epoch_gc_rotate(memory_context);
         }
-        sshc_epoch_reclaim();
     }
 
     if (owner != nullptr) {
@@ -54,9 +52,6 @@ static void session_drain_reclamation(sshc_memory_context_t *memory_context,
         }
     }
 
-    for (unsigned int pass = 0U; pass < SESSION_EBR_DRAIN_PASSES; ++pass) {
-        sshc_epoch_reclaim();
-    }
 }
 
 static void session_release_interaction_state(session_ctx_t *ctx)
@@ -109,7 +104,10 @@ static void session_release_transport_state(session_ctx_t *ctx)
         ctx->session = nullptr;
     }
 
-    session_safe_free((void **)&ctx->session_data);
+    if (ctx->session_data != nullptr) {
+        free(ctx->session_data);
+        ctx->session_data = nullptr;
+    }
 }
 
 static void session_detach_external_state(session_ctx_t *ctx)
@@ -206,19 +204,18 @@ static void session_cleanup(session_ctx_t *ctx)
     session_game_release_saved_othello(ctx);
     session_game_release_gonu(ctx);
     session_game_release_saved_gonu(ctx);
-    session_safe_free((void **)&ctx->scrollback_buffer);
-    ctx->scrollback_buffer_capacity = 0U;
+    session_scrollback_buffer_release(ctx);
     session_release_interaction_state(ctx);
 }
 
-static void session_epoch_free(void *ptr)
+static void session_manual_free(session_ctx_t *ctx)
 {
-    session_ctx_t *ctx = (session_ctx_t *)ptr;
     if (ctx == nullptr) {
         return;
     }
 
     session_cleanup(ctx);
+    session_compressed_buffers_discard(ctx);
 
     if (ctx->channel_mutex_initialized) {
         ttak_mutex_destroy(&ctx->channel_mutex);
@@ -226,18 +223,13 @@ static void session_epoch_free(void *ptr)
     }
 
     if (ctx->output_lock_initialized) {
-        /*
-         * Do not destroy output_lock here.
-         *
-         * Broadcast paths take room-member snapshots and may still attempt to
-         * lock this mutex briefly after a session begins teardown. Destroying
-         * the mutex in that window can trigger glibc aborts in
-         * __pthread_mutex_lock_full (lock-after-destroy UB).
-         *
-         * The mutex storage is embedded in session_ctx_t, so skipping destroy
-         * does not leak heap memory.
-         */
+        pthread_mutex_destroy(&ctx->output_lock);
         ctx->output_lock_initialized = false;
+    }
+
+    if (ctx->session_data != nullptr) {
+        free(ctx->session_data);
+        ctx->session_data = nullptr;
     }
 
     if (ctx->memory_context != nullptr) {
@@ -250,7 +242,7 @@ static void session_epoch_free(void *ptr)
         ctx->session_owner = nullptr;
     }
 
-    sshc_gc_free(ctx);
+    free(ctx);
 }
 
 static void session_destroy(session_ctx_t *ctx)
@@ -265,17 +257,7 @@ static void session_destroy(session_ctx_t *ctx)
 #if defined(__GLIBC__)
     (void)malloc_trim(0);
 #endif
-    /*
-     * Defer the final session object release through EBR.
-     *
-     * TELNET reconnect bursts still leave a small window where late output
-     * paths can observe the retiring session pointer. Retiring the context
-     * avoids use-after-free corruption in write_dispatch while keeping the
-     * heavy per-session allocations under epoch control until all claimants
-     * have dropped them.
-     */
-    sshc_epoch_retire_with(ctx, session_epoch_free);
-    session_drain_reclamation(nullptr, ctx->owner);
+    session_manual_free(ctx);
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,

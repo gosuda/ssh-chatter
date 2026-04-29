@@ -352,7 +352,7 @@ static void host_bbs_release_cache(host_t *host)
     }
 }
 
-static void host_reload_cached_state(host_t *host)
+static __attribute__((unused)) void host_reload_cached_state(host_t *host)
 {
     if (host == nullptr) {
         return;

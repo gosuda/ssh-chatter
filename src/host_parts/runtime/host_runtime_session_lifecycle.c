@@ -27,6 +27,38 @@ static bool session_attempt_handshake_restart(session_ctx_t *ctx,
     return true;
 }
 
+#define SESSION_EBR_DRAIN_PASSES 8U
+#define SESSION_GC_ROTATE_PASSES 6U
+#define SESSION_MANUAL_GC_WAIT_PASSES 6U
+#define SESSION_MANUAL_GC_WAIT_NS 5000000L
+
+static void session_drain_reclamation(sshc_memory_context_t *memory_context,
+                                      host_t *owner)
+{
+    for (unsigned int pass = 0U; pass < SESSION_GC_ROTATE_PASSES; ++pass) {
+        if (memory_context != nullptr) {
+            sshc_memory_context_epoch_gc_rotate(memory_context);
+        }
+        sshc_epoch_reclaim();
+    }
+
+    if (owner != nullptr) {
+        for (unsigned int pass = 0U; pass < SESSION_MANUAL_GC_WAIT_PASSES;
+             ++pass) {
+            host_manual_gc_tick(owner);
+            struct timespec pause = {
+                .tv_sec = 0,
+                .tv_nsec = SESSION_MANUAL_GC_WAIT_NS,
+            };
+            host_sleep_uninterruptible(&pause);
+        }
+    }
+
+    for (unsigned int pass = 0U; pass < SESSION_EBR_DRAIN_PASSES; ++pass) {
+        sshc_epoch_reclaim();
+    }
+}
+
 static void session_release_interaction_state(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {
@@ -219,24 +251,7 @@ static void session_destroy(session_ctx_t *ctx)
 
     session_runtime_unbind(ctx);
     session_detach_external_state(ctx);
-    if (ctx->memory_context != nullptr) {
-        /*
-         * Rotate the session context a few times before retiring the session so
-         * epoch-deferred allocations drain in order without forcing an eager
-         * reset on disconnect.
-         */
-        for (unsigned int pass = 0U; pass < 3U; ++pass) {
-            sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
-            sshc_epoch_reclaim();
-        }
-    } else {
-        sshc_epoch_reclaim();
-    }
-    if (ctx->owner != nullptr) {
-        for (unsigned int pass = 0U; pass < 2U; ++pass) {
-            host_manual_gc_tick(ctx->owner);
-        }
-    }
+    session_drain_reclamation(ctx->memory_context, ctx->owner);
 #if defined(__GLIBC__)
     (void)malloc_trim(0);
 #endif
@@ -250,8 +265,7 @@ static void session_destroy(session_ctx_t *ctx)
      * have dropped them.
      */
     sshc_epoch_retire_with(ctx, session_epoch_free);
-    sshc_epoch_reclaim();
-    sshc_epoch_reclaim();
+    session_drain_reclamation(nullptr, ctx->owner);
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,
@@ -589,7 +603,6 @@ static void *session_thread(void *arg)
         chat_room_add(&ctx->owner->room, ctx);
         session_manual_gc_tick(ctx);
         host_manual_gc_tick(ctx->owner);
-        host_reload_cached_state(ctx->owner);
         ctx->has_joined_room = true;
         printf("[join] %s\n", ctx->user.name);
 

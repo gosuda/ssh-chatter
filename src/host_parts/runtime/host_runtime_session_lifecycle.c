@@ -205,13 +205,14 @@ static void session_cleanup(session_ctx_t *ctx)
     session_release_interaction_state(ctx);
 }
 
-static void session_manual_free(session_ctx_t *ctx)
+static void session_epoch_free(void *ptr)
 {
+    session_ctx_t *ctx = (session_ctx_t *)ptr;
+
     if (ctx == nullptr) {
         return;
     }
 
-    session_cleanup(ctx);
     session_compressed_buffers_discard(ctx);
 
     if (ctx->channel_mutex_initialized) {
@@ -251,7 +252,41 @@ static void session_destroy(session_ctx_t *ctx)
     session_runtime_unbind(ctx);
     session_detach_external_state(ctx);
     session_drain_reclamation(ctx->memory_context, ctx->owner);
-    session_manual_free(ctx);
+    session_cleanup(ctx);
+    if (ctx->memory_context != nullptr) {
+        /*
+         * Explicitly reset per-session allocations before EBR-retiring the
+         * session object. This keeps join/leave bursts from accumulating large
+         * deferred heaps while waiting for epoch reclamation.
+         */
+        sshc_memory_context_reset(ctx->memory_context);
+        sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
+    }
+    session_manual_gc_tick(ctx);
+    sshc_epoch_reclaim();
+    if (ctx->owner != nullptr) {
+        host_manual_gc_tick(ctx->owner);
+    }
+#if defined(__GLIBC__)
+    (void)malloc_trim(0);
+#endif
+    /*
+     * Retire the session object through epoch reclamation instead of freeing
+     * it immediately.
+     *
+     * Multiple asynchronous paths still snapshot raw session pointers outside
+     * the room broadcaster (RSS notices, morse feed, operator grant updates,
+     * translated PM delivery, etc.). Those paths can race with disconnect and
+     * touch ctx briefly after room removal, so direct free here leaves a
+     * use-after-free window that shows up as intermittent SIGSEGV during SSH
+     * session teardown/output.
+     *
+     * EBR keeps the storage alive until every in-flight reader leaves its
+     * critical section while preserving the existing teardown order for the
+     * transport and per-session resources.
+     */
+    sshc_epoch_retire_with(ctx, session_epoch_free);
+    sshc_epoch_reclaim();
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,

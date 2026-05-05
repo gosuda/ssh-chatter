@@ -376,6 +376,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_state_load(host);
     host->history_cache_loaded =
         host->history != nullptr && host->history_capacity > 0U;
+    host_pw_auth_load(host);
     host_wall_state_load(host);
     host_ui_language_state_load(host);
     host_vote_state_load(host);

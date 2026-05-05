@@ -541,11 +541,22 @@ static void session_handle_fixnick(session_ctx_t *ctx, const char *arguments)
     snprintf(ctx->user_data.preferred_nickname,
              sizeof(ctx->user_data.preferred_nickname), "%s", fixed_nickname);
 
+    user_data_set_fixnick_enabled(&ctx->user_data, true);
+
     session_fixnick_clear_user_theme_state(ctx);
 
     if (!session_user_data_commit(ctx)) {
         session_send_system_line(ctx, "Failed to persist fixed nickname.");
         return;
+    }
+
+    if (ctx->owner != nullptr && ctx->owner->pw_auth_file_path[0] != '\0') {
+        (void)session_pw_auth_update(
+            ctx->owner, ctx->user.name, ctx->user_data.password_salt,
+            sizeof(ctx->user_data.password_salt), ctx->user_data.password_hash,
+            sizeof(ctx->user_data.password_hash),
+            user_data_reserved_nickname_is_ip_wide(&ctx->user_data), true,
+            ctx->client_ip, true);
     }
 
     session_send_system_line(

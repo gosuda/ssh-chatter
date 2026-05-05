@@ -458,6 +458,8 @@ static void session_pw_auth_hex_encode(const uint8_t *input, size_t length,
 static bool session_pw_auth_format_line(const char *username,
                                         const uint8_t *salt, size_t salt_length,
                                         const uint8_t *hash, size_t hash_length,
+                                        bool ip_wide, bool fixnick,
+                                        const char *owner_ip,
                                         char *buffer, size_t buffer_length)
 {
     if (username == nullptr || buffer == nullptr || buffer_length == 0U) {
@@ -469,14 +471,17 @@ static bool session_pw_auth_format_line(const char *username,
     session_pw_auth_hex_encode(salt, salt_length, salt_hex, sizeof(salt_hex));
     session_pw_auth_hex_encode(hash, hash_length, hash_hex, sizeof(hash_hex));
 
-    int written = snprintf(buffer, buffer_length, "%s:%s:%s", username,
-                           salt_hex, hash_hex);
+    int written = snprintf(buffer, buffer_length, "%s:%s:%s:%d:%d:%s", username,
+                           salt_hex, hash_hex, ip_wide ? 1 : 0,
+                           fixnick ? 1 : 0, owner_ip != nullptr ? owner_ip : "");
     return written >= 0 && (size_t)written < buffer_length;
 }
 
 static bool session_pw_auth_update(host_t *host, const char *username,
                                    const uint8_t *salt, size_t salt_length,
                                    const uint8_t *hash, size_t hash_length,
+                                   bool ip_wide, bool fixnick,
+                                   const char *owner_ip,
                                    bool has_password)
 {
     if (host == nullptr || username == nullptr || username[0] == '\0') {
@@ -533,7 +538,8 @@ static bool session_pw_auth_update(host_t *host, const char *username,
                     char formatted[256];
                     if (!session_pw_auth_format_line(
                             username, salt, salt_length, hash, hash_length,
-                            formatted, sizeof(formatted)) ||
+                            ip_wide, fixnick, owner_ip, formatted,
+                            sizeof(formatted)) ||
                         fprintf(output, "%s\n", formatted) < 0) {
                         success = false;
                     }
@@ -563,7 +569,8 @@ static bool session_pw_auth_update(host_t *host, const char *username,
     if (success && has_password && !replaced) {
         char formatted[256];
         if (!session_pw_auth_format_line(username, salt, salt_length, hash,
-                                         hash_length, formatted,
+                                         hash_length, ip_wide, fixnick,
+                                         owner_ip, formatted,
                                          sizeof(formatted)) ||
             fprintf(output, "%s\n", formatted) < 0) {
             success = false;
@@ -695,7 +702,8 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
             session_send_system_line(ctx, "Password removed.");
             host_nickname_claim_remove(ctx->owner, ctx->user.name);
             if (!session_pw_auth_update(ctx->owner, ctx->user.name, nullptr, 0U,
-                                        nullptr, 0U, false)) {
+                                        nullptr, 0U, false, false, nullptr,
+                                        false)) {
                 session_send_system_line(
                     ctx, "Warning: unable to update pw_auth.dat.");
             }
@@ -717,14 +725,18 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
                 ctx->owner, ctx->user.name, ctx->user_data.password_salt,
                 sizeof(ctx->user_data.password_salt),
                 ctx->user_data.password_hash,
-                sizeof(ctx->user_data.password_hash), true)) {
+                sizeof(ctx->user_data.password_hash),
+                ip_wide_explicit ? ip_wide : false,
+                user_data_fixnick_enabled(&ctx->user_data), ctx->client_ip,
+                true)) {
             session_send_system_line(ctx,
                                      "Warning: unable to update pw_auth.dat.");
         }
         if (!host_nickname_claim_upsert(
                 ctx->owner, ctx, ctx->user.name, ctx->user_data.password_salt,
                 ctx->user_data.password_hash,
-                ip_wide_explicit ? ip_wide : false)) {
+                ip_wide_explicit ? ip_wide : false,
+                user_data_fixnick_enabled(&ctx->user_data))) {
             session_send_system_line(
                 ctx, "Warning: unable to create runtime nickname claim.");
         }
@@ -828,7 +840,8 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
         host_nickname_claim_remove(ctx->owner, target_user);
 
         if (!session_pw_auth_update(ctx->owner, target_user, nullptr, 0U,
-                                    nullptr, 0U, false)) {
+                                    nullptr, 0U, false, false, nullptr,
+                                    false)) {
             session_send_system_line(ctx,
                                      "Warning: unable to update pw_auth.dat.");
         }
@@ -917,7 +930,8 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
         session_send_system_line(ctx, message);
 
         if (!session_pw_auth_update(ctx->owner, target_nickname, nullptr, 0U,
-                                    nullptr, 0U, false)) {
+                                    nullptr, 0U, false, false, nullptr,
+                                    false)) {
             session_send_system_line(ctx,
                                      "Warning: unable to update pw_auth.dat.");
         }

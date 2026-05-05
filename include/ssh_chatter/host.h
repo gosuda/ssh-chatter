@@ -639,6 +639,7 @@ typedef struct nickname_claim {
     uint8_t password_hash[SECURITY_LAYER_HASH_LEN];
     uint64_t owner_session_id;
     bool ip_wide;
+    bool fixnick;
 } nickname_claim_t;
 
 typedef enum session_newline_mode {
@@ -1174,12 +1175,15 @@ bool session_telnet_login_prompt(session_ctx_t *ctx);
 bool host_user_data_load_existing(host_t *host, const char *username,
                                   const char *ip, user_data_record_t *record,
                                   bool create_if_missing);
+void host_pw_auth_load(host_t *host);
 bool host_username_has_password(host_t *host, const char *nick);
 bool host_nickname_claim_can_use(host_t *host, const session_ctx_t *ctx,
                                  const char *nick);
 bool host_nickname_claim_upsert(host_t *host, const session_ctx_t *ctx,
-                                const char *nick, const uint8_t *salt,
-                                const uint8_t *hash, bool ip_wide);
+                                 const char *nick, const uint8_t *salt,
+                                 const uint8_t *hash, bool ip_wide,
+                                 bool fixnick);
+
 void host_nickname_claim_release(host_t *host, const session_ctx_t *ctx,
                                  const char *nick);
 void host_nickname_claim_remove(host_t *host, const char *nick);

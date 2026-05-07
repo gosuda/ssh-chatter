@@ -19,6 +19,33 @@ static bool host_room_has_members(host_t *host)
     return has_members;
 }
 
+void host_feature_slots_reclaim_if_idle(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    cpu_feature_slot_t *slots_to_free = nullptr;
+
+    ttak_mutex_lock(&host->room.lock);
+    ttak_mutex_lock(&host->lock);
+    if (host->room.member_count == 0U && host->cpu_slot_in_use == 0U &&
+        host->cpu_slots != nullptr) {
+        slots_to_free = host->cpu_slots;
+        host->cpu_slots = nullptr;
+        host->cpu_slot_capacity = 0U;
+        host->cpu_slot_mask = 0ULL;
+        host->cpu_slot_waiting = 0U;
+        host->cpu_slot_allocation_in_progress = false;
+    }
+    ttak_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->room.lock);
+
+    if (slots_to_free != nullptr) {
+        sshc_gc_free(slots_to_free);
+    }
+}
+
 /* Cold-cache compression for idle state unload. */
 #include <lz4.h>
 
@@ -560,6 +587,7 @@ static void host_idle_state_maintenance(host_t *host,
 unload_idle_state:
     host_history_release_cache(host);
     host_bbs_release_cache(host);
+    host_feature_slots_reclaim_if_idle(host);
     host_manual_gc_tick(host);
 #if defined(__GLIBC__)
     (void)malloc_trim(0);

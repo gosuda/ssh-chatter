@@ -923,21 +923,62 @@ static bool session_acquire_cpu_slot(session_ctx_t *ctx)
     host_t *host = ctx->owner;
     for (;;) {
         bool acquired = false;
+        bool should_allocate_slots = false;
+        size_t allocate_capacity = 0U;
+
         ttak_mutex_lock(&host->lock);
-        if (host->cpu_slot_in_use < host->cpu_slot_limit) {
-            size_t slot_index = host->cpu_slot_in_use;
-            host->cpu_slot_in_use++;
-            if (slot_index < 64U) {
-                host->cpu_slot_mask |= (1ULL << slot_index);
-            }
+        if (host->cpu_slot_limit == 0U) {
             acquired = true;
-        } else {
+        } else if (host->cpu_slots == nullptr &&
+                   host->cpu_slot_capacity == 0U) {
+            should_allocate_slots = true;
+            allocate_capacity = host->cpu_slot_limit;
+        } else if (host->cpu_slot_in_use < host->cpu_slot_limit &&
+                   host->cpu_slots != nullptr) {
+            for (size_t slot_index = 0U; slot_index < host->cpu_slot_capacity;
+                 ++slot_index) {
+                if (host->cpu_slots[slot_index].in_use) {
+                    continue;
+                }
+                host->cpu_slots[slot_index].in_use = true;
+                host->cpu_slots[slot_index].session = ctx;
+                host->cpu_slot_in_use++;
+                if (slot_index < 64U) {
+                    host->cpu_slot_mask |= (1ULL << slot_index);
+                }
+                acquired = true;
+                break;
+            }
+        }
+
+        if (!acquired && !should_allocate_slots) {
             host->cpu_slot_waiting++;
         }
         ttak_mutex_unlock(&host->lock);
 
         if (acquired) {
             return true;
+        }
+
+        if (should_allocate_slots) {
+            cpu_feature_slot_t *slots = sshc_gc_calloc(
+                allocate_capacity, sizeof(*slots));
+            ttak_mutex_lock(&host->lock);
+            if (host->cpu_slots == nullptr && host->cpu_slot_capacity == 0U) {
+                host->cpu_slots = slots;
+                host->cpu_slot_capacity = (slots != nullptr) ? allocate_capacity : 0U;
+            } else if (slots != nullptr) {
+                sshc_gc_free(slots);
+            }
+            ttak_mutex_unlock(&host->lock);
+            if (slots == nullptr) {
+                const struct timespec wait_time = {
+                    .tv_sec = 0,
+                    .tv_nsec = 5000000L,
+                };
+                host_sleep_uninterruptible(&wait_time);
+            }
+            continue;
         }
 
         session_send_system_line(
@@ -962,14 +1003,26 @@ static void session_release_cpu_slot(session_ctx_t *ctx)
 
     host_t *host = ctx->owner;
     ttak_mutex_lock(&host->lock);
-    if (host->cpu_slot_in_use > 0U) {
-        size_t slot_index = host->cpu_slot_in_use - 1U;
-        host->cpu_slot_in_use--;
-        if (slot_index < 64U) {
-            host->cpu_slot_mask &= ~(1ULL << slot_index);
+    if (host->cpu_slots != nullptr && host->cpu_slot_capacity > 0U) {
+        for (size_t slot_index = 0U; slot_index < host->cpu_slot_capacity;
+             ++slot_index) {
+            if (!host->cpu_slots[slot_index].in_use ||
+                host->cpu_slots[slot_index].session != ctx) {
+                continue;
+            }
+            host->cpu_slots[slot_index].in_use = false;
+            host->cpu_slots[slot_index].session = nullptr;
+            if (host->cpu_slot_in_use > 0U) {
+                host->cpu_slot_in_use--;
+            }
+            if (slot_index < 64U) {
+                host->cpu_slot_mask &= ~(1ULL << slot_index);
+            }
+            break;
         }
     }
     ttak_mutex_unlock(&host->lock);
+    host_feature_slots_reclaim_if_idle(host);
 }
 
 static void session_process_line(session_ctx_t *ctx, const char *line)

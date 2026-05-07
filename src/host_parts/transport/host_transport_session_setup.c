@@ -481,6 +481,7 @@ static void chat_room_remove(chat_room_t *room, const session_ctx_t *session)
         }
     }
     ttak_mutex_unlock(&room->lock);
+    host_feature_slots_reclaim_if_idle(session->owner);
 }
 
 /**

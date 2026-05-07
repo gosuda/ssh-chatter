@@ -21,6 +21,7 @@
 #include <getopt.h>
 
 #include <sys/types.h>
+#include <unistd.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,8 +46,9 @@ static bool g_sync_initialized = false;
 static void signal_handler(int signum)
 {
     (void)signum;
-    printf("[signal] Received signal %d, setting shutdown flag\n", signum);
-    fflush(stdout);
+    static const char message[] =
+        "[signal] Received shutdown signal, setting shutdown flag\n";
+    (void)write(STDERR_FILENO, message, sizeof(message) - 1U);
     g_shutdown_flag = 1;
 }
 

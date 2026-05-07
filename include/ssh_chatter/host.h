@@ -540,6 +540,11 @@ typedef struct gonu_multiplayer_slot {
     struct session_ctx *players[2];
 } gonu_multiplayer_slot_t;
 
+typedef struct cpu_feature_slot {
+    bool in_use;
+    struct session_ctx *session;
+} cpu_feature_slot_t;
+
 typedef enum session_transport_kind {
     SESSION_TRANSPORT_SSH = 0,
     SESSION_TRANSPORT_TELNET,
@@ -1075,6 +1080,8 @@ typedef struct host {
     size_t cpu_slot_in_use;
     size_t cpu_slot_waiting;
     uint64_t cpu_slot_mask;
+    cpu_feature_slot_t *cpu_slots;
+    size_t cpu_slot_capacity;
     size_t othello_slot_side_n;
     size_t othello_slot_limit;
     uint64_t othello_slot_mask;

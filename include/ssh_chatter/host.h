@@ -1082,6 +1082,7 @@ typedef struct host {
     uint64_t cpu_slot_mask;
     cpu_feature_slot_t *cpu_slots;
     size_t cpu_slot_capacity;
+    bool cpu_slot_allocation_in_progress;
     size_t othello_slot_side_n;
     size_t othello_slot_limit;
     uint64_t othello_slot_mask;

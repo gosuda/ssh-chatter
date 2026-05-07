@@ -931,8 +931,11 @@ static bool session_acquire_cpu_slot(session_ctx_t *ctx)
             acquired = true;
         } else if (host->cpu_slots == nullptr &&
                    host->cpu_slot_capacity == 0U) {
-            should_allocate_slots = true;
-            allocate_capacity = host->cpu_slot_limit;
+            if (!host->cpu_slot_allocation_in_progress) {
+                host->cpu_slot_allocation_in_progress = true;
+                should_allocate_slots = true;
+                allocate_capacity = host->cpu_slot_limit;
+            }
         } else if (host->cpu_slot_in_use < host->cpu_slot_limit &&
                    host->cpu_slots != nullptr) {
             for (size_t slot_index = 0U; slot_index < host->cpu_slot_capacity;
@@ -964,9 +967,11 @@ static bool session_acquire_cpu_slot(session_ctx_t *ctx)
             cpu_feature_slot_t *slots = sshc_gc_calloc(
                 allocate_capacity, sizeof(*slots));
             ttak_mutex_lock(&host->lock);
+            host->cpu_slot_allocation_in_progress = false;
             if (host->cpu_slots == nullptr && host->cpu_slot_capacity == 0U) {
                 host->cpu_slots = slots;
-                host->cpu_slot_capacity = (slots != nullptr) ? allocate_capacity : 0U;
+                host->cpu_slot_capacity =
+                    (slots != nullptr) ? allocate_capacity : 0U;
             } else if (slots != nullptr) {
                 sshc_gc_free(slots);
             }

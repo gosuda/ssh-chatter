@@ -300,6 +300,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->cpu_slot_mask = 0ULL;
     host->cpu_slots = nullptr;
     host->cpu_slot_capacity = 0U;
+    host->cpu_slot_allocation_in_progress = false;
     host->othello_slot_side_n = slot_side_n;
     host->othello_slot_limit = slot_side_n * slot_side_n;
     if (host->othello_slot_limit > SSH_CHATTER_OTHELLO_MAX_SLOTS) {
@@ -1657,6 +1658,7 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     host->cpu_slot_mask = 0ULL;
     host->cpu_slot_in_use = 0U;
     host->cpu_slot_waiting = 0U;
+    host->cpu_slot_allocation_in_progress = false;
     session_ctx_t **room_members = nullptr;
     ttak_mutex_lock(&host->room.lock);
     room_members = host->room.members;

@@ -1039,6 +1039,24 @@ static void session_render_history_entry(session_ctx_t *ctx,
             }
         }
 
+        char reaction_summary[SSH_CHATTER_MESSAGE_LIMIT];
+        if (chat_history_entry_build_reaction_summary(entry, reaction_summary,
+                                                      sizeof(reaction_summary))) {
+            char reaction_line[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(reaction_line, sizeof(reaction_line), "    - %s",
+                     reaction_summary);
+            if (ctx->display_model_initialized) {
+                unsigned int width =
+                    (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
+                display_model_append_message(&ctx->display_model,
+                                             entry->message_id, reaction_line,
+                                             width);
+            }
+            if (emit_output) {
+                session_send_plain_line(ctx, reaction_line);
+            }
+        }
+
         session_output_restore_kind(ctx, previous_kind);
         return;
     }
@@ -1266,7 +1284,7 @@ chat_history_entry_build_reaction_summary(const chat_history_entry_t *entry,
 
         const reaction_descriptor_t *descriptor = &REACTION_DEFINITIONS[idx];
         char chunk[64];
-        snprintf(chunk, sizeof(chunk), "%s x%u", descriptor->icon, count);
+        snprintf(chunk, sizeof(chunk), "[%s: %u]", descriptor->label, count);
 
         size_t chunk_len = strlen(chunk);
         if (chunk_len + 1U >= length - offset) {

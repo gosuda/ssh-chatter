@@ -969,10 +969,9 @@ chat_room_broadcast_reaction_update(host_t *host,
         if (!host_compact_id_encode(entry->message_id, label, sizeof(label))) {
             snprintf(label, sizeof(label), "%" PRIu64, entry->message_id);
         }
-        snprintf(line, sizeof(line), "    ->[#%s] reactions: %s", label,
-                 summary);
+        snprintf(line, sizeof(line), "    ->[#%s] - %s", label, summary);
     } else {
-        snprintf(line, sizeof(line), "    ->reactions: %s", summary);
+        snprintf(line, sizeof(line), "    - %s", summary);
     }
 
     chat_room_broadcast_caption(&host->room, line);

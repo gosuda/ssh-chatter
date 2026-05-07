@@ -27,8 +27,8 @@ void host_feature_slots_reclaim_if_idle(host_t *host)
 
     cpu_feature_slot_t *slots_to_free = nullptr;
 
-    ttak_mutex_lock(&host->lock);
     ttak_mutex_lock(&host->room.lock);
+    ttak_mutex_lock(&host->lock);
     if (host->room.member_count == 0U && host->cpu_slot_in_use == 0U &&
         host->cpu_slots != nullptr) {
         slots_to_free = host->cpu_slots;
@@ -38,8 +38,8 @@ void host_feature_slots_reclaim_if_idle(host_t *host)
         host->cpu_slot_waiting = 0U;
         host->cpu_slot_allocation_in_progress = false;
     }
-    ttak_mutex_unlock(&host->room.lock);
     ttak_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->room.lock);
 
     if (slots_to_free != nullptr) {
         sshc_gc_free(slots_to_free);

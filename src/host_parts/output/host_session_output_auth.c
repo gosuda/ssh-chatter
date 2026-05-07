@@ -966,17 +966,19 @@ static bool session_acquire_cpu_slot(session_ctx_t *ctx)
         if (should_allocate_slots) {
             cpu_feature_slot_t *slots = sshc_gc_calloc(
                 allocate_capacity, sizeof(*slots));
+            bool allocation_still_missing = false;
             ttak_mutex_lock(&host->lock);
             host->cpu_slot_allocation_in_progress = false;
             if (host->cpu_slots == nullptr && host->cpu_slot_capacity == 0U) {
                 host->cpu_slots = slots;
                 host->cpu_slot_capacity =
                     (slots != nullptr) ? allocate_capacity : 0U;
+                allocation_still_missing = (slots == nullptr);
             } else if (slots != nullptr) {
                 sshc_gc_free(slots);
             }
             ttak_mutex_unlock(&host->lock);
-            if (slots == nullptr) {
+            if (allocation_still_missing) {
                 const struct timespec wait_time = {
                     .tv_sec = 0,
                     .tv_nsec = 5000000L,

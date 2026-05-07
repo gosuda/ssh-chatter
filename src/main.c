@@ -46,9 +46,13 @@ static bool g_sync_initialized = false;
 static void signal_handler(int signum)
 {
     (void)signum;
+    fprintf(stderr, "Received signal %d\n", signum);
     static const char message[] =
         "[signal] Received shutdown signal, setting shutdown flag\n";
-    (void)write(STDERR_FILENO, message, sizeof(message) - 1U);
+    long ret = write(STDERR_FILENO, message, sizeof(message) - 1U);
+    if(ret < 0) {
+        fprintf(stderr,"%s",  message);
+    }
     g_shutdown_flag = 1;
 }
 

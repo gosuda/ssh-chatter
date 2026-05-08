@@ -212,9 +212,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         socket_t bind_fd = ssh_bind_get_fd(bind_handle);
         unsigned int idle_poll_cycles = 0U;
         struct timespec last_gc_run = {0};
-        struct timespec last_pressure_check = {0};
         clock_gettime(CLOCK_MONOTONIC, &last_gc_run);
-        last_pressure_check = last_gc_run;
         struct timespec last_idle_check = last_gc_run;
 
         bool restart_listener = false;
@@ -233,10 +231,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     poll(&pfd, 1, SSH_CHATTER_ACCEPT_POLL_TIMEOUT_MS);
                 if (poll_rc < 0) {
                     if (errno == EINTR) {
-                        if (host_gc_cycle(host, &last_gc_run,
-                                          &last_pressure_check)) {
-                            break;
-                        }
+                        host_gc_cycle(host, &last_gc_run);
                         continue;
                     }
                     // poll() failed on the bind socket -- treat as fatal
@@ -247,11 +242,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 }
                 if (poll_rc == 0) {
                     // Timeout: no incoming connection yet
-                    if (host_gc_cycle(host, &last_gc_run,
-                                      &last_pressure_check)) {
-                        restart_listener = true;
-                        break;
-                    }
+                    host_gc_cycle(host, &last_gc_run);
                     ++idle_poll_cycles;
                     if (idle_poll_cycles >=
                         SSH_CHATTER_ACCEPT_HEALTH_CHECK_POLLS) {
@@ -281,10 +272,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 idle_poll_cycles = 0U;
             }
 
-            if (host_gc_cycle(host, &last_gc_run, &last_pressure_check)) {
-                restart_listener = true;
-                break;
-            }
+            host_gc_cycle(host, &last_gc_run);
             host_idle_state_maintenance(host, &last_idle_check);
 
             ssh_session session = ssh_new();

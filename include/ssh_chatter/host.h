@@ -1210,7 +1210,6 @@ typedef struct host {
         unsigned int consecutive_errors;
         struct timespec last_error_time;
     } health_guard;
-    bool force_restart_requested;
     _Atomic bool captcha_enabled;
     uint64_t captcha_nonce;
     bool has_last_captcha;

@@ -354,7 +354,6 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->health_guard.consecutive_errors = 0U;
     host->health_guard.last_error_time.tv_sec = 0;
     host->health_guard.last_error_time.tv_nsec = 0L;
-    host->force_restart_requested = false;
     atomic_store(&host->captcha_enabled, false);
     host->captcha_nonce = 0U;
     host->has_last_captcha = false;

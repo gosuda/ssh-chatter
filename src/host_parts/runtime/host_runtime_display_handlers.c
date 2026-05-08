@@ -814,8 +814,15 @@ static void session_handle_ai_member(session_ctx_t *ctx, const char *arguments)
     if (working[0] == '\0') {
         bool enabled = host_ai_member_is_enabled(ctx->owner);
         char status[SSH_CHATTER_MESSAGE_LIMIT];
+        const char *persona_a = ctx->owner->ai_persona_a_name[0] != '\0'
+                                    ? ctx->owner->ai_persona_a_name
+                                    : "kaka";
+        const char *persona_b = ctx->owner->ai_persona_b_name[0] != '\0'
+                                    ? ctx->owner->ai_persona_b_name
+                                    : "dada";
         snprintf(status, sizeof(status),
-                 "AI members (kaka/dada) are %s using %s.",
+                 "AI members (%s/%s) are %s using %s.",
+                 persona_a, persona_b,
                  enabled ? "enabled" : "disabled",
                  ctx->owner->ai_chat_use_gemini ? "Gemini 2.5 Flash-Lite"
                                                 : "Ollama");
@@ -861,8 +868,17 @@ static void session_handle_ai_member(session_ctx_t *ctx, const char *arguments)
                                        "Flash-Lite."
                                      : "AI members enabled with Ollama.");
     } else {
-        session_send_system_line(
-            ctx, "AI members disabled. kaka/dada will stay quiet.");
+        char disabled_msg[SSH_CHATTER_MESSAGE_LIMIT];
+        const char *persona_a = ctx->owner->ai_persona_a_name[0] != '\0'
+                                    ? ctx->owner->ai_persona_a_name
+                                    : "kaka";
+        const char *persona_b = ctx->owner->ai_persona_b_name[0] != '\0'
+                                    ? ctx->owner->ai_persona_b_name
+                                    : "dada";
+        snprintf(disabled_msg, sizeof(disabled_msg),
+                 "AI members disabled. %s/%s will stay quiet.", persona_a,
+                 persona_b);
+        session_send_system_line(ctx, disabled_msg);
     }
 }
 
@@ -889,8 +905,14 @@ static void session_handle_ollama_model(session_ctx_t *ctx,
 
     (void)working;
     char message[SSH_CHATTER_MESSAGE_LIMIT];
+    const char *persona_a = ctx->owner->ai_persona_a_name[0] != '\0'
+                                ? ctx->owner->ai_persona_a_name
+                                : "kaka";
+    const char *persona_b = ctx->owner->ai_persona_b_name[0] != '\0'
+                                ? ctx->owner->ai_persona_b_name
+                                : "dada";
     snprintf(message, sizeof(message),
-             "kaka/dada use %s.",
+             "%s/%s use %s.", persona_a, persona_b,
              ctx->owner->ai_chat_use_gemini ? "Gemini 2.5 Flash-Lite"
                                             : host_ai_chat_default_model());
     session_send_system_line(ctx, message);

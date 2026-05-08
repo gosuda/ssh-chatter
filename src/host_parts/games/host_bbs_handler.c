@@ -156,6 +156,11 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         }
         uint64_t id = (uint64_t)strtoull(rest, nullptr, 10);
         session_bbs_delete(ctx, id);
+    } else if (strcmp(canonical_command, "door") == 0) {
+        /* `/bbs door` lists doors; `/bbs door <name>` launches one. */
+        const char *door_name = (rest != nullptr && rest[0] != '\0') ? rest
+                                                                     : nullptr;
+        session_bbs_door_run(ctx, door_name);
     } else {
         session_send_system_line(
             ctx, "Unknown /bbs subcommand. Try /bbs for usage.");

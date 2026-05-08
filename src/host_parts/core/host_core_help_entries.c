@@ -95,6 +95,17 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_RU] = "удалить",
             },
     },
+    {
+        .canonical = "door",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "door",
+                [SESSION_UI_LANGUAGE_KO] = "도어",
+                [SESSION_UI_LANGUAGE_JP] = "ドア",
+                [SESSION_UI_LANGUAGE_ZH] = "门",
+                [SESSION_UI_LANGUAGE_RU] = "дверь",
+            },
+    },
 };
 
 static const size_t kSessionBbsSubcommandCount =

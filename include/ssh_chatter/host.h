@@ -47,6 +47,9 @@
 #define SSH_CHATTER_MAX_BANS 16384
 #define SSH_CHATTER_HISTORY_LIMIT 64
 #define SSH_CHATTER_HISTORY_CACHE_LIMIT 256
+#define SSH_CHATTER_DOOR_GAME_LIMIT 16
+#define SSH_CHATTER_DOOR_GAME_NAME_LEN 32
+#define SSH_CHATTER_DOOR_GAME_DESC_LEN 128
 #define SSH_CHATTER_INPUT_HISTORY_LIMIT 32
 #define SSH_CHATTER_SCROLLBACK_CHUNK 30
 #define SSH_CHATTER_SCROLLBACK_MAX_CHUNK 64
@@ -287,6 +290,13 @@ typedef struct ai_chat_memory_entry {
     char prompt[SSH_CHATTER_MESSAGE_LIMIT];
     char reply[SSH_CHATTER_MESSAGE_LIMIT];
 } ai_chat_memory_entry_t;
+
+typedef struct door_game_entry {
+    bool in_use;
+    char name[SSH_CHATTER_DOOR_GAME_NAME_LEN];
+    char dosbox_conf[PATH_MAX];
+    char description[SSH_CHATTER_DOOR_GAME_DESC_LEN];
+} door_game_entry_t;
 
 typedef enum version_pattern_match {
     VERSION_PATTERN_MATCH_ANY = 0,
@@ -1111,6 +1121,22 @@ typedef struct host {
     struct timespec ai_chat_last_reply;
     ai_chat_memory_entry_t ai_chat_memory[SSH_CHATTER_AI_MEMORY_MAX];
     size_t ai_chat_memory_count;
+    /* Two configurable AI personas. Defaults are "kaka" / "dada" with Korean
+     * aliases "카카" / "다다". Override at startup with env vars
+     * CHATTER_AI_PERSONA_A_NAME / CHATTER_AI_PERSONA_A_ALIAS (and _B_ for the
+     * second persona). The configured name is also injected into the LLM
+     * prompt so the bot self-identifies under the new name. */
+    char ai_persona_a_name[64];
+    char ai_persona_a_alias[64];
+    char ai_persona_b_name[64];
+    char ai_persona_b_alias[64];
+    /* DOOR GAME registry. Populated from env at startup:
+     *   CHATTER_DOOR_<N>=name:dosbox_conf_path[:description]
+     * (N starts at 1; up to SSH_CHATTER_DOOR_GAME_LIMIT slots.) Doors are
+     * launched by `/bbs door <name>` and proxy stdin/stdout to a forked
+     * `dosbox -conf <path> -exit` over a PTY. */
+    door_game_entry_t door_games[SSH_CHATTER_DOOR_GAME_LIMIT];
+    size_t door_game_count;
     char rss_state_file_path[PATH_MAX];
     eliza_memory_entry_t eliza_memory[SSH_CHATTER_ELIZA_MEMORY_MAX];
     size_t eliza_memory_count;

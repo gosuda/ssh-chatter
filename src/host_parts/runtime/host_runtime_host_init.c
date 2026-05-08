@@ -1,3 +1,8 @@
+/* Forward declarations for helpers defined later in this file but referenced
+ * by host_init(), which is the first definition. */
+static void host_ai_persona_load_from_env(host_t *host);
+static void host_door_games_load_from_env(host_t *host);
+
 static void host_fix_overlapping_bbs_rss_paths(host_t *host)
 {
     if (host == nullptr) {
@@ -374,6 +379,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->ai_chat_model[0] = '\0';
     memset(host->ai_chat_memory, 0, sizeof(host->ai_chat_memory));
     host->ai_chat_memory_count = 0U;
+    host_ai_persona_load_from_env(host);
+    host_door_games_load_from_env(host);
     (void)host_try_load_motd_from_path(host, "/etc/ssh-chatter/motd");
 
     host_state_load(host);
@@ -890,19 +897,177 @@ typedef enum ai_chat_bot_persona {
     AI_CHAT_BOT_DADA,
 } ai_chat_bot_persona_t;
 
+static const char *host_ai_persona_name(const host_t *host,
+                                        ai_chat_bot_persona_t persona)
+{
+    if (host == nullptr) {
+        return (persona == AI_CHAT_BOT_DADA) ? "dada" : "kaka";
+    }
+    if (persona == AI_CHAT_BOT_DADA) {
+        return host->ai_persona_b_name[0] != '\0' ? host->ai_persona_b_name
+                                                  : "dada";
+    }
+    return host->ai_persona_a_name[0] != '\0' ? host->ai_persona_a_name
+                                              : "kaka";
+}
+
+static const char *host_ai_persona_alias(const host_t *host,
+                                         ai_chat_bot_persona_t persona)
+{
+    if (host == nullptr) {
+        return (persona == AI_CHAT_BOT_DADA) ? "다다" : "카카";
+    }
+    if (persona == AI_CHAT_BOT_DADA) {
+        return host->ai_persona_b_alias;
+    }
+    return host->ai_persona_a_alias;
+}
+
+static void host_ai_persona_copy_env(char *dest, size_t dest_len,
+                                     const char *env_name,
+                                     const char *fallback)
+{
+    if (dest == nullptr || dest_len == 0U) {
+        return;
+    }
+    const char *value = (env_name != nullptr) ? getenv(env_name) : nullptr;
+    if (value == nullptr || value[0] == '\0') {
+        value = fallback;
+    }
+    if (value == nullptr) {
+        dest[0] = '\0';
+        return;
+    }
+    snprintf(dest, dest_len, "%s", value);
+}
+
+static void host_ai_persona_load_from_env(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+    host_ai_persona_copy_env(host->ai_persona_a_name,
+                             sizeof(host->ai_persona_a_name),
+                             "CHATTER_AI_PERSONA_A_NAME", "kaka");
+    host_ai_persona_copy_env(host->ai_persona_a_alias,
+                             sizeof(host->ai_persona_a_alias),
+                             "CHATTER_AI_PERSONA_A_ALIAS", "카카");
+    host_ai_persona_copy_env(host->ai_persona_b_name,
+                             sizeof(host->ai_persona_b_name),
+                             "CHATTER_AI_PERSONA_B_NAME", "dada");
+    host_ai_persona_copy_env(host->ai_persona_b_alias,
+                             sizeof(host->ai_persona_b_alias),
+                             "CHATTER_AI_PERSONA_B_ALIAS", "다다");
+}
+
+static bool host_door_game_name_is_valid(const char *name)
+{
+    if (name == nullptr || name[0] == '\0') {
+        return false;
+    }
+    size_t len = strnlen(name, SSH_CHATTER_DOOR_GAME_NAME_LEN);
+    if (len >= SSH_CHATTER_DOOR_GAME_NAME_LEN) {
+        return false;
+    }
+    for (size_t idx = 0U; idx < len; ++idx) {
+        unsigned char ch = (unsigned char)name[idx];
+        if (!(isalnum(ch) || ch == '-' || ch == '_')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void host_door_games_load_from_env(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    memset(host->door_games, 0, sizeof(host->door_games));
+    host->door_game_count = 0U;
+
+    for (size_t slot = 0U; slot < SSH_CHATTER_DOOR_GAME_LIMIT; ++slot) {
+        char env_key[40];
+        snprintf(env_key, sizeof(env_key), "CHATTER_DOOR_%zu", slot + 1U);
+        const char *value = getenv(env_key);
+        if (value == nullptr || value[0] == '\0') {
+            continue;
+        }
+
+        /* value format: "name:dosbox_conf[:description]" — colons inside
+         * description are kept verbatim. */
+        const char *first_colon = strchr(value, ':');
+        if (first_colon == nullptr || first_colon == value) {
+            humanized_log_error("door",
+                                "CHATTER_DOOR_<N> must be name:conf[:desc]",
+                                EINVAL);
+            continue;
+        }
+
+        size_t name_len = (size_t)(first_colon - value);
+        if (name_len >= SSH_CHATTER_DOOR_GAME_NAME_LEN) {
+            humanized_log_error("door", "door name too long", ENAMETOOLONG);
+            continue;
+        }
+
+        char name_buf[SSH_CHATTER_DOOR_GAME_NAME_LEN];
+        memcpy(name_buf, value, name_len);
+        name_buf[name_len] = '\0';
+        if (!host_door_game_name_is_valid(name_buf)) {
+            humanized_log_error(
+                "door", "door name must be alphanumeric / dash / underscore",
+                EINVAL);
+            continue;
+        }
+
+        const char *conf_start = first_colon + 1;
+        const char *conf_end = strchr(conf_start, ':');
+        size_t conf_len =
+            conf_end != nullptr ? (size_t)(conf_end - conf_start) : strlen(conf_start);
+        if (conf_len == 0U || conf_len >= PATH_MAX) {
+            humanized_log_error("door", "door dosbox conf path is invalid",
+                                EINVAL);
+            continue;
+        }
+
+        const char *desc = (conf_end != nullptr) ? (conf_end + 1) : "";
+
+        if (host->door_game_count >= SSH_CHATTER_DOOR_GAME_LIMIT) {
+            break;
+        }
+
+        size_t target = host->door_game_count++;
+        host->door_games[target].in_use = true;
+        snprintf(host->door_games[target].name,
+                 sizeof(host->door_games[target].name), "%s", name_buf);
+        memcpy(host->door_games[target].dosbox_conf, conf_start, conf_len);
+        host->door_games[target].dosbox_conf[conf_len] = '\0';
+        snprintf(host->door_games[target].description,
+                 sizeof(host->door_games[target].description), "%s", desc);
+    }
+}
+
 static ai_chat_bot_persona_t host_ai_chat_choose_persona(
-    const chat_history_entry_t *entry)
+    const host_t *host, const chat_history_entry_t *entry)
 {
     if (entry == nullptr) {
         return AI_CHAT_BOT_NONE;
     }
 
-    if (host_ai_chat_message_mentions(entry->message, "kaka") ||
-        host_ai_chat_message_mentions(entry->message, "카카")) {
+    const char *name_a = host_ai_persona_name(host, AI_CHAT_BOT_KAKA);
+    const char *alias_a = host_ai_persona_alias(host, AI_CHAT_BOT_KAKA);
+    const char *name_b = host_ai_persona_name(host, AI_CHAT_BOT_DADA);
+    const char *alias_b = host_ai_persona_alias(host, AI_CHAT_BOT_DADA);
+
+    if (host_ai_chat_message_mentions(entry->message, name_a) ||
+        (alias_a != nullptr && alias_a[0] != '\0' &&
+         host_ai_chat_message_mentions(entry->message, alias_a))) {
         return AI_CHAT_BOT_KAKA;
     }
-    if (host_ai_chat_message_mentions(entry->message, "dada") ||
-        host_ai_chat_message_mentions(entry->message, "다다")) {
+    if (host_ai_chat_message_mentions(entry->message, name_b) ||
+        (alias_b != nullptr && alias_b[0] != '\0' &&
+         host_ai_chat_message_mentions(entry->message, alias_b))) {
         return AI_CHAT_BOT_DADA;
     }
 
@@ -924,7 +1089,8 @@ static ai_chat_bot_persona_t host_ai_chat_choose_persona(
     return ((hash % 2U) == 0U) ? AI_CHAT_BOT_KAKA : AI_CHAT_BOT_DADA;
 }
 
-static bool host_ai_chat_should_respond(const chat_history_entry_t *entry)
+static bool host_ai_chat_should_respond(const host_t *host,
+                                        const chat_history_entry_t *entry)
 {
     if (entry == nullptr || !entry->is_user_message) {
         return false;
@@ -932,13 +1098,15 @@ static bool host_ai_chat_should_respond(const chat_history_entry_t *entry)
     if (entry->message[0] == '\0' || entry->message[0] == '/') {
         return false;
     }
+    const char *name_a = host_ai_persona_name(host, AI_CHAT_BOT_KAKA);
+    const char *name_b = host_ai_persona_name(host, AI_CHAT_BOT_DADA);
     if (strncasecmp(entry->username, "ai-eliza", SSH_CHATTER_USERNAME_LEN) ==
             0 ||
-        strncasecmp(entry->username, "kaka", SSH_CHATTER_USERNAME_LEN) == 0 ||
-        strncasecmp(entry->username, "dada", SSH_CHATTER_USERNAME_LEN) == 0) {
+        strncasecmp(entry->username, name_a, SSH_CHATTER_USERNAME_LEN) == 0 ||
+        strncasecmp(entry->username, name_b, SSH_CHATTER_USERNAME_LEN) == 0) {
         return false;
     }
-    return host_ai_chat_choose_persona(entry) != AI_CHAT_BOT_NONE;
+    return host_ai_chat_choose_persona(host, entry) != AI_CHAT_BOT_NONE;
 }
 
 static void host_ai_chat_snapshot_state(host_t *host, char *model,
@@ -1307,7 +1475,7 @@ static void host_ai_chat_consider_reply(host_t *host,
     if (!host_ai_member_is_enabled(host)) {
         return;
     }
-    if (!host_ai_chat_should_respond(entry)) {
+    if (!host_ai_chat_should_respond(host, entry)) {
         return;
     }
 
@@ -1334,24 +1502,28 @@ static void host_ai_chat_consider_reply(host_t *host,
                               SSH_CHATTER_AI_PROMPT_MESSAGE_MAX - 1U);
     size_t context_matches = host_ai_chat_memory_collect_context(
         host, entry->message, context, sizeof(context));
-    ai_chat_bot_persona_t persona = host_ai_chat_choose_persona(entry);
+    ai_chat_bot_persona_t persona = host_ai_chat_choose_persona(host, entry);
     if (persona == AI_CHAT_BOT_NONE) {
         return;
     }
 
     const bool korean = host_ai_chat_message_looks_korean(entry->message);
-    const char *persona_name =
-        (persona == AI_CHAT_BOT_KAKA) ? "kaka" : "dada";
-    const char *tone_instruction = nullptr;
+    const char *persona_name = host_ai_persona_name(host, persona);
+    char tone_buffer[256];
     if (persona == AI_CHAT_BOT_KAKA) {
-        tone_instruction =
-            "Respond as kaka, a slightly cheerful and playful chat "
-            "participant. Keep it short and natural.";
+        snprintf(tone_buffer, sizeof(tone_buffer),
+                 "Respond as %s, a slightly cheerful and playful chat "
+                 "participant. Keep it short and natural. Always introduce "
+                 "yourself as %s if asked your name.",
+                 persona_name, persona_name);
     } else {
-        tone_instruction =
-            "Respond as dada, a calm-but-absurd jokester who sounds a little "
-            "childish. Keep it short and natural.";
+        snprintf(tone_buffer, sizeof(tone_buffer),
+                 "Respond as %s, a calm-but-absurd jokester who sounds a "
+                 "little childish. Keep it short and natural. Always "
+                 "introduce yourself as %s if asked your name.",
+                 persona_name, persona_name);
     }
+    const char *tone_instruction = tone_buffer;
     const char *language_instruction =
         korean
             ? "The user is speaking Korean. Reply in Korean."
@@ -1566,10 +1738,14 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         return;
     }
 
-    if (send_sigterm) {
-        // Terminate all child processes in the same process group
-        kill(0, SIGTERM);
-    }
+    /* Previously this called kill(0, SIGTERM) to wake child processes, but the
+     * daemon already runs each fork()ed helper (moderation worker, scp helper)
+     * with its own waitpid lifecycle. Re-broadcasting SIGTERM to the process
+     * group also re-enters our own signal handler, which races with the
+     * graceful-shutdown teardown and has been observed to surface as
+     * ttak header-corruption aborts. We let the existing shutdown_flag wake
+     * the listeners and skip the broadcast. */
+    (void)send_sigterm;
 
     sshc_memory_context_t *memory_scope = nullptr;
     if (host->memory_context != nullptr) {

@@ -46,14 +46,17 @@ static bool g_sync_initialized = false;
 static void signal_handler(int signum)
 {
     (void)signum;
-    fprintf(stderr, "Received signal %d\n", signum);
-    static const char message[] =
-        "[signal] Received shutdown signal, setting shutdown flag\n";
-    long ret = write(STDERR_FILENO, message, sizeof(message) - 1U);
-    if(ret < 0) {
-        fprintf(stderr,"%s",  message);
+    /* Async-signal-safe path only: never call fprintf/printf here, since the
+     * signal can interrupt a thread mid-stdio and corrupt libc buffers — that
+     * has historically surfaced as ttak header-corruption aborts during
+     * shutdown. Atomically set the flag and emit a single write(2). */
+    if (g_shutdown_flag != 0) {
+        return;
     }
     g_shutdown_flag = 1;
+    static const char message[] =
+        "[signal] Received shutdown signal, setting shutdown flag\n";
+    (void)!write(STDERR_FILENO, message, sizeof(message) - 1U);
 }
 
 static void print_usage(const char *prog_name)

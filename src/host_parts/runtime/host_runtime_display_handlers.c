@@ -579,6 +579,9 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
         } else if (strcasecmp(arg, "cp852") == 0) {
             requested_codepage = SESSION_CODEPAGE_CP852;
             has_codepage = true;
+        } else if (strcasecmp(arg, "johab") == 0) {
+            requested_codepage = SESSION_CODEPAGE_JOHAB;
+            has_codepage = true;
         }
 
         if (*arg == '\0' || strcasecmp(arg, "status") == 0) {
@@ -623,7 +626,7 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
 
         session_send_system_line(
             ctx, "Usage: /retro keyboard <on|off|status|cp437|cp949|cp932|"
-                 "cp936|cp1251|cp850|cp852>");
+                 "cp936|cp1251|cp850|cp852|johab>");
         return;
     }
 

@@ -16,6 +16,7 @@ typedef enum session_codepage {
     SESSION_CODEPAGE_CP1251,   /* Russian (Cyrillic) */
     SESSION_CODEPAGE_CP850,    /* Western European (DOS Latin 1) */
     SESSION_CODEPAGE_CP852,    /* Central European (DOS Latin 2) */
+    SESSION_CODEPAGE_JOHAB,    /* Korean (Johab, KS X 1001-1) */
     SESSION_CODEPAGE_COUNT
 } session_codepage_t;
 

@@ -809,17 +809,20 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
         char encoded[8];
         size_t encoded_len = 0U;
 
-        if (ctx->cp437_input_enabled) {
-            encoded_len = session_codepage_byte_to_utf8(
-                ctx->active_codepage, &ctx->codepage_ctx, byte, encoded,
-                sizeof(encoded));
-            if (encoded_len == 0U) {
-                encoded[0] = '?';
-                encoded_len = 1U;
-            }
-        } else {
-            /* UTF-8 mode - pass through */
-            encoded[0] = (char)byte;
+        /*
+         * Route every byte through the codepage decoder so multi-generation
+         * BBS clients (UTF-8 / CP949 / Johab / CP932 / ...) all converge on
+         * canonical UTF-8 in the session buffer. With retro disabled we
+         * select UTF-8 as the source codepage, which the decoder passes
+         * through byte-for-byte.
+         */
+        session_codepage_t input_codepage =
+            ctx->cp437_input_enabled ? ctx->active_codepage
+                                     : SESSION_CODEPAGE_UTF8;
+        encoded_len = session_codepage_byte_to_utf8(
+            input_codepage, &ctx->codepage_ctx, byte, encoded, sizeof(encoded));
+        if (encoded_len == 0U) {
+            encoded[0] = '?';
             encoded_len = 1U;
         }
 

@@ -278,6 +278,50 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
         return produced;
     }
 
+    case SESSION_CODEPAGE_JOHAB: { /* Korean Johab (KS X 1001-1) */
+        const bool is_lead = (byte >= 0x84U && byte <= 0xF9U);
+        const bool is_trail = (byte >= 0x31U && byte <= 0xFEU && byte != 0x7FU);
+
+        if (context->state == 0) {
+            if (is_lead) {
+                context->lead_byte = byte;
+                context->state = 1;
+                return 0U;
+            }
+
+            unsigned char single[1] = {byte};
+            produced = session_codepage_iconv_chunk(codepage, single, 1U,
+                                                    output, capacity);
+            if (produced == 0U && capacity > 0U) {
+                output[0] = '?';
+                produced = 1U;
+            }
+            context->state = 0;
+            context->lead_byte = 0;
+            return produced;
+        }
+
+        unsigned char sequence[2] = {context->lead_byte, byte};
+        context->state = 0;
+        context->lead_byte = 0;
+
+        if (!is_trail) {
+            if (capacity > 0U) {
+                output[0] = '?';
+                return 1U;
+            }
+            return 0U;
+        }
+
+        produced = session_codepage_iconv_chunk(codepage, sequence, 2U, output,
+                                                capacity);
+        if (produced == 0U && capacity > 0U) {
+            output[0] = '?';
+            produced = 1U;
+        }
+        return produced;
+    }
+
     case SESSION_CODEPAGE_CP936: { /* Simplified Chinese GBK */
         const bool is_lead = (byte >= 0x81U && byte <= 0xFEU);
         const bool is_trail = (byte >= 0x40U && byte <= 0xFEU && byte != 0x7FU);
@@ -438,6 +482,8 @@ const char *session_codepage_name(session_codepage_t codepage)
         return "CP850";
     case SESSION_CODEPAGE_CP852:
         return "CP852";
+    case SESSION_CODEPAGE_JOHAB:
+        return "Johab";
     default:
         return "Unknown";
     }
@@ -462,6 +508,8 @@ const char *session_codepage_iconv_name(session_codepage_t codepage)
         return "CP850//TRANSLIT";
     case SESSION_CODEPAGE_CP852:
         return "CP852//TRANSLIT";
+    case SESSION_CODEPAGE_JOHAB:
+        return "JOHAB//TRANSLIT";
     default:
         return NULL;
     }

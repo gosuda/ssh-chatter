@@ -141,6 +141,14 @@ static void session_wall_broadcast_refresh(host_t *host,
                 if (member == nullptr || !member->wall_active) {
                     continue;
                 }
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    continue;
+                }
+                atomic_fetch_add(&member->room_snapshot_refs, 1U);
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+                    continue;
+                }
                 targets[target_count++] = member;
             }
         }
@@ -154,6 +162,7 @@ static void session_wall_broadcast_refresh(host_t *host,
         }
         session_wall_render(target, target == origin ? "Wall updated."
                                                      : "Wall updated by another user.");
+        atomic_fetch_sub(&target->room_snapshot_refs, 1U);
     }
 }
 

@@ -511,6 +511,14 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
                 if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    continue;
+                }
+                atomic_fetch_add(&member->room_snapshot_refs, 1U);
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+                    continue;
+                }
                 targets[target_count++] = member;
             }
         }
@@ -523,6 +531,7 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
 
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_mark_should_sink(targets[idx]);
+        atomic_fetch_sub(&targets[idx]->room_snapshot_refs, 1U);
     }
 
     sshc_gc_free(targets);

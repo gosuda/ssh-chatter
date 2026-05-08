@@ -231,7 +231,17 @@ static void session_destroy(session_ctx_t *ctx)
 #if defined(__GLIBC__)
     (void)malloc_trim(0);
 #endif
-    session_epoch_free(ctx);
+    /*
+     * Zero-trust reclamation: even after the bounded drain wait on
+     * room_snapshot_refs, asynchronous paths (RSS, morse feed, JSON API,
+     * translated PM delivery, operator-grant updates) might still observe a
+     * raw pointer they snapshotted under a libttak EBR critical section.
+     * Retire instead of freeing immediately so the storage stays alive until
+     * every reader has left its epoch, then trigger a reclaim pass. The
+     * snapshot_refs gate plus EBR together form belt-and-braces protection.
+     */
+    sshc_epoch_retire_with(ctx, session_epoch_free);
+    sshc_epoch_reclaim();
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,
@@ -1282,16 +1292,20 @@ static void *session_thread(void *arg)
 
             char encoded[8];
             size_t encoded_len = 0U;
-            if (ctx->cp437_input_enabled) {
-                encoded_len = session_codepage_byte_to_utf8(
-                    ctx->active_codepage, &ctx->codepage_ctx, (unsigned char)ch,
-                    encoded, sizeof(encoded));
-                if (encoded_len == 0U) {
-                    encoded[0] = '?';
-                    encoded_len = 1U;
-                }
-            } else {
-                encoded[0] = ch;
+            /*
+             * Always route input through the codepage decoder so the in-memory
+             * buffer holds canonical UTF-8 regardless of the user's terminal
+             * encoding. When retro mode is disabled we treat input as UTF-8,
+             * which the decoder passes through unchanged (single-byte path).
+             */
+            session_codepage_t input_codepage =
+                ctx->cp437_input_enabled ? ctx->active_codepage
+                                         : SESSION_CODEPAGE_UTF8;
+            encoded_len = session_codepage_byte_to_utf8(
+                input_codepage, &ctx->codepage_ctx, (unsigned char)ch, encoded,
+                sizeof(encoded));
+            if (encoded_len == 0U) {
+                encoded[0] = '?';
                 encoded_len = 1U;
             }
 
@@ -1377,8 +1391,8 @@ static void *session_thread(void *arg)
                      ANSI_RESET, ANSI_BRIGHT_BLUE, ANSI_RESET, ctx->user.name);
         }
         host_history_record_system(ctx->owner, part_message, nullptr);
-        chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
         atomic_store(&ctx->room_snapshot_retired, true);
+        chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
         chat_room_remove(&ctx->owner->room, ctx);
         session_manual_gc_tick(ctx);
         host_manual_gc_tick(ctx->owner);
@@ -1386,6 +1400,20 @@ static void *session_thread(void *arg)
 
     if (ctx->owner != nullptr) {
         host_nickname_claim_release(ctx->owner, ctx, nullptr);
+    }
+
+    /*
+     * Bounded drain: other broadcasters may still hold a snapshot ref to ctx
+     * acquired before retired was set. Wait briefly so they finish touching
+     * ctx->output_lock before we free it. Capped to avoid indefinite hang
+     * if a ref is leaked.
+     */
+    for (unsigned int pass = 0U; pass < 500U; ++pass) {
+        if (atomic_load(&ctx->room_snapshot_refs) == 0U) {
+            break;
+        }
+        struct timespec drain_delay = {.tv_sec = 0, .tv_nsec = 1000000L};
+        nanosleep(&drain_delay, nullptr);
     }
 
     session_destroy(ctx);

@@ -1382,29 +1382,6 @@ static void *session_thread(void *arg)
         chat_room_remove(&ctx->owner->room, ctx);
         session_manual_gc_tick(ctx);
         host_manual_gc_tick(ctx->owner);
-
-        struct timespec drain_started = {0};
-        bool drain_started_valid =
-            (clock_gettime(CLOCK_MONOTONIC, &drain_started) == 0);
-        bool drain_logged = false;
-        while (atomic_load(&ctx->room_snapshot_refs) > 0U) {
-            struct timespec drain_delay = {.tv_sec = 0, .tv_nsec = 1000000L};
-            nanosleep(&drain_delay, nullptr);
-            if (drain_started_valid && !drain_logged) {
-                struct timespec now = {0};
-                if (clock_gettime(CLOCK_MONOTONIC, &now) == 0) {
-                    time_t elapsed_sec = now.tv_sec - drain_started.tv_sec;
-                    if (elapsed_sec >= 5) {
-                        printf("[session] waiting for broadcast drain (%u refs) "
-                               "for %s\n",
-                               atomic_load(&ctx->room_snapshot_refs),
-                               ctx->user.name[0] != '\0' ? ctx->user.name
-                                                         : "unknown");
-                        drain_logged = true;
-                    }
-                }
-            }
-        }
     }
 
     if (ctx->owner != nullptr) {

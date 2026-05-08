@@ -46,12 +46,68 @@ typedef struct host_door_runner {
      * up to SSH_CHATTER_DOOR_DETECT_BUFFER_BYTES bytes before deciding which
      * Korean encoding (CP949 vs JOHAB vs UTF-8 vs none) the child is using;
      * once a decision is reached, every subsequent chunk is converted to
-     * UTF-8 before being written to the SSH session. */
-    unsigned char detect_buffer[SSH_CHATTER_DOOR_DETECT_BUFFER_BYTES];
+     * UTF-8 before being written to the SSH session.
+     *
+     * The 4 KiB scratch buffer is allocated from the host's resource manager
+     * (ttak abstract backing) at spawn time and freed the moment the
+     * encoding is decided — not at runner teardown — so the bytes are not
+     * pinned for the rest of the door session. */
+    sshc_resource_manager_t *rm;
+    ttak_abstract_mem_t *detect_handle;
+    ttak_abstract_map_t detect_map;
+    unsigned char *detect_buffer; /* alias of detect_map.data while mapped */
     size_t detect_length;
     bool encoding_decided;
     int detected_encoding; /* see DOOR_ENC_* below */
 } host_door_runner_t;
+
+static bool door_runner_detect_acquire(host_door_runner_t *runner,
+                                       sshc_resource_manager_t *rm)
+{
+    if (runner == nullptr) {
+        return false;
+    }
+    runner->rm = rm;
+    runner->detect_handle = nullptr;
+    memset(&runner->detect_map, 0, sizeof(runner->detect_map));
+    runner->detect_buffer = nullptr;
+    runner->detect_length = 0U;
+
+    if (rm == nullptr) {
+        return false;
+    }
+    runner->detect_handle = sshc_rm_scope_alloc(
+        rm, SSH_CHATTER_DOOR_DETECT_BUFFER_BYTES, "door_detect");
+    if (runner->detect_handle == nullptr) {
+        return false;
+    }
+    if (ttak_abstract_map(runner->detect_handle, 0U,
+                          SSH_CHATTER_DOOR_DETECT_BUFFER_BYTES,
+                          TTAK_ABSTRACT_ACCESS_WRITE,
+                          &runner->detect_map) != 0) {
+        sshc_rm_scope_free(rm, runner->detect_handle);
+        runner->detect_handle = nullptr;
+        return false;
+    }
+    runner->detect_buffer = (unsigned char *)runner->detect_map.data;
+    return runner->detect_buffer != nullptr;
+}
+
+static void door_runner_detect_release(host_door_runner_t *runner)
+{
+    if (runner == nullptr) {
+        return;
+    }
+    if (runner->detect_buffer != nullptr) {
+        ttak_abstract_unmap(&runner->detect_map);
+        runner->detect_buffer = nullptr;
+    }
+    if (runner->detect_handle != nullptr && runner->rm != nullptr) {
+        sshc_rm_scope_free(runner->rm, runner->detect_handle);
+    }
+    runner->detect_handle = nullptr;
+    runner->detect_length = 0U;
+}
 
 enum {
     DOOR_ENC_UNKNOWN = 0,
@@ -319,23 +375,6 @@ static void door_emit_converted(session_ctx_t *ctx, host_door_runner_t *runner,
     iconv_close(cd);
 }
 
-static const door_game_entry_t *host_door_lookup(const host_t *host,
-                                                 const char *name)
-{
-    if (host == nullptr || name == nullptr || name[0] == '\0') {
-        return nullptr;
-    }
-    for (size_t idx = 0U; idx < host->door_game_count; ++idx) {
-        if (!host->door_games[idx].in_use) {
-            continue;
-        }
-        if (strcasecmp(host->door_games[idx].name, name) == 0) {
-            return &host->door_games[idx];
-        }
-    }
-    return nullptr;
-}
-
 static void session_bbs_door_list(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
@@ -353,15 +392,15 @@ static void session_bbs_door_list(session_ctx_t *ctx)
     session_send_system_line(ctx, "Available DOOR games:");
     char buffer[SSH_CHATTER_MESSAGE_LIMIT];
     for (size_t idx = 0U; idx < host->door_game_count; ++idx) {
-        if (!host->door_games[idx].in_use) {
+        door_game_entry_t entry;
+        if (!host_door_game_get(host, idx, &entry) || !entry.in_use) {
             continue;
         }
-        const char *desc = host->door_games[idx].description;
-        if (desc[0] == '\0') {
-            snprintf(buffer, sizeof(buffer), "  %s", host->door_games[idx].name);
+        if (entry.description[0] == '\0') {
+            snprintf(buffer, sizeof(buffer), "  %s", entry.name);
         } else {
             snprintf(buffer, sizeof(buffer), "  %s — %s",
-                     host->door_games[idx].name, desc);
+                     entry.name, entry.description);
         }
         session_send_system_line(ctx, buffer);
     }
@@ -528,9 +567,9 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
                 /* Encoding detection: pre-decision, accumulate into the
                  * detect buffer; once decided, every chunk goes through the
                  * converter. */
-                if (!runner->encoding_decided) {
-                    size_t room =
-                        sizeof(runner->detect_buffer) - runner->detect_length;
+                if (!runner->encoding_decided && runner->detect_buffer != nullptr) {
+                    size_t room = SSH_CHATTER_DOOR_DETECT_BUFFER_BYTES -
+                                  runner->detect_length;
                     size_t copy = ((size_t)got < room) ? (size_t)got : room;
                     if (copy > 0U) {
                         memcpy(runner->detect_buffer + runner->detect_length,
@@ -538,7 +577,7 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
                         runner->detect_length += copy;
                     }
                     bool buffer_full = runner->detect_length ==
-                                       sizeof(runner->detect_buffer);
+                                       SSH_CHATTER_DOOR_DETECT_BUFFER_BYTES;
                     bool seen_high_bit = false;
                     for (size_t k = 0U; k < runner->detect_length; ++k) {
                         if (runner->detect_buffer[k] >= 0x80U) {
@@ -558,7 +597,10 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
                          * in one shot so we don't lose pre-decision output. */
                         door_emit_converted(ctx, runner, runner->detect_buffer,
                                             runner->detect_length);
-                        runner->detect_length = 0U;
+                        /* Encoding is now decided — release the 4 KiB scratch
+                         * buffer immediately rather than holding it for the
+                         * rest of the door session. */
+                        door_runner_detect_release(runner);
                     }
                 } else {
                     door_emit_converted(ctx, runner, buffer, (size_t)got);
@@ -584,14 +626,17 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
                 }
                 if (!runner->encoding_decided) {
                     runner->detected_encoding =
-                        door_enc_decide(runner->detect_buffer,
-                                        runner->detect_length);
+                        runner->detect_buffer != nullptr
+                            ? door_enc_decide(runner->detect_buffer,
+                                              runner->detect_length)
+                            : DOOR_ENC_PASSTHROUGH;
                     runner->encoding_decided = true;
-                    if (runner->detect_length > 0U) {
+                    if (runner->detect_buffer != nullptr &&
+                        runner->detect_length > 0U) {
                         door_emit_converted(ctx, runner, runner->detect_buffer,
                                             runner->detect_length);
-                        runner->detect_length = 0U;
                     }
+                    door_runner_detect_release(runner);
                 }
                 door_emit_converted(ctx, runner, buffer, (size_t)residual);
             }
@@ -682,8 +727,8 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
         return;
     }
 
-    const door_game_entry_t *entry = host_door_lookup(ctx->owner, name);
-    if (entry == nullptr) {
+    door_game_entry_t entry;
+    if (!host_door_game_lookup(ctx->owner, name, &entry)) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(message, sizeof(message),
                  "Unknown DOOR game '%s'. Try `/bbs door` for the list.",
@@ -695,7 +740,7 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
     char status[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(status, sizeof(status),
              "[door] launching '%s' (Ctrl-] to exit, %ds max).",
-             entry->name, SSH_CHATTER_DOOR_MAX_RUNTIME_SECONDS);
+             entry.name, SSH_CHATTER_DOOR_MAX_RUNTIME_SECONDS);
     session_send_system_line(ctx, status);
 
     host_door_runner_t runner = {
@@ -703,12 +748,22 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
         .master_fd = -1,
         .started_at = 0,
         .active = false,
+        .rm = nullptr,
+        .detect_handle = nullptr,
+        .detect_buffer = nullptr,
         .detect_length = 0U,
         .encoding_decided = false,
         .detected_encoding = DOOR_ENC_UNKNOWN,
     };
 
-    if (!session_bbs_door_spawn(entry->dosbox_conf, &runner)) {
+    if (!door_runner_detect_acquire(&runner, ctx->owner->resource_manager)) {
+        session_send_system_line(
+            ctx, "[door] failed to allocate detection scratch buffer.");
+        return;
+    }
+
+    if (!session_bbs_door_spawn(entry.dosbox_conf, &runner)) {
+        door_runner_detect_release(&runner);
         session_send_system_line(
             ctx,
             "[door] failed to launch dosbox. Verify the conf path exists and "
@@ -717,5 +772,6 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
     }
 
     (void)session_bbs_door_io_loop(ctx, &runner);
+    door_runner_detect_release(&runner);
     session_send_system_line(ctx, "[door] session ended.");
 }

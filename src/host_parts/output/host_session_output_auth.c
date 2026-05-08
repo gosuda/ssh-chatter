@@ -929,7 +929,7 @@ static bool session_acquire_cpu_slot(session_ctx_t *ctx)
         ttak_mutex_lock(&host->lock);
         if (host->cpu_slot_limit == 0U) {
             acquired = true;
-        } else if (host->cpu_slots == nullptr &&
+        } else if (host->cpu_slots_storage == nullptr &&
                    host->cpu_slot_capacity == 0U) {
             if (!host->cpu_slot_allocation_in_progress) {
                 host->cpu_slot_allocation_in_progress = true;
@@ -937,20 +937,29 @@ static bool session_acquire_cpu_slot(session_ctx_t *ctx)
                 allocate_capacity = host->cpu_slot_limit;
             }
         } else if (host->cpu_slot_in_use < host->cpu_slot_limit &&
-                   host->cpu_slots != nullptr) {
-            for (size_t slot_index = 0U; slot_index < host->cpu_slot_capacity;
-                 ++slot_index) {
-                if (host->cpu_slots[slot_index].in_use) {
-                    continue;
+                   host->cpu_slots_storage != nullptr) {
+            ttak_abstract_map_t smap;
+            if (ttak_abstract_map(host->cpu_slots_storage, 0U,
+                                  host->cpu_slot_capacity *
+                                      sizeof(cpu_feature_slot_t),
+                                  TTAK_ABSTRACT_ACCESS_WRITE, &smap) == 0) {
+                cpu_feature_slot_t *slots =
+                    (cpu_feature_slot_t *)smap.data;
+                for (size_t slot_index = 0U;
+                     slot_index < host->cpu_slot_capacity; ++slot_index) {
+                    if (slots[slot_index].in_use) {
+                        continue;
+                    }
+                    slots[slot_index].in_use = true;
+                    slots[slot_index].session = ctx;
+                    host->cpu_slot_in_use++;
+                    if (slot_index < 64U) {
+                        host->cpu_slot_mask |= (1ULL << slot_index);
+                    }
+                    acquired = true;
+                    break;
                 }
-                host->cpu_slots[slot_index].in_use = true;
-                host->cpu_slots[slot_index].session = ctx;
-                host->cpu_slot_in_use++;
-                if (slot_index < 64U) {
-                    host->cpu_slot_mask |= (1ULL << slot_index);
-                }
-                acquired = true;
-                break;
+                ttak_abstract_unmap(&smap);
             }
         }
 
@@ -964,20 +973,28 @@ static bool session_acquire_cpu_slot(session_ctx_t *ctx)
         }
 
         if (should_allocate_slots) {
-            cpu_feature_slot_t *slots = sshc_gc_calloc(
-                allocate_capacity, sizeof(*slots));
+            ttak_abstract_mem_t *slots_handle = nullptr;
+            if (host->resource_manager != nullptr) {
+                slots_handle = sshc_rm_scope_alloc(
+                    host->resource_manager,
+                    allocate_capacity * sizeof(cpu_feature_slot_t),
+                    "cpu_slots");
+            }
             bool allocation_still_missing = false;
             ttak_mutex_lock(&host->lock);
             host->cpu_slot_allocation_in_progress = false;
-            if (host->cpu_slots == nullptr && host->cpu_slot_capacity == 0U) {
-                host->cpu_slots = slots;
+            if (host->cpu_slots_storage == nullptr &&
+                host->cpu_slot_capacity == 0U) {
+                host->cpu_slots_storage = slots_handle;
                 host->cpu_slot_capacity =
-                    (slots != nullptr) ? allocate_capacity : 0U;
-                allocation_still_missing = (slots == nullptr);
-            } else if (slots != nullptr) {
-                sshc_gc_free(slots);
+                    (slots_handle != nullptr) ? allocate_capacity : 0U;
+                allocation_still_missing = (slots_handle == nullptr);
+                slots_handle = nullptr; /* ownership transferred */
             }
             ttak_mutex_unlock(&host->lock);
+            if (slots_handle != nullptr && host->resource_manager != nullptr) {
+                sshc_rm_scope_free(host->resource_manager, slots_handle);
+            }
             if (allocation_still_missing) {
                 const struct timespec wait_time = {
                     .tv_sec = 0,
@@ -1010,22 +1027,30 @@ static void session_release_cpu_slot(session_ctx_t *ctx)
 
     host_t *host = ctx->owner;
     ttak_mutex_lock(&host->lock);
-    if (host->cpu_slots != nullptr && host->cpu_slot_capacity > 0U) {
-        for (size_t slot_index = 0U; slot_index < host->cpu_slot_capacity;
-             ++slot_index) {
-            if (!host->cpu_slots[slot_index].in_use ||
-                host->cpu_slots[slot_index].session != ctx) {
-                continue;
+    if (host->cpu_slots_storage != nullptr && host->cpu_slot_capacity > 0U) {
+        ttak_abstract_map_t smap;
+        if (ttak_abstract_map(host->cpu_slots_storage, 0U,
+                              host->cpu_slot_capacity *
+                                  sizeof(cpu_feature_slot_t),
+                              TTAK_ABSTRACT_ACCESS_WRITE, &smap) == 0) {
+            cpu_feature_slot_t *slots = (cpu_feature_slot_t *)smap.data;
+            for (size_t slot_index = 0U;
+                 slot_index < host->cpu_slot_capacity; ++slot_index) {
+                if (!slots[slot_index].in_use ||
+                    slots[slot_index].session != ctx) {
+                    continue;
+                }
+                slots[slot_index].in_use = false;
+                slots[slot_index].session = nullptr;
+                if (host->cpu_slot_in_use > 0U) {
+                    host->cpu_slot_in_use--;
+                }
+                if (slot_index < 64U) {
+                    host->cpu_slot_mask &= ~(1ULL << slot_index);
+                }
+                break;
             }
-            host->cpu_slots[slot_index].in_use = false;
-            host->cpu_slots[slot_index].session = nullptr;
-            if (host->cpu_slot_in_use > 0U) {
-                host->cpu_slot_in_use--;
-            }
-            if (slot_index < 64U) {
-                host->cpu_slot_mask &= ~(1ULL << slot_index);
-            }
-            break;
+            ttak_abstract_unmap(&smap);
         }
     }
     ttak_mutex_unlock(&host->lock);

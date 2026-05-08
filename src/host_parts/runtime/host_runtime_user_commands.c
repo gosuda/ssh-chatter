@@ -215,21 +215,63 @@ static bool host_username_reserved(host_t *host, const char *username)
     return false;
 }
 
-static join_activity_entry_t *host_find_join_activity_locked(host_t *host,
-                                                             const char *ip)
+/* join_activity table is ttak abstract backed.  All access is under
+ * host->lock, so we copy rows in/out via ttak_abstract_read/write or hold
+ * scoped maps for the duration of helper calls.  Resizing must NOT happen
+ * while a map is live. */
+
+static int host_join_activity_load(const host_t *host, size_t idx,
+                                   join_activity_entry_t *out)
 {
-    if (host == nullptr || ip == nullptr) {
-        return nullptr;
+    if (host == nullptr || out == nullptr ||
+        host->join_activity_storage == nullptr ||
+        idx >= host->join_activity_count) {
+        return -1;
+    }
+    return ttak_abstract_read(host->join_activity_storage,
+                              idx * sizeof(*out), out, sizeof(*out));
+}
+
+static int host_join_activity_store(host_t *host, size_t idx,
+                                    const join_activity_entry_t *in)
+{
+    if (host == nullptr || in == nullptr ||
+        host->join_activity_storage == nullptr ||
+        idx >= host->join_activity_count) {
+        return -1;
+    }
+    return ttak_abstract_write(host->join_activity_storage,
+                               idx * sizeof(*in), in, sizeof(*in));
+}
+
+static bool host_find_join_activity_index_locked(host_t *host, const char *ip,
+                                                 size_t *out_idx)
+{
+    if (host == nullptr || ip == nullptr || out_idx == nullptr ||
+        host->join_activity_storage == nullptr ||
+        host->join_activity_count == 0U) {
+        return false;
     }
 
-    for (size_t idx = 0; idx < host->join_activity_count; ++idx) {
-        join_activity_entry_t *entry = &host->join_activity[idx];
-        if (strncmp(entry->ip, ip, SSH_CHATTER_IP_LEN) == 0) {
-            return entry;
+    ttak_abstract_map_t map;
+    if (ttak_abstract_map(host->join_activity_storage, 0U,
+                          host->join_activity_count *
+                              sizeof(join_activity_entry_t),
+                          TTAK_ABSTRACT_ACCESS_READ, &map) != 0) {
+        return false;
+    }
+    const join_activity_entry_t *entries =
+        (const join_activity_entry_t *)map.data;
+    bool found = false;
+    for (size_t idx = 0U; idx < host->join_activity_count; ++idx) {
+        if (strncmp(entries[idx].ip, ip, SSH_CHATTER_IP_LEN) == 0) {
+            *out_idx = idx;
+            found = true;
+            break;
         }
     }
-
-    return nullptr;
+    ttak_abstract_unmap(&map);
+    return found;
 }
 
 static void
@@ -242,7 +284,8 @@ host_prune_join_activity_locked(host_t *host,
 
     sshc_memory_context_t *memory_scope = host_memory_scope_push(host);
 
-    if (host->join_activity == nullptr || host->join_activity_count == 0U) {
+    if (host->join_activity_storage == nullptr ||
+        host->join_activity_count == 0U) {
         host_memory_scope_pop(memory_scope);
         return;
     }
@@ -255,9 +298,21 @@ host_prune_join_activity_locked(host_t *host,
         clock_gettime(CLOCK_MONOTONIC, &now);
     }
 
+    /* Hold a write map across the prune sweep — count is decremented
+     * during the loop but storage is not resized. */
+    ttak_abstract_map_t map;
+    if (ttak_abstract_map(host->join_activity_storage, 0U,
+                          host->join_activity_count *
+                              sizeof(join_activity_entry_t),
+                          TTAK_ABSTRACT_ACCESS_WRITE, &map) != 0) {
+        host_memory_scope_pop(memory_scope);
+        return;
+    }
+    join_activity_entry_t *entries = (join_activity_entry_t *)map.data;
+
     size_t idx = 0U;
     while (idx < host->join_activity_count) {
-        join_activity_entry_t *entry = &host->join_activity[idx];
+        join_activity_entry_t *entry = &entries[idx];
         bool remove_entry = false;
 
         if (entry->last_attempt.tv_sec == 0 &&
@@ -281,10 +336,9 @@ host_prune_join_activity_locked(host_t *host,
         if (remove_entry) {
             size_t last_index = host->join_activity_count - 1U;
             if (idx != last_index) {
-                host->join_activity[idx] = host->join_activity[last_index];
+                entries[idx] = entries[last_index];
             }
-            memset(&host->join_activity[last_index], 0,
-                   sizeof(host->join_activity[last_index]));
+            memset(&entries[last_index], 0, sizeof(entries[last_index]));
             host->join_activity_count = last_index;
             continue;
         }
@@ -292,9 +346,15 @@ host_prune_join_activity_locked(host_t *host,
         ++idx;
     }
 
+    ttak_abstract_unmap(&map);
+
     if (host->join_activity_count == 0U) {
-        sshc_gc_free(host->join_activity);
-        host->join_activity = nullptr;
+        if (host->join_activity_storage != nullptr &&
+            host->resource_manager != nullptr) {
+            sshc_rm_scope_free(host->resource_manager,
+                               host->join_activity_storage);
+        }
+        host->join_activity_storage = nullptr;
         host->join_activity_capacity = 0U;
     } else if (host->join_activity_capacity > 8U &&
                host->join_activity_count <= host->join_activity_capacity / 2U) {
@@ -305,10 +365,11 @@ host_prune_join_activity_locked(host_t *host,
         if (new_capacity < host->join_activity_count) {
             new_capacity = host->join_activity_count;
         }
-        join_activity_entry_t *resized = (join_activity_entry_t *)sshc_gc_realloc(
-            host->join_activity, new_capacity * sizeof(*resized));
-        if (resized != nullptr) {
-            host->join_activity = resized;
+        if (host->resource_manager != nullptr &&
+            sshc_rm_scope_resize(host->resource_manager,
+                                 host->join_activity_storage,
+                                 new_capacity *
+                                     sizeof(join_activity_entry_t)) == 0) {
             host->join_activity_capacity = new_capacity;
         }
     }
@@ -316,40 +377,69 @@ host_prune_join_activity_locked(host_t *host,
     host_memory_scope_pop(memory_scope);
 }
 
-static join_activity_entry_t *host_ensure_join_activity_locked(host_t *host,
-                                                               const char *ip)
+static bool host_ensure_join_activity_locked(host_t *host, const char *ip,
+                                             size_t *out_idx)
 {
-    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
-        return nullptr;
+    if (host == nullptr || ip == nullptr || ip[0] == '\0' ||
+        out_idx == nullptr) {
+        return false;
     }
 
     sshc_memory_context_t *memory_scope = host_memory_scope_push(host);
 
-    join_activity_entry_t *entry = host_find_join_activity_locked(host, ip);
-    if (entry != nullptr) {
+    if (host_find_join_activity_index_locked(host, ip, out_idx)) {
         host_memory_scope_pop(memory_scope);
-        return entry;
+        return true;
     }
 
     if (host->join_activity_count >= host->join_activity_capacity) {
         size_t new_capacity = host->join_activity_capacity > 0U
                                   ? host->join_activity_capacity * 2U
                                   : 8U;
-        join_activity_entry_t *resized = sshc_gc_realloc(
-            host->join_activity, new_capacity * sizeof(join_activity_entry_t));
-        if (resized == nullptr) {
+        size_t new_bytes = new_capacity * sizeof(join_activity_entry_t);
+        if (host->resource_manager == nullptr) {
             host_memory_scope_pop(memory_scope);
-            return nullptr;
+            return false;
         }
-        host->join_activity = resized;
+        if (host->join_activity_storage == nullptr) {
+            host->join_activity_storage = sshc_rm_scope_alloc(
+                host->resource_manager, new_bytes, "join_activity");
+            if (host->join_activity_storage == nullptr) {
+                host_memory_scope_pop(memory_scope);
+                return false;
+            }
+        } else if (sshc_rm_scope_resize(host->resource_manager,
+                                        host->join_activity_storage,
+                                        new_bytes) != 0) {
+            host_memory_scope_pop(memory_scope);
+            return false;
+        }
+        size_t old_bytes =
+            host->join_activity_capacity * sizeof(join_activity_entry_t);
+        if (new_bytes > old_bytes) {
+            ttak_abstract_map_t zmap;
+            if (ttak_abstract_map(host->join_activity_storage, old_bytes,
+                                  new_bytes - old_bytes,
+                                  TTAK_ABSTRACT_ACCESS_WRITE, &zmap) == 0) {
+                memset(zmap.data, 0, new_bytes - old_bytes);
+                ttak_abstract_unmap(&zmap);
+            }
+        }
         host->join_activity_capacity = new_capacity;
     }
 
-    entry = &host->join_activity[host->join_activity_count++];
-    memset(entry, 0, sizeof(*entry));
-    snprintf(entry->ip, sizeof(entry->ip), "%s", ip);
+    size_t target = host->join_activity_count;
+    host->join_activity_count += 1U;
+    join_activity_entry_t fresh = {0};
+    snprintf(fresh.ip, sizeof(fresh.ip), "%s", ip);
+    if (host_join_activity_store(host, target, &fresh) != 0) {
+        host->join_activity_count -= 1U;
+        host_memory_scope_pop(memory_scope);
+        return false;
+    }
+    *out_idx = target;
     host_memory_scope_pop(memory_scope);
-    return entry;
+    return true;
 }
 
 static size_t host_prepare_join_delay(host_t *host,
@@ -408,11 +498,21 @@ host_register_join_attempt(host_t *host, const char *username, const char *ip)
 
     ttak_mutex_lock(&host->lock);
     host_prune_join_activity_locked(host, &now);
-    join_activity_entry_t *entry = host_ensure_join_activity_locked(host, ip);
-    if (entry == nullptr) {
+    size_t entry_idx = 0U;
+    if (!host_ensure_join_activity_locked(host, ip, &entry_idx)) {
         ttak_mutex_unlock(&host->lock);
         return HOST_JOIN_ATTEMPT_OK;
     }
+
+    ttak_abstract_map_t emap;
+    if (ttak_abstract_map(host->join_activity_storage,
+                          entry_idx * sizeof(join_activity_entry_t),
+                          sizeof(join_activity_entry_t),
+                          TTAK_ABSTRACT_ACCESS_WRITE, &emap) != 0) {
+        ttak_mutex_unlock(&host->lock);
+        return HOST_JOIN_ATTEMPT_OK;
+    }
+    join_activity_entry_t *entry = (join_activity_entry_t *)emap.data;
 
     struct timespec diff = timespec_diff(&now, &entry->last_attempt);
     const long long diff_ns =
@@ -473,6 +573,7 @@ host_register_join_attempt(host_t *host, const char *username, const char *ip)
         entry->join_window_attempts >= SSH_CHATTER_JOIN_KICK_THRESHOLD) {
         kick_ip = true;
     }
+    ttak_abstract_unmap(&emap);
     ttak_mutex_unlock(&host->lock);
 
     if (!exempt_ip && kick_ip) {
@@ -502,25 +603,36 @@ static bool host_register_suspicious_activity(host_t *host,
 
     size_t attempts = 0U;
     ttak_mutex_lock(&host->lock);
-    join_activity_entry_t *entry = host_ensure_join_activity_locked(host, ip);
-    if (entry != nullptr) {
-        if (entry->last_suspicious.tv_sec != 0 ||
-            entry->last_suspicious.tv_nsec != 0) {
-            struct timespec diff = timespec_diff(&now, &entry->last_suspicious);
-            long long diff_ns =
-                (long long)diff.tv_sec * 1000000000LL + (long long)diff.tv_nsec;
-            if (diff_ns > SSH_CHATTER_SUSPICIOUS_EVENT_WINDOW_NS) {
-                entry->suspicious_events = 0U;
+    size_t entry_idx = 0U;
+    if (host_ensure_join_activity_locked(host, ip, &entry_idx)) {
+        ttak_abstract_map_t emap;
+        if (ttak_abstract_map(host->join_activity_storage,
+                              entry_idx * sizeof(join_activity_entry_t),
+                              sizeof(join_activity_entry_t),
+                              TTAK_ABSTRACT_ACCESS_WRITE, &emap) == 0) {
+            join_activity_entry_t *entry = (join_activity_entry_t *)emap.data;
+            if (entry->last_suspicious.tv_sec != 0 ||
+                entry->last_suspicious.tv_nsec != 0) {
+                struct timespec diff =
+                    timespec_diff(&now, &entry->last_suspicious);
+                long long diff_ns = (long long)diff.tv_sec * 1000000000LL +
+                                    (long long)diff.tv_nsec;
+                if (diff_ns > SSH_CHATTER_SUSPICIOUS_EVENT_WINDOW_NS) {
+                    entry->suspicious_events = 0U;
+                }
             }
-        }
 
-        if (entry->suspicious_events < SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD) {
-            entry->suspicious_events += 1U;
-        } else {
-            entry->suspicious_events = SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD;
+            if (entry->suspicious_events <
+                SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD) {
+                entry->suspicious_events += 1U;
+            } else {
+                entry->suspicious_events =
+                    SSH_CHATTER_SUSPICIOUS_EVENT_THRESHOLD;
+            }
+            entry->last_suspicious = now;
+            attempts = entry->suspicious_events;
+            ttak_abstract_unmap(&emap);
         }
-        entry->last_suspicious = now;
-        attempts = entry->suspicious_events;
     }
     ttak_mutex_unlock(&host->lock);
 

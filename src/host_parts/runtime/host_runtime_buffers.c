@@ -25,14 +25,14 @@ void host_feature_slots_reclaim_if_idle(host_t *host)
         return;
     }
 
-    cpu_feature_slot_t *slots_to_free = nullptr;
+    ttak_abstract_mem_t *slots_to_free = nullptr;
 
     ttak_mutex_lock(&host->room.lock);
     ttak_mutex_lock(&host->lock);
     if (host->room.member_count == 0U && host->cpu_slot_in_use == 0U &&
-        host->cpu_slots != nullptr) {
-        slots_to_free = host->cpu_slots;
-        host->cpu_slots = nullptr;
+        host->cpu_slots_storage != nullptr) {
+        slots_to_free = host->cpu_slots_storage;
+        host->cpu_slots_storage = nullptr;
         host->cpu_slot_capacity = 0U;
         host->cpu_slot_mask = 0ULL;
         host->cpu_slot_waiting = 0U;
@@ -41,8 +41,8 @@ void host_feature_slots_reclaim_if_idle(host_t *host)
     ttak_mutex_unlock(&host->lock);
     ttak_mutex_unlock(&host->room.lock);
 
-    if (slots_to_free != nullptr) {
-        sshc_gc_free(slots_to_free);
+    if (slots_to_free != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, slots_to_free);
     }
 }
 
@@ -338,47 +338,80 @@ static void host_history_release_cache(host_t *host)
     if (host == nullptr) {
         return;
     }
-    chat_history_entry_t *buffer = nullptr;
+    chat_history_entry_t *snapshot = nullptr;
     size_t count = 0U;
-    size_t capacity = 0U;
-    size_t start_index = 0U;
     size_t history_total = 0U;
+    ttak_abstract_mem_t *storage_to_free = nullptr;
+
     ttak_mutex_lock(&host->lock);
-    buffer = host->history;
     count = host->history_count;
-    capacity = host->history_capacity;
-    start_index = host->history_start_index;
+    size_t capacity = host->history_capacity;
+    size_t start_index = host->history_start_index;
     history_total = host->history_total;
-    host->history = nullptr;
+
+    /* Take a heap snapshot of live entries while the view is mapped, then
+     * tear down the abstract storage. */
+    if (host->history != nullptr && count > 0U && capacity > 0U) {
+        snapshot = (chat_history_entry_t *)sshc_gc_calloc(
+            count, sizeof(*snapshot));
+        if (snapshot != nullptr) {
+            for (size_t idx = 0U; idx < count; ++idx) {
+                size_t ring = (start_index + idx) % capacity;
+                snapshot[idx] = host->history[ring];
+            }
+        }
+    }
+
+    host_history_view_release(host);
+    storage_to_free = host->history_storage;
+    host->history_storage = nullptr;
     host->history_capacity = 0U;
     host->history_count = 0U;
     host->history_start_index = host->history_total;
     host->history_cache_loaded = false;
     ttak_mutex_unlock(&host->lock);
 
-    if (buffer != nullptr && count > 0U && capacity > 0U) {
-        chat_history_entry_t *snapshot = (chat_history_entry_t *)sshc_gc_calloc(
-            count, sizeof(*snapshot));
-        if (snapshot != nullptr) {
-            for (size_t idx = 0U; idx < count; ++idx) {
-                size_t ring = (start_index + idx) % capacity;
-                snapshot[idx] = buffer[ring];
-            }
-            sshc_history_cold_meta_t meta = {.history_total = history_total};
-            char cold_path[PATH_MAX];
-            if (host_cold_file_path(cold_path, sizeof(cold_path),
-                                    host->state_file_path, "history")) {
-                (void)host_cold_blob_save(cold_path, snapshot,
-                                          sizeof(chat_history_entry_t), count,
-                                          &meta, sizeof(meta));
-            }
-            sshc_gc_free(snapshot);
+    if (snapshot != nullptr) {
+        sshc_history_cold_meta_t meta = {.history_total = history_total};
+        char cold_path[PATH_MAX];
+        if (host_cold_file_path(cold_path, sizeof(cold_path),
+                                host->state_file_path, "history")) {
+            (void)host_cold_blob_save(cold_path, snapshot,
+                                      sizeof(chat_history_entry_t), count,
+                                      &meta, sizeof(meta));
         }
+        sshc_gc_free(snapshot);
     }
 
-    if (buffer != nullptr) {
-        sshc_gc_free(buffer);
+    if (storage_to_free != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, storage_to_free);
     }
+}
+
+static void host_bbs_view_release(host_t *host)
+{
+    if (host == nullptr || host->bbs_posts == nullptr) {
+        return;
+    }
+    ttak_abstract_unmap(&host->bbs_posts_view);
+    host->bbs_posts = nullptr;
+}
+
+static bool host_bbs_view_refresh(host_t *host)
+{
+    if (host == nullptr || host->bbs_posts_storage == nullptr ||
+        host->bbs_post_capacity == 0U) {
+        return false;
+    }
+    if (ttak_abstract_map(host->bbs_posts_storage, 0U,
+                          host->bbs_post_capacity * sizeof(bbs_post_t),
+                          TTAK_ABSTRACT_ACCESS_WRITE,
+                          &host->bbs_posts_view) != 0) {
+        host->bbs_posts = nullptr;
+        return false;
+    }
+    host->bbs_posts = (bbs_post_t *)host->bbs_posts_view.data;
+    return host->bbs_posts != nullptr;
 }
 
 static bool host_bbs_acquire_storage(host_t *host)
@@ -389,41 +422,43 @@ static bool host_bbs_acquire_storage(host_t *host)
     if (host->bbs_posts != nullptr) {
         return true;
     }
+    if (host->resource_manager == nullptr) {
+        humanized_log_error("bbs", "resource manager unavailable",
+                            errno != 0 ? errno : ENOMEM);
+        return false;
+    }
 
-    bbs_post_t *allocated = (bbs_post_t *)sshc_gc_calloc(
-        SSH_CHATTER_BBS_MAX_POSTS, sizeof(host->bbs_posts[0]));
-    if (allocated == nullptr) {
+    size_t bytes = SSH_CHATTER_BBS_MAX_POSTS * sizeof(bbs_post_t);
+    ttak_abstract_mem_t *handle =
+        sshc_rm_scope_alloc(host->resource_manager, bytes, "bbs_posts");
+    if (handle == nullptr) {
         humanized_log_error("bbs", "failed to allocate post cache",
                             errno != 0 ? errno : ENOMEM);
         return false;
     }
 
     ttak_mutex_lock(&host->lock);
-    if (host->bbs_posts != nullptr) {
+    if (host->bbs_posts_storage != nullptr) {
         ttak_mutex_unlock(&host->lock);
-        sshc_gc_free(allocated);
+        sshc_rm_scope_free(host->resource_manager, handle);
         return true;
     }
 
-    host->bbs_posts = allocated;
+    host->bbs_posts_storage = handle;
     host->bbs_post_capacity = SSH_CHATTER_BBS_MAX_POSTS;
-    for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
-        host->bbs_posts[idx].in_use = false;
-        host->bbs_posts[idx].id = 0U;
-        host->bbs_posts[idx].author[0] = '\0';
-        host->bbs_posts[idx].title[0] = '\0';
-        host->bbs_posts[idx].body[0] = '\0';
-        host->bbs_posts[idx].tag_count = 0U;
-        host->bbs_posts[idx].created_at = 0;
-        host->bbs_posts[idx].bumped_at = 0;
-        host->bbs_posts[idx].comment_count = 0U;
-        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
-             ++comment) {
-            host->bbs_posts[idx].comments[comment].author[0] = '\0';
-            host->bbs_posts[idx].comments[comment].text[0] = '\0';
-            host->bbs_posts[idx].comments[comment].created_at = 0;
-        }
+    if (!host_bbs_view_refresh(host)) {
+        ttak_mutex_unlock(&host->lock);
+        sshc_rm_scope_free(host->resource_manager, handle);
+        host->bbs_posts_storage = nullptr;
+        host->bbs_post_capacity = 0U;
+        return false;
     }
+
+    /* ttak_abstract_alloc zero-initialises new logical bytes, so all the
+     * embedded char arrays start as empty strings already.  The explicit
+     * field-by-field clear from the previous implementation is no longer
+     * needed. */
+    host->bbs_post_count = 0U;
     host->bbs_cache_loaded = false;
     ttak_mutex_unlock(&host->lock);
     return true;
@@ -434,22 +469,37 @@ static void host_bbs_release_cache(host_t *host)
     if (host == nullptr) {
         return;
     }
-    bbs_post_t *posts = nullptr;
+    bbs_post_t *snapshot = nullptr;
     size_t post_count = 0U;
     size_t post_capacity = 0U;
     uint64_t next_bbs_id = 0U;
+    ttak_abstract_mem_t *storage_to_free = nullptr;
+
     ttak_mutex_lock(&host->lock);
-    posts = host->bbs_posts;
     post_count = host->bbs_post_count;
     post_capacity = host->bbs_post_capacity;
     next_bbs_id = host->next_bbs_id;
-    host->bbs_posts = nullptr;
+
+    /* Snapshot the slot table to a heap copy while the view is mapped so
+     * we can save it to disk without holding the host lock for I/O. */
+    if (host->bbs_posts != nullptr && post_capacity > 0U) {
+        snapshot = (bbs_post_t *)sshc_gc_calloc(post_capacity,
+                                                sizeof(bbs_post_t));
+        if (snapshot != nullptr) {
+            memcpy(snapshot, host->bbs_posts,
+                   post_capacity * sizeof(bbs_post_t));
+        }
+    }
+
+    host_bbs_view_release(host);
+    storage_to_free = host->bbs_posts_storage;
+    host->bbs_posts_storage = nullptr;
     host->bbs_post_capacity = 0U;
     host->bbs_post_count = 0U;
     host->bbs_cache_loaded = false;
     ttak_mutex_unlock(&host->lock);
 
-    if (posts != nullptr && post_capacity > 0U) {
+    if (snapshot != nullptr && post_capacity > 0U) {
         sshc_bbs_cold_meta_t meta = {
             .post_count = post_count,
             .post_capacity = post_capacity,
@@ -458,13 +508,14 @@ static void host_bbs_release_cache(host_t *host)
         char cold_path[PATH_MAX];
         if (host_cold_file_path(cold_path, sizeof(cold_path),
                                 host->bbs_state_file_path, "bbs")) {
-            (void)host_cold_blob_save(cold_path, posts, sizeof(bbs_post_t),
+            (void)host_cold_blob_save(cold_path, snapshot, sizeof(bbs_post_t),
                                       post_capacity, &meta, sizeof(meta));
         }
+        sshc_gc_free(snapshot);
     }
 
-    if (posts != nullptr) {
-        sshc_gc_free(posts);
+    if (storage_to_free != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, storage_to_free);
     }
 }
 
@@ -487,21 +538,32 @@ static __attribute__((unused)) void host_reload_cached_state(host_t *host)
                     &entry_count, &meta);
             if (restored_entries != nullptr && entry_count > 0U) {
                 ttak_mutex_lock(&host->lock);
-                if (host->history == nullptr) {
-                    host->history = restored_entries;
-                    host->history_capacity = entry_count;
-                    host->history_count = entry_count;
-                    host->history_start_index = 0U;
-                    if (meta.history_total >= entry_count) {
-                        host->history_total = meta.history_total;
+                if (host->history_storage == nullptr &&
+                    host->resource_manager != nullptr) {
+                    size_t bytes = entry_count * sizeof(chat_history_entry_t);
+                    host->history_storage = sshc_rm_scope_alloc(
+                        host->resource_manager, bytes, "history");
+                    if (host->history_storage != nullptr) {
+                        host->history_capacity = entry_count;
+                        if (host_history_view_refresh(host)) {
+                            memcpy(host->history, restored_entries, bytes);
+                            host->history_count = entry_count;
+                            host->history_start_index = 0U;
+                            if (meta.history_total >= entry_count) {
+                                host->history_total = meta.history_total;
+                            }
+                            host->history_cache_loaded = true;
+                            restored = true;
+                        } else {
+                            sshc_rm_scope_free(host->resource_manager,
+                                               host->history_storage);
+                            host->history_storage = nullptr;
+                            host->history_capacity = 0U;
+                        }
                     }
-                    host->history_cache_loaded = true;
-                    restored = true;
                 }
                 ttak_mutex_unlock(&host->lock);
-                if (!restored) {
-                    sshc_gc_free(restored_entries);
-                }
+                sshc_gc_free(restored_entries);
             }
         }
 
@@ -523,18 +585,29 @@ static __attribute__((unused)) void host_reload_cached_state(host_t *host)
                 cold_path, sizeof(bbs_post_t), sizeof(meta), &slot_count, &meta);
             if (restored_posts != nullptr && slot_count > 0U) {
                 ttak_mutex_lock(&host->lock);
-                if (host->bbs_posts == nullptr) {
-                    host->bbs_posts = restored_posts;
-                    host->bbs_post_capacity = slot_count;
-                    host->bbs_post_count = meta.post_count;
-                    host->next_bbs_id = meta.next_bbs_id;
-                    host->bbs_cache_loaded = true;
-                    restored = true;
+                if (host->bbs_posts_storage == nullptr &&
+                    host->resource_manager != nullptr) {
+                    size_t bytes = slot_count * sizeof(bbs_post_t);
+                    host->bbs_posts_storage = sshc_rm_scope_alloc(
+                        host->resource_manager, bytes, "bbs_posts");
+                    if (host->bbs_posts_storage != nullptr) {
+                        host->bbs_post_capacity = slot_count;
+                        if (host_bbs_view_refresh(host)) {
+                            memcpy(host->bbs_posts, restored_posts, bytes);
+                            host->bbs_post_count = meta.post_count;
+                            host->next_bbs_id = meta.next_bbs_id;
+                            host->bbs_cache_loaded = true;
+                            restored = true;
+                        } else {
+                            sshc_rm_scope_free(host->resource_manager,
+                                               host->bbs_posts_storage);
+                            host->bbs_posts_storage = nullptr;
+                            host->bbs_post_capacity = 0U;
+                        }
+                    }
                 }
                 ttak_mutex_unlock(&host->lock);
-                if (!restored) {
-                    sshc_gc_free(restored_posts);
-                }
+                sshc_gc_free(restored_posts);
             }
         }
 

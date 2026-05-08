@@ -977,6 +977,38 @@ chat_room_broadcast_reaction_update(host_t *host,
     chat_room_broadcast_caption(&host->room, line);
 }
 
+/* host->history is a perma-WRITE-mapped view over host->history_storage.
+ * The view pointer must be released before any resize call and re-acquired
+ * after.  These helpers centralize that dance so callers cannot accidentally
+ * resize while the view is live. */
+
+static void host_history_view_release(host_t *host)
+{
+    if (host == nullptr || host->history == nullptr) {
+        return;
+    }
+    ttak_abstract_unmap(&host->history_view);
+    host->history = nullptr;
+}
+
+static bool host_history_view_refresh(host_t *host)
+{
+    if (host == nullptr || host->history_storage == nullptr ||
+        host->history_capacity == 0U) {
+        return false;
+    }
+    if (ttak_abstract_map(host->history_storage, 0U,
+                          host->history_capacity *
+                              sizeof(chat_history_entry_t),
+                          TTAK_ABSTRACT_ACCESS_WRITE,
+                          &host->history_view) != 0) {
+        host->history = nullptr;
+        return false;
+    }
+    host->history = (chat_history_entry_t *)host->history_view.data;
+    return host->history != nullptr;
+}
+
 static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
 {
     if (host == nullptr) {
@@ -991,7 +1023,8 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
         min_capacity = SSH_CHATTER_HISTORY_CACHE_LIMIT;
     }
 
-    if (min_capacity <= host->history_capacity) {
+    if (min_capacity <= host->history_capacity &&
+        host->history_storage != nullptr) {
         success = true;
         goto cleanup;
     }
@@ -999,6 +1032,9 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
     if (min_capacity > SIZE_MAX / sizeof(chat_history_entry_t)) {
         humanized_log_error("host-history",
                             "history buffer too large to allocate", ENOMEM);
+        goto cleanup;
+    }
+    if (host->resource_manager == nullptr) {
         goto cleanup;
     }
 
@@ -1023,22 +1059,44 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
     }
 
     size_t bytes = new_capacity * sizeof(chat_history_entry_t);
-    chat_history_entry_t *resized = sshc_gc_realloc(host->history, bytes);
-    if (resized == nullptr) {
+    size_t old_capacity = host->history_capacity;
+    /* Release the live WRITE map before resizing — abstract_resize may
+     * relocate backing, which is forbidden while a map is held. */
+    host_history_view_release(host);
+
+    if (host->history_storage == nullptr) {
+        host->history_storage = sshc_rm_scope_alloc(
+            host->resource_manager, bytes, "history");
+        if (host->history_storage == nullptr) {
+            humanized_log_error("host-history",
+                                "failed to allocate chat history buffer",
+                                errno != 0 ? errno : ENOMEM);
+            goto cleanup;
+        }
+    } else if (sshc_rm_scope_resize(host->resource_manager,
+                                    host->history_storage, bytes) != 0) {
+        /* Re-map the prior storage so callers see consistent state. */
+        host->history_capacity = old_capacity;
+        (void)host_history_view_refresh(host);
         humanized_log_error("host-history",
                             "failed to grow chat history buffer",
                             errno != 0 ? errno : ENOMEM);
         goto cleanup;
     }
 
-    if (new_capacity > host->history_capacity) {
-        size_t old_capacity = host->history_capacity;
-        size_t added = new_capacity - old_capacity;
-        memset(resized + old_capacity, 0, added * sizeof(chat_history_entry_t));
+    host->history_capacity = new_capacity;
+    if (!host_history_view_refresh(host)) {
+        humanized_log_error("host-history", "history view refresh failed",
+                            EIO);
+        goto cleanup;
     }
 
-    host->history = resized;
-    host->history_capacity = new_capacity;
+    if (new_capacity > old_capacity) {
+        size_t added = new_capacity - old_capacity;
+        memset(host->history + old_capacity, 0,
+               added * sizeof(chat_history_entry_t));
+    }
+
     success = true;
 
 cleanup:

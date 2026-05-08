@@ -14,6 +14,7 @@
 #include <sys/types.h>
 
 #include "memory_manager.h"
+#include "resource_manager.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -961,22 +962,37 @@ typedef struct bbs_comment {
     time_t created_at;
 } bbs_comment_t;
 
+/* In-memory BBS post header.  Title and metadata stay resident, but the
+ * heavy body (40 KiB) and comments table (~36 KiB) are NOT cached.  Use
+ * host_bbs_content_acquire() / _release() to load them transiently from
+ * the .dat file via the host resource manager when /bbs read needs them. */
 typedef struct bbs_post {
     bool in_use;
     uint64_t id;
     char author[SSH_CHATTER_USERNAME_LEN];
     char title[SSH_CHATTER_BBS_TITLE_LEN];
-    char body[SSH_CHATTER_BBS_BODY_LEN];
     char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
     size_t tag_count;
     time_t created_at;
     time_t bumped_at;
+    size_t comment_count; /* count only — comments live on disk */
+} bbs_post_t;
+
+/* Transient body + comments record.  Allocated on demand via the host RM
+ * (ttak abstract backing) and freed immediately after rendering or
+ * persisting. */
+typedef struct bbs_post_content {
+    char body[SSH_CHATTER_BBS_BODY_LEN];
     bbs_comment_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
     size_t comment_count;
-} bbs_post_t;
+} bbs_post_content_t;
 
 typedef struct host {
     sshc_memory_context_t *memory_context;
+    /* Lazy-allocates and immediately frees large dynamic blocks (door
+     * registry, BBS body loads, etc.) on top of libttak's pointer-stable
+     * abstract allocator.  See include/ssh_chatter/resource_manager.h. */
+    sshc_resource_manager_t *resource_manager;
     chat_room_t room;
     struct timespec last_room_empty_time;
     bool idle_state_pending;
@@ -1029,7 +1045,16 @@ typedef struct host {
     bool welcome_banner_loaded;
     bool translation_quota_exhausted;
     size_t connection_count;
-    chat_history_entry_t *history;
+    /* Chat history ring buffer.
+     * `history_storage` owns a ttak abstract handle that is kept WRITE-mapped
+     * during normal use so callers can index `history[i]` directly.  Resizes
+     * (grow/shrink) must unmap, resize, then re-map and refresh the view
+     * pointer.  Use the host_history_view_release/refresh helpers — callers
+     * should never call ttak_abstract_resize on the storage directly while
+     * the view map is live. */
+    ttak_abstract_mem_t *history_storage;
+    ttak_abstract_map_t history_view;
+    chat_history_entry_t *history; /* alias of history_view.data */
     size_t history_count;
     size_t history_capacity;
     size_t history_start_index;
@@ -1075,6 +1100,11 @@ typedef struct host {
     poll_state_t poll;
     named_poll_state_t named_polls[SSH_CHATTER_MAX_NAMED_POLLS];
     size_t named_poll_count;
+    /* BBS post cache.  bbs_posts_storage owns the abstract handle; bbs_posts
+     * is a perma-WRITE-mapped view refreshed on alloc/release.  Same
+     * lifecycle rules as history_storage above. */
+    ttak_abstract_mem_t *bbs_posts_storage;
+    ttak_abstract_map_t bbs_posts_view;
     bbs_post_t *bbs_posts;
     size_t bbs_post_count;
     size_t bbs_post_capacity;
@@ -1090,7 +1120,10 @@ typedef struct host {
     size_t cpu_slot_in_use;
     size_t cpu_slot_waiting;
     uint64_t cpu_slot_mask;
-    cpu_feature_slot_t *cpu_slots;
+    /* CPU feature slot pool, ttak abstract backed via the host RM.
+     * Allocated once on first acquire when cpu_slot_limit > 0, freed when
+     * the room is empty or at host shutdown. */
+    ttak_abstract_mem_t *cpu_slots_storage;
     size_t cpu_slot_capacity;
     bool cpu_slot_allocation_in_progress;
     size_t othello_slot_side_n;
@@ -1130,13 +1163,15 @@ typedef struct host {
     char ai_persona_a_alias[64];
     char ai_persona_b_name[64];
     char ai_persona_b_alias[64];
-    /* DOOR GAME registry. Populated from env at startup:
-     *   CHATTER_DOOR_<N>=name:dosbox_conf_path[:description]
-     * (N starts at 1; up to SSH_CHATTER_DOOR_GAME_LIMIT slots.) Doors are
-     * launched by `/bbs door <name>` and proxy stdin/stdout to a forked
-     * `dosbox -conf <path> -exit` over a PTY. */
-    door_game_entry_t door_games[SSH_CHATTER_DOOR_GAME_LIMIT];
+    /* DOOR GAME registry.  Allocated on demand via the resource_manager
+     * (ttak abstract backing) — sized to the actual number of valid
+     * CHATTER_DOOR_<N> env entries seen at startup, up to
+     * SSH_CHATTER_DOOR_GAME_LIMIT.  NULL when no doors are registered.
+     * Doors are launched by `/bbs door <name>` and proxy stdin/stdout to a
+     * forked `dosbox -conf <path> -exit` over a PTY. */
+    ttak_abstract_mem_t *door_games_storage;
     size_t door_game_count;
+    size_t door_game_capacity;
     char rss_state_file_path[PATH_MAX];
     eliza_memory_entry_t eliza_memory[SSH_CHATTER_ELIZA_MEMORY_MAX];
     size_t eliza_memory_count;
@@ -1147,7 +1182,11 @@ typedef struct host {
     size_t operator_grant_count;
     char protected_ips[SSH_CHATTER_MAX_PROTECTED_IPS][SSH_CHATTER_IP_LEN];
     size_t protected_ip_count;
-    version_ip_ban_rule_t *version_ip_ban_rules;
+    /* Version/IP ban rule table: backed by ttak abstract memory via the
+     * resource manager.  Each rule holds heap-allocated string pointers
+     * (original_pattern / normalized_pattern) that survive resize: only
+     * the array storage moves, not the pointed-to strings. */
+    ttak_abstract_mem_t *version_ip_ban_rules_storage;
     size_t version_ip_ban_rule_count;
     size_t version_ip_ban_rule_capacity;
     struct {
@@ -1157,10 +1196,14 @@ typedef struct host {
     struct timespec next_join_ready_time;
     bool join_throttle_initialised;
     size_t join_progress_length;
-    join_activity_entry_t *join_activity;
+    /* Per-IP join activity tracker, ttak abstract backed via the host RM. */
+    ttak_abstract_mem_t *join_activity_storage;
     size_t join_activity_count;
     size_t join_activity_capacity;
-    connection_guard_entry_t *connection_guard;
+    /* Connection guard table: per-IP rate limiting / blocking state.
+     * Backed by ttak's abstract allocator via the host resource manager;
+     * grows on demand and is freed at shutdown. */
+    ttak_abstract_mem_t *connection_guard_storage;
     size_t connection_guard_count;
     size_t connection_guard_capacity;
     struct {
@@ -1226,6 +1269,34 @@ void trim_whitespace_inplace(char *text);
 void session_send_raw_text(session_ctx_t *ctx, const char *text);
 void session_channel_write(session_ctx_t *ctx, const void *data, size_t length);
 void host_init(host_t *host, auth_profile_t *auth);
+
+/* Look up a registered DOOR game by name (case-insensitive).  Copies the
+ * matching entry into @p out and returns true on hit, false otherwise. */
+bool host_door_game_lookup(const host_t *host, const char *name,
+                           door_game_entry_t *out);
+
+/* Acquire a transient body+comments buffer for post @p post_id.  On success
+ * returns a pointer to a freshly populated bbs_post_content_t (zeros if no
+ * matching record on disk) and stores the backing handle in @p out_handle
+ * for the matching release call.  Returns false if the resource manager is
+ * unavailable or the disk read fails. */
+bool host_bbs_content_acquire(host_t *host, uint64_t post_id,
+                              ttak_abstract_mem_t **out_handle,
+                              bbs_post_content_t **out_content);
+
+/* Release a buffer previously acquired with host_bbs_content_acquire. */
+void host_bbs_content_release(host_t *host,
+                              ttak_abstract_mem_t *handle);
+
+/* Allocate an empty content buffer (used when composing a new post). */
+bool host_bbs_content_acquire_empty(host_t *host,
+                                    ttak_abstract_mem_t **out_handle,
+                                    bbs_post_content_t **out_content);
+
+/* Read DOOR game entry at @p index into @p out.  Returns false when the
+ * index is out of range. */
+bool host_door_game_get(const host_t *host, size_t index,
+                        door_game_entry_t *out);
 void host_set_motd(host_t *host, const char *motd);
 void host_set_welcome_banner(host_t *host, const char *banner);
 int host_serve(host_t *host, const char *bind_addr, const char *port,

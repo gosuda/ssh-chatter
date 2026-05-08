@@ -57,6 +57,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     }
 
     chat_room_init(&host->room);
+    if (host->resource_manager == nullptr) {
+        host->resource_manager = sshc_resource_manager_create("host");
+    }
     atomic_init(&host->next_session_id, 1U);
     host->idle_state_pending = false;
     host->last_room_empty_time = session_now_monotonic();
@@ -150,7 +153,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     memset(host->eliza_memory, 0, sizeof(host->eliza_memory));
     host->eliza_memory_count = 0U;
     host->eliza_memory_next_id = 1U;
-    host->version_ip_ban_rules = nullptr;
+    host->version_ip_ban_rules_storage = nullptr;
     host->version_ip_ban_rule_count = 0U;
     host->version_ip_ban_rule_capacity = 0U;
     snprintf(host->version, sizeof(host->version),
@@ -177,6 +180,8 @@ void host_init(host_t *host, auth_profile_t *auth)
 
     host->translation_quota_exhausted = false;
     host->connection_count = 0U;
+    host->history_storage = nullptr;
+    memset(&host->history_view, 0, sizeof(host->history_view));
     host->history = nullptr;
     host->history_count = 0U;
     host->history_capacity = 0U;
@@ -303,7 +308,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->cpu_slot_in_use = 0U;
     host->cpu_slot_waiting = 0U;
     host->cpu_slot_mask = 0ULL;
-    host->cpu_slots = nullptr;
+    host->cpu_slots_storage = nullptr;
     host->cpu_slot_capacity = 0U;
     host->cpu_slot_allocation_in_progress = false;
     host->othello_slot_side_n = slot_side_n;
@@ -340,10 +345,10 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->next_join_ready_time = (struct timespec){0, 0};
     host->join_throttle_initialised = false;
     host->join_progress_length = 0U;
-    host->join_activity = nullptr;
+    host->join_activity_storage = nullptr;
     host->join_activity_count = 0U;
     host->join_activity_capacity = 0U;
-    host->connection_guard = nullptr;
+    host->connection_guard_storage = nullptr;
     host->connection_guard_count = 0U;
     host->connection_guard_capacity = 0U;
     host->health_guard.consecutive_errors = 0U;
@@ -984,8 +989,69 @@ static void host_door_games_load_from_env(host_t *host)
         return;
     }
 
-    memset(host->door_games, 0, sizeof(host->door_games));
+    /* Reset previously-allocated storage (host_init may run more than once
+     * under tests). */
+    if (host->door_games_storage != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, host->door_games_storage);
+    }
+    host->door_games_storage = nullptr;
     host->door_game_count = 0U;
+    host->door_game_capacity = 0U;
+
+    if (host->resource_manager == nullptr) {
+        return;
+    }
+
+    /* Two-pass: count valid entries first, alloc the exact capacity, then
+     * write them in.  Avoids reserving space for the
+     * SSH_CHATTER_DOOR_GAME_LIMIT cap when the operator only registered a
+     * handful. */
+    size_t valid = 0U;
+    for (size_t slot = 0U; slot < SSH_CHATTER_DOOR_GAME_LIMIT; ++slot) {
+        char env_key[40];
+        snprintf(env_key, sizeof(env_key), "CHATTER_DOOR_%zu", slot + 1U);
+        const char *value = getenv(env_key);
+        if (value == nullptr || value[0] == '\0') {
+            continue;
+        }
+
+        const char *first_colon = strchr(value, ':');
+        if (first_colon == nullptr || first_colon == value) {
+            continue;
+        }
+        size_t name_len = (size_t)(first_colon - value);
+        if (name_len >= SSH_CHATTER_DOOR_GAME_NAME_LEN) {
+            continue;
+        }
+        char name_buf[SSH_CHATTER_DOOR_GAME_NAME_LEN];
+        memcpy(name_buf, value, name_len);
+        name_buf[name_len] = '\0';
+        if (!host_door_game_name_is_valid(name_buf)) {
+            continue;
+        }
+        const char *conf_start = first_colon + 1;
+        const char *conf_end = strchr(conf_start, ':');
+        size_t conf_len = conf_end != nullptr
+                              ? (size_t)(conf_end - conf_start)
+                              : strlen(conf_start);
+        if (conf_len == 0U || conf_len >= PATH_MAX) {
+            continue;
+        }
+        valid += 1U;
+    }
+
+    if (valid == 0U) {
+        return;
+    }
+
+    size_t bytes = valid * sizeof(door_game_entry_t);
+    host->door_games_storage =
+        sshc_rm_scope_alloc(host->resource_manager, bytes, "door_games");
+    if (host->door_games_storage == nullptr) {
+        humanized_log_error("door", "door storage alloc failed", ENOMEM);
+        return;
+    }
+    host->door_game_capacity = valid;
 
     for (size_t slot = 0U; slot < SSH_CHATTER_DOOR_GAME_LIMIT; ++slot) {
         char env_key[40];
@@ -995,8 +1061,6 @@ static void host_door_games_load_from_env(host_t *host)
             continue;
         }
 
-        /* value format: "name:dosbox_conf[:description]" — colons inside
-         * description are kept verbatim. */
         const char *first_colon = strchr(value, ':');
         if (first_colon == nullptr || first_colon == value) {
             humanized_log_error("door",
@@ -1004,13 +1068,11 @@ static void host_door_games_load_from_env(host_t *host)
                                 EINVAL);
             continue;
         }
-
         size_t name_len = (size_t)(first_colon - value);
         if (name_len >= SSH_CHATTER_DOOR_GAME_NAME_LEN) {
             humanized_log_error("door", "door name too long", ENAMETOOLONG);
             continue;
         }
-
         char name_buf[SSH_CHATTER_DOOR_GAME_NAME_LEN];
         memcpy(name_buf, value, name_len);
         name_buf[name_len] = '\0';
@@ -1020,32 +1082,77 @@ static void host_door_games_load_from_env(host_t *host)
                 EINVAL);
             continue;
         }
-
         const char *conf_start = first_colon + 1;
         const char *conf_end = strchr(conf_start, ':');
-        size_t conf_len =
-            conf_end != nullptr ? (size_t)(conf_end - conf_start) : strlen(conf_start);
+        size_t conf_len = conf_end != nullptr
+                              ? (size_t)(conf_end - conf_start)
+                              : strlen(conf_start);
         if (conf_len == 0U || conf_len >= PATH_MAX) {
             humanized_log_error("door", "door dosbox conf path is invalid",
                                 EINVAL);
             continue;
         }
-
         const char *desc = (conf_end != nullptr) ? (conf_end + 1) : "";
 
-        if (host->door_game_count >= SSH_CHATTER_DOOR_GAME_LIMIT) {
+        if (host->door_game_count >= host->door_game_capacity) {
             break;
         }
 
-        size_t target = host->door_game_count++;
-        host->door_games[target].in_use = true;
-        snprintf(host->door_games[target].name,
-                 sizeof(host->door_games[target].name), "%s", name_buf);
-        memcpy(host->door_games[target].dosbox_conf, conf_start, conf_len);
-        host->door_games[target].dosbox_conf[conf_len] = '\0';
-        snprintf(host->door_games[target].description,
-                 sizeof(host->door_games[target].description), "%s", desc);
+        door_game_entry_t entry = {0};
+        entry.in_use = true;
+        snprintf(entry.name, sizeof(entry.name), "%s", name_buf);
+        memcpy(entry.dosbox_conf, conf_start, conf_len);
+        entry.dosbox_conf[conf_len] = '\0';
+        snprintf(entry.description, sizeof(entry.description), "%s", desc);
+
+        size_t target = host->door_game_count;
+        if (ttak_abstract_write(host->door_games_storage,
+                                target * sizeof(entry), &entry,
+                                sizeof(entry)) != 0) {
+            humanized_log_error("door", "door entry write failed", EIO);
+            continue;
+        }
+        host->door_game_count += 1U;
     }
+}
+
+bool host_door_game_lookup(const host_t *host, const char *name,
+                           door_game_entry_t *out)
+{
+    if (host == nullptr || name == nullptr || name[0] == '\0' || out == nullptr) {
+        return false;
+    }
+    if (host->door_games_storage == nullptr || host->door_game_count == 0U) {
+        return false;
+    }
+    for (size_t idx = 0U; idx < host->door_game_count; ++idx) {
+        door_game_entry_t entry;
+        if (ttak_abstract_read(host->door_games_storage,
+                               idx * sizeof(entry), &entry,
+                               sizeof(entry)) != 0) {
+            continue;
+        }
+        if (!entry.in_use) {
+            continue;
+        }
+        if (strcasecmp(entry.name, name) == 0) {
+            *out = entry;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool host_door_game_get(const host_t *host, size_t index,
+                        door_game_entry_t *out)
+{
+    if (host == nullptr || out == nullptr ||
+        host->door_games_storage == nullptr ||
+        index >= host->door_game_count) {
+        return false;
+    }
+    return ttak_abstract_read(host->door_games_storage,
+                              index * sizeof(*out), out, sizeof(*out)) == 0;
 }
 
 static ai_chat_bot_persona_t host_ai_chat_choose_persona(
@@ -1800,36 +1907,42 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         client_manager_destroy(host->clients);
         host->clients = nullptr;
     }
-    chat_history_entry_t *history_buffer = nullptr;
-    join_activity_entry_t *join_buffer = nullptr;
+    ttak_abstract_mem_t *history_storage_drain = nullptr;
+    ttak_abstract_mem_t *join_storage_drain = nullptr;
     ttak_mutex_lock(&host->lock);
-    history_buffer = host->history;
-    host->history = nullptr;
+    host_history_view_release(host);
+    history_storage_drain = host->history_storage;
+    host->history_storage = nullptr;
     host->history_capacity = 0U;
     host->history_count = 0U;
-    join_buffer = host->join_activity;
-    host->join_activity = nullptr;
+    join_storage_drain = host->join_activity_storage;
+    host->join_activity_storage = nullptr;
     host->join_activity_capacity = 0U;
     host->join_activity_count = 0U;
     ttak_mutex_unlock(&host->lock);
-    if (history_buffer != nullptr) {
-        sshc_gc_free(history_buffer);
+    if (history_storage_drain != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, history_storage_drain);
     }
-    if (join_buffer != nullptr) {
-        sshc_gc_free(join_buffer);
+    if (join_storage_drain != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, join_storage_drain);
     }
-    sshc_gc_free(host->connection_guard);
-    host->connection_guard = nullptr;
+    if (host->connection_guard_storage != nullptr &&
+        host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager,
+                           host->connection_guard_storage);
+    }
+    host->connection_guard_storage = nullptr;
     host->connection_guard_capacity = 0U;
     host->connection_guard_count = 0U;
     host->listener.accept_error_streak = 0U;
     host->health_guard.consecutive_errors = 0U;
     host->health_guard.last_error_time.tv_sec = 0;
     host->health_guard.last_error_time.tv_nsec = 0L;
-    if (host->cpu_slots != nullptr) {
-        sshc_gc_free(host->cpu_slots);
-        host->cpu_slots = nullptr;
+    if (host->cpu_slots_storage != nullptr &&
+        host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, host->cpu_slots_storage);
     }
+    host->cpu_slots_storage = nullptr;
     host->cpu_slot_capacity = 0U;
     host->cpu_slot_mask = 0ULL;
     host->cpu_slot_in_use = 0U;
@@ -1873,6 +1986,45 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     ttak_mutex_destroy(&host->room.lock);
     ttak_mutex_destroy(&host->lock);
     ttak_mutex_destroy(&host->nickname_reserve_lock);
+
+    if (host->resource_manager != nullptr) {
+        /* Release perma-mapped views before tearing down the RM.  The RM's
+         * destroy will free all remaining handles, but maps must be released
+         * first so the underlying memory can be reclaimed cleanly. */
+        if (host->bbs_posts != nullptr) {
+            ttak_abstract_unmap(&host->bbs_posts_view);
+            host->bbs_posts = nullptr;
+        }
+        if (host->history != nullptr) {
+            ttak_abstract_unmap(&host->history_view);
+            host->history = nullptr;
+        }
+        if (host->door_games_storage != nullptr) {
+            sshc_rm_scope_free(host->resource_manager,
+                               host->door_games_storage);
+            host->door_games_storage = nullptr;
+            host->door_game_count = 0U;
+            host->door_game_capacity = 0U;
+        }
+        if (host->version_ip_ban_rules_storage != nullptr) {
+            for (size_t idx = 0U; idx < host->version_ip_ban_rule_count;
+                 ++idx) {
+                version_ip_ban_rule_t rule = {0};
+                if (ttak_abstract_read(
+                        host->version_ip_ban_rules_storage,
+                        idx * sizeof(rule), &rule, sizeof(rule)) == 0) {
+                    host_version_ip_rule_release(&rule);
+                }
+            }
+            sshc_rm_scope_free(host->resource_manager,
+                               host->version_ip_ban_rules_storage);
+            host->version_ip_ban_rules_storage = nullptr;
+            host->version_ip_ban_rule_count = 0U;
+            host->version_ip_ban_rule_capacity = 0U;
+        }
+        sshc_resource_manager_destroy(host->resource_manager);
+        host->resource_manager = nullptr;
+    }
 
     if (memory_scope != nullptr) {
         sshc_memory_context_pop(memory_scope);

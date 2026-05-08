@@ -7,18 +7,34 @@ typedef struct connection_guard_result {
     unsigned int block_count;
 } connection_guard_result_t;
 
+/* The connection_guard table lives in ttak abstract memory.  All access
+ * here happens under host->lock so we can safely hold a single write map
+ * for the duration of each helper call.  Resize must NOT happen while a
+ * map is live, so allocate-grow paths unmap first. */
+
 static void host_connection_guard_prune_locked(host_t *host,
                                                const struct timespec *now)
 {
     if (host == nullptr || now == nullptr ||
-        host->connection_guard_count == 0U) {
+        host->connection_guard_count == 0U ||
+        host->connection_guard_storage == nullptr) {
         return;
     }
+
+    ttak_abstract_map_t map;
+    if (ttak_abstract_map(host->connection_guard_storage, 0U,
+                          host->connection_guard_count *
+                              sizeof(connection_guard_entry_t),
+                          TTAK_ABSTRACT_ACCESS_WRITE, &map) != 0) {
+        return;
+    }
+    connection_guard_entry_t *entries =
+        (connection_guard_entry_t *)map.data;
 
     size_t write_idx = 0U;
     const size_t original_count = host->connection_guard_count;
     for (size_t idx = 0U; idx < original_count; ++idx) {
-        connection_guard_entry_t *entry = &host->connection_guard[idx];
+        connection_guard_entry_t *entry = &entries[idx];
         if (entry->ip[0] == '\0') {
             continue;
         }
@@ -32,75 +48,124 @@ static void host_connection_guard_prune_locked(host_t *host,
         }
 
         if (write_idx != idx) {
-            host->connection_guard[write_idx] = *entry;
+            entries[write_idx] = *entry;
         }
         ++write_idx;
     }
 
     if (write_idx < original_count) {
         size_t cleared = original_count - write_idx;
-        memset(&host->connection_guard[write_idx], 0,
-               cleared * sizeof(host->connection_guard[write_idx]));
+        memset(&entries[write_idx], 0,
+               cleared * sizeof(entries[write_idx]));
     }
     host->connection_guard_count = write_idx;
+    ttak_abstract_unmap(&map);
 }
 
-static connection_guard_entry_t *
-host_find_connection_guard_locked(host_t *host, const char *ip)
+static bool host_find_connection_guard_index_locked(host_t *host,
+                                                    const char *ip,
+                                                    size_t *out_idx)
 {
-    if (host == nullptr || ip == nullptr) {
-        return nullptr;
+    if (host == nullptr || ip == nullptr || out_idx == nullptr ||
+        host->connection_guard_storage == nullptr ||
+        host->connection_guard_count == 0U) {
+        return false;
     }
 
+    ttak_abstract_map_t map;
+    if (ttak_abstract_map(host->connection_guard_storage, 0U,
+                          host->connection_guard_count *
+                              sizeof(connection_guard_entry_t),
+                          TTAK_ABSTRACT_ACCESS_READ, &map) != 0) {
+        return false;
+    }
+    const connection_guard_entry_t *entries =
+        (const connection_guard_entry_t *)map.data;
+
+    bool found = false;
     for (size_t idx = 0U; idx < host->connection_guard_count; ++idx) {
-        connection_guard_entry_t *entry = &host->connection_guard[idx];
-        if (strncmp(entry->ip, ip, SSH_CHATTER_IP_LEN) == 0) {
-            return entry;
+        if (strncmp(entries[idx].ip, ip, SSH_CHATTER_IP_LEN) == 0) {
+            *out_idx = idx;
+            found = true;
+            break;
         }
     }
-
-    return nullptr;
+    ttak_abstract_unmap(&map);
+    return found;
 }
 
-static connection_guard_entry_t *
-host_ensure_connection_guard_locked(host_t *host, const char *ip)
+static bool host_ensure_connection_guard_locked(host_t *host, const char *ip,
+                                                size_t *out_idx)
 {
-    if (host == nullptr || ip == nullptr || ip[0] == '\0') {
-        return nullptr;
+    if (host == nullptr || ip == nullptr || ip[0] == '\0' ||
+        out_idx == nullptr) {
+        return false;
     }
 
     sshc_memory_context_t *memory_scope = host_memory_scope_push(host);
 
-    connection_guard_entry_t *entry =
-        host_find_connection_guard_locked(host, ip);
-    if (entry != nullptr) {
+    if (host_find_connection_guard_index_locked(host, ip, out_idx)) {
         host_memory_scope_pop(memory_scope);
-        return entry;
+        return true;
     }
 
+    /* Need to append a new entry — grow if at capacity. */
     if (host->connection_guard_count >= host->connection_guard_capacity) {
         size_t new_capacity = host->connection_guard_capacity > 0U
                                   ? host->connection_guard_capacity * 2U
                                   : 16U;
-        connection_guard_entry_t *resized =
-            sshc_gc_realloc(host->connection_guard,
-                       new_capacity * sizeof(connection_guard_entry_t));
-        if (resized == nullptr) {
+        size_t new_bytes = new_capacity * sizeof(connection_guard_entry_t);
+
+        if (host->connection_guard_storage == nullptr) {
+            if (host->resource_manager == nullptr) {
+                host_memory_scope_pop(memory_scope);
+                return false;
+            }
+            host->connection_guard_storage = sshc_rm_scope_alloc(
+                host->resource_manager, new_bytes, "connection_guard");
+            if (host->connection_guard_storage == nullptr) {
+                host_memory_scope_pop(memory_scope);
+                return false;
+            }
+        } else if (sshc_rm_scope_resize(host->resource_manager,
+                                        host->connection_guard_storage,
+                                        new_bytes) != 0) {
             host_memory_scope_pop(memory_scope);
-            return nullptr;
+            return false;
         }
-        host->connection_guard = resized;
-        memset(&host->connection_guard[host->connection_guard_capacity], 0,
-               (new_capacity - host->connection_guard_capacity) *
-                   sizeof(connection_guard_entry_t));
+
+        /* Zero-fill the newly-grown tail. */
+        size_t old_bytes =
+            host->connection_guard_capacity * sizeof(connection_guard_entry_t);
+        size_t zero_bytes = new_bytes - old_bytes;
+        if (zero_bytes > 0U) {
+            ttak_abstract_map_t zmap;
+            if (ttak_abstract_map(host->connection_guard_storage, old_bytes,
+                                  zero_bytes, TTAK_ABSTRACT_ACCESS_WRITE,
+                                  &zmap) == 0) {
+                memset(zmap.data, 0, zero_bytes);
+                ttak_abstract_unmap(&zmap);
+            }
+        }
         host->connection_guard_capacity = new_capacity;
     }
 
-    entry = &host->connection_guard[host->connection_guard_count++];
-    memset(entry, 0, sizeof(*entry));
-    snprintf(entry->ip, sizeof(entry->ip), "%.*s", SSH_CHATTER_IP_LEN - 1, ip);
+    size_t target = host->connection_guard_count;
+    host->connection_guard_count += 1U;
+
+    connection_guard_entry_t fresh = {0};
+    snprintf(fresh.ip, sizeof(fresh.ip), "%.*s", SSH_CHATTER_IP_LEN - 1, ip);
+    if (ttak_abstract_write(host->connection_guard_storage,
+                            target * sizeof(fresh), &fresh,
+                            sizeof(fresh)) != 0) {
+        host->connection_guard_count -= 1U;
+        host_memory_scope_pop(memory_scope);
+        return false;
+    }
+
+    *out_idx = target;
     host_memory_scope_pop(memory_scope);
-    return entry;
+    return true;
 }
 
 static connection_guard_result_t host_connection_guard_register(host_t *host,
@@ -116,12 +181,25 @@ static connection_guard_result_t host_connection_guard_register(host_t *host,
 
     ttak_mutex_lock(&host->lock);
     host_connection_guard_prune_locked(host, &now);
-    connection_guard_entry_t *entry =
-        host_ensure_connection_guard_locked(host, ip);
-    if (entry == nullptr) {
+    size_t entry_idx = 0U;
+    if (!host_ensure_connection_guard_locked(host, ip, &entry_idx)) {
         ttak_mutex_unlock(&host->lock);
         return result;
     }
+
+    /* Read–modify–write the entry through map/unmap so the underlying
+     * abstract memory stays the source of truth.  No realloc happens
+     * within this critical section, so the map is stable. */
+    ttak_abstract_map_t map;
+    if (ttak_abstract_map(host->connection_guard_storage,
+                          entry_idx * sizeof(connection_guard_entry_t),
+                          sizeof(connection_guard_entry_t),
+                          TTAK_ABSTRACT_ACCESS_WRITE, &map) != 0) {
+        ttak_mutex_unlock(&host->lock);
+        return result;
+    }
+    connection_guard_entry_t *entry =
+        (connection_guard_entry_t *)map.data;
 
     entry->last_seen = now;
 
@@ -131,6 +209,7 @@ static connection_guard_result_t host_connection_guard_register(host_t *host,
             result.blocked_until = entry->blocked_until;
             result.block_count = entry->block_count;
             result.attempt_count = entry->attempts;
+            ttak_abstract_unmap(&map);
             ttak_mutex_unlock(&host->lock);
             return result;
         }
@@ -185,6 +264,7 @@ static connection_guard_result_t host_connection_guard_register(host_t *host,
         }
     }
 
+    ttak_abstract_unmap(&map);
     ttak_mutex_unlock(&host->lock);
     return result;
 }

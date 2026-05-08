@@ -497,6 +497,37 @@ static void host_version_ip_rule_release(version_ip_ban_rule_t *rule)
     rule->in_use = false;
 }
 
+/* Backing for host->version_ip_ban_rules_storage is a ttak abstract handle.
+ * Helpers below copy entries in/out via ttak_abstract_read/write so that
+ * relocations don't invalidate caller pointers.  The struct's heap-allocated
+ * string fields (original_pattern / normalized_pattern) are owned externally
+ * to the array — copying the struct via memcpy/read/write moves the pointer
+ * by value, which is what we want. */
+
+static int host_version_ip_rule_load(const host_t *host, size_t idx,
+                                     version_ip_ban_rule_t *out)
+{
+    if (host == nullptr || out == nullptr ||
+        host->version_ip_ban_rules_storage == nullptr ||
+        idx >= host->version_ip_ban_rule_capacity) {
+        return -1;
+    }
+    return ttak_abstract_read(host->version_ip_ban_rules_storage,
+                              idx * sizeof(*out), out, sizeof(*out));
+}
+
+static int host_version_ip_rule_store(host_t *host, size_t idx,
+                                      const version_ip_ban_rule_t *in)
+{
+    if (host == nullptr || in == nullptr ||
+        host->version_ip_ban_rules_storage == nullptr ||
+        idx >= host->version_ip_ban_rule_capacity) {
+        return -1;
+    }
+    return ttak_abstract_write(host->version_ip_ban_rules_storage,
+                               idx * sizeof(*in), in, sizeof(*in));
+}
+
 static bool host_version_ip_rules_reserve(host_t *host, size_t min_capacity)
 {
     if (host == nullptr) {
@@ -507,7 +538,7 @@ static bool host_version_ip_rules_reserve(host_t *host, size_t min_capacity)
     bool success = false;
 
     if (min_capacity <= host->version_ip_ban_rule_capacity &&
-        host->version_ip_ban_rules != nullptr) {
+        host->version_ip_ban_rules_storage != nullptr) {
         success = true;
         goto cleanup;
     }
@@ -525,23 +556,36 @@ static bool host_version_ip_rules_reserve(host_t *host, size_t min_capacity)
     if (new_capacity < min_capacity) {
         goto cleanup;
     }
-
-    version_ip_ban_rule_t *buffer =
-        sshc_gc_calloc(new_capacity, sizeof(*buffer));
-    if (buffer == nullptr) {
+    if (host->resource_manager == nullptr) {
         goto cleanup;
     }
 
-    if (host->version_ip_ban_rules != nullptr &&
-        host->version_ip_ban_rule_count > 0U) {
-        memcpy(buffer, host->version_ip_ban_rules,
-               host->version_ip_ban_rule_count * sizeof(*buffer));
-        sshc_gc_free(host->version_ip_ban_rules);
-    } else if (host->version_ip_ban_rules != nullptr) {
-        sshc_gc_free(host->version_ip_ban_rules);
+    size_t new_bytes = new_capacity * sizeof(version_ip_ban_rule_t);
+
+    if (host->version_ip_ban_rules_storage == nullptr) {
+        host->version_ip_ban_rules_storage = sshc_rm_scope_alloc(
+            host->resource_manager, new_bytes, "version_ip_ban_rules");
+        if (host->version_ip_ban_rules_storage == nullptr) {
+            goto cleanup;
+        }
+    } else if (sshc_rm_scope_resize(host->resource_manager,
+                                    host->version_ip_ban_rules_storage,
+                                    new_bytes) != 0) {
+        goto cleanup;
     }
 
-    host->version_ip_ban_rules = buffer;
+    /* Zero-fill any newly-grown tail. */
+    size_t old_bytes =
+        host->version_ip_ban_rule_capacity * sizeof(version_ip_ban_rule_t);
+    if (new_bytes > old_bytes) {
+        ttak_abstract_map_t zmap;
+        if (ttak_abstract_map(host->version_ip_ban_rules_storage, old_bytes,
+                              new_bytes - old_bytes,
+                              TTAK_ABSTRACT_ACCESS_WRITE, &zmap) == 0) {
+            memset(zmap.data, 0, new_bytes - old_bytes);
+            ttak_abstract_unmap(&zmap);
+        }
+    }
     host->version_ip_ban_rule_capacity = new_capacity;
     success = true;
 
@@ -556,7 +600,7 @@ static bool host_version_ip_rules_prepare(host_t *host)
         return false;
     }
 
-    if (host->version_ip_ban_rules == nullptr ||
+    if (host->version_ip_ban_rules_storage == nullptr ||
         host->version_ip_ban_rule_capacity == 0U) {
         if (!host_version_ip_rules_reserve(host, 16U)) {
             return false;
@@ -564,9 +608,13 @@ static bool host_version_ip_rules_prepare(host_t *host)
     } else {
         for (size_t idx = 0U; idx < host->version_ip_ban_rule_capacity;
              ++idx) {
-            host_version_ip_rule_release(&host->version_ip_ban_rules[idx]);
-            memset(&host->version_ip_ban_rules[idx], 0,
-                   sizeof(host->version_ip_ban_rules[idx]));
+            version_ip_ban_rule_t rule;
+            if (host_version_ip_rule_load(host, idx, &rule) != 0) {
+                continue;
+            }
+            host_version_ip_rule_release(&rule);
+            memset(&rule, 0, sizeof(rule));
+            (void)host_version_ip_rule_store(host, idx, &rule);
         }
     }
 
@@ -715,49 +763,64 @@ static bool host_version_ip_rule_add(host_t *host, const char *pattern,
     }
 
     for (size_t idx = 0U; idx < host->version_ip_ban_rule_count; ++idx) {
-        version_ip_ban_rule_t *existing = &host->version_ip_ban_rules[idx];
-        if (!existing->in_use) {
+        version_ip_ban_rule_t existing = {0};
+        if (host_version_ip_rule_load(host, idx, &existing) != 0) {
             continue;
         }
-        if (existing->match_mode != match_mode) {
+        if (!existing.in_use) {
             continue;
         }
-        if (existing->normalized_pattern == nullptr ||
-            strncmp(existing->normalized_pattern, normalized,
+        if (existing.match_mode != match_mode) {
+            continue;
+        }
+        if (existing.normalized_pattern == nullptr ||
+            strncmp(existing.normalized_pattern, normalized,
                     SSH_CHATTER_VERSION_PATTERN_LEN) != 0) {
             continue;
         }
-        if (existing->is_ipv6 != is_ipv6) {
+        if (existing.is_ipv6 != is_ipv6) {
             continue;
         }
         bool network_match = false;
         if (!is_ipv6) {
-            network_match = (existing->ipv4_network == ipv4_network &&
-                             existing->ipv4_mask == ipv4_mask);
+            network_match = (existing.ipv4_network == ipv4_network &&
+                             existing.ipv4_mask == ipv4_mask);
         } else {
             network_match =
-                (memcmp(existing->ipv6_network.s6_addr, ipv6_network.s6_addr,
+                (memcmp(existing.ipv6_network.s6_addr, ipv6_network.s6_addr,
                         sizeof(ipv6_network.s6_addr)) == 0) &&
-                (memcmp(existing->ipv6_mask.s6_addr, ipv6_mask.s6_addr,
+                (memcmp(existing.ipv6_mask.s6_addr, ipv6_mask.s6_addr,
                         sizeof(ipv6_mask.s6_addr)) == 0);
         }
         if (network_match) {
             if (note != nullptr && note[0] != '\0') {
                 size_t note_len =
                     strnlen(note, SSH_CHATTER_VERSION_NOTE_LEN - 1U);
-                memcpy(existing->note, note, note_len);
-                existing->note[note_len] = '\0';
+                memcpy(existing.note, note, note_len);
+                existing.note[note_len] = '\0';
+                (void)host_version_ip_rule_store(host, idx, &existing);
             }
             return true;
         }
     }
 
-    version_ip_ban_rule_t *rule =
-        &host->version_ip_ban_rules[host->version_ip_ban_rule_count];
-    host_version_ip_rule_release(rule);
-    memset(rule, 0, sizeof(*rule));
-    rule->in_use = true;
-    rule->match_mode = match_mode;
+    /* Append new rule at slot host->version_ip_ban_rule_count. */
+    size_t target = host->version_ip_ban_rule_count;
+    if (target >= host->version_ip_ban_rule_capacity) {
+        if (!host_version_ip_rules_reserve(host, target + 1U)) {
+            printf("[security] unable to grow version/IP rule table\n");
+            return false;
+        }
+    }
+
+    version_ip_ban_rule_t old = {0};
+    if (host_version_ip_rule_load(host, target, &old) == 0) {
+        host_version_ip_rule_release(&old);
+    }
+
+    version_ip_ban_rule_t rule = {0};
+    rule.in_use = true;
+    rule.match_mode = match_mode;
     char *original_copy = sshc_strdup(original);
     char *normalized_copy = sshc_strdup(normalized);
     if (original_copy == nullptr || normalized_copy == nullptr) {
@@ -768,36 +831,41 @@ static bool host_version_ip_rule_add(host_t *host, const char *pattern,
                original, cidr_trimmed);
         return false;
     }
-    rule->original_pattern = original_copy;
-    rule->normalized_pattern = normalized_copy;
-    snprintf(rule->cidr_text, sizeof(rule->cidr_text), "%s", cidr_trimmed);
-    rule->is_ipv6 = is_ipv6;
+    rule.original_pattern = original_copy;
+    rule.normalized_pattern = normalized_copy;
+    snprintf(rule.cidr_text, sizeof(rule.cidr_text), "%s", cidr_trimmed);
+    rule.is_ipv6 = is_ipv6;
     if (!is_ipv6) {
-        rule->ipv4_network = ipv4_network;
-        rule->ipv4_mask = ipv4_mask;
+        rule.ipv4_network = ipv4_network;
+        rule.ipv4_mask = ipv4_mask;
     } else {
-        rule->ipv6_network = ipv6_network;
-        rule->ipv6_mask = ipv6_mask;
+        rule.ipv6_network = ipv6_network;
+        rule.ipv6_mask = ipv6_mask;
     }
 
     if (note != nullptr && note[0] != '\0') {
         size_t note_len = strnlen(note, SSH_CHATTER_VERSION_NOTE_LEN - 1U);
-        memcpy(rule->note, note, note_len);
-        rule->note[note_len] = '\0';
+        memcpy(rule.note, note, note_len);
+        rule.note[note_len] = '\0';
     } else {
-        rule->note[0] = '\0';
+        rule.note[0] = '\0';
     }
 
+    if (host_version_ip_rule_store(host, target, &rule) != 0) {
+        sshc_gc_free(original_copy);
+        sshc_gc_free(normalized_copy);
+        return false;
+    }
     host->version_ip_ban_rule_count += 1U;
 
     const char *note_display =
-        rule->note[0] != '\0' ? rule->note : "version/IP policy";
+        rule.note[0] != '\0' ? rule.note : "version/IP policy";
     const char *pattern_display =
-        (rule->original_pattern != nullptr && rule->original_pattern[0] != '\0')
-            ? rule->original_pattern
+        (rule.original_pattern != nullptr && rule.original_pattern[0] != '\0')
+            ? rule.original_pattern
             : "*";
     printf("[security] loaded version/IP ban rule: %s @ %s (%s)\n",
-           pattern_display, rule->cidr_text, note_display);
+           pattern_display, rule.cidr_text, note_display);
 
     return true;
 }
@@ -876,20 +944,42 @@ host_version_ip_should_ban(host_t *host, const char *version, const char *ip,
         return false;
     }
 
+    /* Hold a read map for the entire scan so the const pointer returned
+     * via @p matched_rule stays stable for the duration of the call.
+     * Caller is expected to not retain the pointer past the call site. */
+    static __thread version_ip_ban_rule_t s_matched_rule;
+    if (host->version_ip_ban_rules_storage == nullptr ||
+        host->version_ip_ban_rule_count == 0U) {
+        return false;
+    }
+
+    ttak_abstract_map_t map;
+    if (ttak_abstract_map(host->version_ip_ban_rules_storage, 0U,
+                          host->version_ip_ban_rule_count *
+                              sizeof(version_ip_ban_rule_t),
+                          TTAK_ABSTRACT_ACCESS_READ, &map) != 0) {
+        return false;
+    }
+    const version_ip_ban_rule_t *rules =
+        (const version_ip_ban_rule_t *)map.data;
+    bool result = false;
     for (size_t idx = 0U; idx < host->version_ip_ban_rule_count; ++idx) {
-        const version_ip_ban_rule_t *rule = &host->version_ip_ban_rules[idx];
+        const version_ip_ban_rule_t *rule = &rules[idx];
         if (!rule->in_use) {
             continue;
         }
         if (host_version_ip_rule_matches(rule, version, ip)) {
             if (matched_rule != nullptr) {
-                *matched_rule = rule;
+                /* Copy out so caller's pointer remains valid after unmap. */
+                s_matched_rule = *rule;
+                *matched_rule = &s_matched_rule;
             }
-            return true;
+            result = true;
+            break;
         }
     }
-
-    return false;
+    ttak_abstract_unmap(&map);
+    return result;
 }
 
 static void host_version_ip_rules_init(host_t *host)

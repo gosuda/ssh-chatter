@@ -82,6 +82,61 @@ confirm the build still succeeds before pushing the result.
 - `/filestore-upload` accepts an optional destination (for example `/filestore-upload /kitten/meow.png`). SSH-Chatter creates the `/kitten` directory automatically and places the uploaded file there, mirroring how SCP uses paths like `user@host:/kitten/meow.png`.
 - Both transports can mix and match: SSH for unattended scripted transfers, TELNET for nostalgic BBS clients with built-in ZMODEM tooling.
 
+## DOOR Games (DOSBox bridge)
+
+SSH-Chatter can launch classic BBS-era door games via a `dosbox` bridge. The chat session's stdin/stdout is proxied to a forked `dosbox` process, and output is auto-detected and transcoded from CP949/Johab to UTF-8 when needed.
+
+### Prerequisites
+
+- `dosbox` available on `$PATH` (e.g. `sudo apt-get install dosbox`).
+- A valid DOSBox conf file per door, with the game payload mounted and auto-launched from `[autoexec]`.
+- The conf file path must be readable by the `ssh-chatter` service user.
+
+### Registering doors
+
+Doors are registered at startup through environment variables. Each slot uses the form:
+
+```
+CHATTER_DOOR_<N>=<name>:<dosbox_conf_path>[:<description>]
+```
+
+- `<N>` starts at `1` and may go up to `16` (`SSH_CHATTER_DOOR_GAME_LIMIT`).
+- `<name>` must be alphanumeric / `-` / `_` only, max 31 chars. This is what users type at `/bbs door <name>`.
+- `<dosbox_conf_path>` is an absolute path to the DOSBox conf file (no shell layer is used; the path is passed straight to `execvp`).
+- `<description>` is optional free text (max 127 chars) shown in the door listing. Colons inside the description are kept verbatim.
+
+Example (systemd drop-in or shell `export`):
+
+```bash
+export CHATTER_DOOR_1="lord:/etc/ssh-chatter/doors/lord.conf:Legend of the Red Dragon"
+export CHATTER_DOOR_2="tw2002:/etc/ssh-chatter/doors/tw2002.conf:Trade Wars 2002"
+```
+
+Minimal `lord.conf` skeleton:
+
+```ini
+[sdl]
+nosound=true
+
+[autoexec]
+mount c /var/lib/ssh-chatter/doors/lord
+c:
+lord.exe
+exit
+```
+
+### Launching from chat
+
+- `/bbs door` lists registered doors.
+- `/bbs door <name>` starts the named door. Door launches are **operator-only** by default (`is_operator` or `is_lan_operator`).
+- Press `Ctrl-]` (0x1D) inside the door to detach, or wait until the game exits.
+- Each session is hard-capped at 1 hour of runtime to prevent stuck `dosbox` processes.
+
+### Notes
+
+- Output encoding is auto-detected from the first 4 KiB of door stdout (UTF-8 / CP949 / Johab). No configuration required.
+- Door names are validated; misconfigured `CHATTER_DOOR_<N>` slots are skipped with a humanized log error and the daemon continues to start.
+
 ## Morse Relay
 SSH-Chatter supports amateur ham radio relay.
 This shows global morse signals.
@@ -348,6 +403,7 @@ sudo systemctl disable --now chatter.service
 - Retro bulletin board system accessible through `/bbs` with tagging, comments, bumping, and an interactive composer that ends with a locale-aware terminator (default `>/__BBS_END>`).
 - `/asciiart` editor with 640-line drafts, a ten-minute per-IP posting cooldown, multi-line delivery, and Ctrl+A/Ctrl+S shortcuts.
 - `/game` hub featuring built-in `tetris` (transcoded from the original Soviet-era C implementation) and `liargame`, both suspendable via `/suspend!` or Ctrl+Z.
+- DOSBox-backed DOOR games launched via `/bbs door <name>`, registered through `CHATTER_DOOR_<N>` env vars (operator-gated, with auto CP949/Johab/UTF-8 detection).
 
 ### In progress / planned
 - Enforcing moderation commands beyond logging.

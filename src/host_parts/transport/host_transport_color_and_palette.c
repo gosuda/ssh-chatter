@@ -1403,10 +1403,10 @@ static bool host_is_username_banned(host_t *host, const char *username);
 static bool host_add_ban_entry(host_t *host, const char *username,
                                const char *ip);
 static bool host_remove_ban_entry(host_t *host, const char *token);
-static join_activity_entry_t *host_find_join_activity_locked(host_t *host,
-                                                             const char *ip);
-static join_activity_entry_t *host_ensure_join_activity_locked(host_t *host,
-                                                               const char *ip);
+static bool host_find_join_activity_index_locked(host_t *host, const char *ip,
+                                                 size_t *out_idx);
+static bool host_ensure_join_activity_locked(host_t *host, const char *ip,
+                                             size_t *out_idx);
 static bool host_register_suspicious_activity(host_t *host,
                                               const char *username,
                                               const char *ip,

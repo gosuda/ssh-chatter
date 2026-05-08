@@ -220,18 +220,6 @@ static bool host_username_reserved(host_t *host, const char *username)
  * scoped maps for the duration of helper calls.  Resizing must NOT happen
  * while a map is live. */
 
-static int host_join_activity_load(const host_t *host, size_t idx,
-                                   join_activity_entry_t *out)
-{
-    if (host == nullptr || out == nullptr ||
-        host->join_activity_storage == nullptr ||
-        idx >= host->join_activity_count) {
-        return -1;
-    }
-    return ttak_abstract_read(host->join_activity_storage,
-                              idx * sizeof(*out), out, sizeof(*out));
-}
-
 static int host_join_activity_store(host_t *host, size_t idx,
                                     const join_activity_entry_t *in)
 {

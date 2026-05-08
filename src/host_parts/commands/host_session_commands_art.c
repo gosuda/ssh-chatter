@@ -124,22 +124,32 @@ static bool host_asciiart_cooldown_active(host_t *host, const char *ip,
     long remaining = 0L;
 
     ttak_mutex_lock(&host->lock);
-    join_activity_entry_t *entry = host_find_join_activity_locked(host, ip);
-    if (entry != nullptr && entry->asciiart_has_cooldown) {
-        struct timespec expiry = entry->last_asciiart_post;
-        expiry.tv_sec += SSH_CHATTER_ASCIIART_COOLDOWN_SECONDS;
-        if (timespec_compare(&current, &expiry) >= 0) {
-            entry->asciiart_has_cooldown = false;
-        } else {
-            active = true;
-            struct timespec diff = timespec_diff(&expiry, &current);
-            remaining = diff.tv_sec;
-            if (diff.tv_nsec > 0L) {
-                ++remaining;
+    size_t entry_idx = 0U;
+    if (host_find_join_activity_index_locked(host, ip, &entry_idx)) {
+        ttak_abstract_map_t emap;
+        if (ttak_abstract_map(host->join_activity_storage,
+                              entry_idx * sizeof(join_activity_entry_t),
+                              sizeof(join_activity_entry_t),
+                              TTAK_ABSTRACT_ACCESS_WRITE, &emap) == 0) {
+            join_activity_entry_t *entry = (join_activity_entry_t *)emap.data;
+            if (entry->asciiart_has_cooldown) {
+                struct timespec expiry = entry->last_asciiart_post;
+                expiry.tv_sec += SSH_CHATTER_ASCIIART_COOLDOWN_SECONDS;
+                if (timespec_compare(&current, &expiry) >= 0) {
+                    entry->asciiart_has_cooldown = false;
+                } else {
+                    active = true;
+                    struct timespec diff = timespec_diff(&expiry, &current);
+                    remaining = diff.tv_sec;
+                    if (diff.tv_nsec > 0L) {
+                        ++remaining;
+                    }
+                    if (remaining < 0L) {
+                        remaining = 0L;
+                    }
+                }
             }
-            if (remaining < 0L) {
-                remaining = 0L;
-            }
+            ttak_abstract_unmap(&emap);
         }
     }
     ttak_mutex_unlock(&host->lock);
@@ -159,10 +169,18 @@ static void host_asciiart_register_post(host_t *host, const char *ip,
     }
 
     ttak_mutex_lock(&host->lock);
-    join_activity_entry_t *entry = host_ensure_join_activity_locked(host, ip);
-    if (entry != nullptr) {
-        entry->last_asciiart_post = *when;
-        entry->asciiart_has_cooldown = true;
+    size_t entry_idx = 0U;
+    if (host_ensure_join_activity_locked(host, ip, &entry_idx)) {
+        ttak_abstract_map_t emap;
+        if (ttak_abstract_map(host->join_activity_storage,
+                              entry_idx * sizeof(join_activity_entry_t),
+                              sizeof(join_activity_entry_t),
+                              TTAK_ABSTRACT_ACCESS_WRITE, &emap) == 0) {
+            join_activity_entry_t *entry = (join_activity_entry_t *)emap.data;
+            entry->last_asciiart_post = *when;
+            entry->asciiart_has_cooldown = true;
+            ttak_abstract_unmap(&emap);
+        }
     }
     ttak_mutex_unlock(&host->lock);
 }

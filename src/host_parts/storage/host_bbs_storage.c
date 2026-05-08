@@ -277,8 +277,13 @@ static void host_bbs_state_save_locked_with_change(
                 copy_count = SSH_CHATTER_BBS_MAX_COMMENTS;
             }
             for (size_t comment = 0U; comment < copy_count; ++comment) {
-                serialized.comments[comment] =
-                    override_content->comments[comment];
+                const bbs_comment_t *src =
+                    &override_content->comments[comment];
+                bbs_state_comment_entry_t *dst =
+                    &serialized.comments[comment];
+                memcpy(dst->author, src->author, sizeof(dst->author));
+                memcpy(dst->text, src->text, sizeof(dst->text));
+                dst->created_at = (int64_t)src->created_at;
             }
             serialized.comment_count = (uint32_t)copy_count;
         } else {
@@ -481,9 +486,14 @@ bool host_bbs_content_acquire(host_t *host, uint64_t post_id,
                 copy_count = SSH_CHATTER_BBS_MAX_COMMENTS;
             }
             for (size_t comment = 0U; comment < copy_count; ++comment) {
-                content->comments[comment] = serialized.comments[comment];
-                host_strip_column_reset(content->comments[comment].author);
-                host_strip_column_reset(content->comments[comment].text);
+                const bbs_state_comment_entry_t *src =
+                    &serialized.comments[comment];
+                bbs_comment_t *dst = &content->comments[comment];
+                memcpy(dst->author, src->author, sizeof(dst->author));
+                memcpy(dst->text, src->text, sizeof(dst->text));
+                dst->created_at = (time_t)src->created_at;
+                host_strip_column_reset(dst->author);
+                host_strip_column_reset(dst->text);
             }
             content->comment_count = copy_count;
         }

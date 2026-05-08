@@ -742,21 +742,12 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
             continue;
         }
 
-        // For telnet, or SSH sessions using the display model: trigger an
-        // incremental history-scroll redraw so the conversation scrolls up
-        // by one line and the new message appears at the bottom.
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
-            member->display_model_initialized) {
-            session_flag_should_sink(member);
-            if (member->history_scroll_position == 0U && !member->no_update) {
-                session_process_pending_sink(member);
-            }
-            session_channel_flush(member);
-            atomic_fetch_sub(&member->room_snapshot_refs, 1U);
-            continue;
-        }
-
-        // --- SSH path (no display model) ---
+        // Append the caption as a regular line at the bottom for every
+        // transport. A full sink redraw cannot reliably surface a reaction
+        // notification when the reacted-to message is outside the current
+        // viewport, so the caption is emitted directly and the next sink
+        // (triggered by any future chat message) will re-render the inline
+        // reaction count from the updated history.
         session_output_buffer_flush(member);
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;
@@ -767,17 +758,12 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
 
         if (member->history_scroll_position == 0U) {
             session_clear_pending_sink(member);
-        }
-
-        if (member->history_scroll_position == 0U) {
             member->prompt_needs_padding = false;
             member->output_lines_since_prompt = 0U;
             session_refresh_input_line(member);
         }
         atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
-
-    // printf("\033[1G[broadcast caption] %s\n", message);
 
     sshc_gc_free(targets);
 }

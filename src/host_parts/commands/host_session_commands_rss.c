@@ -216,13 +216,6 @@ static void session_rss_list(session_ctx_t *ctx)
         return;
     }
 
-    bool refresh_requested = host_rss_schedule_manual_refresh(ctx->owner);
-    if (refresh_requested) {
-        session_send_system_line(
-            ctx,
-            "Refreshing RSS feeds in the background; cached results follow:");
-    }
-
     rss_feed_t *snapshot = (rss_feed_t *)ttak_mem_alloc(
         sizeof(rss_feed_t) * SSH_CHATTER_RSS_MAX_FEEDS,
         __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
@@ -255,14 +248,39 @@ static void session_rss_list(session_ctx_t *ctx)
 
     for (size_t idx = 0U; idx < count; ++idx) {
         const rss_feed_t *entry = &snapshot[idx];
+        bool synced = host_rss_sync_feed(ctx->owner, entry->tag);
         char line[SSH_CHATTER_MESSAGE_LIMIT];
-        if (entry->last_title[0] != '\0') {
+
+        ttak_mutex_lock(&ctx->owner->lock);
+        rss_feed_t *live = host_find_rss_feed_locked(ctx->owner, entry->tag);
+        size_t item_count = 0U;
+        char last_title[SSH_CHATTER_RSS_TITLE_LEN] = {0};
+        if (live != nullptr && live->in_use) {
+            item_count = live->stored_item_count;
+            snprintf(last_title, sizeof(last_title), "%s", live->last_title);
+        }
+        ttak_mutex_unlock(&ctx->owner->lock);
+
+        if (last_title[0] != '\0') {
             char preview[72];
-            snprintf(preview, sizeof(preview), "%.64s", entry->last_title);
-            snprintf(line, sizeof(line), "[%s] %s (last: %s)", entry->tag,
-                     entry->url, preview);
+            snprintf(preview, sizeof(preview), "%.64s", last_title);
+            if (synced) {
+                snprintf(line, sizeof(line), "[%s] %zu items (last: %s)",
+                         entry->tag, item_count, preview);
+            } else {
+                snprintf(line, sizeof(line),
+                         "[%s] %zu items (last: %s) [sync failed]",
+                         entry->tag, item_count, preview);
+            }
         } else {
-            snprintf(line, sizeof(line), "[%s] %s", entry->tag, entry->url);
+            if (synced) {
+                snprintf(line, sizeof(line), "[%s] %zu items", entry->tag,
+                         item_count);
+            } else {
+                snprintf(line, sizeof(line),
+                         "[%s] %zu items [sync failed]", entry->tag,
+                         item_count);
+            }
         }
         session_send_system_line(ctx, line);
     }
@@ -272,54 +290,144 @@ static void session_rss_list(session_ctx_t *ctx)
     }
 }
 
-static void session_rss_read(session_ctx_t *ctx, const char *tag)
+static void session_rss_read(session_ctx_t *ctx, const char *tags_arg)
 {
-    if (ctx == nullptr || ctx->owner == nullptr || tag == nullptr ||
-        tag[0] == '\0') {
-        session_send_system_line(ctx, "Usage: /rss read <tag>");
+    if (ctx == nullptr || ctx->owner == nullptr || tags_arg == nullptr ||
+        tags_arg[0] == '\0') {
+        session_send_system_line(ctx,
+                                 "Usage: /rss read <tag> [<tag2> ...]");
         return;
     }
 
-    char working[SSH_CHATTER_RSS_TAG_LEN];
-    snprintf(working, sizeof(working), "%s", tag);
-    rss_trim_whitespace(working);
-    if (!rss_tag_is_valid(working)) {
+    char working[SSH_CHATTER_MAX_INPUT_LEN];
+    snprintf(working, sizeof(working), "%s", tags_arg);
+
+    char *tags[SSH_CHATTER_RSS_MAX_FEEDS] = {0};
+    size_t tag_count = 0U;
+
+    char *saveptr = nullptr;
+    char *tok = strtok_r(working, " \t", &saveptr);
+    while (tok != nullptr && tag_count < SSH_CHATTER_RSS_MAX_FEEDS) {
+        rss_trim_whitespace(tok);
+        if (tok[0] != '\0' && rss_tag_is_valid(tok)) {
+            tags[tag_count++] = tok;
+        }
+        tok = strtok_r(nullptr, " \t", &saveptr);
+    }
+
+    if (tag_count == 0U) {
         session_send_system_line(
             ctx, "Tags may only contain letters, numbers, '-', '_' or '.'.");
         return;
     }
 
-    char feed_tag[SSH_CHATTER_RSS_TAG_LEN];
-    feed_tag[0] = '\0';
-    size_t item_count = 0U;
-
-    ttak_mutex_lock(&ctx->owner->lock);
-    rss_feed_t *entry = host_find_rss_feed_locked(ctx->owner, working);
-    if (entry != nullptr && entry->in_use) {
-        snprintf(feed_tag, sizeof(feed_tag), "%s", entry->tag);
-        item_count = entry->stored_item_count;
-        if (item_count > SSH_CHATTER_RSS_MAX_ITEMS) {
-            item_count = SSH_CHATTER_RSS_MAX_ITEMS;
-        }
+    rss_session_item_t *merged = (rss_session_item_t *)ttak_mem_alloc(
+        sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS *
+            SSH_CHATTER_RSS_MAX_FEEDS,
+        __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
+    if (merged == nullptr) {
+        session_send_system_line(ctx,
+                                 "Unable to open RSS reader right now.");
+        return;
     }
-    ttak_mutex_unlock(&ctx->owner->lock);
+    memset(merged, 0,
+           sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS *
+               SSH_CHATTER_RSS_MAX_FEEDS);
 
-    if (feed_tag[0] == '\0') {
+    size_t merged_count = 0U;
+    size_t success_count = 0U;
+    size_t fail_count = 0U;
+    char failed_tags[256] = {0};
+
+    for (size_t ti = 0U; ti < tag_count; ++ti) {
+        char feed_tag[SSH_CHATTER_RSS_TAG_LEN];
+        feed_tag[0] = '\0';
+
+        ttak_mutex_lock(&ctx->owner->lock);
+        rss_feed_t *entry = host_find_rss_feed_locked(ctx->owner, tags[ti]);
+        if (entry != nullptr && entry->in_use) {
+            snprintf(feed_tag, sizeof(feed_tag), "%s", entry->tag);
+        }
+        ttak_mutex_unlock(&ctx->owner->lock);
+
+        if (feed_tag[0] == '\0') {
+            if (fail_count > 0U) {
+                strncat(failed_tags, ", ", sizeof(failed_tags) - 1);
+            }
+            strncat(failed_tags, tags[ti], sizeof(failed_tags) - 1);
+            ++fail_count;
+            continue;
+        }
+
+        if (!host_rss_sync_feed(ctx->owner, feed_tag)) {
+            if (fail_count > 0U) {
+                strncat(failed_tags, ", ", sizeof(failed_tags) - 1);
+            }
+            strncat(failed_tags, feed_tag, sizeof(failed_tags) - 1);
+            ++fail_count;
+            continue;
+        }
+
+        ++success_count;
+
+        ttak_mutex_lock(&ctx->owner->lock);
+        entry = host_find_rss_feed_locked(ctx->owner, feed_tag);
+        if (entry != nullptr && entry->in_use) {
+            size_t count = entry->stored_item_count;
+            if (count > SSH_CHATTER_RSS_MAX_ITEMS) {
+                count = SSH_CHATTER_RSS_MAX_ITEMS;
+            }
+            for (size_t i = 0U;
+                 i < count &&
+                 merged_count <
+                     SSH_CHATTER_RSS_MAX_ITEMS * SSH_CHATTER_RSS_MAX_FEEDS;
+                 ++i) {
+                merged[merged_count] = entry->stored_items[i];
+                if (tag_count > 1U && merged[merged_count].title[0] != '\0') {
+                    char prefixed[SSH_CHATTER_RSS_TITLE_LEN];
+                    snprintf(prefixed, sizeof(prefixed), "[%s] %s",
+                             feed_tag, merged[merged_count].title);
+                    snprintf(merged[merged_count].title,
+                             sizeof(merged[merged_count].title), "%s",
+                             prefixed);
+                }
+                ++merged_count;
+            }
+        }
+        ttak_mutex_unlock(&ctx->owner->lock);
+    }
+
+    if (success_count == 0U) {
+        ttak_mem_free(merged);
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "No RSS feed found for tag '%s'.",
-                 working);
+        snprintf(message, sizeof(message),
+                 "Failed to fetch feeds: %s (timeout or unreachable)",
+                 failed_tags);
         session_send_system_line(ctx, message);
         return;
     }
 
-    if (item_count == 0U) {
+    if (fail_count > 0U) {
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message),
+                 "Warning: some feeds failed to sync: %s", failed_tags);
+        session_send_system_line(ctx, message);
+    }
+
+    if (merged_count == 0U) {
+        ttak_mem_free(merged);
         session_send_system_line(
-            ctx,
-            "The feed does not contain any entries for the current window yet.");
+            ctx, "The feeds do not contain any entries yet.");
         return;
     }
 
-    session_rss_begin(ctx, feed_tag, nullptr, item_count);
+    const char *display_tag = tags[0];
+    if (tag_count > 1U) {
+        display_tag = "combined";
+    }
+
+    session_rss_begin(ctx, display_tag, merged, merged_count);
+    ttak_mem_free(merged);
 }
 
 static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
@@ -329,7 +437,7 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
     }
 
     static const char *kUsage =
-        "Usage: /rss <add <url> <tag>|del <tag>|rename <old> <new>|read <tag>|list>";
+        "Usage: /rss <add <url> <tag>|del <tag>|rename <old> <new>|read <tag> [<tag2> ...]|list>";
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/rss", kUsage, usage, sizeof(usage));
@@ -482,12 +590,14 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
     }
 
     if (strcasecmp(command, "read") == 0) {
-        char *tag = strtok_r(nullptr, " \t", &saveptr);
-        if (tag == nullptr) {
-            session_send_system_line(ctx, "Usage: /rss read <tag>");
+        char *tags = strtok_r(nullptr, "", &saveptr);
+        if (tags == nullptr) {
+            session_send_system_line(
+                ctx, "Usage: /rss read <tag> [<tag2> ...]");
             return;
         }
-        session_rss_read(ctx, tag);
+        rss_trim_whitespace(tags);
+        session_rss_read(ctx, tags);
         return;
     }
 

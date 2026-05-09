@@ -223,9 +223,6 @@ static void session_destroy(session_ctx_t *ctx)
     if (ctx->owner != nullptr) {
         host_manual_gc_tick(ctx->owner);
     }
-#if defined(__GLIBC__)
-    (void)malloc_trim(0);
-#endif
     /*
      * Free the session object immediately after teardown.
      *

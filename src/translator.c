@@ -2617,8 +2617,11 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
         goto cleanup_translator_try_ollama_eliza;
     }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     int computed = snprintf(nullptr, 0, TRANSLATOR_OLLAMA_NON_STREAM_BODY_FORMAT,
                             model_name, escaped_prompt, escaped_system);
+#pragma GCC diagnostic pop
     if (computed < 0) {
         translator_set_error("Failed to prepare eliza request.");
         goto cleanup_translator_try_ollama_eliza;
@@ -2631,8 +2634,11 @@ static bool translator_try_ollama_eliza(const translator_candidate_t *candidate,
         goto cleanup_translator_try_ollama_eliza;
     }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     snprintf(body, body_len, TRANSLATOR_OLLAMA_NON_STREAM_BODY_FORMAT, model_name, escaped_prompt,
              escaped_system);
+#pragma GCC diagnostic pop
 
     curl = curl_easy_init();
     if (curl == nullptr) {
@@ -2785,8 +2791,11 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
         goto cleanup_translator_try_ollama_moderation;
     }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     int body_length = snprintf(nullptr, 0, TRANSLATOR_OLLAMA_NON_STREAM_BODY_FORMAT, model_name,
                                escaped_prompt, escaped_system);
+#pragma GCC diagnostic pop
     if (body_length < 0) {
         translator_set_error("Failed to prepare moderation request.");
         goto cleanup_translator_try_ollama_moderation;
@@ -2799,8 +2808,11 @@ translator_try_ollama_moderation(const translator_candidate_t *candidate,
         goto cleanup_translator_try_ollama_moderation;
     }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     snprintf(body, body_size, TRANSLATOR_OLLAMA_NON_STREAM_BODY_FORMAT, model_name, escaped_prompt,
              escaped_system);
+#pragma GCC diagnostic pop
 
     curl = curl_easy_init();
     if (curl == nullptr) {

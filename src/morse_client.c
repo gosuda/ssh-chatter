@@ -185,7 +185,8 @@ static void morse_client_broadcast(morse_client_t *client, const char *line)
         session_send_raw_text(target, formatted);
 
         if (translated[0] != '\0') {
-        	snprintf(formatted, sizeof(formatted), "-> %s", translated);
+        	snprintf(formatted, sizeof(formatted), "-> %.*s",
+        	         (int)(sizeof(formatted) - 4), translated);
         	session_send_raw_text(target, formatted);
         }
     }

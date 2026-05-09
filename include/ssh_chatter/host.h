@@ -1116,6 +1116,7 @@ typedef struct host {
     size_t reserved_nicknames_len;
     size_t reserved_nicknames_capacity;
     ttak_mutex_t nickname_reserve_lock;
+    bool nickname_reserve_lock_initialized;
     volatile sig_atomic_t *shutdown_flag;
 } host_t;
 

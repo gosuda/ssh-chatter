@@ -1,3 +1,8 @@
+#define _GNU_SOURCE
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+
 /**
  * @file host.c
  * @desc File-level documentation for host.c, describing its role
@@ -22,3 +27,5 @@
 #include "host_parts/host_bbs_and_games.c"
 #include "host_parts/host_json_api.c"
 #include "host_parts/host_runtime.c"
+
+#pragma GCC diagnostic pop

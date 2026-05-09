@@ -34,7 +34,7 @@ CFLAGS = -std=c2x -Ofast \
               -fstack-protector-strong -fno-common \
               -fPIC -ftls-model=global-dynamic \
               -g \
-              -D_FORTIFY_SOURCE=3 \
+              -D_FORTIFY_SOURCE=2 \
               -march=native -mtune=native \
               -fomit-frame-pointer \
               -fno-signed-zeros \
@@ -70,7 +70,7 @@ CFLAGS = -std=c2x -Ofast \
 # ==============================================================================
 COMMON_LDFLAGS = \
     -L$(TTAK_DIR)/lib \
-    -lpthread -ldl -lcurl -lm -lcrypto -llz4 -lttak -lc \
+    -lpthread -ldl -lcurl -lm -lcrypto -llz4 -lttak -lc -lutil \
     -Wl,-Ofast \
     -Wl,--hash-style=gnu \
     -Wl,--sort-common \
@@ -82,7 +82,7 @@ COMMON_LDFLAGS = \
     -Wl,--strip-all \
     -Wl,--relax \
     -Wl,--no-undefined \
-    -Wl,--warn-execstack -Wl,-z,noexecstack \
+    -Wl,-z,noexecstack \
     -Wl,-z,separate-code \
     -Wl,-z,stack-size=524288 \
     -Wl,-z,combreloc \
@@ -113,7 +113,7 @@ DISPLAY_TEST_TARGET := display-model-test
 DISPLAY_TEST_SRC := tests/display_model_test.c src/display_model.c
 DISPLAY_TEST_OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(DISPLAY_TEST_SRC))
 
-.PHONY: all clean run stress-test display-model-test
+.PHONY: all clean run stress-test display-model-test debug asan tsan valgrind
 
 # ==============================================================================
 # BUILD RULES (Single Stage)
@@ -121,6 +121,62 @@ DISPLAY_TEST_OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(DISPLAY_TEST_SRC))
 
 # Default goal: Build the executable and shared library
 all: $(TARGET) $(SHARED_TARGET)
+
+# Debug build: disables LTO, keeps frame pointers, preserves debug symbols
+debug:
+	$(MAKE) ENABLE_LTO=0 \
+		CFLAGS="-std=c2x -O0 -g3 -ggdb -fno-omit-frame-pointer \
+		-Wno-error -Wno-error=deprecated-declarations \
+		-I $(INCLUDE_DIR) -I $(TTAK_DIR)/include -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
+		-D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
+		-Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
+		-fstack-protector-strong -fno-common -fPIC \
+		-MMD -MP" \
+		LDFLAGS="-L$(TTAK_DIR)/lib -lpthread -ldl -lcurl -lm -lcrypto -llz4 -lttak -lc -lutil -lssh \
+		-Wl,-z,relro -Wl,-z,now -Wl,--no-undefined -Wl,-z,separate-code" \
+		all
+
+# AddressSanitizer build
+asan:
+	$(MAKE) ENABLE_LTO=0 \
+		CFLAGS="-std=c2x -O1 -g -fno-omit-frame-pointer -fsanitize=address -fno-sanitize-recover=all \
+		-Wno-error -Wno-error=deprecated-declarations \
+		-I $(INCLUDE_DIR) -I $(TTAK_DIR)/include -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
+		-D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
+		-Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
+		-fstack-protector-strong -fno-common -fPIC \
+		-MMD -MP" \
+		LDFLAGS="-L$(TTAK_DIR)/lib -lpthread -ldl -lcurl -lm -lcrypto -llz4 -lttak -lc -lutil -lssh \
+		-fsanitize=address -Wl,-z,relro -Wl,-z,now -Wl,--no-undefined -Wl,-z,separate-code" \
+		all
+
+# ThreadSanitizer build
+tsan:
+	$(MAKE) ENABLE_LTO=0 \
+		CFLAGS="-std=c2x -O1 -g -fno-omit-frame-pointer -fsanitize=thread \
+		-Wno-error -Wno-error=deprecated-declarations \
+		-I $(INCLUDE_DIR) -I $(TTAK_DIR)/include -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
+		-D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
+		-Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
+		-fstack-protector-strong -fno-common -fPIC \
+		-MMD -MP" \
+		LDFLAGS="-L$(TTAK_DIR)/lib -lpthread -ldl -lcurl -lm -lcrypto -llz4 -lttak -lc -lutil -lssh \
+		-fsanitize=thread -Wl,-z,relro -Wl,-z,now -Wl,--no-undefined -Wl,-z,separate-code" \
+		all
+
+# Valgrind / kcachegrind friendly build (no sanitizers, no LTO, frame pointers kept)
+valgrind:
+	$(MAKE) ENABLE_LTO=0 \
+		CFLAGS="-std=c2x -O1 -g -fno-omit-frame-pointer \
+		-Wno-error -Wno-error=deprecated-declarations \
+		-I $(INCLUDE_DIR) -I $(TTAK_DIR)/include -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
+		-D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
+		-Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
+		-fstack-protector-strong -fno-common -fPIC \
+		-MMD -MP" \
+		LDFLAGS="-L$(TTAK_DIR)/lib -lpthread -ldl -lcurl -lm -lcrypto -llz4 -lttak -lc -lutil -lssh \
+		-Wl,-z,relro -Wl,-z,now -Wl,--no-undefined -Wl,-z,separate-code" \
+		all
 
 # Final linking for the executable
 $(TARGET): $(OBJ) $(TTAK_LIB)

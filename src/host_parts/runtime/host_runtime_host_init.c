@@ -347,6 +347,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     if (ttak_mutex_init(&host->nickname_reserve_lock) != 0) {
         humanized_log_error("host", "failed to initialise nickname lock",
                             errno != 0 ? errno : ENOMEM);
+        host->nickname_reserve_lock_initialized = false;
+    } else {
+        host->nickname_reserve_lock_initialized = true;
     }
     atomic_store(&host->eliza_enabled, false);
     atomic_store(&host->eliza_announced, false);
@@ -1641,6 +1644,21 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         ttak_mutex_destroy(&host->rss_refresh_lock);
         host->rss_refresh_lock_initialized = false;
     }
+
+    if (host->nickname_reserve_lock_initialized) {
+        ttak_mutex_destroy(&host->nickname_reserve_lock);
+        host->nickname_reserve_lock_initialized = false;
+    }
+
+    sshc_gc_free(host->version_ip_ban_rules);
+    host->version_ip_ban_rules = nullptr;
+    host->version_ip_ban_rule_count = 0U;
+    host->version_ip_ban_rule_capacity = 0U;
+
+    sshc_gc_free(host->reserved_nicknames);
+    host->reserved_nicknames = nullptr;
+    host->reserved_nicknames_len = 0U;
+    host->reserved_nicknames_capacity = 0U;
 
     ttak_mutex_destroy(&host->room.lock);
     ttak_mutex_destroy(&host->lock);

@@ -230,6 +230,11 @@ static bool session_channel_write_all(session_ctx_t *ctx, const void *data,
             continue;
         }
 
+        if (ctx->channel == nullptr) {
+            session_channel_log_write_failure(ctx, "channel closed during write");
+            return false;
+        }
+
         ssize_t written =
             ssh_channel_write(ctx->channel, cursor, (uint32_t)chunk);
         if (written == SSH_ERROR) {

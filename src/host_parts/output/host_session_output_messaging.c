@@ -275,17 +275,21 @@ int count_unicode_points(const char *str, utf8_code_count_t **counts_out,
             bytes_read = 1;
         } else if ((c & 0xE0) == 0xC0) {
             if (i + 1 < len)
-                code_point = ((c & 0x1F) << 6) | (str[i + 1] & 0x3F);
+                code_point = ((unsigned int)(c & 0x1F) << 6) |
+                             (unsigned int)(str[i + 1] & 0x3F);
             bytes_read = 2;
         } else if ((c & 0xF0) == 0xE0) {
             if (i + 2 < len)
-                code_point = ((c & 0x0F) << 12) | ((str[i + 1] & 0x3F) << 6) |
-                             (str[i + 2] & 0x3F);
+                code_point = ((unsigned int)(c & 0x0F) << 12) |
+                             ((unsigned int)(str[i + 1] & 0x3F) << 6) |
+                             (unsigned int)(str[i + 2] & 0x3F);
             bytes_read = 3;
         } else if ((c & 0xF8) == 0xF0) {
             if (i + 3 < len)
-                code_point = ((c & 0x07) << 18) | ((str[i + 1] & 0x3F) << 12) |
-                             ((str[i + 2] & 0x3F) << 6) | (str[i + 3] & 0x3F);
+                code_point = ((unsigned int)(c & 0x07) << 18) |
+                             ((unsigned int)(str[i + 1] & 0x3F) << 12) |
+                             ((unsigned int)(str[i + 2] & 0x3F) << 6) |
+                             (unsigned int)(str[i + 3] & 0x3F);
             bytes_read = 4;
         } else {
             code_point = c;

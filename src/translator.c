@@ -1186,12 +1186,14 @@ static char *translator_extract_first_text_generic(const char *response)
         const char *after_string = nullptr;
         if (!translator_decode_json_string(value_start, candidate, capacity,
                                            &after_string)) {
+            sshc_gc_free(candidate);
             return nullptr;
         }
 
         if (candidate[0] != '\0') {
             return candidate;
         }
+        sshc_gc_free(candidate);
 
         if (after_string == nullptr) {
             break;
@@ -1239,13 +1241,18 @@ static char *translator_extract_payload_text(const char *response)
         const char *after_string = nullptr;
         if (!translator_decode_json_string(value_start, candidate, capacity,
                                            &after_string)) {
+            sshc_gc_free(candidate);
             return nullptr;
         }
 
         if (candidate[0] == '{' &&
             strstr(candidate, "\"translation\"") != nullptr) {
+            if (latest_payload != nullptr) {
+                sshc_gc_free(latest_payload);
+            }
             latest_payload = candidate;
         } else {
+            sshc_gc_free(candidate);
         }
 
         if (after_string == nullptr) {

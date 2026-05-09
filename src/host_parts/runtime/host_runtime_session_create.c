@@ -117,6 +117,8 @@ static session_ctx_t *session_create(void)
         ctx->lifetime_decay_reference = ctx->lifetime_last_activity;
         ctx->lifetime_has_activity = true;
         ctx->lifetime_decay_active = false;
+        ctx->zero_read_streak = 0U;
+        ctx->sftp_handles = nullptr;
 
         printf("[encoding-debug] phase=ctx_init transport_kind=%d "
                "prefer_utf16_output=%d output_kind=%d\n",

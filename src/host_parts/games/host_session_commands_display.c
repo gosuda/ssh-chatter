@@ -17,7 +17,7 @@ static int session_channel_read_poll(session_ctx_t *ctx, char *buffer,
 
     int fd = ssh_get_fd(ctx->session);
     if (fd < 0) {
-        return session_transport_read(ctx, buffer, length, -1);
+        return session_transport_read(ctx, buffer, length, 0);
     }
 
     int val = 1;
@@ -51,7 +51,7 @@ static int session_channel_read_poll(session_ctx_t *ctx, char *buffer,
         return SESSION_CHANNEL_TIMEOUT;
     }
 
-    return session_transport_read(ctx, buffer, length, -1);
+    return session_transport_read(ctx, buffer, length, 0);
 }
 
 static bool session_parse_color_arguments(char *working, char **tokens,

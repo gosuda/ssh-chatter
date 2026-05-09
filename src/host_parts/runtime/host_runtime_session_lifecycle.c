@@ -907,12 +907,21 @@ static void *session_thread(void *arg)
                 session_transport_is_eof(ctx)) {
                 break;
             }
+            ctx->zero_read_streak += 1U;
+            if (ctx->zero_read_streak >= 300U) {
+                const char *username =
+                    ctx->user.name[0] != '\0' ? ctx->user.name : "unknown";
+                printf("[session] zero-read stall limit reached for %s, "
+                       "disconnecting\n", username);
+                break;
+            }
             if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {
                 session_game_tetris_process_timeout(ctx);
             }
             continue;
         }
 
+        ctx->zero_read_streak = 0U;
         ctx->channel_error_retries = 0U;
 
         if (read_result == 0) {

@@ -26,13 +26,14 @@ typedef enum {
     SFTP_HANDLE_DIR
 } sftp_handle_type_t;
 
-typedef struct {
+typedef struct sftp_handle_data {
     sftp_handle_type_t type;
     union {
         int fd;
         DIR *dir;
     } u;
     char path[PATH_MAX];
+    struct sftp_handle_data *next;
 } sftp_handle_data_t;
 
 static bool file_storage_ensure_directory(const char *path);
@@ -67,6 +68,63 @@ static ssize_t telnet_binary_read(session_ctx_t *ctx, unsigned char *buffer,
 static bool telnet_spawn_zmodem(session_ctx_t *ctx, char *const argv[],
                                 const char *working_dir,
                                 const char *label);
+
+static void sftp_handle_track(session_ctx_t *ctx, sftp_handle_data_t *hdata)
+{
+    if (ctx == nullptr || hdata == nullptr) {
+        return;
+    }
+    hdata->next = ctx->sftp_handles;
+    ctx->sftp_handles = hdata;
+}
+
+static void sftp_handle_untrack(session_ctx_t *ctx, sftp_handle_data_t *hdata)
+{
+    if (ctx == nullptr || hdata == nullptr) {
+        return;
+    }
+    sftp_handle_data_t **current = &ctx->sftp_handles;
+    while (*current != nullptr) {
+        if (*current == hdata) {
+            *current = hdata->next;
+            hdata->next = nullptr;
+            return;
+        }
+        current = &(*current)->next;
+    }
+}
+
+static void sftp_handle_cleanup_all(session_ctx_t *ctx, sftp_session sftp)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    sftp_handle_data_t *current = ctx->sftp_handles;
+    while (current != nullptr) {
+        sftp_handle_data_t *next = current->next;
+        if (sftp != nullptr) {
+            sftp_handle_remove(sftp, current);
+        }
+        if (current->type == SFTP_HANDLE_FILE) {
+            close(current->u.fd);
+        } else if (current->type == SFTP_HANDLE_DIR) {
+            closedir(current->u.dir);
+        }
+        free(current);
+        current = next;
+    }
+    ctx->sftp_handles = nullptr;
+}
+
+static void sftp_attr_safe_free(sftp_attributes attr)
+{
+    if (attr == nullptr) {
+        return;
+    }
+    free(attr->name);
+    attr->name = nullptr;
+    sftp_attributes_free(attr);
+}
 
 static sftp_attributes sftp_attr_from_stat(const char *name, struct stat *st)
 {
@@ -1540,7 +1598,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
                 break;
             }
             sftp_reply_attr(msg, attr);
-            sftp_attributes_free(attr);
+            sftp_attr_safe_free(attr);
             break;
         }
         case SSH_FXP_OPENDIR: {
@@ -1567,6 +1625,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             hdata->u.dir = dir;
             snprintf(hdata->path, sizeof(hdata->path), "%s", resolved);
             ssh_string h_str = sftp_handle_alloc(sftp, hdata);
+            sftp_handle_track(ctx, hdata);
             sftp_reply_handle(msg, h_str);
             ssh_string_free(h_str);
             break;
@@ -1601,7 +1660,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
                              (unsigned)st.st_uid, (unsigned)st.st_gid,
                              (unsigned long long)st.st_size, entry->d_name);
                     sftp_reply_names_add(msg, entry->d_name, longname, attr);
-                    sftp_attributes_free(attr);
+                    sftp_attr_safe_free(attr);
                     count++;
                 }
                 if (count >= 100) {
@@ -1670,6 +1729,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             hdata->u.fd = fd;
             snprintf(hdata->path, sizeof(hdata->path), "%s", resolved);
             ssh_string h_str = sftp_handle_alloc(sftp, hdata);
+            sftp_handle_track(ctx, hdata);
             sftp_reply_handle(msg, h_str);
             ssh_string_free(h_str);
             break;
@@ -1744,7 +1804,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
                 break;
             }
             sftp_reply_attr(msg, attr);
-            sftp_attributes_free(attr);
+            sftp_attr_safe_free(attr);
             break;
         }
         case SSH_FXP_CLOSE: {
@@ -1756,6 +1816,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
                 } else {
                     closedir(hdata->u.dir);
                 }
+                sftp_handle_untrack(ctx, hdata);
                 sftp_handle_remove(sftp, hdata);
                 free(hdata);
             }
@@ -1904,6 +1965,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
         sftp_client_message_free(msg);
     }
 
+    sftp_handle_cleanup_all(ctx, sftp);
     sftp_server_free(sftp);
     return 0;
 }

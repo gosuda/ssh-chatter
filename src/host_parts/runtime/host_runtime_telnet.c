@@ -29,6 +29,11 @@ static int host_telnet_open_socket(host_t *host)
             continue;
         }
 
+        int flags = fcntl(candidate, F_GETFL, 0);
+        if (flags >= 0) {
+            fcntl(candidate, F_SETFL, flags | O_NONBLOCK);
+        }
+
         int enable = 1;
         setsockopt(candidate, SOL_SOCKET, SO_REUSEADDR, &enable,
                    sizeof(enable));
@@ -80,6 +85,11 @@ static void host_telnet_configure_client_socket(int client_fd)
     }
 
     int enable = 1;
+    int flags = fcntl(client_fd, F_GETFL, 0);
+    if (flags >= 0) {
+        fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
+    }
+
     (void)setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &enable,
                      sizeof(enable));
     (void)setsockopt(client_fd, SOL_SOCKET, SO_KEEPALIVE, &enable,

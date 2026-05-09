@@ -886,6 +886,10 @@ typedef struct session_ctx {
     struct timespec lifetime_decay_reference;
     bool lifetime_has_activity;
     bool lifetime_decay_active;
+    /* Consecutive zero-read count to detect stale connections */
+    unsigned int zero_read_streak;
+    /* Track SFTP handles for cleanup on abnormal disconnect */
+    struct sftp_handle_data *sftp_handles;
 } session_ctx_t;
 
 typedef struct user_preference {

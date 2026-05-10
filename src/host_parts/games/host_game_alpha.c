@@ -39,7 +39,7 @@ static void session_game_alpha_configure_gravity(session_ctx_t *ctx)
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
 
     for (unsigned idx = 0U; idx < ALPHA_MAX_GRAVITY_SOURCES; ++idx) {
         state->gravity_sources[idx] = (alpha_gravity_source_t){0};
@@ -271,7 +271,7 @@ static void session_game_alpha_prepare_navigation(session_ctx_t *ctx)
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     int safe_margin = ALPHA_NAV_MARGIN;
 
     unsigned stage_level = state->stage;
@@ -470,7 +470,7 @@ static void session_game_alpha_reset(session_ctx_t *ctx)
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     *state = (alpha_centauri_game_state_t){0};
     state->stage = 0U;
     state->velocity_fraction_c = 0.0;
@@ -492,7 +492,7 @@ static void session_game_alpha_sync_from_save(session_ctx_t *ctx)
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     session_game_alpha_reset(ctx);
 
     if (!session_user_data_load(ctx)) {
@@ -532,7 +532,7 @@ static void session_game_alpha_sync_to_save(session_ctx_t *ctx)
     }
 
     alpha_centauri_save_t *save = &ctx->user_data.alpha;
-    const alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    const alpha_centauri_game_state_t *state = ctx->game.alpha;
     save->active = state->active ? 1U : 0U;
     save->stage = (uint8_t)(state->stage <= 4U ? state->stage : 0U);
     save->eva_ready = state->eva_ready ? 1U : 0U;
@@ -554,7 +554,7 @@ static void session_game_alpha_report_state(session_ctx_t *ctx,
         return;
     }
 
-    const alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    const alpha_centauri_game_state_t *state = ctx->game.alpha;
     bool previous_translation = ctx->translation_suppress_output;
     ctx->translation_suppress_output = true;
 
@@ -621,7 +621,7 @@ static void session_game_alpha_render_navigation(session_ctx_t *ctx)
         return;
     }
 
-    const alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    const alpha_centauri_game_state_t *state = ctx->game.alpha;
     const char *phase_label = session_game_alpha_phase_label(state);
 
     char header[SSH_CHATTER_MESSAGE_LIMIT];
@@ -747,7 +747,7 @@ static void session_game_alpha_plan_waypoints(session_ctx_t *ctx)
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     if (state->stage != 4U) {
         state->waypoint_count = 0U;
         state->waypoint_index = 0U;
@@ -851,7 +851,7 @@ static void session_game_alpha_present_waypoints(session_ctx_t *ctx)
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     if (state->stage != 4U) {
         return;
     }
@@ -905,7 +905,7 @@ static void session_game_alpha_complete_waypoint(session_ctx_t *ctx)
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     if (state->stage != 4U || state->eva_ready) {
         return;
     }
@@ -954,7 +954,7 @@ static void session_game_alpha_present_stage(session_ctx_t *ctx)
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     bool previous_translation = ctx->translation_suppress_output;
     ctx->translation_suppress_output = true;
 
@@ -1072,7 +1072,7 @@ static void session_game_alpha_log_completion(session_ctx_t *ctx)
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     state->velocity_fraction_c = 0.0;
     state->distance_travelled_ly = ALPHA_TOTAL_DISTANCE_LY;
     state->distance_remaining_ly = 0.0;
@@ -1151,11 +1151,11 @@ static void session_game_alpha_log_completion(session_ctx_t *ctx)
 static void session_game_alpha_execute_ignite(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
-        ctx->game.alpha.stage != 0U) {
+        ctx->game.alpha == nullptr || ctx->game.alpha->stage != 0U) {
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     state->stage = 1U;
     state->active = true;
     state->velocity_fraction_c = 0.04;
@@ -1176,11 +1176,11 @@ static void session_game_alpha_execute_ignite(session_ctx_t *ctx)
 static void session_game_alpha_execute_trim(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
-        ctx->game.alpha.stage != 1U) {
+        ctx->game.alpha == nullptr || ctx->game.alpha->stage != 1U) {
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     state->stage = 2U;
     state->velocity_fraction_c = 0.18;
     state->distance_travelled_ly = 1.90;
@@ -1202,11 +1202,11 @@ static void session_game_alpha_execute_trim(session_ctx_t *ctx)
 static void session_game_alpha_execute_flip(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
-        ctx->game.alpha.stage != 2U) {
+        ctx->game.alpha == nullptr || ctx->game.alpha->stage != 2U) {
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     state->stage = 3U;
     state->distance_travelled_ly = 3.60;
     state->distance_remaining_ly =
@@ -1227,11 +1227,11 @@ static void session_game_alpha_execute_flip(session_ctx_t *ctx)
 static void session_game_alpha_execute_retro(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
-        ctx->game.alpha.stage != 3U) {
+        ctx->game.alpha == nullptr || ctx->game.alpha->stage != 3U) {
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     state->stage = 4U;
     state->velocity_fraction_c = 0.01;
     state->distance_travelled_ly = 4.22;
@@ -1259,11 +1259,12 @@ static void session_game_alpha_execute_retro(session_ctx_t *ctx)
 static void session_game_alpha_execute_eva(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->game.type != SESSION_GAME_ALPHA ||
-        ctx->game.alpha.stage != 4U || ctx->game.alpha.eva_ready) {
+        ctx->game.alpha == nullptr || ctx->game.alpha->stage != 4U ||
+        ctx->game.alpha->eva_ready) {
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     state->eva_ready = true;
     state->awaiting_flag = true;
     state->waypoint_index = state->waypoint_count;
@@ -1285,7 +1286,7 @@ static bool session_game_alpha_attempt_completion(session_ctx_t *ctx)
         return false;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     if (state->nav_x != state->nav_target_x ||
         state->nav_y != state->nav_target_y) {
         return false;
@@ -1329,7 +1330,7 @@ static void session_game_alpha_manual_lock(session_ctx_t *ctx)
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     if (state->nav_x != state->nav_target_x ||
         state->nav_y != state->nav_target_y) {
         session_send_system_line(
@@ -1368,7 +1369,7 @@ static bool session_game_alpha_handle_arrow(session_ctx_t *ctx, int dx, int dy)
         return false;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
 
     state->nav_vx += (double)dx * ALPHA_THRUST_DELTA;
     state->nav_vy += (double)dy * ALPHA_THRUST_DELTA;
@@ -1429,7 +1430,7 @@ static void session_game_alpha_handle_line(session_ctx_t *ctx, const char *line)
         return;
     }
 
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = ctx->game.alpha;
     char command[SSH_CHATTER_MAX_INPUT_LEN];
     if (line == nullptr) {
         command[0] = '\0';
@@ -1445,16 +1446,7 @@ static void session_game_alpha_handle_line(session_ctx_t *ctx, const char *line)
 
     // Handle camouflage toggle with 't' command
     if (strcasecmp(command, "t") == 0) {
-        if (ctx->game.is_camouflaged) {
-            ctx->game.is_camouflaged = false;
-            ctx->game.saved_alpha_state = ctx->game.alpha;
-            session_clear_screen(ctx);
-            session_game_alpha_refresh_navigation(ctx);
-        } else {
-            ctx->game.is_camouflaged = true;
-            ctx->game.saved_alpha_state = ctx->game.alpha;
-            session_game_show_camouflage(ctx);
-        }
+        session_game_toggle_camouflage(ctx);
         return;
     }
 
@@ -1653,7 +1645,7 @@ static void session_game_start_alpha(session_ctx_t *ctx)
     }
 
     session_game_alpha_sync_from_save(ctx);
-    alpha_centauri_game_state_t *state = &ctx->game.alpha;
+    alpha_centauri_game_state_t *state = session_game_ensure_alpha(ctx);
     ctx->game.type = SESSION_GAME_ALPHA;
     ctx->game.active = true;
     ctx->game.is_camouflaged = false;

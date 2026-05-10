@@ -1,3 +1,8 @@
+/* Forward declarations for helpers defined later in this file but referenced
+ * by host_init(), which is the first definition. */
+static void host_ai_persona_load_from_env(host_t *host);
+static void host_door_games_load_from_env(host_t *host);
+
 static void host_fix_overlapping_bbs_rss_paths(host_t *host)
 {
     if (host == nullptr) {
@@ -52,6 +57,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     }
 
     chat_room_init(&host->room);
+    if (host->resource_manager == nullptr) {
+        host->resource_manager = sshc_resource_manager_create("host");
+    }
     atomic_init(&host->next_session_id, 1U);
     host->idle_state_pending = false;
     host->last_room_empty_time = session_now_monotonic();
@@ -145,7 +153,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     memset(host->eliza_memory, 0, sizeof(host->eliza_memory));
     host->eliza_memory_count = 0U;
     host->eliza_memory_next_id = 1U;
-    host->version_ip_ban_rules = nullptr;
+    host->version_ip_ban_rules_storage = nullptr;
     host->version_ip_ban_rule_count = 0U;
     host->version_ip_ban_rule_capacity = 0U;
     snprintf(host->version, sizeof(host->version),
@@ -172,6 +180,8 @@ void host_init(host_t *host, auth_profile_t *auth)
 
     host->translation_quota_exhausted = false;
     host->connection_count = 0U;
+    host->history_storage = nullptr;
+    memset(&host->history_view, 0, sizeof(host->history_view));
     host->history = nullptr;
     host->history_count = 0U;
     host->history_capacity = 0U;
@@ -183,6 +193,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_state_resolve_path(host);
     host->sync_state_file_path[0] = '\0';
     host_sync_state_resolve_path(host);
+    host->wall_state_file_path[0] = '\0';
+    host_wall_resolve_path(host);
     host->bbs_state_file_path[0] = '\0';
     host_bbs_resolve_path(host);
     host->vote_state_file_path[0] = '\0';
@@ -233,7 +245,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     atomic_store(&host->rss_thread_stop, false);
     host->rss_last_run.tv_sec = 0;
     host->rss_last_run.tv_nsec = 0L;
-    atomic_store(&host->rss_manual_refresh_running, false);
+    atomic_store(&host->rss_consecutive_failures, 0U);
+    host->rss_first_failure_time.tv_sec = 0;
+    host->rss_first_failure_time.tv_nsec = 0L;
     host->rss_refresh_lock_initialized = false;
     if (ttak_mutex_init(&host->rss_refresh_lock) == 0) {
         host->rss_refresh_lock_initialized = true;
@@ -251,6 +265,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     memset(host->protected_ips, 0, sizeof(host->protected_ips));
     host->protected_ip_count = 0U;
     ttak_mutex_init(&host->lock);
+    host_wall_reset_locked(host);
     host_protected_ips_bootstrap(host);
     poll_state_reset(&host->poll);
     for (size_t idx = 0U; idx < SSH_CHATTER_MAX_NAMED_POLLS; ++idx) {
@@ -295,6 +310,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->cpu_slot_in_use = 0U;
     host->cpu_slot_waiting = 0U;
     host->cpu_slot_mask = 0ULL;
+    host->cpu_slots_storage = nullptr;
+    host->cpu_slot_capacity = 0U;
+    host->cpu_slot_allocation_in_progress = false;
     host->othello_slot_side_n = slot_side_n;
     host->othello_slot_limit = slot_side_n * slot_side_n;
     if (host->othello_slot_limit > SSH_CHATTER_OTHELLO_MAX_SLOTS) {
@@ -323,19 +341,21 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->reserved_nicknames = nullptr;
     host->reserved_nicknames_len = 0U;
     host->reserved_nicknames_capacity = 0U;
+    host->nickname_claim_pool = nullptr;
+    memset(host->nickname_claims, 0, sizeof(host->nickname_claims));
+    host->nickname_claim_count = 0U;
     host->next_join_ready_time = (struct timespec){0, 0};
     host->join_throttle_initialised = false;
     host->join_progress_length = 0U;
-    host->join_activity = nullptr;
+    host->join_activity_storage = nullptr;
     host->join_activity_count = 0U;
     host->join_activity_capacity = 0U;
-    host->connection_guard = nullptr;
+    host->connection_guard_storage = nullptr;
     host->connection_guard_count = 0U;
     host->connection_guard_capacity = 0U;
     host->health_guard.consecutive_errors = 0U;
     host->health_guard.last_error_time.tv_sec = 0;
     host->health_guard.last_error_time.tv_nsec = 0L;
-    host->force_restart_requested = false;
     atomic_store(&host->captcha_enabled, false);
     host->captcha_nonce = 0U;
     host->has_last_captcha = false;
@@ -351,25 +371,34 @@ void host_init(host_t *host, auth_profile_t *auth)
     } else {
         host->nickname_reserve_lock_initialized = true;
     }
+    host->nickname_claim_pool = ttak_object_pool_create(
+        SSH_CHATTER_MAX_NICKNAME_CLAIMS, sizeof(nickname_claim_t));
+    if (host->nickname_claim_pool == nullptr) {
+        humanized_log_error("host", "failed to create nickname claim pool",
+                            errno != 0 ? errno : ENOMEM);
+    }
     atomic_store(&host->eliza_enabled, false);
     atomic_store(&host->eliza_announced, false);
     host->eliza_last_action.tv_sec = 0;
     host->eliza_last_action.tv_nsec = 0L;
     atomic_store(&host->ai_chat_enabled, true);
+    host->ai_chat_use_gemini = false;
     host->ai_chat_last_reply.tv_sec = 0;
     host->ai_chat_last_reply.tv_nsec = 0L;
     host->ai_chat_model[0] = '\0';
     memset(host->ai_chat_memory, 0, sizeof(host->ai_chat_memory));
     host->ai_chat_memory_count = 0U;
+    host_ai_persona_load_from_env(host);
+    host_door_games_load_from_env(host);
     (void)host_try_load_motd_from_path(host, "/etc/ssh-chatter/motd");
 
     host_state_load(host);
     host->history_cache_loaded =
         host->history != nullptr && host->history_capacity > 0U;
+    host_pw_auth_load(host);
+    host_wall_state_load(host);
     host_ui_language_state_load(host);
     host_vote_state_load(host);
-    host_bbs_state_load(host);
-    host->bbs_cache_loaded = host_bbs_storage_ready(host);
     host_ban_state_load(host);
     host_reply_state_load(host);
     host_rss_state_load(host);
@@ -803,6 +832,11 @@ static const char *host_ai_chat_default_model(void)
     return "gemma2:2b";
 }
 
+static const char *host_ai_chat_default_gemini_model(void)
+{
+    return "gemini-2.5-flash-lite";
+}
+
 static const char *host_ai_chat_skip_token(void)
 {
     return "cucumber-ballet-fly-tetromino";
@@ -872,19 +906,279 @@ typedef enum ai_chat_bot_persona {
     AI_CHAT_BOT_DADA,
 } ai_chat_bot_persona_t;
 
+static const char *host_ai_persona_name(const host_t *host,
+                                        ai_chat_bot_persona_t persona)
+{
+    if (host == nullptr) {
+        return (persona == AI_CHAT_BOT_DADA) ? "dada" : "kaka";
+    }
+    if (persona == AI_CHAT_BOT_DADA) {
+        return host->ai_persona_b_name[0] != '\0' ? host->ai_persona_b_name
+                                                  : "dada";
+    }
+    return host->ai_persona_a_name[0] != '\0' ? host->ai_persona_a_name
+                                              : "kaka";
+}
+
+static const char *host_ai_persona_alias(const host_t *host,
+                                         ai_chat_bot_persona_t persona)
+{
+    if (host == nullptr) {
+        return (persona == AI_CHAT_BOT_DADA) ? "다다" : "카카";
+    }
+    if (persona == AI_CHAT_BOT_DADA) {
+        return host->ai_persona_b_alias;
+    }
+    return host->ai_persona_a_alias;
+}
+
+static void host_ai_persona_copy_env(char *dest, size_t dest_len,
+                                     const char *env_name,
+                                     const char *fallback)
+{
+    if (dest == nullptr || dest_len == 0U) {
+        return;
+    }
+    const char *value = (env_name != nullptr) ? getenv(env_name) : nullptr;
+    if (value == nullptr || value[0] == '\0') {
+        value = fallback;
+    }
+    if (value == nullptr) {
+        dest[0] = '\0';
+        return;
+    }
+    snprintf(dest, dest_len, "%s", value);
+}
+
+static void host_ai_persona_load_from_env(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+    host_ai_persona_copy_env(host->ai_persona_a_name,
+                             sizeof(host->ai_persona_a_name),
+                             "CHATTER_AI_PERSONA_A_NAME", "kaka");
+    host_ai_persona_copy_env(host->ai_persona_a_alias,
+                             sizeof(host->ai_persona_a_alias),
+                             "CHATTER_AI_PERSONA_A_ALIAS", "카카");
+    host_ai_persona_copy_env(host->ai_persona_b_name,
+                             sizeof(host->ai_persona_b_name),
+                             "CHATTER_AI_PERSONA_B_NAME", "dada");
+    host_ai_persona_copy_env(host->ai_persona_b_alias,
+                             sizeof(host->ai_persona_b_alias),
+                             "CHATTER_AI_PERSONA_B_ALIAS", "다다");
+}
+
+static bool host_door_game_name_is_valid(const char *name)
+{
+    if (name == nullptr || name[0] == '\0') {
+        return false;
+    }
+    size_t len = strnlen(name, SSH_CHATTER_DOOR_GAME_NAME_LEN);
+    if (len >= SSH_CHATTER_DOOR_GAME_NAME_LEN) {
+        return false;
+    }
+    for (size_t idx = 0U; idx < len; ++idx) {
+        unsigned char ch = (unsigned char)name[idx];
+        if (!(isalnum(ch) || ch == '-' || ch == '_')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void host_door_games_load_from_env(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    /* Reset previously-allocated storage (host_init may run more than once
+     * under tests). */
+    if (host->door_games_storage != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, host->door_games_storage);
+    }
+    host->door_games_storage = nullptr;
+    host->door_game_count = 0U;
+    host->door_game_capacity = 0U;
+
+    if (host->resource_manager == nullptr) {
+        return;
+    }
+
+    /* Two-pass: count valid entries first, alloc the exact capacity, then
+     * write them in.  Avoids reserving space for the
+     * SSH_CHATTER_DOOR_GAME_LIMIT cap when the operator only registered a
+     * handful. */
+    size_t valid = 0U;
+    for (size_t slot = 0U; slot < SSH_CHATTER_DOOR_GAME_LIMIT; ++slot) {
+        char env_key[40];
+        snprintf(env_key, sizeof(env_key), "CHATTER_DOOR_%zu", slot + 1U);
+        const char *value = getenv(env_key);
+        if (value == nullptr || value[0] == '\0') {
+            continue;
+        }
+
+        const char *first_colon = strchr(value, ':');
+        if (first_colon == nullptr || first_colon == value) {
+            continue;
+        }
+        size_t name_len = (size_t)(first_colon - value);
+        if (name_len >= SSH_CHATTER_DOOR_GAME_NAME_LEN) {
+            continue;
+        }
+        char name_buf[SSH_CHATTER_DOOR_GAME_NAME_LEN];
+        memcpy(name_buf, value, name_len);
+        name_buf[name_len] = '\0';
+        if (!host_door_game_name_is_valid(name_buf)) {
+            continue;
+        }
+        const char *conf_start = first_colon + 1;
+        const char *conf_end = strchr(conf_start, ':');
+        size_t conf_len = conf_end != nullptr
+                              ? (size_t)(conf_end - conf_start)
+                              : strlen(conf_start);
+        if (conf_len == 0U || conf_len >= PATH_MAX) {
+            continue;
+        }
+        valid += 1U;
+    }
+
+    if (valid == 0U) {
+        return;
+    }
+
+    size_t bytes = valid * sizeof(door_game_entry_t);
+    host->door_games_storage =
+        sshc_rm_scope_alloc(host->resource_manager, bytes, "door_games");
+    if (host->door_games_storage == nullptr) {
+        humanized_log_error("door", "door storage alloc failed", ENOMEM);
+        return;
+    }
+    host->door_game_capacity = valid;
+
+    for (size_t slot = 0U; slot < SSH_CHATTER_DOOR_GAME_LIMIT; ++slot) {
+        char env_key[40];
+        snprintf(env_key, sizeof(env_key), "CHATTER_DOOR_%zu", slot + 1U);
+        const char *value = getenv(env_key);
+        if (value == nullptr || value[0] == '\0') {
+            continue;
+        }
+
+        const char *first_colon = strchr(value, ':');
+        if (first_colon == nullptr || first_colon == value) {
+            humanized_log_error("door",
+                                "CHATTER_DOOR_<N> must be name:conf[:desc]",
+                                EINVAL);
+            continue;
+        }
+        size_t name_len = (size_t)(first_colon - value);
+        if (name_len >= SSH_CHATTER_DOOR_GAME_NAME_LEN) {
+            humanized_log_error("door", "door name too long", ENAMETOOLONG);
+            continue;
+        }
+        char name_buf[SSH_CHATTER_DOOR_GAME_NAME_LEN];
+        memcpy(name_buf, value, name_len);
+        name_buf[name_len] = '\0';
+        if (!host_door_game_name_is_valid(name_buf)) {
+            humanized_log_error(
+                "door", "door name must be alphanumeric / dash / underscore",
+                EINVAL);
+            continue;
+        }
+        const char *conf_start = first_colon + 1;
+        const char *conf_end = strchr(conf_start, ':');
+        size_t conf_len = conf_end != nullptr
+                              ? (size_t)(conf_end - conf_start)
+                              : strlen(conf_start);
+        if (conf_len == 0U || conf_len >= PATH_MAX) {
+            humanized_log_error("door", "door dosbox conf path is invalid",
+                                EINVAL);
+            continue;
+        }
+        const char *desc = (conf_end != nullptr) ? (conf_end + 1) : "";
+
+        if (host->door_game_count >= host->door_game_capacity) {
+            break;
+        }
+
+        door_game_entry_t entry = {0};
+        entry.in_use = true;
+        snprintf(entry.name, sizeof(entry.name), "%s", name_buf);
+        memcpy(entry.dosbox_conf, conf_start, conf_len);
+        entry.dosbox_conf[conf_len] = '\0';
+        snprintf(entry.description, sizeof(entry.description), "%s", desc);
+
+        size_t target = host->door_game_count;
+        if (ttak_abstract_write(host->door_games_storage,
+                                target * sizeof(entry), &entry,
+                                sizeof(entry)) != 0) {
+            humanized_log_error("door", "door entry write failed", EIO);
+            continue;
+        }
+        host->door_game_count += 1U;
+    }
+}
+
+bool host_door_game_lookup(const host_t *host, const char *name,
+                           door_game_entry_t *out)
+{
+    if (host == nullptr || name == nullptr || name[0] == '\0' || out == nullptr) {
+        return false;
+    }
+    if (host->door_games_storage == nullptr || host->door_game_count == 0U) {
+        return false;
+    }
+    for (size_t idx = 0U; idx < host->door_game_count; ++idx) {
+        door_game_entry_t entry;
+        if (ttak_abstract_read(host->door_games_storage,
+                               idx * sizeof(entry), &entry,
+                               sizeof(entry)) != 0) {
+            continue;
+        }
+        if (!entry.in_use) {
+            continue;
+        }
+        if (strcasecmp(entry.name, name) == 0) {
+            *out = entry;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool host_door_game_get(const host_t *host, size_t index,
+                        door_game_entry_t *out)
+{
+    if (host == nullptr || out == nullptr ||
+        host->door_games_storage == nullptr ||
+        index >= host->door_game_count) {
+        return false;
+    }
+    return ttak_abstract_read(host->door_games_storage,
+                              index * sizeof(*out), out, sizeof(*out)) == 0;
+}
+
 static ai_chat_bot_persona_t host_ai_chat_choose_persona(
-    const chat_history_entry_t *entry)
+    const host_t *host, const chat_history_entry_t *entry)
 {
     if (entry == nullptr) {
         return AI_CHAT_BOT_NONE;
     }
 
-    if (host_ai_chat_message_mentions(entry->message, "kaka") ||
-        host_ai_chat_message_mentions(entry->message, "카카")) {
+    const char *name_a = host_ai_persona_name(host, AI_CHAT_BOT_KAKA);
+    const char *alias_a = host_ai_persona_alias(host, AI_CHAT_BOT_KAKA);
+    const char *name_b = host_ai_persona_name(host, AI_CHAT_BOT_DADA);
+    const char *alias_b = host_ai_persona_alias(host, AI_CHAT_BOT_DADA);
+
+    if (host_ai_chat_message_mentions(entry->message, name_a) ||
+        (alias_a != nullptr && alias_a[0] != '\0' &&
+         host_ai_chat_message_mentions(entry->message, alias_a))) {
         return AI_CHAT_BOT_KAKA;
     }
-    if (host_ai_chat_message_mentions(entry->message, "dada") ||
-        host_ai_chat_message_mentions(entry->message, "다다")) {
+    if (host_ai_chat_message_mentions(entry->message, name_b) ||
+        (alias_b != nullptr && alias_b[0] != '\0' &&
+         host_ai_chat_message_mentions(entry->message, alias_b))) {
         return AI_CHAT_BOT_DADA;
     }
 
@@ -906,7 +1200,8 @@ static ai_chat_bot_persona_t host_ai_chat_choose_persona(
     return ((hash % 2U) == 0U) ? AI_CHAT_BOT_KAKA : AI_CHAT_BOT_DADA;
 }
 
-static bool host_ai_chat_should_respond(const chat_history_entry_t *entry)
+static bool host_ai_chat_should_respond(const host_t *host,
+                                        const chat_history_entry_t *entry)
 {
     if (entry == nullptr || !entry->is_user_message) {
         return false;
@@ -914,22 +1209,27 @@ static bool host_ai_chat_should_respond(const chat_history_entry_t *entry)
     if (entry->message[0] == '\0' || entry->message[0] == '/') {
         return false;
     }
+    const char *name_a = host_ai_persona_name(host, AI_CHAT_BOT_KAKA);
+    const char *name_b = host_ai_persona_name(host, AI_CHAT_BOT_DADA);
     if (strncasecmp(entry->username, "ai-eliza", SSH_CHATTER_USERNAME_LEN) ==
             0 ||
-        strncasecmp(entry->username, "kaka", SSH_CHATTER_USERNAME_LEN) == 0 ||
-        strncasecmp(entry->username, "dada", SSH_CHATTER_USERNAME_LEN) == 0) {
+        strncasecmp(entry->username, name_a, SSH_CHATTER_USERNAME_LEN) == 0 ||
+        strncasecmp(entry->username, name_b, SSH_CHATTER_USERNAME_LEN) == 0) {
         return false;
     }
-    return host_ai_chat_choose_persona(entry) != AI_CHAT_BOT_NONE;
+    return host_ai_chat_choose_persona(host, entry) != AI_CHAT_BOT_NONE;
 }
 
 static void host_ai_chat_snapshot_state(host_t *host, char *model,
-                                        size_t model_len,
+                                        size_t model_len, bool *use_gemini,
                                         struct timespec *last_reply)
 {
     if (host == nullptr) {
         if (model != nullptr && model_len > 0U) {
             snprintf(model, model_len, "%s", host_ai_chat_default_model());
+        }
+        if (use_gemini != nullptr) {
+            *use_gemini = false;
         }
         if (last_reply != nullptr) {
             last_reply->tv_sec = 0;
@@ -940,7 +1240,13 @@ static void host_ai_chat_snapshot_state(host_t *host, char *model,
 
     ttak_mutex_lock(&host->lock);
     if (model != nullptr && model_len > 0U) {
-        snprintf(model, model_len, "%s", host_ai_chat_default_model());
+        snprintf(model, model_len, "%s",
+                 host->ai_chat_use_gemini
+                     ? host_ai_chat_default_gemini_model()
+                     : host_ai_chat_default_model());
+    }
+    if (use_gemini != nullptr) {
+        *use_gemini = host->ai_chat_use_gemini;
     }
     if (last_reply != nullptr) {
         *last_reply = host->ai_chat_last_reply;
@@ -1280,13 +1586,16 @@ static void host_ai_chat_consider_reply(host_t *host,
     if (!host_ai_member_is_enabled(host)) {
         return;
     }
-    if (!host_ai_chat_should_respond(entry)) {
+    if (!host_ai_chat_should_respond(host, entry)) {
         return;
     }
 
     struct timespec now = session_now_monotonic();
     struct timespec last_reply = {0, 0};
-    host_ai_chat_snapshot_state(host, nullptr, 0U, &last_reply);
+    char model[64];
+    bool use_gemini = false;
+    host_ai_chat_snapshot_state(host, model, sizeof(model), &use_gemini,
+                                &last_reply);
 
     double cooldown = session_timespec_elapsed_seconds(&now, &last_reply);
     if (cooldown < 3.0) {
@@ -1304,24 +1613,28 @@ static void host_ai_chat_consider_reply(host_t *host,
                               SSH_CHATTER_AI_PROMPT_MESSAGE_MAX - 1U);
     size_t context_matches = host_ai_chat_memory_collect_context(
         host, entry->message, context, sizeof(context));
-    ai_chat_bot_persona_t persona = host_ai_chat_choose_persona(entry);
+    ai_chat_bot_persona_t persona = host_ai_chat_choose_persona(host, entry);
     if (persona == AI_CHAT_BOT_NONE) {
         return;
     }
 
     const bool korean = host_ai_chat_message_looks_korean(entry->message);
-    const char *persona_name =
-        (persona == AI_CHAT_BOT_KAKA) ? "kaka" : "dada";
-    const char *tone_instruction = nullptr;
+    const char *persona_name = host_ai_persona_name(host, persona);
+    char tone_buffer[256];
     if (persona == AI_CHAT_BOT_KAKA) {
-        tone_instruction =
-            "Respond as kaka, a slightly cheerful and playful chat "
-            "participant. Keep it short and natural.";
+        snprintf(tone_buffer, sizeof(tone_buffer),
+                 "Respond as %s, a slightly cheerful and playful chat "
+                 "participant. Keep it short and natural. Always introduce "
+                 "yourself as %s if asked your name.",
+                 persona_name, persona_name);
     } else {
-        tone_instruction =
-            "Respond as dada, a calm-but-absurd jokester who sounds a little "
-            "childish. Keep it short and natural.";
+        snprintf(tone_buffer, sizeof(tone_buffer),
+                 "Respond as %s, a calm-but-absurd jokester who sounds a "
+                 "little childish. Keep it short and natural. Always "
+                 "introduce yourself as %s if asked your name.",
+                 persona_name, persona_name);
     }
+    const char *tone_instruction = tone_buffer;
     const char *language_instruction =
         korean
             ? "The user is speaking Korean. Reply in Korean."
@@ -1353,8 +1666,11 @@ static void host_ai_chat_consider_reply(host_t *host,
     }
 
     char reply[SSH_CHATTER_MESSAGE_LIMIT];
-    bool success = translator_ollama_smalltalk(
-        prompt, host_ai_chat_default_model(), reply, sizeof(reply));
+    bool success = use_gemini
+                       ? translator_gemini_smalltalk(
+                             prompt, model, reply, sizeof(reply))
+                       : translator_ollama_smalltalk(
+                             prompt, model, reply, sizeof(reply));
     if (!success) {
         const char *error = translator_last_error();
         if (error != nullptr && error[0] != '\0') {
@@ -1533,10 +1849,14 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         return;
     }
 
-    if (send_sigterm) {
-        // Terminate all child processes in the same process group
-        kill(0, SIGTERM);
-    }
+    /* Previously this called kill(0, SIGTERM) to wake child processes, but the
+     * daemon already runs each fork()ed helper (moderation worker, scp helper)
+     * with its own waitpid lifecycle. Re-broadcasting SIGTERM to the process
+     * group also re-enters our own signal handler, which races with the
+     * graceful-shutdown teardown and has been observed to surface as
+     * ttak header-corruption aborts. We let the existing shutdown_flag wake
+     * the listeners and skip the broadcast. */
+    (void)send_sigterm;
 
     sshc_memory_context_t *memory_scope = nullptr;
     if (host->memory_context != nullptr) {
@@ -1554,14 +1874,6 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         pthread_join(host->rss_thread, nullptr);
         host->rss_thread_initialized = false;
         atomic_store(&host->rss_thread_running, false);
-    }
-
-    while (atomic_load(&host->rss_manual_refresh_running)) {
-        struct timespec wait = {
-            .tv_sec = 0,
-            .tv_nsec = 50 * 1000 * 1000L,
-        };
-        host_sleep_uninterruptible(&wait);
     }
 
     if (host->archive_thread_initialized) {
@@ -1591,32 +1903,47 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         client_manager_destroy(host->clients);
         host->clients = nullptr;
     }
-    chat_history_entry_t *history_buffer = nullptr;
-    join_activity_entry_t *join_buffer = nullptr;
+    ttak_abstract_mem_t *history_storage_drain = nullptr;
+    ttak_abstract_mem_t *join_storage_drain = nullptr;
     ttak_mutex_lock(&host->lock);
-    history_buffer = host->history;
-    host->history = nullptr;
+    host_history_view_release(host);
+    history_storage_drain = host->history_storage;
+    host->history_storage = nullptr;
     host->history_capacity = 0U;
     host->history_count = 0U;
-    join_buffer = host->join_activity;
-    host->join_activity = nullptr;
+    join_storage_drain = host->join_activity_storage;
+    host->join_activity_storage = nullptr;
     host->join_activity_capacity = 0U;
     host->join_activity_count = 0U;
     ttak_mutex_unlock(&host->lock);
-    if (history_buffer != nullptr) {
-        sshc_gc_free(history_buffer);
+    if (history_storage_drain != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, history_storage_drain);
     }
-    if (join_buffer != nullptr) {
-        sshc_gc_free(join_buffer);
+    if (join_storage_drain != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, join_storage_drain);
     }
-    sshc_gc_free(host->connection_guard);
-    host->connection_guard = nullptr;
+    if (host->connection_guard_storage != nullptr &&
+        host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager,
+                           host->connection_guard_storage);
+    }
+    host->connection_guard_storage = nullptr;
     host->connection_guard_capacity = 0U;
     host->connection_guard_count = 0U;
     host->listener.accept_error_streak = 0U;
     host->health_guard.consecutive_errors = 0U;
     host->health_guard.last_error_time.tv_sec = 0;
     host->health_guard.last_error_time.tv_nsec = 0L;
+    if (host->cpu_slots_storage != nullptr &&
+        host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, host->cpu_slots_storage);
+    }
+    host->cpu_slots_storage = nullptr;
+    host->cpu_slot_capacity = 0U;
+    host->cpu_slot_mask = 0ULL;
+    host->cpu_slot_in_use = 0U;
+    host->cpu_slot_waiting = 0U;
+    host->cpu_slot_allocation_in_progress = false;
     session_ctx_t **room_members = nullptr;
     ttak_mutex_lock(&host->room.lock);
     room_members = host->room.members;
@@ -1645,23 +1972,55 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         host->rss_refresh_lock_initialized = false;
     }
 
-    if (host->nickname_reserve_lock_initialized) {
-        ttak_mutex_destroy(&host->nickname_reserve_lock);
-        host->nickname_reserve_lock_initialized = false;
+    if (host->nickname_claim_pool != nullptr) {
+        ttak_object_pool_destroy(host->nickname_claim_pool);
+        host->nickname_claim_pool = nullptr;
     }
-
-    sshc_gc_free(host->version_ip_ban_rules);
-    host->version_ip_ban_rules = nullptr;
-    host->version_ip_ban_rule_count = 0U;
-    host->version_ip_ban_rule_capacity = 0U;
-
-    sshc_gc_free(host->reserved_nicknames);
-    host->reserved_nicknames = nullptr;
-    host->reserved_nicknames_len = 0U;
-    host->reserved_nicknames_capacity = 0U;
+    memset(host->nickname_claims, 0, sizeof(host->nickname_claims));
+    host->nickname_claim_count = 0U;
 
     ttak_mutex_destroy(&host->room.lock);
     ttak_mutex_destroy(&host->lock);
+    ttak_mutex_destroy(&host->nickname_reserve_lock);
+
+    if (host->resource_manager != nullptr) {
+        /* Release perma-mapped views before tearing down the RM.  The RM's
+         * destroy will free all remaining handles, but maps must be released
+         * first so the underlying memory can be reclaimed cleanly. */
+        if (host->bbs_posts != nullptr) {
+            ttak_abstract_unmap(&host->bbs_posts_view);
+            host->bbs_posts = nullptr;
+        }
+        if (host->history != nullptr) {
+            ttak_abstract_unmap(&host->history_view);
+            host->history = nullptr;
+        }
+        if (host->door_games_storage != nullptr) {
+            sshc_rm_scope_free(host->resource_manager,
+                               host->door_games_storage);
+            host->door_games_storage = nullptr;
+            host->door_game_count = 0U;
+            host->door_game_capacity = 0U;
+        }
+        if (host->version_ip_ban_rules_storage != nullptr) {
+            for (size_t idx = 0U; idx < host->version_ip_ban_rule_count;
+                 ++idx) {
+                version_ip_ban_rule_t rule = {0};
+                if (ttak_abstract_read(
+                        host->version_ip_ban_rules_storage,
+                        idx * sizeof(rule), &rule, sizeof(rule)) == 0) {
+                    host_version_ip_rule_release(&rule);
+                }
+            }
+            sshc_rm_scope_free(host->resource_manager,
+                               host->version_ip_ban_rules_storage);
+            host->version_ip_ban_rules_storage = nullptr;
+            host->version_ip_ban_rule_count = 0U;
+            host->version_ip_ban_rule_capacity = 0U;
+        }
+        sshc_resource_manager_destroy(host->resource_manager);
+        host->resource_manager = nullptr;
+    }
 
     if (memory_scope != nullptr) {
         sshc_memory_context_pop(memory_scope);

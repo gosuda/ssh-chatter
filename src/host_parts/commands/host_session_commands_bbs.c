@@ -11,6 +11,9 @@ static void bbs_format_time(time_t value, char *buffer, size_t length)
     strftime(buffer, length, "%Y-%m-%d %H:%M", &tm_value);
 }
 
+static bool host_bbs_acquire_storage(host_t *host);
+static void host_bbs_state_load(host_t *host);
+
 static bool bbs_post_has_required_fields(const bbs_post_t *post)
 {
     if (post == nullptr || !post->in_use) {
@@ -26,6 +29,454 @@ static bool bbs_post_has_required_fields(const bbs_post_t *post)
     }
 
     return true;
+}
+
+typedef struct bbs_listing {
+    uint64_t id;
+    char title[SSH_CHATTER_BBS_TITLE_LEN];
+    char author[SSH_CHATTER_USERNAME_LEN];
+    char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
+    size_t tag_count;
+    time_t created_at;
+    time_t bumped_at;
+} bbs_listing_t;
+
+static bool session_bbs_ensure_live_storage(host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+    if (!host_bbs_acquire_storage(host)) {
+        return false;
+    }
+    if (!host->bbs_cache_loaded) {
+        host_bbs_state_load(host);
+    }
+    return host_bbs_storage_ready(host);
+}
+
+static bool session_bbs_read_serialized_entry(
+    const unsigned char **cursor_ptr, size_t *remaining_ptr, uint32_t version,
+    bbs_state_post_entry_t *serialized)
+{
+    if (cursor_ptr == nullptr || remaining_ptr == nullptr ||
+        serialized == nullptr) {
+        return false;
+    }
+
+    const unsigned char *cursor = *cursor_ptr;
+    size_t remaining = *remaining_ptr;
+    memset(serialized, 0, sizeof(*serialized));
+
+    if (version == 1U) {
+        bbs_state_post_entry_v1_t legacy = {0};
+        if (remaining < sizeof(legacy)) {
+            return false;
+        }
+        memcpy(&legacy, cursor, sizeof(legacy));
+        cursor += sizeof(legacy);
+        remaining -= sizeof(legacy);
+
+        serialized->id = legacy.id;
+        serialized->created_at = legacy.created_at;
+        serialized->bumped_at = legacy.bumped_at;
+        serialized->tag_count = legacy.tag_count;
+        serialized->comment_count = legacy.comment_count;
+        snprintf(serialized->author, sizeof(serialized->author), "%s",
+                 legacy.author);
+        snprintf(serialized->title, sizeof(serialized->title), "%s",
+                 legacy.title);
+        snprintf(serialized->body, sizeof(serialized->body), "%s",
+                 legacy.body);
+        for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
+            snprintf(serialized->tags[tag], sizeof(serialized->tags[tag]), "%s",
+                     legacy.tags[tag]);
+        }
+        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
+             ++comment) {
+            snprintf(serialized->comments[comment].author,
+                     sizeof(serialized->comments[comment].author), "%s",
+                     legacy.comments[comment].author);
+            snprintf(serialized->comments[comment].text,
+                     sizeof(serialized->comments[comment].text), "%s",
+                     legacy.comments[comment].text);
+            serialized->comments[comment].created_at =
+                legacy.comments[comment].created_at;
+        }
+    } else if (version == 2U) {
+        bbs_state_post_entry_v2_t legacy = {0};
+        if (remaining < sizeof(legacy)) {
+            return false;
+        }
+        memcpy(&legacy, cursor, sizeof(legacy));
+        cursor += sizeof(legacy);
+        remaining -= sizeof(legacy);
+
+        serialized->id = legacy.id;
+        serialized->created_at = legacy.created_at;
+        serialized->bumped_at = legacy.bumped_at;
+        serialized->tag_count = legacy.tag_count;
+        serialized->comment_count = legacy.comment_count;
+        snprintf(serialized->author, sizeof(serialized->author), "%s",
+                 legacy.author);
+        snprintf(serialized->title, sizeof(serialized->title), "%s",
+                 legacy.title);
+        snprintf(serialized->body, sizeof(serialized->body), "%s",
+                 legacy.body);
+        for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
+            snprintf(serialized->tags[tag], sizeof(serialized->tags[tag]), "%s",
+                     legacy.tags[tag]);
+        }
+        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
+             ++comment) {
+            snprintf(serialized->comments[comment].author,
+                     sizeof(serialized->comments[comment].author), "%s",
+                     legacy.comments[comment].author);
+            snprintf(serialized->comments[comment].text,
+                     sizeof(serialized->comments[comment].text), "%s",
+                     legacy.comments[comment].text);
+            serialized->comments[comment].created_at =
+                legacy.comments[comment].created_at;
+        }
+    } else if (version == 3U) {
+        bbs_state_post_entry_v3_t legacy = {0};
+        if (remaining < sizeof(legacy)) {
+            return false;
+        }
+        memcpy(&legacy, cursor, sizeof(legacy));
+        cursor += sizeof(legacy);
+        remaining -= sizeof(legacy);
+
+        serialized->id = legacy.id;
+        serialized->created_at = legacy.created_at;
+        serialized->bumped_at = legacy.bumped_at;
+        serialized->tag_count = legacy.tag_count;
+        serialized->comment_count = legacy.comment_count;
+        snprintf(serialized->author, sizeof(serialized->author), "%s",
+                 legacy.author);
+        snprintf(serialized->title, sizeof(serialized->title), "%s",
+                 legacy.title);
+        snprintf(serialized->body, sizeof(serialized->body), "%s",
+                 legacy.body);
+        for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
+            snprintf(serialized->tags[tag], sizeof(serialized->tags[tag]), "%s",
+                     legacy.tags[tag]);
+        }
+        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
+             ++comment) {
+            snprintf(serialized->comments[comment].author,
+                     sizeof(serialized->comments[comment].author), "%s",
+                     legacy.comments[comment].author);
+            snprintf(serialized->comments[comment].text,
+                     sizeof(serialized->comments[comment].text), "%s",
+                     legacy.comments[comment].text);
+            serialized->comments[comment].created_at =
+                legacy.comments[comment].created_at;
+        }
+    } else {
+        if (remaining < sizeof(*serialized)) {
+            return false;
+        }
+        memcpy(serialized, cursor, sizeof(*serialized));
+        cursor += sizeof(*serialized);
+        remaining -= sizeof(*serialized);
+    }
+
+    *cursor_ptr = cursor;
+    *remaining_ptr = remaining;
+    return true;
+}
+
+static void session_bbs_normalize_serialized_entry(
+    bbs_state_post_entry_t *serialized)
+{
+    if (serialized == nullptr) {
+        return;
+    }
+
+    time_t now = time(nullptr);
+    if (now <= 0) {
+        now = 1;
+    }
+
+    serialized->author[sizeof(serialized->author) - 1U] = '\0';
+    serialized->title[sizeof(serialized->title) - 1U] = '\0';
+    serialized->body[sizeof(serialized->body) - 1U] = '\0';
+    for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
+        serialized->tags[tag][sizeof(serialized->tags[tag]) - 1U] = '\0';
+    }
+    for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
+         ++comment) {
+        serialized->comments[comment]
+            .author[sizeof(serialized->comments[comment].author) - 1U] = '\0';
+        serialized->comments[comment]
+            .text[sizeof(serialized->comments[comment].text) - 1U] = '\0';
+        if (serialized->comments[comment].created_at <= 0) {
+            serialized->comments[comment].created_at = (int64_t)now;
+        }
+    }
+
+    if (serialized->created_at <= 0) {
+        serialized->created_at = (int64_t)now;
+    }
+    if (serialized->bumped_at <= 0 ||
+        serialized->bumped_at < serialized->created_at) {
+        serialized->bumped_at = serialized->created_at;
+    }
+    if (serialized->tag_count > SSH_CHATTER_BBS_MAX_TAGS) {
+        serialized->tag_count = SSH_CHATTER_BBS_MAX_TAGS;
+    }
+    if (serialized->comment_count > SSH_CHATTER_BBS_MAX_COMMENTS) {
+        serialized->comment_count = SSH_CHATTER_BBS_MAX_COMMENTS;
+    }
+}
+
+static bool session_bbs_map_state_file(host_t *host, unsigned char **mapped,
+                                       size_t *mapped_len,
+                                       bbs_state_header_t *header)
+{
+    if (host == nullptr || mapped == nullptr || mapped_len == nullptr ||
+        header == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return false;
+    }
+
+    *mapped = nullptr;
+    *mapped_len = 0U;
+    memset(header, 0, sizeof(*header));
+
+    if (!host_ensure_private_data_path(host, host->bbs_state_file_path,
+                                       false)) {
+        return false;
+    }
+
+    FILE *fp = fopen(host->bbs_state_file_path, "rb");
+    if (fp == nullptr) {
+        return false;
+    }
+
+    int fd = fileno(fp);
+    if (fd < 0) {
+        fclose(fp);
+        return false;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size <= 0) {
+        fclose(fp);
+        return false;
+    }
+
+    *mapped_len = (size_t)st.st_size;
+    if (*mapped_len < sizeof(*header)) {
+        fclose(fp);
+        *mapped_len = 0U;
+        return false;
+    }
+
+    *mapped = mmap(nullptr, *mapped_len, PROT_READ, MAP_PRIVATE, fd, 0);
+    fclose(fp);
+    if (*mapped == MAP_FAILED) {
+        *mapped = nullptr;
+        *mapped_len = 0U;
+        return false;
+    }
+
+    memcpy(header, *mapped, sizeof(*header));
+    if (header->magic != BBS_STATE_MAGIC || header->version == 0U ||
+        header->version > BBS_STATE_VERSION) {
+        munmap(*mapped, *mapped_len);
+        *mapped = nullptr;
+        *mapped_len = 0U;
+        memset(header, 0, sizeof(*header));
+        return false;
+    }
+
+    return true;
+}
+
+static bool session_bbs_collect_listings_from_state(host_t *host,
+                                                    bbs_listing_t *listings,
+                                                    size_t *count)
+{
+    if (host == nullptr || listings == nullptr || count == nullptr) {
+        return false;
+    }
+
+    *count = 0U;
+    if (host->bbs_state_file_path[0] == '\0') {
+        return false;
+    }
+    if (access(host->bbs_state_file_path, F_OK) != 0) {
+        return true;
+    }
+
+    unsigned char *mapped = nullptr;
+    size_t mapped_len = 0U;
+    bbs_state_header_t header = {0};
+    if (!session_bbs_map_state_file(host, &mapped, &mapped_len, &header)) {
+        return false;
+    }
+
+    const unsigned char *cursor = mapped + sizeof(header);
+    size_t remaining = mapped_len - sizeof(header);
+    time_t now = time(nullptr);
+    if (now <= 0) {
+        now = 1;
+    }
+
+    for (uint32_t idx = 0U;
+         idx < header.post_count && *count < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+        bbs_state_post_entry_t serialized = {0};
+        if (!session_bbs_read_serialized_entry(&cursor, &remaining,
+                                               header.version, &serialized)) {
+            break;
+        }
+        session_bbs_normalize_serialized_entry(&serialized);
+        if (!host_bbs_serialized_has_required_fields(&serialized) ||
+            !host_bbs_serialized_is_sane(&serialized, now)) {
+            continue;
+        }
+
+        bbs_listing_t *entry = &listings[*count];
+        memset(entry, 0, sizeof(*entry));
+        entry->id = serialized.id;
+        entry->tag_count = serialized.tag_count;
+        entry->created_at = (time_t)serialized.created_at;
+        entry->bumped_at = (time_t)serialized.bumped_at;
+        snprintf(entry->title, sizeof(entry->title), "%s", serialized.title);
+        snprintf(entry->author, sizeof(entry->author), "%s",
+                 serialized.author);
+        for (size_t tag = 0U; tag < serialized.tag_count; ++tag) {
+            snprintf(entry->tags[tag], sizeof(entry->tags[tag]), "%s",
+                     serialized.tags[tag]);
+        }
+        *count += 1U;
+    }
+
+    munmap(mapped, mapped_len);
+    return true;
+}
+
+static bool session_bbs_collect_listings(host_t *host, bbs_listing_t *listings,
+                                         size_t *count)
+{
+    if (host == nullptr || listings == nullptr || count == nullptr) {
+        return false;
+    }
+
+    *count = 0U;
+    if (host_bbs_storage_ready(host) && host->bbs_cache_loaded) {
+        ttak_mutex_lock(&host->lock);
+        size_t capacity = host_bbs_loop_limit(host);
+        for (size_t idx = 0U;
+             idx < capacity && *count < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
+            const bbs_post_t *post = &host->bbs_posts[idx];
+            if (!bbs_post_has_required_fields(post)) {
+                continue;
+            }
+
+            bbs_listing_t *entry = &listings[*count];
+            memset(entry, 0, sizeof(*entry));
+            entry->id = post->id;
+            entry->tag_count = post->tag_count;
+            entry->created_at = post->created_at;
+            entry->bumped_at = post->bumped_at;
+            snprintf(entry->title, sizeof(entry->title), "%s", post->title);
+            snprintf(entry->author, sizeof(entry->author), "%s",
+                     post->author);
+            for (size_t tag = 0U; tag < post->tag_count; ++tag) {
+                snprintf(entry->tags[tag], sizeof(entry->tags[tag]), "%s",
+                         post->tags[tag]);
+            }
+            *count += 1U;
+        }
+        ttak_mutex_unlock(&host->lock);
+        return true;
+    }
+
+    return session_bbs_collect_listings_from_state(host, listings, count);
+}
+
+static bool session_bbs_load_post_from_state(host_t *host, uint64_t id,
+                                             bbs_post_t *post)
+{
+    if (host == nullptr || post == nullptr || id == 0U) {
+        return false;
+    }
+
+    memset(post, 0, sizeof(*post));
+
+    unsigned char *mapped = nullptr;
+    size_t mapped_len = 0U;
+    bbs_state_header_t header = {0};
+    if (!session_bbs_map_state_file(host, &mapped, &mapped_len, &header)) {
+        return false;
+    }
+
+    const unsigned char *cursor = mapped + sizeof(header);
+    size_t remaining = mapped_len - sizeof(header);
+    time_t now = time(nullptr);
+    if (now <= 0) {
+        now = 1;
+    }
+
+    bool found = false;
+    for (uint32_t idx = 0U; idx < header.post_count; ++idx) {
+        bbs_state_post_entry_t serialized = {0};
+        if (!session_bbs_read_serialized_entry(&cursor, &remaining,
+                                               header.version, &serialized)) {
+            break;
+        }
+        session_bbs_normalize_serialized_entry(&serialized);
+        if (!host_bbs_serialized_has_required_fields(&serialized) ||
+            !host_bbs_serialized_is_sane(&serialized, now) ||
+            serialized.id != id) {
+            continue;
+        }
+
+        post->in_use = true;
+        post->id = serialized.id;
+        post->tag_count = serialized.tag_count;
+        post->comment_count = serialized.comment_count;
+        post->created_at = (time_t)serialized.created_at;
+        post->bumped_at = (time_t)serialized.bumped_at;
+        snprintf(post->author, sizeof(post->author), "%s", serialized.author);
+        snprintf(post->title, sizeof(post->title), "%s", serialized.title);
+        for (size_t tag = 0U; tag < serialized.tag_count; ++tag) {
+            snprintf(post->tags[tag], sizeof(post->tags[tag]), "%s",
+                     serialized.tags[tag]);
+        }
+        /* Body and comment payloads stay on disk; callers that need them
+         * use host_bbs_content_acquire(host, id, ...) and release after
+         * rendering. */
+        found = true;
+        break;
+    }
+
+    munmap(mapped, mapped_len);
+    return found;
+}
+
+static bool session_bbs_load_post(host_t *host, uint64_t id, bbs_post_t *post)
+{
+    if (host == nullptr || post == nullptr || id == 0U) {
+        return false;
+    }
+
+    memset(post, 0, sizeof(*post));
+    if (host_bbs_storage_ready(host) && host->bbs_cache_loaded) {
+        ttak_mutex_lock(&host->lock);
+        bbs_post_t *live = host_find_bbs_post_locked(host, id);
+        if (live != nullptr && live->in_use) {
+            *post = *live;
+        }
+        ttak_mutex_unlock(&host->lock);
+        if (post->in_use) {
+            return true;
+        }
+    }
+
+    return session_bbs_load_post_from_state(host, id, post);
 }
 
 // Return a post by identifier while the host lock is held.
@@ -56,24 +507,11 @@ static bbs_post_t *host_allocate_bbs_post_locked(host_t *host)
             continue;
         }
         bbs_post_t *post = &host->bbs_posts[idx];
+        memset(post, 0, sizeof(*post));
         post->in_use = true;
         post->id = host->next_bbs_id++;
-        post->tag_count = 0U;
-        post->comment_count = 0U;
         post->created_at = time(nullptr);
         post->bumped_at = post->created_at;
-        post->title[0] = '\0';
-        post->body[0] = '\0';
-        post->author[0] = '\0';
-        for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
-            post->tags[tag][0] = '\0';
-        }
-        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
-             ++comment) {
-            post->comments[comment].author[0] = '\0';
-            post->comments[comment].text[0] = '\0';
-            post->comments[comment].created_at = 0;
-        }
         if (host->bbs_post_count < SSH_CHATTER_BBS_MAX_POSTS) {
             host->bbs_post_count += 1U;
         }
@@ -87,25 +525,7 @@ static void host_reset_bbs_post(bbs_post_t *post)
     if (post == nullptr) {
         return;
     }
-
-    post->in_use = false;
-    post->id = 0U;
-    post->author[0] = '\0';
-    post->title[0] = '\0';
-    post->body[0] = '\0';
-    post->tag_count = 0U;
-    post->created_at = 0;
-    post->bumped_at = 0;
-    post->comment_count = 0U;
-    for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
-        post->tags[tag][0] = '\0';
-    }
-    for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
-         ++comment) {
-        post->comments[comment].author[0] = '\0';
-        post->comments[comment].text[0] = '\0';
-        post->comments[comment].created_at = 0;
-    }
+    memset(post, 0, sizeof(*post));
 }
 
 static void host_clear_bbs_post_locked(host_t *host, bbs_post_t *post)
@@ -146,19 +566,9 @@ static bool session_bbs_refresh_view(session_ctx_t *ctx)
     }
 
     host_t *host = ctx->owner;
-    if (!host_bbs_storage_ready(host)) {
-        session_send_system_line(ctx, "BBS storage is unavailable.");
-        return false;
-    }
-    ttak_mutex_lock(&host->lock);
-    bbs_post_t *post = host_find_bbs_post_locked(host, ctx->bbs_view_post_id);
     bbs_post_t snapshot = {0};
-    if (post != nullptr) {
-        snapshot = *post;
-    }
-    ttak_mutex_unlock(&host->lock);
-
-    if (post == nullptr || !snapshot.in_use) {
+    if (!session_bbs_load_post(host, ctx->bbs_view_post_id, &snapshot) ||
+        !snapshot.in_use) {
         ctx->bbs_view_active = false;
         ctx->bbs_view_post_id = 0U;
         ctx->bbs_view_total_lines = 0U;
@@ -167,7 +577,14 @@ static bool session_bbs_refresh_view(session_ctx_t *ctx)
         return false;
     }
 
-    session_bbs_render_post(ctx, &snapshot, nullptr, false);
+    ttak_abstract_mem_t *content_handle = nullptr;
+    bbs_post_content_t *content = nullptr;
+    (void)host_bbs_content_acquire(host, snapshot.id, &content_handle,
+                                   &content);
+    session_bbs_render_post(ctx, &snapshot, content, nullptr, false);
+    if (content_handle != nullptr) {
+        host_bbs_content_release(host, content_handle);
+    }
     return true;
 }
 
@@ -263,7 +680,8 @@ static void session_bbs_show_dashboard(session_ctx_t *ctx)
     session_render_separator(ctx, "BBS Dashboard");
     session_send_system_line(
         ctx, "Commands: list, read <id>, topic read <tag>, post <title> "
-             "[tags...], comment <id>|<text>, regen <id>, delete <id>, exit");
+             "[tags...], comment <id>|<text>, regen <id>, delete <id>, "
+             "door [name], exit");
     session_bbs_list(ctx);
 }
 
@@ -277,51 +695,15 @@ static void session_bbs_list(session_ctx_t *ctx)
     enum { SESSION_BBS_TOPIC_NAME_PREC = SSH_CHATTER_BBS_TAG_LEN - 1 };
 
     bool previous_override = session_translation_push_scope_override(ctx);
-    typedef struct bbs_listing {
-        uint64_t id;
-        char title[SSH_CHATTER_BBS_TITLE_LEN];
-        char author[SSH_CHATTER_USERNAME_LEN];
-        char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
-        size_t tag_count;
-        time_t created_at;
-        time_t bumped_at;
-    } bbs_listing_t;
-
     bbs_listing_t listings[SSH_CHATTER_BBS_MAX_POSTS];
     size_t count = 0U;
 
     host_t *host = ctx->owner;
-    if (!host_bbs_storage_ready(host)) {
+    if (!session_bbs_collect_listings(host, listings, &count)) {
         session_send_system_line(ctx, "BBS storage is unavailable.");
         session_translation_pop_scope_override(ctx, previous_override);
         return;
     }
-    ttak_mutex_lock(&host->lock);
-    size_t capacity = host_bbs_loop_limit(host);
-    for (size_t idx = 0U; idx < capacity; ++idx) {
-        const bbs_post_t *post = &host->bbs_posts[idx];
-        if (!bbs_post_has_required_fields(post)) {
-            continue;
-        }
-        listings[count].id = post->id;
-        snprintf(listings[count].title, sizeof(listings[count].title), "%s",
-                 post->title);
-        snprintf(listings[count].author, sizeof(listings[count].author), "%s",
-                 post->author);
-        listings[count].tag_count = post->tag_count;
-        for (size_t tag = 0U;
-             tag < post->tag_count && tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
-            snprintf(listings[count].tags[tag],
-                     sizeof(listings[count].tags[tag]), "%s", post->tags[tag]);
-        }
-        listings[count].created_at = post->created_at;
-        listings[count].bumped_at = post->bumped_at;
-        ++count;
-        if (count >= SSH_CHATTER_BBS_MAX_POSTS) {
-            break;
-        }
-    }
-    ttak_mutex_unlock(&host->lock);
 
     if (count == 0U) {
         char empty_hint[SSH_CHATTER_MESSAGE_LIMIT];
@@ -472,53 +854,15 @@ static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
 
     bool previous_override = session_translation_push_scope_override(ctx);
 
-    typedef struct bbs_listing {
-        uint64_t id;
-        char title[SSH_CHATTER_BBS_TITLE_LEN];
-        char author[SSH_CHATTER_USERNAME_LEN];
-        char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
-        size_t tag_count;
-        time_t created_at;
-        time_t bumped_at;
-    } bbs_listing_t;
-
     bbs_listing_t listings[SSH_CHATTER_BBS_MAX_POSTS];
     size_t count = 0U;
 
     host_t *host = ctx->owner;
-    if (!host_bbs_storage_ready(host)) {
+    if (!session_bbs_collect_listings(host, listings, &count)) {
         session_send_system_line(ctx, "BBS storage is unavailable.");
         session_translation_pop_scope_override(ctx, previous_override);
         return;
     }
-    ttak_mutex_lock(&host->lock);
-    size_t capacity = host_bbs_loop_limit(host);
-    for (size_t idx = 0U; idx < capacity; ++idx) {
-        const bbs_post_t *post = &host->bbs_posts[idx];
-        if (!bbs_post_has_required_fields(post)) {
-            continue;
-        }
-        listings[count].id = post->id;
-        snprintf(listings[count].title, sizeof(listings[count].title), "%s",
-                 post->title);
-        snprintf(listings[count].author, sizeof(listings[count].author), "%s",
-                 post->author);
-        listings[count].tag_count = post->tag_count;
-        for (size_t tag_idx = 0U;
-             tag_idx < post->tag_count && tag_idx < SSH_CHATTER_BBS_MAX_TAGS;
-             ++tag_idx) {
-            snprintf(listings[count].tags[tag_idx],
-                     sizeof(listings[count].tags[tag_idx]), "%s",
-                     post->tags[tag_idx]);
-        }
-        listings[count].created_at = post->created_at;
-        listings[count].bumped_at = post->bumped_at;
-        ++count;
-        if (count >= SSH_CHATTER_BBS_MAX_POSTS) {
-            break;
-        }
-    }
-    ttak_mutex_unlock(&host->lock);
 
     if (count == 0U) {
         session_send_system_line(ctx, "The bulletin board is empty.");
@@ -620,24 +964,34 @@ static void session_bbs_read(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
-    if (!host_bbs_storage_ready(host)) {
+    bbs_post_t *snapshot = (bbs_post_t *)sshc_gc_calloc(1U, sizeof(*snapshot));
+    if (snapshot == nullptr) {
         session_send_system_line(ctx, "BBS storage is unavailable.");
         return;
     }
-    ttak_mutex_lock(&host->lock);
-    bbs_post_t *post = host_find_bbs_post_locked(host, id);
-    bbs_post_t snapshot = {0};
-    if (post != nullptr) {
-        snapshot = *post;
-    }
-    ttak_mutex_unlock(&host->lock);
 
-    if (post == nullptr || !snapshot.in_use) {
+    if (!session_bbs_load_post(host, id, snapshot)) {
+        sshc_gc_free(snapshot);
+        snapshot = nullptr;
         session_send_system_line(ctx, "No post exists with that identifier.");
         return;
     }
 
-    session_bbs_render_post(ctx, &snapshot, nullptr, true);
+    if (!snapshot->in_use) {
+        sshc_gc_free(snapshot);
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+
+    ttak_abstract_mem_t *content_handle = nullptr;
+    bbs_post_content_t *content = nullptr;
+    (void)host_bbs_content_acquire(host, snapshot->id, &content_handle,
+                                   &content);
+    session_bbs_render_post(ctx, snapshot, content, nullptr, true);
+    if (content_handle != nullptr) {
+        host_bbs_content_release(host, content_handle);
+    }
+    sshc_gc_free(snapshot);
 }
 
 // Create a new post using the provided argument format.
@@ -712,7 +1066,8 @@ static void session_bbs_compact_preview(const char *input, char *output,
     output[out_idx] = '\0';
 }
 
-static void session_bbs_announce_post(host_t *host, const bbs_post_t *post)
+static void session_bbs_announce_post(host_t *host, const bbs_post_t *post,
+                                      const bbs_post_content_t *content)
 {
     if (host == nullptr || post == nullptr) {
         return;
@@ -727,7 +1082,11 @@ static void session_bbs_announce_post(host_t *host, const bbs_post_t *post)
     trim_whitespace_inplace(title);
 
     char preview[128];
-    session_bbs_compact_preview(post->body, preview, sizeof(preview));
+    if (content != nullptr) {
+        session_bbs_compact_preview(content->body, preview, sizeof(preview));
+    } else {
+        preview[0] = '\0';
+    }
 
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     if (preview[0] != '\0') {
@@ -864,6 +1223,12 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
         session_bbs_reset_pending_post(ctx);
         return;
     }
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        session_bbs_reset_pending_post(ctx);
+        return;
+    }
 
     ttak_mutex_lock(&host->lock);
     bbs_post_t snapshot = {0};
@@ -891,10 +1256,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
 
         snprintf(post->title, sizeof(post->title), "%s",
                  ctx->pending_bbs_title);
-        memcpy(post->body, ctx->pending_bbs_body, ctx->pending_bbs_body_length);
-        post->body[ctx->pending_bbs_body_length] = '\0';
         host_strip_column_reset(post->title);
-        host_strip_column_reset(post->body);
         post->tag_count = ctx->pending_bbs_tag_count;
         for (size_t idx = 0U; idx < post->tag_count; ++idx) {
             snprintf(post->tags[idx], sizeof(post->tags[idx]), "%s",
@@ -904,11 +1266,46 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
 
         post->bumped_at = time(nullptr);
         snapshot = *post;
-        host_bbs_state_save_locked(host);
         ttak_mutex_unlock(&host->lock);
 
+        /* Build a content struct from the pending body — comments are
+         * preserved by the save-with-change path reading the existing
+         * disk record. */
+        ttak_abstract_mem_t *content_handle = nullptr;
+        bbs_post_content_t *content = nullptr;
+        bool acquired = host_bbs_content_acquire(host, snapshot.id,
+                                                 &content_handle, &content);
+        if (acquired) {
+            size_t body_len = ctx->pending_bbs_body_length;
+            if (body_len >= sizeof(content->body)) {
+                body_len = sizeof(content->body) - 1U;
+            }
+            memcpy(content->body, ctx->pending_bbs_body, body_len);
+            content->body[body_len] = '\0';
+            host_strip_column_reset(content->body);
+        }
+
+        ttak_mutex_lock(&host->lock);
+        host_bbs_state_save_locked_with_change(host, snapshot.id, content);
+        ttak_mutex_unlock(&host->lock);
+
+        if (content_handle != nullptr) {
+            host_bbs_content_release(host, content_handle);
+            content = nullptr;
+            content_handle = nullptr;
+        }
+
         session_bbs_reset_pending_post(ctx);
-        session_bbs_render_post(ctx, &snapshot, "Post updated.", false);
+
+        ttak_abstract_mem_t *render_handle = nullptr;
+        bbs_post_content_t *render_content = nullptr;
+        (void)host_bbs_content_acquire(host, snapshot.id, &render_handle,
+                                       &render_content);
+        session_bbs_render_post(ctx, &snapshot, render_content,
+                                "Post updated.", false);
+        if (render_handle != nullptr) {
+            host_bbs_content_release(host, render_handle);
+        }
         return;
     }
 
@@ -921,11 +1318,8 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
 
     snprintf(post->author, sizeof(post->author), "%s", ctx->user.name);
     snprintf(post->title, sizeof(post->title), "%s", ctx->pending_bbs_title);
-    memcpy(post->body, ctx->pending_bbs_body, ctx->pending_bbs_body_length);
-    post->body[ctx->pending_bbs_body_length] = '\0';
     host_strip_column_reset(post->author);
     host_strip_column_reset(post->title);
-    host_strip_column_reset(post->body);
     post->tag_count = ctx->pending_bbs_tag_count;
     for (size_t idx = 0U; idx < post->tag_count; ++idx) {
         snprintf(post->tags[idx], sizeof(post->tags[idx]), "%s",
@@ -934,13 +1328,35 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
     }
 
     snapshot = *post;
-    host_bbs_state_save_locked(host);
     ttak_mutex_unlock(&host->lock);
 
-    session_bbs_reset_pending_post(ctx);
+    /* Build content with the new body and persist via the change-aware save. */
+    ttak_abstract_mem_t *content_handle = nullptr;
+    bbs_post_content_t *content = nullptr;
+    bool acquired = host_bbs_content_acquire_empty(host, &content_handle,
+                                                   &content);
+    if (acquired) {
+        size_t body_len = ctx->pending_bbs_body_length;
+        if (body_len >= sizeof(content->body)) {
+            body_len = sizeof(content->body) - 1U;
+        }
+        memcpy(content->body, ctx->pending_bbs_body, body_len);
+        content->body[body_len] = '\0';
+        host_strip_column_reset(content->body);
+    }
 
-    session_bbs_announce_post(ctx->owner, &snapshot);
-    session_bbs_render_post(ctx, &snapshot, "Post created.", true);
+    ttak_mutex_lock(&host->lock);
+    host_bbs_state_save_locked_with_change(host, snapshot.id, content);
+    ttak_mutex_unlock(&host->lock);
+
+    /* Reuse the freshly-built content for the announce/render path before
+     * releasing it. */
+    session_bbs_reset_pending_post(ctx);
+    session_bbs_announce_post(ctx->owner, &snapshot, content);
+    session_bbs_render_post(ctx, &snapshot, content, "Post created.", true);
+    if (content_handle != nullptr) {
+        host_bbs_content_release(host, content_handle);
+    }
 }
 
 static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
@@ -963,6 +1379,11 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
     ctx->bbs_view_post_id = 0U;
 
     if (ctx->owner == nullptr) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
+    if (!session_bbs_ensure_live_storage(ctx->owner)) {
         session_send_system_line(
             ctx, "The bulletin board is unavailable right now.");
         return;
@@ -1236,6 +1657,11 @@ static void session_bbs_begin_edit(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
     ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     bbs_post_t snapshot = {0};
@@ -1270,10 +1696,20 @@ static void session_bbs_begin_edit(session_ctx_t *ctx, uint64_t id)
     snprintf(ctx->pending_bbs_title, SSH_CHATTER_BBS_TITLE_LEN, "%s",
              snapshot.title);
 
-    size_t body_len =
-        strnlen(snapshot.body, SSH_CHATTER_BBS_BODY_LEN - 1U);
-    memcpy(ctx->pending_bbs_body, snapshot.body, body_len);
-    ctx->pending_bbs_body[body_len] = '\0';
+    /* Pull the body off disk on demand instead of out of the snapshot
+     * (which no longer carries it). */
+    ttak_abstract_mem_t *content_handle = nullptr;
+    bbs_post_content_t *content = nullptr;
+    size_t body_len = 0U;
+    if (host_bbs_content_acquire(host, snapshot.id, &content_handle,
+                                 &content)) {
+        body_len = strnlen(content->body, SSH_CHATTER_BBS_BODY_LEN - 1U);
+        memcpy(ctx->pending_bbs_body, content->body, body_len);
+        ctx->pending_bbs_body[body_len] = '\0';
+        host_bbs_content_release(host, content_handle);
+    } else {
+        ctx->pending_bbs_body[0] = '\0';
+    }
     ctx->pending_bbs_body_length = body_len;
 
     ctx->pending_bbs_tag_count = snapshot.tag_count;
@@ -1339,6 +1775,11 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
     }
 
     host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
     ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     if (post == nullptr || !post->in_use) {
@@ -1353,9 +1794,30 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    size_t comment_index = post->comment_count;
-    bbs_comment_t *comment = &post->comments[comment_index];
-    post->comment_count++;
+    /* Capture header info while still under the host lock; we'll then
+     * fetch the existing on-disk content, append the new comment, and
+     * persist back. */
+    uint64_t target_id = post->id;
+    size_t pre_count = post->comment_count;
+    ttak_mutex_unlock(&host->lock);
+
+    ttak_abstract_mem_t *content_handle = nullptr;
+    bbs_post_content_t *content = nullptr;
+    if (!host_bbs_content_acquire(host, target_id, &content_handle,
+                                  &content)) {
+        session_send_system_line(
+            ctx, "Failed to load this post's content for comment.");
+        return;
+    }
+
+    size_t comment_index = pre_count;
+    if (comment_index >= SSH_CHATTER_BBS_MAX_COMMENTS) {
+        host_bbs_content_release(host, content_handle);
+        session_send_system_line(ctx,
+                                 "This post has reached the comment limit.");
+        return;
+    }
+    bbs_comment_t *comment = &content->comments[comment_index];
     snprintf(comment->author, sizeof(comment->author), "%s", ctx->user.name);
     size_t comment_len =
         strnlen(comment_text, SSH_CHATTER_BBS_COMMENT_LEN - 1U);
@@ -1364,16 +1826,29 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
     host_strip_column_reset(comment->author);
     host_strip_column_reset(comment->text);
     comment->created_at = time(nullptr);
-    post->bumped_at = comment->created_at;
-    bbs_post_t snapshot = *post;
-    host_bbs_state_save_locked(host);
+    if (content->comment_count <= comment_index) {
+        content->comment_count = comment_index + 1U;
+    }
+    bbs_comment_t comment_snapshot = *comment;
+
+    bbs_post_t snapshot = {0};
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *live = host_find_bbs_post_locked(host, target_id);
+    if (live != nullptr && live->in_use) {
+        if (live->comment_count < SSH_CHATTER_BBS_MAX_COMMENTS) {
+            live->comment_count = comment_index + 1U;
+        }
+        live->bumped_at = comment->created_at;
+        snapshot = *live;
+    }
+    host_bbs_state_save_locked_with_change(host, target_id, content);
     ttak_mutex_unlock(&host->lock);
 
-    if (comment_index < snapshot.comment_count) {
-        session_bbs_announce_comment(ctx->owner, &snapshot,
-                                     &snapshot.comments[comment_index]);
+    if (snapshot.in_use) {
+        session_bbs_announce_comment(ctx->owner, &snapshot, &comment_snapshot);
     }
-    session_bbs_render_post(ctx, &snapshot, "Comment added.", false);
+    session_bbs_render_post(ctx, &snapshot, content, "Comment added.", false);
+    host_bbs_content_release(host, content_handle);
 }
 
 static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
@@ -1388,6 +1863,11 @@ static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
     ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     if (post == nullptr || !post->in_use) {
@@ -1421,6 +1901,11 @@ static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id)
     }
 
     host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(
+            ctx, "The bulletin board is unavailable right now.");
+        return;
+    }
     ttak_mutex_lock(&host->lock);
     bbs_post_t *post = host_find_bbs_post_locked(host, id);
     if (post == nullptr || !post->in_use) {
@@ -1434,5 +1919,13 @@ static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id)
     host_bbs_state_save_locked(host);
     ttak_mutex_unlock(&host->lock);
 
-    session_bbs_render_post(ctx, &snapshot, "Post bumped to the top.", false);
+    ttak_abstract_mem_t *content_handle = nullptr;
+    bbs_post_content_t *content = nullptr;
+    (void)host_bbs_content_acquire(host, snapshot.id, &content_handle,
+                                   &content);
+    session_bbs_render_post(ctx, &snapshot, content,
+                            "Post bumped to the top.", false);
+    if (content_handle != nullptr) {
+        host_bbs_content_release(host, content_handle);
+    }
 }

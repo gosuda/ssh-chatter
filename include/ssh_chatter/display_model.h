@@ -20,6 +20,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <ttak/mem/abstract.h>
+
 /* Maximum length of a single display line text. */
 #define DISPLAY_LINE_TEXT_MAX 4096
 
@@ -63,7 +65,7 @@ typedef struct display_view_state {
  *       The renderer reads an immutable snapshot of visible lines from this.
  */
 typedef struct display_model {
-    display_line_t *lines;
+    ttak_abstract_mem_t *line_storage;
     size_t line_count;
     size_t line_capacity;
     unsigned int layout_width;
@@ -84,6 +86,7 @@ typedef struct display_visible_frame {
     size_t first_global_index;
     bool at_tail;
     bool at_head;
+    ttak_abstract_map_t storage_map;
 } display_visible_frame_t;
 
 /* ---- Lifecycle ---- */
@@ -146,6 +149,12 @@ bool display_model_append_message(display_model_t *model,
 void display_model_compute_visible(display_model_t *model,
                                    unsigned int viewport_height,
                                    display_visible_frame_t *frame);
+
+/**
+ * @desc Release any borrowed storage associated with a visible frame.
+ * @param frame Frame returned by display_model_compute_visible().
+ */
+void display_model_release_visible(display_visible_frame_t *frame);
 
 /**
  * @desc Scroll up (toward older messages) by a given number of display lines.

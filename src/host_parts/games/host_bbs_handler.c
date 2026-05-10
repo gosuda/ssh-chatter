@@ -20,12 +20,6 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    if (!host_bbs_storage_ready(ctx->owner)) {
-        session_send_system_line(ctx,
-                                 "BBS storage is currently unavailable.");
-        return;
-    }
-
     if (arguments == nullptr || *arguments == '\0') {
         session_bbs_show_dashboard(ctx);
         return;
@@ -162,9 +156,13 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         }
         uint64_t id = (uint64_t)strtoull(rest, nullptr, 10);
         session_bbs_delete(ctx, id);
+    } else if (strcmp(canonical_command, "door") == 0) {
+        /* `/bbs door` lists doors; `/bbs door <name>` launches one. */
+        const char *door_name = (rest != nullptr && rest[0] != '\0') ? rest
+                                                                     : nullptr;
+        session_bbs_door_run(ctx, door_name);
     } else {
         session_send_system_line(
             ctx, "Unknown /bbs subcommand. Try /bbs for usage.");
     }
 }
-

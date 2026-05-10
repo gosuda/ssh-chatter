@@ -1,3 +1,4 @@
+#include "ssh_chatter/abstract_byte_buffer.h"
 
 static const uint32_t RSS_STATE_MAGIC = 0x52535331U; /* 'RSS1' */
 static const uint32_t RSS_STATE_VERSION = 2U;
@@ -214,7 +215,7 @@ static void host_clear_rss_feed(rss_feed_t *feed);
 static void host_rss_recount_locked(host_t *host);
 static bool host_rss_fetch_items(const rss_feed_t *feed,
                                  rss_session_item_t *items, size_t max_items,
-                                 size_t *out_count);
+                                 size_t *out_count, unsigned int max_attempts);
 
 static bool host_rss_add_feed(host_t *host, const char *url, const char *tag,
                               char *error, size_t error_length)
@@ -691,8 +692,7 @@ static void host_rss_state_load(host_t *host)
 }
 
 typedef struct host_rss_buffer {
-    char *data;
-    size_t length;
+    sshc_abstract_byte_buffer_t bytes;
 } host_rss_buffer_t;
 
 static size_t host_rss_write_callback(void *contents, size_t size, size_t nmemb,
@@ -713,30 +713,22 @@ static size_t host_rss_write_callback(void *contents, size_t size, size_t nmemb,
         return 0U;
     }
 
-    if (buffer->length > SIZE_MAX - total - 1U) {
+    if (buffer->bytes.length > SIZE_MAX - total - 1U) {
         return 0U;
     }
 
-    const size_t next_length = buffer->length + total;
+    const size_t next_length = buffer->bytes.length + total;
     if (next_length > (size_t)SSH_CHATTER_RSS_DOWNLOAD_MAX_BYTES) {
         return 0U;
     }
 
-    char *resized = ttak_mem_realloc(buffer->data, next_length + 1U,
-                                     __TTAK_UNSAFE_MEM_FOREVER__,
-                                     ttak_get_tick_count());
-    if (resized == nullptr) {
-        return 0U;
-    }
-
-    buffer->data = resized;
-    memcpy(buffer->data + buffer->length, contents, total);
-    buffer->length = next_length;
-    buffer->data[buffer->length] = '\0';
-    return total;
+    return sshc_abstract_byte_buffer_append(&buffer->bytes, contents, total)
+               ? total
+               : 0U;
 }
 
-static bool host_rss_download(const char *url, char **payload, size_t *length)
+static bool host_rss_download(const char *url, char **payload, size_t *length,
+                              unsigned int max_attempts)
 {
     if (payload != nullptr) {
         *payload = nullptr;
@@ -751,13 +743,14 @@ static bool host_rss_download(const char *url, char **payload, size_t *length)
 
     bool success = false;
     for (unsigned int attempt = 0U;
-         attempt < SSH_CHATTER_RSS_DOWNLOAD_ATTEMPTS && !success; ++attempt) {
+         attempt < max_attempts && !success; ++attempt) {
         CURL *curl = curl_easy_init();
         if (curl == nullptr) {
             break;
         }
 
         host_rss_buffer_t buffer = {0};
+        sshc_abstract_byte_buffer_init(&buffer.bytes);
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS,
                          (long)SSH_CHATTER_RSS_TRANSFER_TIMEOUT_MS);
@@ -774,22 +767,32 @@ static bool host_rss_download(const char *url, char **payload, size_t *length)
         if (result == CURLE_OK) {
             long status = 0;
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-            if (status >= 200L && status < 300L && buffer.data != nullptr) {
+            if (status >= 200L && status < 300L &&
+                buffer.bytes.storage != nullptr) {
                 if (payload != nullptr) {
-                    *payload = buffer.data;
+                    char *copy = (char *)ttak_mem_alloc(
+                        buffer.bytes.length + 1U,
+                        __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
+                    if (copy == nullptr ||
+                        !sshc_abstract_byte_buffer_copy_out(
+                            &buffer.bytes, copy, buffer.bytes.length + 1U)) {
+                        if (copy != nullptr) {
+                            ttak_mem_free(copy);
+                        }
+                    } else {
+                        *payload = copy;
+                    }
                 }
-                if (length != nullptr) {
-                    *length = buffer.length;
+                if (payload == nullptr || *payload != nullptr) {
+                    if (length != nullptr) {
+                        *length = buffer.bytes.length;
+                    }
+                    success = true;
                 }
-                buffer.data = nullptr;
-                success = true;
             }
         }
 
-        if (!success && buffer.data != nullptr) {
-            ttak_mem_free(buffer.data);
-        }
-
+        sshc_abstract_byte_buffer_free(&buffer.bytes);
         curl_easy_cleanup(curl);
     }
 
@@ -1003,7 +1006,7 @@ static size_t host_rss_parse_items(const char *payload,
 
 static bool host_rss_fetch_items(const rss_feed_t *feed,
                                  rss_session_item_t *items, size_t max_items,
-                                 size_t *out_count)
+                                 size_t *out_count, unsigned int max_attempts)
 {
     if (out_count != nullptr) {
         *out_count = 0U;
@@ -1015,7 +1018,7 @@ static bool host_rss_fetch_items(const rss_feed_t *feed,
 
     char *payload = nullptr;
     size_t length = 0U;
-    if (!host_rss_download(feed->url, &payload, &length)) {
+    if (!host_rss_download(feed->url, &payload, &length, max_attempts)) {
         return false;
     }
 
@@ -1104,6 +1107,8 @@ static size_t host_rss_refresh_cycle(host_t *host, bool abort_on_stop)
     }
     ttak_mutex_unlock(&host->lock);
 
+    size_t refresh_success_count = 0U;
+
     if (snapshot_count > 0U && feed_snapshots != nullptr) {
         for (size_t snapshot_index = 0U; snapshot_index < snapshot_count;
              ++snapshot_index) {
@@ -1123,12 +1128,14 @@ static size_t host_rss_refresh_cycle(host_t *host, bool abort_on_stop)
 
             size_t item_count = 0U;
             if (!host_rss_fetch_items(feed_snapshot, items,
-                                      SSH_CHATTER_RSS_MAX_ITEMS, &item_count)) {
+                                      SSH_CHATTER_RSS_MAX_ITEMS, &item_count,
+                                      SSH_CHATTER_RSS_DOWNLOAD_ATTEMPTS)) {
                 printf("[rss] failed to refresh feed '%s' (%s)\n",
                        feed_snapshot->tag, feed_snapshot->url);
                 ttak_mem_free(items);
                 continue;
             }
+            ++refresh_success_count;
 
             size_t new_item_count = 0U;
             if (item_count > 0U) {
@@ -1295,6 +1302,51 @@ static size_t host_rss_refresh_cycle(host_t *host, bool abort_on_stop)
         ttak_mem_free(feed_snapshots);
     }
 
+    if (snapshot_count > 0U) {
+        if (refresh_success_count == 0U) {
+            unsigned int failures =
+                atomic_fetch_add(&host->rss_consecutive_failures, 1U) + 1U;
+            if (host->rss_first_failure_time.tv_sec == 0) {
+                struct timespec now_ts;
+                if (clock_gettime(CLOCK_MONOTONIC, &now_ts) == 0) {
+                    host->rss_first_failure_time = now_ts;
+                } else {
+                    host->rss_first_failure_time.tv_sec = time(nullptr);
+                    host->rss_first_failure_time.tv_nsec = 0L;
+                }
+            }
+
+            struct timespec now_ts;
+            time_t elapsed = 0;
+            if (clock_gettime(CLOCK_MONOTONIC, &now_ts) == 0) {
+                elapsed = now_ts.tv_sec - host->rss_first_failure_time.tv_sec;
+            } else {
+                elapsed = time(nullptr) - host->rss_first_failure_time.tv_sec;
+            }
+
+            if (failures >= SSH_CHATTER_RSS_FAILURE_THRESHOLD &&
+                elapsed <= SSH_CHATTER_RSS_FAILURE_WINDOW_SECONDS) {
+                printf("[rss] consecutive failure threshold reached (%u in %lds), "
+                       "stopping backend\n",
+                       failures, (long)elapsed);
+                atomic_store(&host->rss_thread_stop, true);
+            } else if (elapsed > SSH_CHATTER_RSS_FAILURE_WINDOW_SECONDS) {
+                atomic_store(&host->rss_consecutive_failures, 1U);
+                struct timespec reset_ts;
+                if (clock_gettime(CLOCK_MONOTONIC, &reset_ts) == 0) {
+                    host->rss_first_failure_time = reset_ts;
+                } else {
+                    host->rss_first_failure_time.tv_sec = time(nullptr);
+                    host->rss_first_failure_time.tv_nsec = 0L;
+                }
+            }
+        } else {
+            atomic_store(&host->rss_consecutive_failures, 0U);
+            host->rss_first_failure_time.tv_sec = 0;
+            host->rss_first_failure_time.tv_nsec = 0L;
+        }
+    }
+
     struct timespec mark;
     if (clock_gettime(CLOCK_MONOTONIC, &mark) == 0) {
         host->rss_last_run = mark;
@@ -1310,74 +1362,89 @@ static size_t host_rss_refresh_cycle(host_t *host, bool abort_on_stop)
     return snapshot_count;
 }
 
-static bool host_rss_refresh_now(host_t *host)
+static bool host_rss_sync_feed(host_t *host, const char *tag)
 {
-    return host_rss_refresh_cycle(host, false) > 0U;
-}
-
-typedef struct host_rss_refresh_async_request {
-    host_t *host;
-} host_rss_refresh_async_request_t;
-
-static void *host_rss_manual_refresh_worker(void *arg)
-{
-    host_rss_refresh_async_request_t *request =
-        (host_rss_refresh_async_request_t *)arg;
-    if (request == nullptr) {
-        return nullptr;
-    }
-
-    host_t *host = request->host;
-    ttak_mem_free(request);
-    if (host == nullptr) {
-        return nullptr;
-    }
-
-    sshc_epoch_thread_enter();
-    host_rss_refresh_now(host);
-    sshc_epoch_thread_exit();
-
-    atomic_store(&host->rss_manual_refresh_running, false);
-    return nullptr;
-}
-
-static bool host_rss_schedule_manual_refresh(host_t *host)
-{
-    if (host == nullptr) {
+    if (host == nullptr || tag == nullptr || tag[0] == '\0') {
         return false;
     }
 
-    bool expected = false;
-    if (!atomic_compare_exchange_strong(&host->rss_manual_refresh_running,
-                                        &expected, true)) {
+    rss_feed_t snapshot = {0};
+    bool found = false;
+
+    ttak_mutex_lock(&host->lock);
+    rss_feed_t *entry = host_find_rss_feed_locked(host, tag);
+    if (entry != nullptr && entry->in_use) {
+        snapshot = *entry;
+        found = true;
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (!found) {
         return false;
     }
 
-    host_rss_refresh_async_request_t *request =
-        (host_rss_refresh_async_request_t *)ttak_mem_alloc(
-            sizeof(*request), __TTAK_UNSAFE_MEM_FOREVER__,
-            ttak_get_tick_count());
-    if (request == nullptr) {
-        atomic_store(&host->rss_manual_refresh_running, false);
+    rss_session_item_t *items = (rss_session_item_t *)ttak_mem_alloc(
+        sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS,
+        __TTAK_UNSAFE_MEM_FOREVER__, ttak_get_tick_count());
+    if (items == nullptr) {
         return false;
     }
-    memset(request, 0, sizeof(*request));
-    request->host = host;
+    memset(items, 0,
+           sizeof(rss_session_item_t) * SSH_CHATTER_RSS_MAX_ITEMS);
 
-    pthread_t worker;
-    int error =
-        pthread_create(&worker, nullptr, host_rss_manual_refresh_worker,
-                       request);
-    if (error != 0) {
-        printf("[rss] failed to start manual refresh worker: %s\n",
-               strerror(error));
-        ttak_mem_free(request);
-        atomic_store(&host->rss_manual_refresh_running, false);
+    size_t item_count = 0U;
+    if (!host_rss_fetch_items(&snapshot, items, SSH_CHATTER_RSS_MAX_ITEMS,
+                              &item_count, SSH_CHATTER_RSS_SYNC_ATTEMPTS)) {
+        ttak_mem_free(items);
         return false;
     }
 
-    pthread_detach(worker);
-    return true;
+    bool feed_active = false;
+    time_t now = time(nullptr);
+
+    ttak_mutex_lock(&host->lock);
+    entry = host_find_rss_feed_locked(host, tag);
+    if (entry != nullptr && entry->in_use) {
+        feed_active = true;
+        entry->last_checked = now;
+
+        for (size_t i = item_count; i > 0U; --i) {
+            host_rss_store_item_locked(entry, &items[i - 1U]);
+        }
+
+        if (item_count > 0U) {
+            const rss_session_item_t *latest = &items[0U];
+            if (latest->id[0] != '\0') {
+                snprintf(entry->last_item_key,
+                         sizeof(entry->last_item_key), "%s", latest->id);
+            } else if (latest->link[0] != '\0') {
+                snprintf(entry->last_item_key,
+                         sizeof(entry->last_item_key), "%s", latest->link);
+            } else if (latest->title[0] != '\0') {
+                snprintf(entry->last_item_key,
+                         sizeof(entry->last_item_key), "%s", latest->title);
+            }
+
+            if (latest->title[0] != '\0') {
+                snprintf(entry->last_title, sizeof(entry->last_title), "%s",
+                         latest->title);
+            } else {
+                entry->last_title[0] = '\0';
+            }
+
+            if (latest->link[0] != '\0') {
+                snprintf(entry->last_link, sizeof(entry->last_link), "%s",
+                         latest->link);
+            } else {
+                entry->last_link[0] = '\0';
+            }
+        }
+        host_rss_state_save_locked(host);
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    ttak_mem_free(items);
+    return feed_active;
 }
 
 static void *host_rss_backend(void *arg)

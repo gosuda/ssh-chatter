@@ -923,21 +923,86 @@ static bool session_acquire_cpu_slot(session_ctx_t *ctx)
     host_t *host = ctx->owner;
     for (;;) {
         bool acquired = false;
+        bool should_allocate_slots = false;
+        size_t allocate_capacity = 0U;
+
         ttak_mutex_lock(&host->lock);
-        if (host->cpu_slot_in_use < host->cpu_slot_limit) {
-            size_t slot_index = host->cpu_slot_in_use;
-            host->cpu_slot_in_use++;
-            if (slot_index < 64U) {
-                host->cpu_slot_mask |= (1ULL << slot_index);
-            }
+        if (host->cpu_slot_limit == 0U) {
             acquired = true;
-        } else {
+        } else if (host->cpu_slots_storage == nullptr &&
+                   host->cpu_slot_capacity == 0U) {
+            if (!host->cpu_slot_allocation_in_progress) {
+                host->cpu_slot_allocation_in_progress = true;
+                should_allocate_slots = true;
+                allocate_capacity = host->cpu_slot_limit;
+            }
+        } else if (host->cpu_slot_in_use < host->cpu_slot_limit &&
+                   host->cpu_slots_storage != nullptr) {
+            ttak_abstract_map_t smap;
+            if (ttak_abstract_map(host->cpu_slots_storage, 0U,
+                                  host->cpu_slot_capacity *
+                                      sizeof(cpu_feature_slot_t),
+                                  TTAK_ABSTRACT_ACCESS_WRITE, &smap) == 0) {
+                cpu_feature_slot_t *slots =
+                    (cpu_feature_slot_t *)smap.data;
+                for (size_t slot_index = 0U;
+                     slot_index < host->cpu_slot_capacity; ++slot_index) {
+                    if (slots[slot_index].in_use) {
+                        continue;
+                    }
+                    slots[slot_index].in_use = true;
+                    slots[slot_index].session = ctx;
+                    host->cpu_slot_in_use++;
+                    if (slot_index < 64U) {
+                        host->cpu_slot_mask |= (1ULL << slot_index);
+                    }
+                    acquired = true;
+                    break;
+                }
+                ttak_abstract_unmap(&smap);
+            }
+        }
+
+        if (!acquired && !should_allocate_slots) {
             host->cpu_slot_waiting++;
         }
         ttak_mutex_unlock(&host->lock);
 
         if (acquired) {
             return true;
+        }
+
+        if (should_allocate_slots) {
+            ttak_abstract_mem_t *slots_handle = nullptr;
+            if (host->resource_manager != nullptr) {
+                slots_handle = sshc_rm_scope_alloc(
+                    host->resource_manager,
+                    allocate_capacity * sizeof(cpu_feature_slot_t),
+                    "cpu_slots");
+            }
+            bool allocation_still_missing = false;
+            ttak_mutex_lock(&host->lock);
+            host->cpu_slot_allocation_in_progress = false;
+            if (host->cpu_slots_storage == nullptr &&
+                host->cpu_slot_capacity == 0U) {
+                host->cpu_slots_storage = slots_handle;
+                host->cpu_slot_capacity =
+                    (slots_handle != nullptr) ? allocate_capacity : 0U;
+                allocation_still_missing = (slots_handle == nullptr);
+                slots_handle = nullptr; /* ownership transferred */
+            }
+            ttak_mutex_unlock(&host->lock);
+            if (slots_handle != nullptr && host->resource_manager != nullptr) {
+                sshc_rm_scope_free(host->resource_manager, slots_handle);
+            }
+            if (allocation_still_missing) {
+                const struct timespec wait_time = {
+                    .tv_sec = 0,
+                    .tv_nsec = 5000000L,
+                };
+                host_sleep_uninterruptible(&wait_time);
+            }
+            continue;
         }
 
         session_send_system_line(
@@ -962,14 +1027,34 @@ static void session_release_cpu_slot(session_ctx_t *ctx)
 
     host_t *host = ctx->owner;
     ttak_mutex_lock(&host->lock);
-    if (host->cpu_slot_in_use > 0U) {
-        size_t slot_index = host->cpu_slot_in_use - 1U;
-        host->cpu_slot_in_use--;
-        if (slot_index < 64U) {
-            host->cpu_slot_mask &= ~(1ULL << slot_index);
+    if (host->cpu_slots_storage != nullptr && host->cpu_slot_capacity > 0U) {
+        ttak_abstract_map_t smap;
+        if (ttak_abstract_map(host->cpu_slots_storage, 0U,
+                              host->cpu_slot_capacity *
+                                  sizeof(cpu_feature_slot_t),
+                              TTAK_ABSTRACT_ACCESS_WRITE, &smap) == 0) {
+            cpu_feature_slot_t *slots = (cpu_feature_slot_t *)smap.data;
+            for (size_t slot_index = 0U;
+                 slot_index < host->cpu_slot_capacity; ++slot_index) {
+                if (!slots[slot_index].in_use ||
+                    slots[slot_index].session != ctx) {
+                    continue;
+                }
+                slots[slot_index].in_use = false;
+                slots[slot_index].session = nullptr;
+                if (host->cpu_slot_in_use > 0U) {
+                    host->cpu_slot_in_use--;
+                }
+                if (slot_index < 64U) {
+                    host->cpu_slot_mask &= ~(1ULL << slot_index);
+                }
+                break;
+            }
+            ttak_abstract_unmap(&smap);
         }
     }
     ttak_mutex_unlock(&host->lock);
+    host_feature_slots_reclaim_if_idle(host);
 }
 
 static void session_process_line(session_ctx_t *ctx, const char *line)
@@ -1028,53 +1113,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
         }
 
         if (normalized[0] == 't' && normalized[1] == '\0') {
-            if (ctx->game.is_camouflaged) {
-                ctx->game.is_camouflaged = false;
-                if (ctx->game.type == SESSION_GAME_TETRIS) {
-                    if (ctx->game.tetris != nullptr &&
-                        ctx->game.saved_tetris_state != nullptr) {
-                        *ctx->game.tetris = *ctx->game.saved_tetris_state;
-                    }
-                    ctx->game.tetris->gravity_timer_initialized = false;
-                    ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
-                    session_clear_screen(ctx);
-                    session_game_tetris_render(ctx);
-                } else if (ctx->game.type == SESSION_GAME_LIARGAME) {
-                    ctx->game.liar = ctx->game.saved_liar_state;
-                    session_clear_screen(ctx);
-                    session_game_liar_present_round(ctx);
-                } else if (ctx->game.type == SESSION_GAME_ALPHA) {
-                    ctx->game.alpha = ctx->game.saved_alpha_state;
-                    session_clear_screen(ctx);
-                    session_game_alpha_present_stage(ctx);
-                } else if (ctx->game.type == SESSION_GAME_OTHELLO) {
-                    ctx->game.othello = ctx->game.saved_othello_state;
-                    session_clear_screen(ctx);
-                    session_game_othello_render(ctx);
-                    session_game_othello_prepare_next_turn(ctx);
-                }
-            } else {
-                ctx->game.is_camouflaged = true;
-                if (ctx->game.type == SESSION_GAME_TETRIS) {
-                    if (ctx->game.tetris != nullptr &&
-                        ctx->game.saved_tetris_state != nullptr) {
-                        *ctx->game.saved_tetris_state = *ctx->game.tetris;
-                        ctx->game.saved_tetris_state->gravity_timer_initialized =
-                            false;
-                        ctx->game.saved_tetris_state
-                            ->gravity_timer_accumulator_ns = 0U;
-                    }
-                    ctx->game.tetris->gravity_timer_initialized = false;
-                    ctx->game.tetris->gravity_timer_accumulator_ns = 0U;
-                } else if (ctx->game.type == SESSION_GAME_LIARGAME) {
-                    ctx->game.saved_liar_state = ctx->game.liar;
-                } else if (ctx->game.type == SESSION_GAME_ALPHA) {
-                    ctx->game.saved_alpha_state = ctx->game.alpha;
-                } else if (ctx->game.type == SESSION_GAME_OTHELLO) {
-                    ctx->game.saved_othello_state = ctx->game.othello;
-                }
-                session_game_show_camouflage(ctx);
-            }
+            session_game_toggle_camouflage(ctx);
             session_release_cpu_slot(ctx);
             return;
         }

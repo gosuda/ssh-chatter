@@ -576,17 +576,23 @@ host_eliza_bbs_collect_context(host_t *host, char *context,
             }
         }
 
+        /* Body and comments live on disk now — fetch transiently. */
+        ttak_abstract_mem_t *content_handle = nullptr;
+        bbs_post_content_t *content = nullptr;
+        bool have_content = host_bbs_content_acquire(host, post->id,
+                                                     &content_handle, &content);
+
         char body_preview[SSH_CHATTER_ELIZA_BBS_PREVIEW_LEN];
-        host_eliza_prepare_preview(post->body, body_preview,
-                                   sizeof(body_preview));
+        host_eliza_prepare_preview(have_content ? content->body : "",
+                                   body_preview, sizeof(body_preview));
 
         char comment_preview[SSH_CHATTER_ELIZA_BBS_PREVIEW_LEN];
         comment_preview[0] = '\0';
         char comment_author[SSH_CHATTER_USERNAME_LEN];
         comment_author[0] = '\0';
-        if (post->comment_count > 0U) {
+        if (have_content && content->comment_count > 0U) {
             const bbs_comment_t *comment =
-                &post->comments[post->comment_count - 1U];
+                &content->comments[content->comment_count - 1U];
             host_eliza_prepare_preview(comment->text, comment_preview,
                                        sizeof(comment_preview));
             snprintf(comment_author, sizeof(comment_author), "%s",
@@ -594,6 +600,9 @@ host_eliza_bbs_collect_context(host_t *host, char *context,
                                                 : "(anonymous)");
             host_eliza_history_normalize_line(comment_author);
             trim_whitespace_inplace(comment_author);
+        }
+        if (content_handle != nullptr) {
+            host_bbs_content_release(host, content_handle);
         }
 
         char line[SSH_CHATTER_MESSAGE_LIMIT];

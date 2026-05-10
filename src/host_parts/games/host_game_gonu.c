@@ -451,7 +451,7 @@ static void session_game_gonu_render(session_ctx_t *ctx)
         return;
     }
 
-    gonu_game_state_t *state = &ctx->game.gonu;
+    gonu_game_state_t *state = ctx->game.gonu;
 
     session_send_system_line(ctx, "");
     const char *variant_name = "Gonu";
@@ -542,7 +542,7 @@ static void session_game_gonu_render(session_ctx_t *ctx)
 
 static void session_game_gonu_ai_move(session_ctx_t *ctx)
 {
-    gonu_game_state_t *state = &ctx->game.gonu;
+    gonu_game_state_t *state = ctx->game.gonu;
 
     if (state->multiplayer) {
         return; // No AI in multiplayer
@@ -744,7 +744,7 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx,
         return false;
     }
 
-    gonu_game_state_t *state = &ctx->game.gonu;
+    gonu_game_state_t *state = ctx->game.gonu;
 
     char working[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(working, sizeof(working), "%s", input);
@@ -755,16 +755,7 @@ static bool session_game_gonu_handle_input(session_ctx_t *ctx,
 
     // Handle camouflage toggle with 't' command
     if (strcmp(working, "t") == 0) {
-        if (ctx->game.is_camouflaged) {
-            ctx->game.is_camouflaged = false;
-            ctx->game.saved_gonu_state = ctx->game.gonu;
-            session_clear_screen(ctx);
-            session_game_gonu_render(ctx);
-        } else {
-            ctx->game.is_camouflaged = true;
-            ctx->game.saved_gonu_state = ctx->game.gonu;
-            session_game_show_camouflage(ctx);
-        }
+        session_game_toggle_camouflage(ctx);
         return true;
     }
 
@@ -1097,10 +1088,15 @@ static void session_game_start_gonu(session_ctx_t *ctx)
         variant = GONU_VARIANT_UMUL;
     }
 
-    session_game_gonu_reset(&ctx->game.gonu, variant);
+    gonu_game_state_t *state = session_game_ensure_gonu(ctx);
+    if (state == nullptr) {
+        session_send_system_line(ctx, "Unable to allocate Gonu state.");
+        return;
+    }
+    session_game_gonu_reset(state, variant);
     ctx->game.type = SESSION_GAME_GONU;
     ctx->game.active = true;
-    ctx->game.gonu.awaiting_mode_selection = true;
+    state->awaiting_mode_selection = true;
 
     session_send_system_line(ctx, "");
     session_send_system_line(ctx, "Choose Gonu mode: type 'single' to play "
@@ -1189,28 +1185,34 @@ static void session_game_suspend(session_ctx_t *ctx, const char *reason)
         session_send_system_line(ctx, summary);
         session_game_tetris_reset(ctx->game.tetris);
     } else if (ctx->game.type == SESSION_GAME_LIARGAME) {
+        liar_game_state_t *state = ctx->game.liar;
         char summary[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(summary, sizeof(summary),
                  "Liar Game rounds played: %u, score: %u.",
-                 ctx->game.liar.round_number, ctx->game.liar.score);
+                 state != nullptr ? state->round_number : 0U,
+                 state != nullptr ? state->score : 0U);
         session_send_system_line(ctx, summary);
-        ctx->game.liar.awaiting_guess = false;
-        ctx->game.liar.round_number = 0U;
-        ctx->game.liar.score = 0U;
+        session_game_release_liar(ctx);
+        session_game_release_saved_liar(ctx);
     } else if (ctx->game.type == SESSION_GAME_ALPHA) {
+        alpha_centauri_game_state_t *state = ctx->game.alpha;
         char summary[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(
             summary, sizeof(summary),
             "Alpha Centauri mission paused at stage %u with %.2f ly remaining.",
-            ctx->game.alpha.stage, ctx->game.alpha.distance_remaining_ly);
+            state != nullptr ? state->stage : 0U,
+            state != nullptr ? state->distance_remaining_ly : 0.0);
         session_send_system_line(ctx, summary);
         session_game_alpha_reset(ctx);
         session_game_alpha_sync_to_save(ctx);
+        session_game_release_alpha(ctx);
+        session_game_release_saved_alpha(ctx);
     } else if (ctx->game.type == SESSION_GAME_OTHELLO) {
-        unsigned red = ctx->game.othello.red_score;
-        unsigned green = ctx->game.othello.green_score;
+        othello_game_state_t *state = ctx->game.othello;
+        unsigned red = state != nullptr ? state->red_score : 0U;
+        unsigned green = state != nullptr ? state->green_score : 0U;
         if (red == 0U && green == 0U) {
-            session_game_othello_count_scores(&ctx->game.othello, &red, &green);
+            session_game_othello_count_scores(state, &red, &green);
         }
 
         const char *outcome = "It's a draw.";
@@ -1225,7 +1227,12 @@ static void session_game_suspend(session_ctx_t *ctx, const char *reason)
                  "Othello final score: Red %u vs Green %u - %s", red, green,
                  outcome);
         session_send_system_line(ctx, summary);
-        session_game_othello_reset_state(&ctx->game.othello);
+        session_game_othello_reset_state(state);
+        session_game_release_othello(ctx);
+        session_game_release_saved_othello(ctx);
+    } else if (ctx->game.type == SESSION_GAME_GONU) {
+        session_game_release_gonu(ctx);
+        session_game_release_saved_gonu(ctx);
     }
 
     ctx->game.active = false;

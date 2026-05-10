@@ -19,6 +19,33 @@ static bool host_room_has_members(host_t *host)
     return has_members;
 }
 
+void host_feature_slots_reclaim_if_idle(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    ttak_abstract_mem_t *slots_to_free = nullptr;
+
+    ttak_mutex_lock(&host->room.lock);
+    ttak_mutex_lock(&host->lock);
+    if (host->room.member_count == 0U && host->cpu_slot_in_use == 0U &&
+        host->cpu_slots_storage != nullptr) {
+        slots_to_free = host->cpu_slots_storage;
+        host->cpu_slots_storage = nullptr;
+        host->cpu_slot_capacity = 0U;
+        host->cpu_slot_mask = 0ULL;
+        host->cpu_slot_waiting = 0U;
+        host->cpu_slot_allocation_in_progress = false;
+    }
+    ttak_mutex_unlock(&host->lock);
+    ttak_mutex_unlock(&host->room.lock);
+
+    if (slots_to_free != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, slots_to_free);
+    }
+}
+
 /* Cold-cache compression for idle state unload. */
 #include <lz4.h>
 
@@ -44,6 +71,95 @@ typedef struct sshc_bbs_cold_meta {
     size_t post_capacity;
     uint64_t next_bbs_id;
 } sshc_bbs_cold_meta_t;
+
+#define SESSION_IDLE_OPTIONAL_RELEASE_SECONDS 30.0
+
+static void session_lz4_blob_discard(sshc_lz4_blob_t *blob)
+{
+    if (blob == nullptr) {
+        return;
+    }
+    if (blob->data != nullptr) {
+        sshc_gc_free(blob->data);
+    }
+    memset(blob, 0, sizeof(*blob));
+}
+
+static bool session_lz4_blob_store(sshc_lz4_blob_t *blob, const void *source,
+                                   size_t bytes, size_t element_size,
+                                   size_t element_count)
+{
+    if (blob == nullptr) {
+        return false;
+    }
+
+    session_lz4_blob_discard(blob);
+    if (source == nullptr || bytes == 0U || bytes > (size_t)INT_MAX ||
+        element_size == 0U || element_size > UINT32_MAX ||
+        element_count > UINT32_MAX) {
+        return false;
+    }
+
+    const int bound = LZ4_compressBound((int)bytes);
+    if (bound <= 0) {
+        return false;
+    }
+
+    char *compressed = (char *)sshc_gc_malloc((size_t)bound);
+    if (compressed == nullptr) {
+        return false;
+    }
+
+    const int compressed_len =
+        LZ4_compress_default((const char *)source, compressed, (int)bytes,
+                             bound);
+    if (compressed_len <= 0 || (size_t)compressed_len >= bytes) {
+        sshc_gc_free(compressed);
+        return false;
+    }
+
+    blob->data = (unsigned char *)compressed;
+    blob->compressed_size = (uint32_t)compressed_len;
+    blob->original_size = (uint32_t)bytes;
+    blob->element_size = (uint32_t)element_size;
+    blob->element_count = (uint32_t)element_count;
+    return true;
+}
+
+static void *session_lz4_blob_restore(sshc_lz4_blob_t *blob,
+                                      size_t expected_element_size,
+                                      size_t minimum_element_count,
+                                      size_t *out_element_count)
+{
+    if (out_element_count != nullptr) {
+        *out_element_count = 0U;
+    }
+    if (blob == nullptr || blob->data == nullptr || blob->compressed_size == 0U ||
+        blob->original_size == 0U || blob->element_size != expected_element_size ||
+        blob->element_count < minimum_element_count ||
+        blob->compressed_size > INT_MAX || blob->original_size > INT_MAX) {
+        return nullptr;
+    }
+
+    char *restored = (char *)sshc_gc_malloc(blob->original_size);
+    if (restored == nullptr) {
+        return nullptr;
+    }
+
+    const int restored_len = LZ4_decompress_safe(
+        (const char *)blob->data, restored, (int)blob->compressed_size,
+        (int)blob->original_size);
+    if (restored_len <= 0 || (uint32_t)restored_len != blob->original_size) {
+        sshc_gc_free(restored);
+        return nullptr;
+    }
+
+    if (out_element_count != nullptr) {
+        *out_element_count = blob->element_count;
+    }
+    session_lz4_blob_discard(blob);
+    return restored;
+}
 
 static bool host_cold_file_path(char *out, size_t out_len, const char *base_path,
                                 const char *suffix)
@@ -222,47 +338,80 @@ static void host_history_release_cache(host_t *host)
     if (host == nullptr) {
         return;
     }
-    chat_history_entry_t *buffer = nullptr;
+    chat_history_entry_t *snapshot = nullptr;
     size_t count = 0U;
-    size_t capacity = 0U;
-    size_t start_index = 0U;
     size_t history_total = 0U;
+    ttak_abstract_mem_t *storage_to_free = nullptr;
+
     ttak_mutex_lock(&host->lock);
-    buffer = host->history;
     count = host->history_count;
-    capacity = host->history_capacity;
-    start_index = host->history_start_index;
+    size_t capacity = host->history_capacity;
+    size_t start_index = host->history_start_index;
     history_total = host->history_total;
-    host->history = nullptr;
+
+    /* Take a heap snapshot of live entries while the view is mapped, then
+     * tear down the abstract storage. */
+    if (host->history != nullptr && count > 0U && capacity > 0U) {
+        snapshot = (chat_history_entry_t *)sshc_gc_calloc(
+            count, sizeof(*snapshot));
+        if (snapshot != nullptr) {
+            for (size_t idx = 0U; idx < count; ++idx) {
+                size_t ring = (start_index + idx) % capacity;
+                snapshot[idx] = host->history[ring];
+            }
+        }
+    }
+
+    host_history_view_release(host);
+    storage_to_free = host->history_storage;
+    host->history_storage = nullptr;
     host->history_capacity = 0U;
     host->history_count = 0U;
     host->history_start_index = host->history_total;
     host->history_cache_loaded = false;
     ttak_mutex_unlock(&host->lock);
 
-    if (buffer != nullptr && count > 0U && capacity > 0U) {
-        chat_history_entry_t *snapshot = (chat_history_entry_t *)sshc_gc_calloc(
-            count, sizeof(*snapshot));
-        if (snapshot != nullptr) {
-            for (size_t idx = 0U; idx < count; ++idx) {
-                size_t ring = (start_index + idx) % capacity;
-                snapshot[idx] = buffer[ring];
-            }
-            sshc_history_cold_meta_t meta = {.history_total = history_total};
-            char cold_path[PATH_MAX];
-            if (host_cold_file_path(cold_path, sizeof(cold_path),
-                                    host->state_file_path, "history")) {
-                (void)host_cold_blob_save(cold_path, snapshot,
-                                          sizeof(chat_history_entry_t), count,
-                                          &meta, sizeof(meta));
-            }
-            sshc_gc_free(snapshot);
+    if (snapshot != nullptr) {
+        sshc_history_cold_meta_t meta = {.history_total = history_total};
+        char cold_path[PATH_MAX];
+        if (host_cold_file_path(cold_path, sizeof(cold_path),
+                                host->state_file_path, "history")) {
+            (void)host_cold_blob_save(cold_path, snapshot,
+                                      sizeof(chat_history_entry_t), count,
+                                      &meta, sizeof(meta));
         }
+        sshc_gc_free(snapshot);
     }
 
-    if (buffer != nullptr) {
-        sshc_gc_free(buffer);
+    if (storage_to_free != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, storage_to_free);
     }
+}
+
+static void host_bbs_view_release(host_t *host)
+{
+    if (host == nullptr || host->bbs_posts == nullptr) {
+        return;
+    }
+    ttak_abstract_unmap(&host->bbs_posts_view);
+    host->bbs_posts = nullptr;
+}
+
+static bool host_bbs_view_refresh(host_t *host)
+{
+    if (host == nullptr || host->bbs_posts_storage == nullptr ||
+        host->bbs_post_capacity == 0U) {
+        return false;
+    }
+    if (ttak_abstract_map(host->bbs_posts_storage, 0U,
+                          host->bbs_post_capacity * sizeof(bbs_post_t),
+                          TTAK_ABSTRACT_ACCESS_WRITE,
+                          &host->bbs_posts_view) != 0) {
+        host->bbs_posts = nullptr;
+        return false;
+    }
+    host->bbs_posts = (bbs_post_t *)host->bbs_posts_view.data;
+    return host->bbs_posts != nullptr;
 }
 
 static bool host_bbs_acquire_storage(host_t *host)
@@ -273,42 +422,44 @@ static bool host_bbs_acquire_storage(host_t *host)
     if (host->bbs_posts != nullptr) {
         return true;
     }
+    if (host->resource_manager == nullptr) {
+        humanized_log_error("bbs", "resource manager unavailable",
+                            errno != 0 ? errno : ENOMEM);
+        return false;
+    }
 
-    bbs_post_t *allocated = (bbs_post_t *)sshc_gc_calloc(
-        SSH_CHATTER_BBS_MAX_POSTS, sizeof(host->bbs_posts[0]));
-    if (allocated == nullptr) {
+    size_t bytes = SSH_CHATTER_BBS_MAX_POSTS * sizeof(bbs_post_t);
+    ttak_abstract_mem_t *handle =
+        sshc_rm_scope_alloc(host->resource_manager, bytes, "bbs_posts");
+    if (handle == nullptr) {
         humanized_log_error("bbs", "failed to allocate post cache",
                             errno != 0 ? errno : ENOMEM);
         return false;
     }
 
     ttak_mutex_lock(&host->lock);
-    if (host->bbs_posts != nullptr) {
+    if (host->bbs_posts_storage != nullptr) {
         ttak_mutex_unlock(&host->lock);
-        sshc_gc_free(allocated);
+        sshc_rm_scope_free(host->resource_manager, handle);
         return true;
     }
 
-    host->bbs_posts = allocated;
+    host->bbs_posts_storage = handle;
     host->bbs_post_capacity = SSH_CHATTER_BBS_MAX_POSTS;
-    for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
-        host->bbs_posts[idx].in_use = false;
-        host->bbs_posts[idx].id = 0U;
-        host->bbs_posts[idx].author[0] = '\0';
-        host->bbs_posts[idx].title[0] = '\0';
-        host->bbs_posts[idx].body[0] = '\0';
-        host->bbs_posts[idx].tag_count = 0U;
-        host->bbs_posts[idx].created_at = 0;
-        host->bbs_posts[idx].bumped_at = 0;
-        host->bbs_posts[idx].comment_count = 0U;
-        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
-             ++comment) {
-            host->bbs_posts[idx].comments[comment].author[0] = '\0';
-            host->bbs_posts[idx].comments[comment].text[0] = '\0';
-            host->bbs_posts[idx].comments[comment].created_at = 0;
-        }
+    if (!host_bbs_view_refresh(host)) {
+        ttak_mutex_unlock(&host->lock);
+        sshc_rm_scope_free(host->resource_manager, handle);
+        host->bbs_posts_storage = nullptr;
+        host->bbs_post_capacity = 0U;
+        return false;
     }
-    host->bbs_cache_loaded = true;
+
+    /* ttak_abstract_alloc zero-initialises new logical bytes, so all the
+     * embedded char arrays start as empty strings already.  The explicit
+     * field-by-field clear from the previous implementation is no longer
+     * needed. */
+    host->bbs_post_count = 0U;
+    host->bbs_cache_loaded = false;
     ttak_mutex_unlock(&host->lock);
     return true;
 }
@@ -318,22 +469,37 @@ static void host_bbs_release_cache(host_t *host)
     if (host == nullptr) {
         return;
     }
-    bbs_post_t *posts = nullptr;
+    bbs_post_t *snapshot = nullptr;
     size_t post_count = 0U;
     size_t post_capacity = 0U;
     uint64_t next_bbs_id = 0U;
+    ttak_abstract_mem_t *storage_to_free = nullptr;
+
     ttak_mutex_lock(&host->lock);
-    posts = host->bbs_posts;
     post_count = host->bbs_post_count;
     post_capacity = host->bbs_post_capacity;
     next_bbs_id = host->next_bbs_id;
-    host->bbs_posts = nullptr;
+
+    /* Snapshot the slot table to a heap copy while the view is mapped so
+     * we can save it to disk without holding the host lock for I/O. */
+    if (host->bbs_posts != nullptr && post_capacity > 0U) {
+        snapshot = (bbs_post_t *)sshc_gc_calloc(post_capacity,
+                                                sizeof(bbs_post_t));
+        if (snapshot != nullptr) {
+            memcpy(snapshot, host->bbs_posts,
+                   post_capacity * sizeof(bbs_post_t));
+        }
+    }
+
+    host_bbs_view_release(host);
+    storage_to_free = host->bbs_posts_storage;
+    host->bbs_posts_storage = nullptr;
     host->bbs_post_capacity = 0U;
     host->bbs_post_count = 0U;
     host->bbs_cache_loaded = false;
     ttak_mutex_unlock(&host->lock);
 
-    if (posts != nullptr && post_capacity > 0U) {
+    if (snapshot != nullptr && post_capacity > 0U) {
         sshc_bbs_cold_meta_t meta = {
             .post_count = post_count,
             .post_capacity = post_capacity,
@@ -342,17 +508,18 @@ static void host_bbs_release_cache(host_t *host)
         char cold_path[PATH_MAX];
         if (host_cold_file_path(cold_path, sizeof(cold_path),
                                 host->bbs_state_file_path, "bbs")) {
-            (void)host_cold_blob_save(cold_path, posts, sizeof(bbs_post_t),
+            (void)host_cold_blob_save(cold_path, snapshot, sizeof(bbs_post_t),
                                       post_capacity, &meta, sizeof(meta));
         }
+        sshc_gc_free(snapshot);
     }
 
-    if (posts != nullptr) {
-        sshc_gc_free(posts);
+    if (storage_to_free != nullptr && host->resource_manager != nullptr) {
+        sshc_rm_scope_free(host->resource_manager, storage_to_free);
     }
 }
 
-static void host_reload_cached_state(host_t *host)
+static __attribute__((unused)) void host_reload_cached_state(host_t *host)
 {
     if (host == nullptr) {
         return;
@@ -371,21 +538,32 @@ static void host_reload_cached_state(host_t *host)
                     &entry_count, &meta);
             if (restored_entries != nullptr && entry_count > 0U) {
                 ttak_mutex_lock(&host->lock);
-                if (host->history == nullptr) {
-                    host->history = restored_entries;
-                    host->history_capacity = entry_count;
-                    host->history_count = entry_count;
-                    host->history_start_index = 0U;
-                    if (meta.history_total >= entry_count) {
-                        host->history_total = meta.history_total;
+                if (host->history_storage == nullptr &&
+                    host->resource_manager != nullptr) {
+                    size_t bytes = entry_count * sizeof(chat_history_entry_t);
+                    host->history_storage = sshc_rm_scope_alloc(
+                        host->resource_manager, bytes, "history");
+                    if (host->history_storage != nullptr) {
+                        host->history_capacity = entry_count;
+                        if (host_history_view_refresh(host)) {
+                            memcpy(host->history, restored_entries, bytes);
+                            host->history_count = entry_count;
+                            host->history_start_index = 0U;
+                            if (meta.history_total >= entry_count) {
+                                host->history_total = meta.history_total;
+                            }
+                            host->history_cache_loaded = true;
+                            restored = true;
+                        } else {
+                            sshc_rm_scope_free(host->resource_manager,
+                                               host->history_storage);
+                            host->history_storage = nullptr;
+                            host->history_capacity = 0U;
+                        }
                     }
-                    host->history_cache_loaded = true;
-                    restored = true;
                 }
                 ttak_mutex_unlock(&host->lock);
-                if (!restored) {
-                    sshc_gc_free(restored_entries);
-                }
+                sshc_gc_free(restored_entries);
             }
         }
 
@@ -407,24 +585,34 @@ static void host_reload_cached_state(host_t *host)
                 cold_path, sizeof(bbs_post_t), sizeof(meta), &slot_count, &meta);
             if (restored_posts != nullptr && slot_count > 0U) {
                 ttak_mutex_lock(&host->lock);
-                if (host->bbs_posts == nullptr) {
-                    host->bbs_posts = restored_posts;
-                    host->bbs_post_capacity = slot_count;
-                    host->bbs_post_count = meta.post_count;
-                    host->next_bbs_id = meta.next_bbs_id;
-                    host->bbs_cache_loaded = true;
-                    restored = true;
+                if (host->bbs_posts_storage == nullptr &&
+                    host->resource_manager != nullptr) {
+                    size_t bytes = slot_count * sizeof(bbs_post_t);
+                    host->bbs_posts_storage = sshc_rm_scope_alloc(
+                        host->resource_manager, bytes, "bbs_posts");
+                    if (host->bbs_posts_storage != nullptr) {
+                        host->bbs_post_capacity = slot_count;
+                        if (host_bbs_view_refresh(host)) {
+                            memcpy(host->bbs_posts, restored_posts, bytes);
+                            host->bbs_post_count = meta.post_count;
+                            host->next_bbs_id = meta.next_bbs_id;
+                            host->bbs_cache_loaded = true;
+                            restored = true;
+                        } else {
+                            sshc_rm_scope_free(host->resource_manager,
+                                               host->bbs_posts_storage);
+                            host->bbs_posts_storage = nullptr;
+                            host->bbs_post_capacity = 0U;
+                        }
+                    }
                 }
                 ttak_mutex_unlock(&host->lock);
-                if (!restored) {
-                    sshc_gc_free(restored_posts);
-                }
+                sshc_gc_free(restored_posts);
             }
         }
 
         if (!restored && host_bbs_acquire_storage(host)) {
             host_bbs_state_load(host);
-            host->bbs_cache_loaded = host_bbs_storage_ready(host);
         }
     }
 }
@@ -472,6 +660,7 @@ static void host_idle_state_maintenance(host_t *host,
 unload_idle_state:
     host_history_release_cache(host);
     host_bbs_release_cache(host);
+    host_feature_slots_reclaim_if_idle(host);
     host_manual_gc_tick(host);
 #if defined(__GLIBC__)
     (void)malloc_trim(0);
@@ -485,7 +674,7 @@ static void host_ai_chat_consider_reply(host_t *host,
 static bool host_ai_member_is_enabled(host_t *host);
 static void host_ai_member_set_enabled(host_t *host, bool enabled);
 static void host_ai_chat_snapshot_state(host_t *host, char *model,
-                                        size_t model_len,
+                                        size_t model_len, bool *use_gemini,
                                         struct timespec *last_reply);
 static const char *host_ai_chat_default_model(void);
 
@@ -504,12 +693,22 @@ bool session_bbs_workspace_acquire(session_ctx_t *ctx)
             SSH_CHATTER_BBS_MAX_TAGS, sizeof(*ctx->pending_bbs_tags));
     }
     if (ctx->pending_bbs_body == nullptr) {
-        ctx->pending_bbs_body =
-            (char *)sshc_gc_calloc(SSH_CHATTER_BBS_BODY_LEN, sizeof(char));
+        ctx->pending_bbs_body = (char *)session_lz4_blob_restore(
+            &ctx->pending_bbs_body_cache, sizeof(char),
+            SSH_CHATTER_BBS_BODY_LEN, nullptr);
+        if (ctx->pending_bbs_body == nullptr) {
+            ctx->pending_bbs_body =
+                (char *)sshc_gc_calloc(SSH_CHATTER_BBS_BODY_LEN, sizeof(char));
+        }
     }
     if (ctx->bbs_editor_clipboard == nullptr) {
-        ctx->bbs_editor_clipboard =
-            (char *)sshc_gc_calloc(SSH_CHATTER_BBS_BODY_LEN, sizeof(char));
+        ctx->bbs_editor_clipboard = (char *)session_lz4_blob_restore(
+            &ctx->bbs_editor_clipboard_cache, sizeof(char),
+            SSH_CHATTER_BBS_BODY_LEN, nullptr);
+        if (ctx->bbs_editor_clipboard == nullptr) {
+            ctx->bbs_editor_clipboard =
+                (char *)sshc_gc_calloc(SSH_CHATTER_BBS_BODY_LEN, sizeof(char));
+        }
     }
 
     bool ok = ctx->pending_bbs_title != nullptr &&
@@ -533,7 +732,23 @@ void session_bbs_workspace_release(session_ctx_t *ctx)
 
     session_safe_free((void **)&ctx->pending_bbs_title);
     session_safe_free((void **)&ctx->pending_bbs_tags);
+    if (ctx->pending_bbs_body != nullptr) {
+        (void)session_lz4_blob_store(&ctx->pending_bbs_body_cache,
+                                     ctx->pending_bbs_body,
+                                     SSH_CHATTER_BBS_BODY_LEN, sizeof(char),
+                                     SSH_CHATTER_BBS_BODY_LEN);
+    } else {
+        session_lz4_blob_discard(&ctx->pending_bbs_body_cache);
+    }
     session_safe_free((void **)&ctx->pending_bbs_body);
+    if (ctx->bbs_editor_clipboard != nullptr) {
+        (void)session_lz4_blob_store(&ctx->bbs_editor_clipboard_cache,
+                                     ctx->bbs_editor_clipboard,
+                                     SSH_CHATTER_BBS_BODY_LEN, sizeof(char),
+                                     SSH_CHATTER_BBS_BODY_LEN);
+    } else {
+        session_lz4_blob_discard(&ctx->bbs_editor_clipboard_cache);
+    }
     session_safe_free((void **)&ctx->bbs_editor_clipboard);
 }
 
@@ -563,8 +778,13 @@ bool session_asciiart_buffer_acquire(session_ctx_t *ctx)
         return false;
     }
     if (ctx->asciiart_buffer == nullptr) {
-        ctx->asciiart_buffer = (char *)sshc_gc_calloc(
-            SSH_CHATTER_ASCIIART_BUFFER_LEN, sizeof(char));
+        ctx->asciiart_buffer = (char *)session_lz4_blob_restore(
+            &ctx->asciiart_buffer_cache, sizeof(char),
+            SSH_CHATTER_ASCIIART_BUFFER_LEN, nullptr);
+        if (ctx->asciiart_buffer == nullptr) {
+            ctx->asciiart_buffer = (char *)sshc_gc_calloc(
+                SSH_CHATTER_ASCIIART_BUFFER_LEN, sizeof(char));
+        }
     }
     return ctx->asciiart_buffer != nullptr;
 }
@@ -574,7 +794,169 @@ void session_asciiart_buffer_release(session_ctx_t *ctx)
     if (ctx == nullptr) {
         return;
     }
+    if (ctx->asciiart_buffer != nullptr) {
+        (void)session_lz4_blob_store(&ctx->asciiart_buffer_cache,
+                                     ctx->asciiart_buffer,
+                                     SSH_CHATTER_ASCIIART_BUFFER_LEN,
+                                     sizeof(char),
+                                     SSH_CHATTER_ASCIIART_BUFFER_LEN);
+    } else {
+        session_lz4_blob_discard(&ctx->asciiart_buffer_cache);
+    }
     session_safe_free((void **)&ctx->asciiart_buffer);
+}
+
+void session_compressed_buffers_discard(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    session_lz4_blob_discard(&ctx->pending_bbs_body_cache);
+    session_lz4_blob_discard(&ctx->bbs_editor_clipboard_cache);
+    session_lz4_blob_discard(&ctx->asciiart_buffer_cache);
+    session_lz4_blob_discard(&ctx->scrollback_buffer_cache);
+}
+
+chat_history_entry_t *session_scrollback_buffer_acquire(session_ctx_t *ctx,
+                                                        size_t minimum_capacity,
+                                                        size_t *out_capacity)
+{
+    if (ctx == nullptr) {
+        if (out_capacity != nullptr) {
+            *out_capacity = 0U;
+        }
+        return nullptr;
+    }
+
+    size_t target = minimum_capacity > 0U ? minimum_capacity : 1U;
+
+    if (ctx->scrollback_buffer != nullptr &&
+        ctx->scrollback_buffer_capacity >= target) {
+        if (out_capacity != nullptr) {
+            *out_capacity = ctx->scrollback_buffer_capacity;
+        }
+        return ctx->scrollback_buffer;
+    }
+
+    if (ctx->scrollback_buffer == nullptr &&
+        ctx->scrollback_buffer_cache.data != nullptr) {
+        size_t restored_capacity = 0U;
+        chat_history_entry_t *restored =
+            (chat_history_entry_t *)session_lz4_blob_restore(
+                &ctx->scrollback_buffer_cache, sizeof(chat_history_entry_t),
+                target, &restored_capacity);
+        if (restored != nullptr) {
+            ctx->scrollback_buffer = restored;
+            ctx->scrollback_buffer_capacity = restored_capacity;
+            if (out_capacity != nullptr) {
+                *out_capacity = restored_capacity;
+            }
+            return restored;
+        }
+        if (ctx->scrollback_buffer_cache.data != nullptr &&
+            ctx->scrollback_buffer_cache.element_count < target) {
+            session_lz4_blob_discard(&ctx->scrollback_buffer_cache);
+        }
+    }
+
+    chat_history_entry_t *fresh = (chat_history_entry_t *)sshc_gc_calloc(
+        target, sizeof(chat_history_entry_t));
+    if (fresh == nullptr) {
+        if (out_capacity != nullptr) {
+            *out_capacity = 0U;
+        }
+        return nullptr;
+    }
+
+    if (ctx->scrollback_buffer != nullptr) {
+        sshc_gc_free(ctx->scrollback_buffer);
+    }
+    ctx->scrollback_buffer = fresh;
+    ctx->scrollback_buffer_capacity = target;
+    if (out_capacity != nullptr) {
+        *out_capacity = target;
+    }
+    return ctx->scrollback_buffer;
+}
+
+void session_scrollback_buffer_release(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (ctx->scrollback_buffer != nullptr && ctx->scrollback_buffer_capacity > 0U) {
+        const size_t bytes =
+            ctx->scrollback_buffer_capacity * sizeof(*ctx->scrollback_buffer);
+        (void)session_lz4_blob_store(&ctx->scrollback_buffer_cache,
+                                     ctx->scrollback_buffer, bytes,
+                                     sizeof(*ctx->scrollback_buffer),
+                                     ctx->scrollback_buffer_capacity);
+    } else {
+        session_lz4_blob_discard(&ctx->scrollback_buffer_cache);
+    }
+
+    session_safe_free((void **)&ctx->scrollback_buffer);
+    ctx->scrollback_buffer_capacity = 0U;
+}
+
+bool session_release_optional_buffers_if_idle(session_ctx_t *ctx,
+                                              const struct timespec *now)
+{
+    if (ctx == nullptr || now == nullptr || ctx->memory_context == nullptr) {
+        return false;
+    }
+
+    if (ctx->lifetime_has_activity &&
+        session_timespec_elapsed_seconds(now, &ctx->lifetime_last_activity) <
+            SESSION_IDLE_OPTIONAL_RELEASE_SECONDS) {
+        return false;
+    }
+
+    bool released = false;
+
+    if (!ctx->asciiart_pending && ctx->asciiart_buffer != nullptr) {
+        session_asciiart_buffer_release(ctx);
+        released = true;
+    }
+
+    if (!ctx->bbs_post_pending && !ctx->bbs_view_active) {
+        if (ctx->bbs_view_notice != nullptr) {
+            session_bbs_view_notice_release(ctx);
+            released = true;
+        }
+    }
+
+    if (!ctx->game.active || ctx->game.type != SESSION_GAME_TETRIS) {
+        if (ctx->tetris_screen_buffer != nullptr ||
+            ctx->tetris_prev_screen_buffer != nullptr) {
+            session_tetris_buffers_release(ctx);
+            released = true;
+        }
+    }
+
+    if (ctx->history_scroll_position == 0U &&
+        ctx->scrollback_buffer != nullptr) {
+        session_scrollback_buffer_release(ctx);
+        released = true;
+    }
+
+    if (!ctx->in_rss_mode && ctx->rss_view.items != nullptr) {
+        ttak_mem_free(ctx->rss_view.items);
+        ctx->rss_view.items = nullptr;
+        ctx->rss_view.active = false;
+        ctx->rss_view.tag[0] = '\0';
+        ctx->rss_view.item_count = 0U;
+        ctx->rss_view.cursor = 0U;
+        released = true;
+    }
+
+    if (released) {
+        sshc_memory_context_collect(ctx->memory_context, 2U);
+    }
+
+    return released;
 }
 
 bool session_tetris_buffers_acquire(session_ctx_t *ctx)
@@ -646,4 +1028,178 @@ void session_game_release_saved_tetris(session_ctx_t *ctx)
         return;
     }
     session_safe_free((void **)&ctx->game.saved_tetris_state);
+}
+
+liar_game_state_t *session_game_ensure_liar(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.liar == nullptr) {
+        ctx->game.liar =
+            (liar_game_state_t *)sshc_gc_calloc(1U, sizeof(*ctx->game.liar));
+    }
+    return ctx->game.liar;
+}
+
+liar_game_state_t *session_game_ensure_saved_liar(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.saved_liar_state == nullptr) {
+        ctx->game.saved_liar_state = (liar_game_state_t *)sshc_gc_calloc(
+            1U, sizeof(*ctx->game.saved_liar_state));
+    }
+    return ctx->game.saved_liar_state;
+}
+
+void session_game_release_liar(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.liar);
+}
+
+void session_game_release_saved_liar(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.saved_liar_state);
+}
+
+alpha_centauri_game_state_t *session_game_ensure_alpha(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.alpha == nullptr) {
+        ctx->game.alpha = (alpha_centauri_game_state_t *)sshc_gc_calloc(
+            1U, sizeof(*ctx->game.alpha));
+    }
+    return ctx->game.alpha;
+}
+
+alpha_centauri_game_state_t *session_game_ensure_saved_alpha(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.saved_alpha_state == nullptr) {
+        ctx->game.saved_alpha_state =
+            (alpha_centauri_game_state_t *)sshc_gc_calloc(
+                1U, sizeof(*ctx->game.saved_alpha_state));
+    }
+    return ctx->game.saved_alpha_state;
+}
+
+void session_game_release_alpha(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.alpha);
+}
+
+void session_game_release_saved_alpha(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.saved_alpha_state);
+}
+
+othello_game_state_t *session_game_ensure_othello(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.othello == nullptr) {
+        ctx->game.othello = (othello_game_state_t *)sshc_gc_calloc(
+            1U, sizeof(*ctx->game.othello));
+        if (ctx->game.othello != nullptr) {
+            ctx->game.othello->slot_index = -1;
+        }
+    }
+    return ctx->game.othello;
+}
+
+othello_game_state_t *session_game_ensure_saved_othello(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.saved_othello_state == nullptr) {
+        ctx->game.saved_othello_state =
+            (othello_game_state_t *)sshc_gc_calloc(
+                1U, sizeof(*ctx->game.saved_othello_state));
+        if (ctx->game.saved_othello_state != nullptr) {
+            ctx->game.saved_othello_state->slot_index = -1;
+        }
+    }
+    return ctx->game.saved_othello_state;
+}
+
+void session_game_release_othello(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.othello);
+}
+
+void session_game_release_saved_othello(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.saved_othello_state);
+}
+
+gonu_game_state_t *session_game_ensure_gonu(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.gonu == nullptr) {
+        ctx->game.gonu =
+            (gonu_game_state_t *)sshc_gc_calloc(1U, sizeof(*ctx->game.gonu));
+        if (ctx->game.gonu != nullptr) {
+            ctx->game.gonu->slot_index = -1;
+        }
+    }
+    return ctx->game.gonu;
+}
+
+gonu_game_state_t *session_game_ensure_saved_gonu(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return nullptr;
+    }
+    if (ctx->game.saved_gonu_state == nullptr) {
+        ctx->game.saved_gonu_state = (gonu_game_state_t *)sshc_gc_calloc(
+            1U, sizeof(*ctx->game.saved_gonu_state));
+        if (ctx->game.saved_gonu_state != nullptr) {
+            ctx->game.saved_gonu_state->slot_index = -1;
+        }
+    }
+    return ctx->game.saved_gonu_state;
+}
+
+void session_game_release_gonu(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.gonu);
+}
+
+void session_game_release_saved_gonu(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    session_safe_free((void **)&ctx->game.saved_gonu_state);
 }

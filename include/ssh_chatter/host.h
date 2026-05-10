@@ -14,6 +14,7 @@
 #include <sys/types.h>
 
 #include "memory_manager.h"
+#include "resource_manager.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -22,6 +23,7 @@
 #include <libssh/libssh.h>
 #include <libssh/server.h>
 #include <libssh/callbacks.h>
+#include <ttak/container/pool.h>
 
 #include "theme.h"
 #include "security_layer.h"
@@ -46,9 +48,13 @@
 #define SSH_CHATTER_MAX_BANS 16384
 #define SSH_CHATTER_HISTORY_LIMIT 64
 #define SSH_CHATTER_HISTORY_CACHE_LIMIT 256
+#define SSH_CHATTER_DOOR_GAME_LIMIT 16
+#define SSH_CHATTER_DOOR_GAME_NAME_LEN 32
+#define SSH_CHATTER_DOOR_GAME_DESC_LEN 128
 #define SSH_CHATTER_INPUT_HISTORY_LIMIT 32
 #define SSH_CHATTER_SCROLLBACK_CHUNK 30
 #define SSH_CHATTER_SCROLLBACK_MAX_CHUNK 64
+#define SSH_CHATTER_TOPOLOGY_LEN 256
 #define MSG_SHOULDSINK 0x1U
 #define SSH_CHATTER_MAX_PREFERENCES 1024
 #define SSH_CHATTER_ATTACHMENT_TARGET_LEN 256
@@ -74,7 +80,7 @@
 #define SSH_CHATTER_RSS_ITEM_KEY_LEN 1024
 #define SSH_CHATTER_RSS_TITLE_LEN 512
 #define SSH_CHATTER_RSS_LINK_LEN 1024
-#define SSH_CHATTER_RSS_SUMMARY_LEN 65536
+#define SSH_CHATTER_RSS_SUMMARY_LEN 4096
 #define SSH_CHATTER_RSS_DOWNLOAD_MAX_BYTES (4U * 1024U * 1024U)
 #define SSH_CHATTER_RSS_MAX_ITEMS 32
 #define SSH_CHATTER_MAX_GRANTS 128
@@ -96,6 +102,8 @@
 #define SSH_CHATTER_ASCIIART_MAX_LINES 700
 #define SSH_CHATTER_ASCIIART_BUFFER_LEN SSH_CHATTER_BBS_BODY_LEN
 #define SSH_CHATTER_ASCIIART_COOLDOWN_SECONDS 600
+#define SSH_CHATTER_WALL_WIDTH 80
+#define SSH_CHATTER_WALL_HEIGHT 24
 #define SSH_CHATTER_ELIZA_MEMORY_MAX 128
 #define SSH_CHATTER_AI_MEMORY_MAX 64
 #define SSH_CHATTER_TETRIS_WIDTH 15
@@ -120,6 +128,7 @@
 #define SSH_CHATTER_OTHELLO_MAX_WAIT_QUEUE SSH_CHATTER_OTHELLO_MAX_SLOTS
 #define SSH_CHATTER_GONU_MAX_SLOTS 1024
 #define SSH_CHATTER_OUTPUT_BUFFER_SIZE 32768
+#define SSH_CHATTER_MAX_NICKNAME_CLAIMS 1024
 
 #include "user_data.h"
 
@@ -237,6 +246,7 @@ typedef struct chat_history_entry {
     char username[SSH_CHATTER_USERNAME_LEN];
     char raw_username[SSH_CHATTER_USERNAME_LEN];
     char user_ip[SSH_CHATTER_IP_LEN];
+    char user_topology[SSH_CHATTER_TOPOLOGY_LEN];
     char user_color_code[SSH_CHATTER_COLOR_CODE_LEN];
     char user_highlight_code[SSH_CHATTER_COLOR_CODE_LEN];
     bool user_is_bold;
@@ -281,6 +291,13 @@ typedef struct ai_chat_memory_entry {
     char prompt[SSH_CHATTER_MESSAGE_LIMIT];
     char reply[SSH_CHATTER_MESSAGE_LIMIT];
 } ai_chat_memory_entry_t;
+
+typedef struct door_game_entry {
+    bool in_use;
+    char name[SSH_CHATTER_DOOR_GAME_NAME_LEN];
+    char dosbox_conf[PATH_MAX];
+    char description[SSH_CHATTER_DOOR_GAME_DESC_LEN];
+} door_game_entry_t;
 
 typedef enum version_pattern_match {
     VERSION_PATTERN_MATCH_ANY = 0,
@@ -491,15 +508,15 @@ typedef struct session_game_state {
     tetris_game_state_t *tetris;
     bool is_camouflaged;
     tetris_game_state_t *saved_tetris_state;
-    liar_game_state_t saved_liar_state;
-    alpha_centauri_game_state_t saved_alpha_state;
-    othello_game_state_t saved_othello_state;
-    gonu_game_state_t saved_gonu_state;
+    liar_game_state_t *saved_liar_state;
+    alpha_centauri_game_state_t *saved_alpha_state;
+    othello_game_state_t *saved_othello_state;
+    gonu_game_state_t *saved_gonu_state;
     char chosen_camouflage_language[SSH_CHATTER_CAMOUFLAGE_LANGUAGE_LEN];
-    liar_game_state_t liar;
-    alpha_centauri_game_state_t alpha;
-    othello_game_state_t othello;
-    gonu_game_state_t gonu;
+    liar_game_state_t *liar;
+    alpha_centauri_game_state_t *alpha;
+    othello_game_state_t *othello;
+    gonu_game_state_t *gonu;
     uint64_t rng_state;
     bool rng_seeded;
     unsigned tetris_render_count;
@@ -533,6 +550,11 @@ typedef struct gonu_multiplayer_slot {
     gonu_game_state_t state;
     struct session_ctx *players[2];
 } gonu_multiplayer_slot_t;
+
+typedef struct cpu_feature_slot {
+    bool in_use;
+    struct session_ctx *session;
+} cpu_feature_slot_t;
 
 typedef enum session_transport_kind {
     SESSION_TRANSPORT_SSH = 0,
@@ -574,6 +596,12 @@ typedef struct rss_session_item {
     char link[SSH_CHATTER_RSS_LINK_LEN];
     char summary[SSH_CHATTER_RSS_SUMMARY_LEN];
 } rss_session_item_t;
+
+typedef struct ascii_pixel {
+    char ch;
+    char color_name[SSH_CHATTER_COLOR_NAME_LEN];
+    int64_t updated_at_ns;
+} ascii_pixel_t;
 
 typedef struct rss_feed {
     bool in_use;
@@ -620,11 +648,29 @@ typedef struct session_runtime_data {
     struct session_ctx *ctx;
 } session_runtime_data_t;
 
+typedef struct nickname_claim {
+    char nickname[SSH_CHATTER_USERNAME_LEN];
+    char owner_ip[SSH_CHATTER_IP_LEN];
+    uint8_t password_salt[SECURITY_LAYER_SALT_LEN];
+    uint8_t password_hash[SECURITY_LAYER_HASH_LEN];
+    uint64_t owner_session_id;
+    bool ip_wide;
+    bool fixnick;
+} nickname_claim_t;
+
 typedef enum session_newline_mode {
     SESSION_NEWLINE_MODE_AUTO = 0,
     SESSION_NEWLINE_MODE_LF,
     SESSION_NEWLINE_MODE_CRLF,
 } session_newline_mode_t;
+
+typedef struct sshc_lz4_blob {
+    unsigned char *data;
+    uint32_t compressed_size;
+    uint32_t original_size;
+    uint32_t element_size;
+    uint32_t element_count;
+} sshc_lz4_blob_t;
 
 typedef struct session_ctx {
     uint64_t session_id;
@@ -708,6 +754,7 @@ typedef struct session_ctx {
     char (*pending_bbs_tags)[SSH_CHATTER_BBS_TAG_LEN];
     size_t pending_bbs_tag_count;
     char *pending_bbs_body;
+    sshc_lz4_blob_t pending_bbs_body_cache;
     size_t pending_bbs_body_length;
     size_t pending_bbs_line_count;
     size_t pending_bbs_cursor_line;
@@ -718,6 +765,7 @@ typedef struct session_ctx {
     size_t bbs_editor_selection_end;
     bool bbs_editor_selection_end_set;
     char *bbs_editor_clipboard;
+    sshc_lz4_blob_t bbs_editor_clipboard_cache;
     size_t bbs_editor_clipboard_length;
     size_t bbs_editor_clipboard_lines;
     bool bbs_line_edit_mode;
@@ -778,6 +826,7 @@ typedef struct session_ctx {
     bool asciiart_pending;
     session_asciiart_target_t asciiart_target;
     char *asciiart_buffer;
+    sshc_lz4_blob_t asciiart_buffer_cache;
     size_t asciiart_length;
     size_t asciiart_line_count;
     bool asciiart_has_cooldown;
@@ -792,6 +841,12 @@ typedef struct session_ctx {
     bool user_data_loaded;
     user_data_record_t user_data;
     bool password_not_set; // Flag to indicate if user needs to set a password
+    bool wall_active;
+    bool wall_command_mode;
+    uint8_t wall_cursor_x;
+    uint8_t wall_cursor_y;
+    char wall_brush_char;
+    char wall_brush_color_name[SSH_CHATTER_COLOR_NAME_LEN];
     char *tetris_screen_buffer;
     char *tetris_prev_screen_buffer;
     const session_ops_t *ops;
@@ -799,6 +854,7 @@ typedef struct session_ctx {
     bool history_latest_notified;
     size_t scrollback_rendered_lines;
     chat_history_entry_t *scrollback_buffer;
+    sshc_lz4_blob_t scrollback_buffer_cache;
     size_t scrollback_buffer_capacity;
     bool
         no_update; // Flag to prevent automatic message updates when scrolling history
@@ -830,6 +886,10 @@ typedef struct session_ctx {
     struct timespec lifetime_decay_reference;
     bool lifetime_has_activity;
     bool lifetime_decay_active;
+    /* Consecutive zero-read count to detect stale connections */
+    unsigned int zero_read_streak;
+    /* Track SFTP handles for cleanup on abnormal disconnect */
+    struct sftp_handle_data *sftp_handles;
 } session_ctx_t;
 
 typedef struct user_preference {
@@ -906,22 +966,37 @@ typedef struct bbs_comment {
     time_t created_at;
 } bbs_comment_t;
 
+/* In-memory BBS post header.  Title and metadata stay resident, but the
+ * heavy body (40 KiB) and comments table (~36 KiB) are NOT cached.  Use
+ * host_bbs_content_acquire() / _release() to load them transiently from
+ * the .dat file via the host resource manager when /bbs read needs them. */
 typedef struct bbs_post {
     bool in_use;
     uint64_t id;
     char author[SSH_CHATTER_USERNAME_LEN];
     char title[SSH_CHATTER_BBS_TITLE_LEN];
-    char body[SSH_CHATTER_BBS_BODY_LEN];
     char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
     size_t tag_count;
     time_t created_at;
     time_t bumped_at;
+    size_t comment_count; /* count only — comments live on disk */
+} bbs_post_t;
+
+/* Transient body + comments record.  Allocated on demand via the host RM
+ * (ttak abstract backing) and freed immediately after rendering or
+ * persisting. */
+typedef struct bbs_post_content {
+    char body[SSH_CHATTER_BBS_BODY_LEN];
     bbs_comment_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
     size_t comment_count;
-} bbs_post_t;
+} bbs_post_content_t;
 
 typedef struct host {
     sshc_memory_context_t *memory_context;
+    /* Lazy-allocates and immediately frees large dynamic blocks (door
+     * registry, BBS body loads, etc.) on top of libttak's pointer-stable
+     * abstract allocator.  See include/ssh_chatter/resource_manager.h. */
+    sshc_resource_manager_t *resource_manager;
     chat_room_t room;
     struct timespec last_room_empty_time;
     bool idle_state_pending;
@@ -974,7 +1049,16 @@ typedef struct host {
     bool welcome_banner_loaded;
     bool translation_quota_exhausted;
     size_t connection_count;
-    chat_history_entry_t *history;
+    /* Chat history ring buffer.
+     * `history_storage` owns a ttak abstract handle that is kept WRITE-mapped
+     * during normal use so callers can index `history[i]` directly.  Resizes
+     * (grow/shrink) must unmap, resize, then re-map and refresh the view
+     * pointer.  Use the host_history_view_release/refresh helpers — callers
+     * should never call ttak_abstract_resize on the storage directly while
+     * the view map is live. */
+    ttak_abstract_mem_t *history_storage;
+    ttak_abstract_map_t history_view;
+    chat_history_entry_t *history; /* alias of history_view.data */
     size_t history_count;
     size_t history_capacity;
     size_t history_start_index;
@@ -991,6 +1075,7 @@ typedef struct host {
     ttak_mutex_t lock;
     char state_file_path[PATH_MAX];
     char sync_state_file_path[PATH_MAX];
+    char wall_state_file_path[PATH_MAX];
     char bbs_state_file_path[PATH_MAX];
     char vote_state_file_path[PATH_MAX];
     char ban_state_file_path[PATH_MAX];
@@ -1019,11 +1104,17 @@ typedef struct host {
     poll_state_t poll;
     named_poll_state_t named_polls[SSH_CHATTER_MAX_NAMED_POLLS];
     size_t named_poll_count;
+    /* BBS post cache.  bbs_posts_storage owns the abstract handle; bbs_posts
+     * is a perma-WRITE-mapped view refreshed on alloc/release.  Same
+     * lifecycle rules as history_storage above. */
+    ttak_abstract_mem_t *bbs_posts_storage;
+    ttak_abstract_map_t bbs_posts_view;
     bbs_post_t *bbs_posts;
     size_t bbs_post_count;
     size_t bbs_post_capacity;
     uint64_t next_bbs_id;
     bool bbs_cache_loaded;
+    ascii_pixel_t wall[SSH_CHATTER_WALL_HEIGHT][SSH_CHATTER_WALL_WIDTH];
     rss_feed_t rss_feeds[SSH_CHATTER_RSS_MAX_FEEDS];
     size_t rss_feed_count;
     uint8_t rss_current_window_id;
@@ -1033,6 +1124,12 @@ typedef struct host {
     size_t cpu_slot_in_use;
     size_t cpu_slot_waiting;
     uint64_t cpu_slot_mask;
+    /* CPU feature slot pool, ttak abstract backed via the host RM.
+     * Allocated once on first acquire when cpu_slot_limit > 0, freed when
+     * the room is empty or at host shutdown. */
+    ttak_abstract_mem_t *cpu_slots_storage;
+    size_t cpu_slot_capacity;
+    bool cpu_slot_allocation_in_progress;
     size_t othello_slot_side_n;
     size_t othello_slot_limit;
     uint64_t othello_slot_mask;
@@ -1056,10 +1153,29 @@ typedef struct host {
     char eliza_state_file_path[PATH_MAX];
     char eliza_memory_file_path[PATH_MAX];
     _Atomic bool ai_chat_enabled;
+    bool ai_chat_use_gemini;
     char ai_chat_model[64];
     struct timespec ai_chat_last_reply;
     ai_chat_memory_entry_t ai_chat_memory[SSH_CHATTER_AI_MEMORY_MAX];
     size_t ai_chat_memory_count;
+    /* Two configurable AI personas. Defaults are "kaka" / "dada" with Korean
+     * aliases "카카" / "다다". Override at startup with env vars
+     * CHATTER_AI_PERSONA_A_NAME / CHATTER_AI_PERSONA_A_ALIAS (and _B_ for the
+     * second persona). The configured name is also injected into the LLM
+     * prompt so the bot self-identifies under the new name. */
+    char ai_persona_a_name[64];
+    char ai_persona_a_alias[64];
+    char ai_persona_b_name[64];
+    char ai_persona_b_alias[64];
+    /* DOOR GAME registry.  Allocated on demand via the resource_manager
+     * (ttak abstract backing) — sized to the actual number of valid
+     * CHATTER_DOOR_<N> env entries seen at startup, up to
+     * SSH_CHATTER_DOOR_GAME_LIMIT.  NULL when no doors are registered.
+     * Doors are launched by `/bbs door <name>` and proxy stdin/stdout to a
+     * forked `dosbox -conf <path> -exit` over a PTY. */
+    ttak_abstract_mem_t *door_games_storage;
+    size_t door_game_count;
+    size_t door_game_capacity;
     char rss_state_file_path[PATH_MAX];
     eliza_memory_entry_t eliza_memory[SSH_CHATTER_ELIZA_MEMORY_MAX];
     size_t eliza_memory_count;
@@ -1070,7 +1186,11 @@ typedef struct host {
     size_t operator_grant_count;
     char protected_ips[SSH_CHATTER_MAX_PROTECTED_IPS][SSH_CHATTER_IP_LEN];
     size_t protected_ip_count;
-    version_ip_ban_rule_t *version_ip_ban_rules;
+    /* Version/IP ban rule table: backed by ttak abstract memory via the
+     * resource manager.  Each rule holds heap-allocated string pointers
+     * (original_pattern / normalized_pattern) that survive resize: only
+     * the array storage moves, not the pointed-to strings. */
+    ttak_abstract_mem_t *version_ip_ban_rules_storage;
     size_t version_ip_ban_rule_count;
     size_t version_ip_ban_rule_capacity;
     struct {
@@ -1080,17 +1200,20 @@ typedef struct host {
     struct timespec next_join_ready_time;
     bool join_throttle_initialised;
     size_t join_progress_length;
-    join_activity_entry_t *join_activity;
+    /* Per-IP join activity tracker, ttak abstract backed via the host RM. */
+    ttak_abstract_mem_t *join_activity_storage;
     size_t join_activity_count;
     size_t join_activity_capacity;
-    connection_guard_entry_t *connection_guard;
+    /* Connection guard table: per-IP rate limiting / blocking state.
+     * Backed by ttak's abstract allocator via the host resource manager;
+     * grows on demand and is freed at shutdown. */
+    ttak_abstract_mem_t *connection_guard_storage;
     size_t connection_guard_count;
     size_t connection_guard_capacity;
     struct {
         unsigned int consecutive_errors;
         struct timespec last_error_time;
     } health_guard;
-    bool force_restart_requested;
     _Atomic bool captcha_enabled;
     uint64_t captcha_nonce;
     bool has_last_captcha;
@@ -1102,7 +1225,8 @@ typedef struct host {
     _Atomic bool rss_thread_running;
     _Atomic bool rss_thread_stop;
     struct timespec rss_last_run;
-    _Atomic bool rss_manual_refresh_running;
+    _Atomic unsigned int rss_consecutive_failures;
+    struct timespec rss_first_failure_time;
     ttak_mutex_t rss_refresh_lock;
     bool rss_refresh_lock_initialized;
     pthread_t archive_thread;
@@ -1111,12 +1235,15 @@ typedef struct host {
     _Atomic bool archive_thread_stop;
     struct timespec archive_last_run;
 
-    // Add members for managing reserved nicknames
+    // Legacy reserved nickname list
     char (*reserved_nicknames)[SSH_CHATTER_USERNAME_LEN];
     size_t reserved_nicknames_len;
     size_t reserved_nicknames_capacity;
     ttak_mutex_t nickname_reserve_lock;
-    bool nickname_reserve_lock_initialized;
+    // Runtime nickname claims guarded by libttak object pool
+    ttak_object_pool_t *nickname_claim_pool;
+    nickname_claim_t *nickname_claims[SSH_CHATTER_MAX_NICKNAME_CLAIMS];
+    size_t nickname_claim_count;
     volatile sig_atomic_t *shutdown_flag;
 } host_t;
 
@@ -1129,12 +1256,51 @@ bool session_telnet_login_prompt(session_ctx_t *ctx);
 bool host_user_data_load_existing(host_t *host, const char *username,
                                   const char *ip, user_data_record_t *record,
                                   bool create_if_missing);
+void host_pw_auth_load(host_t *host);
 bool host_username_has_password(host_t *host, const char *nick);
+bool host_nickname_claim_can_use(host_t *host, const session_ctx_t *ctx,
+                                 const char *nick);
+bool host_nickname_claim_upsert(host_t *host, const session_ctx_t *ctx,
+                                 const char *nick, const uint8_t *salt,
+                                 const uint8_t *hash, bool ip_wide,
+                                 bool fixnick);
+
+void host_nickname_claim_release(host_t *host, const session_ctx_t *ctx,
+                                 const char *nick);
+void host_nickname_claim_remove(host_t *host, const char *nick);
 void trim_whitespace_inplace(char *text);
 
 void session_send_raw_text(session_ctx_t *ctx, const char *text);
 void session_channel_write(session_ctx_t *ctx, const void *data, size_t length);
 void host_init(host_t *host, auth_profile_t *auth);
+
+/* Look up a registered DOOR game by name (case-insensitive).  Copies the
+ * matching entry into @p out and returns true on hit, false otherwise. */
+bool host_door_game_lookup(const host_t *host, const char *name,
+                           door_game_entry_t *out);
+
+/* Acquire a transient body+comments buffer for post @p post_id.  On success
+ * returns a pointer to a freshly populated bbs_post_content_t (zeros if no
+ * matching record on disk) and stores the backing handle in @p out_handle
+ * for the matching release call.  Returns false if the resource manager is
+ * unavailable or the disk read fails. */
+bool host_bbs_content_acquire(host_t *host, uint64_t post_id,
+                              ttak_abstract_mem_t **out_handle,
+                              bbs_post_content_t **out_content);
+
+/* Release a buffer previously acquired with host_bbs_content_acquire. */
+void host_bbs_content_release(host_t *host,
+                              ttak_abstract_mem_t *handle);
+
+/* Allocate an empty content buffer (used when composing a new post). */
+bool host_bbs_content_acquire_empty(host_t *host,
+                                    ttak_abstract_mem_t **out_handle,
+                                    bbs_post_content_t **out_content);
+
+/* Read DOOR game entry at @p index into @p out.  Returns false when the
+ * index is out of range. */
+bool host_door_game_get(const host_t *host, size_t index,
+                        door_game_entry_t *out);
 void host_set_motd(host_t *host, const char *motd);
 void host_set_welcome_banner(host_t *host, const char *banner);
 int host_serve(host_t *host, const char *bind_addr, const char *port,

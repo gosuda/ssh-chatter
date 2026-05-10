@@ -8,6 +8,7 @@
 
 // JSON line-based API for chat commands and events.
 #include "host_internal.h"
+#include "ssh_chatter/abstract_byte_buffer.h"
 #include "ssh_chatter/utils/jwt.h"
 
 #define JSON_API_NOTICE_QUESTION_LIMIT (SSH_CHATTER_MESSAGE_LIMIT / 2U)
@@ -15,9 +16,7 @@
 #define JSON_API_NOTICE_LABEL_LIMIT (SSH_CHATTER_POLL_LABEL_LEN - 1U)
 
 typedef struct json_builder {
-    char *data;
-    size_t len;
-    size_t cap;
+    sshc_abstract_byte_buffer_t bytes;
 } json_builder_t;
 
 typedef struct json_api_client {
@@ -132,9 +131,7 @@ static void json_builder_init(json_builder_t *builder)
     if (builder == nullptr) {
         return;
     }
-    builder->data = nullptr;
-    builder->len = 0U;
-    builder->cap = 0U;
+    sshc_abstract_byte_buffer_init(&builder->bytes);
 }
 
 static void json_builder_free(json_builder_t *builder)
@@ -142,12 +139,7 @@ static void json_builder_free(json_builder_t *builder)
     if (builder == nullptr) {
         return;
     }
-    if (builder->data != nullptr) {
-        sshc_gc_free(builder->data);
-    }
-    builder->data = nullptr;
-    builder->len = 0U;
-    builder->cap = 0U;
+    sshc_abstract_byte_buffer_free(&builder->bytes);
 }
 
 static bool json_builder_reserve(json_builder_t *builder, size_t extra)
@@ -155,21 +147,8 @@ static bool json_builder_reserve(json_builder_t *builder, size_t extra)
     if (builder == nullptr) {
         return false;
     }
-    size_t required = builder->len + extra + 1U;
-    if (required <= builder->cap) {
-        return true;
-    }
-    size_t new_cap = builder->cap > 0U ? builder->cap : 256U;
-    while (new_cap < required) {
-        new_cap *= 2U;
-    }
-    char *next = (char *)sshc_gc_realloc(builder->data, new_cap);
-    if (next == nullptr) {
-        return false;
-    }
-    builder->data = next;
-    builder->cap = new_cap;
-    return true;
+    return sshc_abstract_byte_buffer_reserve_total(
+        &builder->bytes, builder->bytes.length + extra + 1U);
 }
 
 static bool json_builder_append(json_builder_t *builder, const char *fmt, ...)
@@ -195,11 +174,46 @@ static bool json_builder_append(json_builder_t *builder, const char *fmt, ...)
         return false;
     }
 
-    vsnprintf(builder->data + builder->len, builder->cap - builder->len, fmt,
-              args_copy);
+    ttak_abstract_map_t map;
+    if (ttak_abstract_map(builder->bytes.storage, builder->bytes.length,
+                          (size_t)needed + 1U, TTAK_ABSTRACT_ACCESS_WRITE,
+                          &map) != 0) {
+        va_end(args_copy);
+        return false;
+    }
+    vsnprintf((char *)map.data, (size_t)needed + 1U, fmt, args_copy);
+    ttak_abstract_unmap(&map);
     va_end(args_copy);
-    builder->len += (size_t)needed;
+    builder->bytes.length += (size_t)needed;
     return true;
+}
+
+static bool json_builder_map_read(json_builder_t *builder,
+                                  sshc_abstract_byte_buffer_view_t *view)
+{
+    if (builder == nullptr) {
+        return false;
+    }
+    return sshc_abstract_byte_buffer_map_cstr(&builder->bytes, view);
+}
+
+static char *json_builder_materialize_gc(json_builder_t *builder)
+{
+    if (builder == nullptr || builder->bytes.storage == nullptr) {
+        return nullptr;
+    }
+
+    char *copy = sshc_gc_malloc(builder->bytes.length + 1U);
+    if (copy == nullptr) {
+        return nullptr;
+    }
+
+    if (!sshc_abstract_byte_buffer_copy_out(&builder->bytes, copy,
+                                            builder->bytes.length + 1U)) {
+        sshc_gc_free(copy);
+        return nullptr;
+    }
+    return copy;
 }
 
 static int json_api_hex_value(char ch)
@@ -811,8 +825,10 @@ static void json_api_send_response(json_api_client_t *client,
 
     json_builder_append(&builder, "}");
 
-    if (builder.data != nullptr) {
-        (void)json_api_send_line(client, builder.data);
+    sshc_abstract_byte_buffer_view_t builder_view;
+    if (json_builder_map_read(&builder, &builder_view)) {
+        (void)json_api_send_line(client, builder_view.data);
+        sshc_abstract_byte_buffer_unmap(&builder_view);
     }
 
     json_builder_free(&builder);
@@ -876,11 +892,13 @@ static void json_api_on_message(client_connection_t *connection,
                         json_api_attachment_type_label(entry->attachment_type),
                         escaped_target, escaped_caption);
 
-    if (builder.data != nullptr) {
-        if (!json_api_send_line(client, builder.data)) {
+    sshc_abstract_byte_buffer_view_t builder_view;
+    if (json_builder_map_read(&builder, &builder_view)) {
+        if (!json_api_send_line(client, builder_view.data)) {
             atomic_store(&client->stop, true);
             shutdown(client->fd, SHUT_RDWR);
         }
+        sshc_abstract_byte_buffer_unmap(&builder_view);
     }
 
     json_builder_free(&builder);
@@ -1057,12 +1075,9 @@ static char *json_api_build_poll_json(const poll_state_t *poll)
     json_builder_append(&builder, "]}");
     sshc_gc_free(escaped_question);
 
-    if (builder.data == nullptr) {
-        json_builder_free(&builder);
-        return nullptr;
-    }
-
-    return builder.data;
+    char *result = json_builder_materialize_gc(&builder);
+    json_builder_free(&builder);
+    return result;
 }
 
 static char *json_api_build_named_poll_json(const named_poll_state_t *poll)
@@ -1097,12 +1112,9 @@ static char *json_api_build_named_poll_json(const named_poll_state_t *poll)
     sshc_gc_free(escaped_owner);
     sshc_gc_free(poll_json);
 
-    if (builder.data == nullptr) {
-        json_builder_free(&builder);
-        return nullptr;
-    }
-
-    return builder.data;
+    char *result = json_builder_materialize_gc(&builder);
+    json_builder_free(&builder);
+    return result;
 }
 
 static char *json_api_build_named_poll_list(host_t *host)
@@ -1151,12 +1163,9 @@ static char *json_api_build_named_poll_list(host_t *host)
     }
 
     json_builder_append(&builder, "]");
-    if (builder.data == nullptr) {
-        json_builder_free(&builder);
-        return nullptr;
-    }
-
-    return builder.data;
+    char *result = json_builder_materialize_gc(&builder);
+    json_builder_free(&builder);
+    return result;
 }
 
 static bool json_api_handle_poll_request(json_api_client_t *client,
@@ -1186,8 +1195,9 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
         json_builder_t result;
         json_builder_init(&result);
         json_builder_append(&result, "{\"poll\":%s}", poll_json);
+        char *result_json = json_builder_materialize_gc(&result);
         json_api_send_response(client, request, true, "poll summary",
-                               result.data);
+                               result_json);
         json_builder_free(&result);
         sshc_gc_free(poll_json);
         return true;
@@ -1375,7 +1385,8 @@ static bool json_api_handle_poll_request(json_api_client_t *client,
     json_builder_t result;
     json_builder_init(&result);
     json_builder_append(&result, "{\"poll\":%s}", poll_json);
-    json_api_send_response(client, request, true, "poll started", result.data);
+    char *result_json = json_builder_materialize_gc(&result);
+    json_api_send_response(client, request, true, "poll started", result_json);
     json_builder_free(&result);
     sshc_gc_free(poll_json);
     return true;
@@ -1401,7 +1412,9 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
         json_builder_t result;
         json_builder_init(&result);
         json_builder_append(&result, "{\"polls\":%s}", list_json);
-        json_api_send_response(client, request, true, "poll list", result.data);
+        char *result_json = json_builder_materialize_gc(&result);
+        json_api_send_response(client, request, true, "poll list",
+                               result_json);
         json_builder_free(&result);
         sshc_gc_free(list_json);
         return true;
@@ -1448,8 +1461,9 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
         json_builder_t result;
         json_builder_init(&result);
         json_builder_append(&result, "{\"named_poll\":%s}", poll_json);
+        char *result_json = json_builder_materialize_gc(&result);
         json_api_send_response(client, request, true, "poll summary",
-                               result.data);
+                               result_json);
         json_builder_free(&result);
         sshc_gc_free(poll_json);
         return true;
@@ -1732,8 +1746,9 @@ static bool json_api_handle_vote_request(json_api_client_t *client,
         json_builder_t result;
         json_builder_init(&result);
         json_builder_append(&result, "{\"named_poll\":%s}", poll_json);
+        char *result_json = json_builder_materialize_gc(&result);
         json_api_send_response(client, request, true, "poll started",
-                               result.data);
+                               result_json);
         json_builder_free(&result);
         sshc_gc_free(poll_json);
     }
@@ -1762,9 +1777,9 @@ static void json_api_handle_login(json_api_client_t *client, const json_api_requ
     json_builder_t result;
     json_builder_init(&result);
     json_builder_append(&result, "{\"token\":\"%s\"}", token);
-    
-    json_api_send_response(client, request, true, "Login successful", result.data);
-    
+    char *result_json = json_builder_materialize_gc(&result);
+    json_api_send_response(client, request, true, "Login successful",
+                           result_json);
     json_builder_free(&result);
     sshc_gc_free(token);
 }

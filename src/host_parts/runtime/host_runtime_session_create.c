@@ -75,15 +75,13 @@ bool session_enforce_lifetime(session_ctx_t *ctx,
 
 static session_ctx_t *session_create(void)
 {
-    // Initially allocate session context in the current (likely global) scope
-    session_ctx_t *ctx =
-        (session_ctx_t *)sshc_gc_calloc(1U, sizeof(session_ctx_t));
+    session_ctx_t *ctx = (session_ctx_t *)calloc(1U, sizeof(session_ctx_t));
 
     if (ctx != nullptr) {
         // Create a dedicated memory context for this session
         ctx->memory_context = sshc_memory_context_create("session");
         if (ctx->memory_context == nullptr) {
-            sshc_gc_free(ctx);
+            free(ctx);
             return nullptr;
         }
 
@@ -91,7 +89,7 @@ static session_ctx_t *session_create(void)
         ctx->session_owner = ttak_owner_create(TTAK_OWNER_STRICT_ISOLATION);
         if (ctx->session_owner == nullptr) {
             sshc_memory_context_destroy(ctx->memory_context);
-            sshc_gc_free(ctx);
+            free(ctx);
             return nullptr;
         }
 
@@ -107,6 +105,9 @@ static session_ctx_t *session_create(void)
         ctx->active_codepage = SESSION_CODEPAGE_CP437; /* Default to CP437 */
         ctx->morse_feed_enabled = false;
         ctx->exit_notice_sent = false;
+        ctx->wall_brush_char = '#';
+        snprintf(ctx->wall_brush_color_name,
+                 sizeof(ctx->wall_brush_color_name), "%s", "white");
         atomic_init(&ctx->room_snapshot_retired, false);
         atomic_init(&ctx->room_snapshot_refs, 0U);
         ctx->has_last_output_line = false;
@@ -116,6 +117,8 @@ static session_ctx_t *session_create(void)
         ctx->lifetime_decay_reference = ctx->lifetime_last_activity;
         ctx->lifetime_has_activity = true;
         ctx->lifetime_decay_active = false;
+        ctx->zero_read_streak = 0U;
+        ctx->sftp_handles = nullptr;
 
         printf("[encoding-debug] phase=ctx_init transport_kind=%d "
                "prefer_utf16_output=%d output_kind=%d\n",
@@ -135,7 +138,7 @@ static session_ctx_t *session_create(void)
                 ttak_owner_destroy(ctx->session_owner);
             }
             sshc_memory_context_destroy(ctx->memory_context);
-            sshc_gc_free(ctx);
+            free(ctx);
             return nullptr;
         }
 

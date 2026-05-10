@@ -173,6 +173,11 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         return;
     }
 
+    else if (session_parse_command_any(ctx, "/wall", effective_line, &args)) {
+        session_handle_wall(ctx, args);
+        return;
+    }
+
     else if (session_parse_command_any(ctx, "/motd", effective_line, &args)) {
         if (*args != '\0') {
             session_send_system_line(ctx, "Usage: /motd");
@@ -294,6 +299,12 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
 
     else if (session_parse_command_any(ctx, "/color", effective_line, &args)) {
         session_handle_color(ctx, args);
+        return;
+    }
+
+    else if (session_parse_command_any(ctx, "/fixnick", effective_line,
+                                       &args)) {
+        session_handle_fixnick(ctx, args);
         return;
     }
 
@@ -436,7 +447,9 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
                                          &args)) {
         session_handle_birthday(ctx, args);
         return;
-    } else if (session_parse_command_any(ctx, "/setpw", effective_line,
+    } else if (session_parse_command_any(ctx, "/password", effective_line,
+                                         &args) ||
+               session_parse_command_any(ctx, "/setpw", effective_line,
                                          &args)) {
         session_handle_setpw(ctx, args);
         return;
@@ -1573,6 +1586,13 @@ static void session_reset_for_retry(session_ctx_t *ctx)
     ctx->input_escape_buffer[0] = '\0';
     ctx->multibyte_input_length = 0U;
     memset(ctx->multibyte_input_buffer, 0, sizeof(ctx->multibyte_input_buffer));
+    ctx->wall_active = false;
+    ctx->wall_command_mode = false;
+    ctx->wall_cursor_x = 0U;
+    ctx->wall_cursor_y = 0U;
+    ctx->wall_brush_char = '#';
+    snprintf(ctx->wall_brush_color_name, sizeof(ctx->wall_brush_color_name),
+             "%s", "white");
     ctx->bbs_post_pending = false;
     ctx->pending_bbs_body_length = 0U;
     ctx->pending_bbs_tag_count = 0U;
@@ -1607,16 +1627,18 @@ static void session_reset_for_retry(session_ctx_t *ctx)
     ctx->last_asciiart_post.tv_sec = 0;
     ctx->last_asciiart_post.tv_nsec = 0;
     session_game_tetris_reset(ctx->game.tetris);
-    ctx->game.liar.awaiting_guess = false;
-    ctx->game.liar.round_number = 0U;
-    ctx->game.liar.score = 0U;
-    ctx->game.othello = (othello_game_state_t){0};
-    ctx->game.saved_othello_state = (othello_game_state_t){0};
+    session_game_release_liar(ctx);
+    session_game_release_saved_liar(ctx);
+    session_game_release_othello(ctx);
+    session_game_release_saved_othello(ctx);
     ctx->game.active = false;
     ctx->game.type = SESSION_GAME_NONE;
     ctx->game.rng_seeded = false;
     ctx->game.rng_state = 0U;
-    ctx->game.alpha = (alpha_centauri_game_state_t){0};
+    session_game_release_alpha(ctx);
+    session_game_release_saved_alpha(ctx);
+    session_game_release_gonu(ctx);
+    session_game_release_saved_gonu(ctx);
     ctx->input_history_count = 0U;
     memset(ctx->input_history_is_command, 0,
            sizeof(ctx->input_history_is_command));

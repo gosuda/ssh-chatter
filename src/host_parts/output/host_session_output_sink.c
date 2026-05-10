@@ -283,14 +283,12 @@ void session_process_pending_sink(session_ctx_t *ctx)
         return;
     }
 
-    size_t start_index = ctx->last_sink_history_total;
-    if (start_index > total) {
-        start_index = total;
+    size_t visible_messages = session_scrollback_line_capacity(ctx);
+    if (visible_messages == 0U) {
+        visible_messages = 1U;
     }
-    if (start_index == total) {
-        ctx->pending_should_sink = false;
-        return;
-    }
+    size_t start_index = (total > visible_messages) ? (total - visible_messages)
+                                                    : 0U;
     size_t chunk = total - start_index;
     size_t buffer_capacity = 0U;
     chat_history_entry_t *buffer =
@@ -335,6 +333,7 @@ void session_process_pending_sink(session_ctx_t *ctx)
                                       &current_frame);
         size_t current_count = session_describe_visible_frame(
             &current_frame, current_lines, SSH_CHATTER_SCROLLBACK_MAX_CHUNK);
+        display_model_release_visible(&current_frame);
         if (current_count > 0U) {
             ctx->output_buffer_length = buffer_mark;
             used_incremental_redraw = session_render_incremental_lines(
@@ -422,4 +421,3 @@ void session_clear_pending_sink(session_ctx_t *ctx)
 
     ctx->pending_should_sink = false;
 }
-

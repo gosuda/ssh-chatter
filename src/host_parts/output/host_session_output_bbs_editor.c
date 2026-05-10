@@ -51,6 +51,7 @@ static void session_bbs_prepare_canvas(session_ctx_t *ctx)
 }
 
 static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
+                                    const bbs_post_content_t *content,
                                     const char *notice, bool reset_scroll)
 {
     if (ctx == nullptr || post == nullptr) {
@@ -93,15 +94,23 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
     session_send_plain_line(ctx, bumped_line);
     session_render_separator(ctx, "{Body}");
 
-    // Send body line by line (with BBS color markup expansion)
-    session_send_bbs_body_text(ctx, post->body);
+    // Send body line by line (with BBS color markup expansion).
+    // The body lives in the lazy content struct; if it isn't supplied
+    // (caller couldn't fetch from disk) emit a placeholder.
+    if (content != nullptr) {
+        session_send_bbs_body_text(ctx, content->body);
+    } else {
+        session_send_bbs_body_text(ctx, "(body unavailable)");
+    }
 
-    // Send comments if any
-    if (post->comment_count > 0U) {
+    // Send comments if any (also from the lazy content struct)
+    size_t comment_count =
+        content != nullptr ? content->comment_count : 0U;
+    if (comment_count > 0U) {
         session_send_plain_line(ctx, ""); // Empty line for spacing
         session_render_separator(ctx, "Comments");
-        for (size_t idx = 0U; idx < post->comment_count; ++idx) {
-            const bbs_comment_t *comment = &post->comments[idx];
+        for (size_t idx = 0U; idx < comment_count; ++idx) {
+            const bbs_comment_t *comment = &content->comments[idx];
             char comment_author_line[SSH_CHATTER_MESSAGE_LIMIT];
             snprintf(comment_author_line, sizeof(comment_author_line), "Comment by: %s", comment->author);
 

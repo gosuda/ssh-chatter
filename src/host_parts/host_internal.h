@@ -172,6 +172,34 @@ static inline size_t host_bbs_loop_limit(const host_t *host)
     return host_bbs_storage_ready(host) ? host->bbs_post_capacity : 0U;
 }
 
+static inline void session_build_network_topology_key(const session_ctx_t *ctx,
+                                                      char *buffer,
+                                                      size_t length)
+{
+    if (buffer == nullptr || length == 0U) {
+        return;
+    }
+
+    buffer[0] = '\0';
+    if (ctx == nullptr) {
+        return;
+    }
+
+    const char *ip = ctx->client_ip[0] != '\0' ? ctx->client_ip : "-";
+    const char *terminal =
+        ctx->terminal_type[0] != '\0' ? ctx->terminal_type : "-";
+    const char *identity =
+        ctx->telnet_identity[0] != '\0' ? ctx->telnet_identity : "-";
+    const char *banner =
+        ctx->client_banner[0] != '\0' ? ctx->client_banner : "-";
+    const char *transport =
+        ctx->transport_kind == SESSION_TRANSPORT_TELNET ? "telnet" : "ssh";
+    const int lan = session_is_lan_client(ip) ? 1 : 0;
+
+    snprintf(buffer, length, "ip=%s|lan=%d|transport=%s|term=%s|id=%s|banner=%s",
+             ip, lan, transport, terminal, identity, banner);
+}
+
 static inline bool session_output_should_use_retro_encoding(
     const session_ctx_t *ctx, session_output_kind_t kind)
 {
@@ -197,6 +225,7 @@ void session_render_banner_ascii(session_ctx_t *ctx);
 void session_note_output_lines(session_ctx_t *ctx, size_t line_count);
 void session_manual_gc_tick(session_ctx_t *ctx);
 void host_manual_gc_tick(host_t *host);
+void host_feature_slots_reclaim_if_idle(host_t *host);
 
 bool host_compact_id_encode(uint64_t id, char *buffer, size_t length);
 bool host_compact_id_decode(const char *text, uint64_t *id_out);
@@ -209,6 +238,13 @@ void session_flag_should_sink(session_ctx_t *ctx);
 void session_mark_should_sink(session_ctx_t *ctx);
 void session_clear_pending_sink(session_ctx_t *ctx);
 void session_send_system_line(session_ctx_t *ctx, const char *message);
+void session_handle_wall(session_ctx_t *ctx, const char *arguments);
+void session_wall_render(session_ctx_t *ctx, const char *status);
+void session_wall_exit(session_ctx_t *ctx, const char *status);
+bool session_wall_process_line(session_ctx_t *ctx, const char *line,
+                               size_t length);
+bool session_wall_process_escape(session_ctx_t *ctx, const char *sequence,
+                                 size_t length);
 
 session_ui_language_t session_ui_language_from_code(const char *code);
 void host_store_ui_language(host_t *host, const session_ctx_t *ctx);
@@ -219,13 +255,37 @@ bool session_bbs_view_notice_acquire(session_ctx_t *ctx);
 void session_bbs_view_notice_release(session_ctx_t *ctx);
 bool session_asciiart_buffer_acquire(session_ctx_t *ctx);
 void session_asciiart_buffer_release(session_ctx_t *ctx);
+void session_compressed_buffers_discard(session_ctx_t *ctx);
+chat_history_entry_t *session_scrollback_buffer_acquire(session_ctx_t *ctx,
+                                                        size_t minimum_capacity,
+                                                        size_t *out_capacity);
+void session_scrollback_buffer_release(session_ctx_t *ctx);
 bool session_tetris_buffers_acquire(session_ctx_t *ctx);
 void session_tetris_buffers_release(session_ctx_t *ctx);
 tetris_game_state_t *session_game_ensure_tetris(session_ctx_t *ctx);
 tetris_game_state_t *session_game_ensure_saved_tetris(session_ctx_t *ctx);
 void session_game_release_tetris(session_ctx_t *ctx);
 void session_game_release_saved_tetris(session_ctx_t *ctx);
+liar_game_state_t *session_game_ensure_liar(session_ctx_t *ctx);
+liar_game_state_t *session_game_ensure_saved_liar(session_ctx_t *ctx);
+void session_game_release_liar(session_ctx_t *ctx);
+void session_game_release_saved_liar(session_ctx_t *ctx);
+alpha_centauri_game_state_t *session_game_ensure_alpha(session_ctx_t *ctx);
+alpha_centauri_game_state_t *session_game_ensure_saved_alpha(session_ctx_t *ctx);
+void session_game_release_alpha(session_ctx_t *ctx);
+void session_game_release_saved_alpha(session_ctx_t *ctx);
+othello_game_state_t *session_game_ensure_othello(session_ctx_t *ctx);
+othello_game_state_t *
+session_game_ensure_saved_othello(session_ctx_t *ctx);
+void session_game_release_othello(session_ctx_t *ctx);
+void session_game_release_saved_othello(session_ctx_t *ctx);
+gonu_game_state_t *session_game_ensure_gonu(session_ctx_t *ctx);
+gonu_game_state_t *session_game_ensure_saved_gonu(session_ctx_t *ctx);
+void session_game_release_gonu(session_ctx_t *ctx);
+void session_game_release_saved_gonu(session_ctx_t *ctx);
 void session_game_handle_screen_cleared(session_ctx_t *ctx);
+bool session_release_optional_buffers_if_idle(session_ctx_t *ctx,
+                                              const struct timespec *now);
 void session_mark_activity(session_ctx_t *ctx);
 bool session_enforce_lifetime(session_ctx_t *ctx, const struct timespec *now);
 

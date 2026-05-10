@@ -50,7 +50,7 @@ static const char *const kSessionCommandNames[] = {
     "revoke",
     "rss",
     "search",
-    "setpw",
+    "password",
     "shell",
     "set-target-lang",
     "set-trans-lang",
@@ -1221,7 +1221,7 @@ static const session_command_alias_t kSessionCommandAliases[] = {
         .canonical = "/set-sync-url",
     },
     {
-        .canonical = "/setpw",
+        .canonical = "/password",
         .localized =
             {
                 [SESSION_UI_LANGUAGE_KO] = "/비밀번호설정",
@@ -1229,5 +1229,8 @@ static const session_command_alias_t kSessionCommandAliases[] = {
                 [SESSION_UI_LANGUAGE_ZH] = "/设置密码",
                 [SESSION_UI_LANGUAGE_RU] = "/установить-пароль",
             },
+    },
+    {
+        .canonical = "/setpw",
     },
 };

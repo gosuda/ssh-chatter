@@ -1403,10 +1403,10 @@ static bool host_is_username_banned(host_t *host, const char *username);
 static bool host_add_ban_entry(host_t *host, const char *username,
                                const char *ip);
 static bool host_remove_ban_entry(host_t *host, const char *token);
-static join_activity_entry_t *host_find_join_activity_locked(host_t *host,
-                                                             const char *ip);
-static join_activity_entry_t *host_ensure_join_activity_locked(host_t *host,
-                                                               const char *ip);
+static bool host_find_join_activity_index_locked(host_t *host, const char *ip,
+                                                 size_t *out_idx);
+static bool host_ensure_join_activity_locked(host_t *host, const char *ip,
+                                             size_t *out_idx);
 static bool host_register_suspicious_activity(host_t *host,
                                               const char *username,
                                               const char *ip,
@@ -1903,6 +1903,8 @@ static void session_game_tetris_handle_line(session_ctx_t *ctx,
 static void session_game_start_liargame(session_ctx_t *ctx);
 static void session_game_liar_present_round(session_ctx_t *ctx);
 static void session_game_liar_handle_line(session_ctx_t *ctx, const char *line);
+static void session_game_toggle_camouflage(session_ctx_t *ctx);
+static void session_game_gonu_render(session_ctx_t *ctx);
 static bool session_game_gonu_handle_input(session_ctx_t *ctx,
                                            const char *input);
 static void session_game_start_alpha(session_ctx_t *ctx);

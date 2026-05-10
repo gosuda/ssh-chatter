@@ -1046,13 +1046,23 @@ static void host_user_data_bootstrap(host_t *host)
             continue;
         }
         host_user_data_bootstrap_visit(host, post->author);
-        size_t comment_count = post->comment_count;
-        if (comment_count > SSH_CHATTER_BBS_MAX_COMMENTS) {
-            comment_count = SSH_CHATTER_BBS_MAX_COMMENTS;
+        if (post->comment_count == 0U) {
+            continue;
         }
-        for (size_t comment = 0U; comment < comment_count; ++comment) {
-            host_user_data_bootstrap_visit(host,
-                                           post->comments[comment].author);
+        /* Comment authors live with the body on disk; pull lazily. */
+        ttak_abstract_mem_t *content_handle = nullptr;
+        bbs_post_content_t *content = nullptr;
+        if (host_bbs_content_acquire(host, post->id, &content_handle,
+                                     &content)) {
+            size_t comment_count = content->comment_count;
+            if (comment_count > SSH_CHATTER_BBS_MAX_COMMENTS) {
+                comment_count = SSH_CHATTER_BBS_MAX_COMMENTS;
+            }
+            for (size_t comment = 0U; comment < comment_count; ++comment) {
+                host_user_data_bootstrap_visit(
+                    host, content->comments[comment].author);
+            }
+            host_bbs_content_release(host, content_handle);
         }
     }
 }

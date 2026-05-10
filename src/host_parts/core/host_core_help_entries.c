@@ -95,6 +95,17 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_RU] = "удалить",
             },
     },
+    {
+        .canonical = "door",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "door",
+                [SESSION_UI_LANGUAGE_KO] = "도어",
+                [SESSION_UI_LANGUAGE_JP] = "ドア",
+                [SESSION_UI_LANGUAGE_ZH] = "门",
+                [SESSION_UI_LANGUAGE_RU] = "дверь",
+            },
+    },
 };
 
 static const size_t kSessionBbsSubcommandCount =
@@ -148,6 +159,18 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "pm <username> <message>",
+        .description =
+            {
+                "Send a private message to one connected user.",
+                "한 명의 접속 사용자에게 귓속말을 보냅니다.",
+                "接続中のユーザー1人にプライベートメッセージを送ります。",
+                "向一名在线用户发送私信。",
+                "Отправить личное сообщение подключённому пользователю.",
+            },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "color (text;highlight[;bold])",
         .description =
             {
@@ -163,6 +186,29 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 [SESSION_UI_LANGUAGE_JP] = "色 (テキスト;ハイライト[;太字])",
                 [SESSION_UI_LANGUAGE_ZH] = "颜色 (文本;高亮[;粗体])",
                 [SESSION_UI_LANGUAGE_RU] = "цвет (текст;выделение[;жирный])",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "fixnick",
+        .description =
+            {
+                "Persist an IP-wide reserved nickname as one fixed ANSI handle.",
+                "IP-wide 예약 닉네임의 현재 색을 하나의 고정 ANSI 닉네임으로 "
+                "저장합니다.",
+                "IP-wide 予約ニックの現在色を固定 ANSI ハンドルとして保存します。",
+                "将 IP-wide 预留昵称的当前颜色固化为固定 ANSI 昵称。",
+                "Сохраняет текущий цвет IP-wide зарезервированного ника как "
+                "единый ANSI-ник.",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "닉고정",
+                [SESSION_UI_LANGUAGE_JP] = "ニック固定",
+                [SESSION_UI_LANGUAGE_ZH] = "固定昵称",
+                [SESSION_UI_LANGUAGE_RU] = "фиксник",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -517,6 +563,29 @@ static const session_help_entry_t kSessionHelpExtended[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "fixnick",
+        .description =
+            {
+                "Persist an IP-wide reserved nickname as one fixed ANSI handle.",
+                "IP-wide 예약 닉네임의 현재 색을 하나의 고정 ANSI 닉네임으로 "
+                "저장합니다.",
+                "IP-wide 予約ニックの現在色を固定 ANSI ハンドルとして保存します。",
+                "将 IP-wide 预留昵称的当前颜色固化为固定 ANSI 昵称。",
+                "Сохраняет текущий цвет IP-wide зарезервированного ника как "
+                "единый ANSI-ник.",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "닉고정",
+                [SESSION_UI_LANGUAGE_JP] = "ニック固定",
+                [SESSION_UI_LANGUAGE_ZH] = "固定昵称",
+                [SESSION_UI_LANGUAGE_RU] = "фиксник",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "systemcolor (fg;background[;highlight][;bold])",
         .description =
             {
@@ -756,6 +825,18 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label_args = {},
     },
 
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "password [secret] [ip-wide true|false]",
+        .description =
+            {
+                "Set or clear your password and create a runtime nickname claim.",
+                "비밀번호를 설정/삭제하고 런타임 닉네임 점유를 만듭니다.",
+                "パスワードを設定/削除し、実行中のニック占有を作成します。",
+                "设置/清除密码，并创建运行时昵称占用。",
+                "Задать/очистить пароль и создать активное удержание ника.",
+            },
+    },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "date <timezone>",

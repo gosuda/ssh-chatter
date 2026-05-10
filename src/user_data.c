@@ -33,6 +33,8 @@
 
 static bool user_data_profile_directory_path(const char *root, char *path,
                                              size_t length);
+static bool user_data_username_only_path(const char *root, const char *username,
+                                         char *path, size_t length);
 static bool user_data_profile_picture_path(const char *root,
                                            const char *username, char *path,
                                            size_t length);
@@ -229,6 +231,55 @@ static bool user_data_build_variant_name(const char *base, size_t index,
     return written >= 0 && (size_t)written < length;
 }
 
+bool user_data_has_password(const user_data_record_t *restrict record)
+{
+    if (record == nullptr) {
+        return false;
+    }
+
+    return !security_layer_is_zero_hash(record->password_hash,
+                                        sizeof(record->password_hash));
+}
+
+bool user_data_reserved_nickname_is_ip_wide(
+    const user_data_record_t *restrict record)
+{
+    if (record == nullptr) {
+        return false;
+    }
+
+    return record->reserved[0] != 0U;
+}
+
+void user_data_set_reserved_nickname_ip_wide(
+    user_data_record_t *restrict record, bool enabled)
+{
+    if (record == nullptr) {
+        return;
+    }
+
+    record->reserved[0] = enabled ? 1U : 0U;
+}
+
+bool user_data_fixnick_enabled(const user_data_record_t *restrict record)
+{
+    if (record == nullptr) {
+        return false;
+    }
+
+    return record->reserved[1] != 0U;
+}
+
+void user_data_set_fixnick_enabled(user_data_record_t *restrict record,
+                                   bool enabled)
+{
+    if (record == nullptr) {
+        return;
+    }
+
+    record->reserved[1] = enabled ? 1U : 0U;
+}
+
 static bool user_data_load_raw(const char *path, user_data_record_t *record,
                                bool *needs_upgrade)
 {
@@ -376,16 +427,20 @@ bool user_data_path_for(const char *restrict root,
     // This prioritizes users with passwords, allowing them to retain their
     // preferred nickname even if they roam across different IP addresses.
     char username_only_path[PATH_MAX];
-    int written = snprintf(username_only_path, sizeof(username_only_path),
-                           "%s/%s.dat", root, sanitized);
-    if (written >= 0 && (size_t)written < length) {
+    if (user_data_username_only_path(root, username, username_only_path,
+                                     sizeof(username_only_path))) {
         if (user_data_file_exists(username_only_path)) {
             user_data_record_t existing;
             if (user_data_load_raw(username_only_path, &existing, nullptr)) {
                 // If there's a password hash, prioritize this record.
-                if (!security_layer_is_zero_hash(existing.password_hash,
-                                                 sizeof(existing.password_hash))) {
-                    memcpy(path, username_only_path, (size_t)written + 1U);
+                if (user_data_has_password(&existing)) {
+                    size_t username_only_length = strlen(username_only_path);
+                    if (username_only_length < length) {
+                        memcpy(path, username_only_path,
+                               username_only_length + 1U);
+                    } else {
+                        return false;
+                    }
                     return true;
                 }
             }
@@ -409,7 +464,7 @@ bool user_data_path_for(const char *restrict root,
             continue;
         }
 
-        written = snprintf(candidate_path, sizeof(candidate_path),
+        int written = snprintf(candidate_path, sizeof(candidate_path),
                                "%s/%s.dat", root, candidate_name);
         if (written < 0 || (size_t)written >= sizeof(candidate_path)) {
             continue;
@@ -447,7 +502,7 @@ bool user_data_path_for(const char *restrict root,
         return false;
     }
 
-    written = snprintf(path, length, "%s/%s.dat", root, candidate_name);
+    int written = snprintf(path, length, "%s/%s.dat", root, candidate_name);
     return written >= 0 && (size_t)written < length;
 }
 
@@ -465,6 +520,24 @@ static bool user_data_profile_directory_path(const char *root, char *path,
     }
 
     return true;
+}
+
+static bool user_data_username_only_path(const char *root, const char *username,
+                                         char *path, size_t length)
+{
+    if (path == nullptr || length == 0U || root == nullptr || root[0] == '\0' ||
+        username == nullptr || username[0] == '\0') {
+        return false;
+    }
+
+    char sanitized[SSH_CHATTER_USERNAME_LEN * 2U];
+    if (!user_data_sanitize_username(username, sanitized, sizeof(sanitized)) ||
+        sanitized[0] == '\0') {
+        return false;
+    }
+
+    int written = snprintf(path, length, "%s/%s.dat", root, sanitized);
+    return written >= 0 && (size_t)written < length;
 }
 
 static bool user_data_profile_picture_path(const char *root,
@@ -738,8 +811,13 @@ bool user_data_save(const char *restrict root,
     char path[PATH_MAX];
     const char *effective_ip =
         (ip != nullptr && ip[0] != '\0') ? ip : record->last_ip;
-    if (!user_data_path_for(root, record->username, effective_ip, true, path,
-                            sizeof(path))) {
+    if (user_data_has_password(record)) {
+        if (!user_data_username_only_path(root, record->username, path,
+                                          sizeof(path))) {
+            return false;
+        }
+    } else if (!user_data_path_for(root, record->username, effective_ip, true,
+                                   path, sizeof(path))) {
         return false;
     }
 

@@ -77,10 +77,13 @@ static void session_release_transport_state(session_ctx_t *ctx)
         ctx->session = nullptr;
     }
 
-    session_safe_free((void **)&ctx->session_data);
+    if (ctx->session_data != nullptr) {
+        free(ctx->session_data);
+        ctx->session_data = nullptr;
+    }
 }
 
-static void session_cleanup(session_ctx_t *ctx)
+static void session_detach_external_state(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {
         return;
@@ -94,14 +97,17 @@ static void session_cleanup(session_ctx_t *ctx)
 
     session_translation_worker_shutdown(ctx);
 
-    /* Release per-session RSS snapshot cache if the user disconnects while
-     * browsing feeds. */
-    session_rss_clear(ctx);
-
     /* Ensure multiplayer slot references are detached before the session
      * object is reclaimed so stale pointers do not remain in host state. */
     if (ctx->owner != nullptr) {
         host_t *host = ctx->owner;
+
+        ttak_mutex_lock(&host->lock);
+        if (host->connection_count > 0U) {
+            --host->connection_count;
+        }
+        ttak_mutex_unlock(&host->lock);
+
         for (size_t idx = 0U; idx < SSH_CHATTER_OTHELLO_MAX_SLOTS; ++idx) {
             bool should_release = false;
             session_ctx_t *opponent = nullptr;
@@ -137,13 +143,28 @@ static void session_cleanup(session_ctx_t *ctx)
                 if (had_snapshot) {
                     session_game_othello_sync_player_from_snapshot(
                         opponent, &snapshot, opponent_index, -1, false);
-                    opponent->game.othello.game_over = true;
+                    if (opponent->game.othello != nullptr) {
+                        opponent->game.othello->game_over = true;
+                    }
                 }
                 session_game_suspend(opponent,
                                      "Opponent disconnected. Game ended.");
             }
         }
     }
+
+    session_release_transport_state(ctx);
+}
+
+static void session_cleanup(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    /* Release per-session RSS snapshot cache after the session has already
+     * stopped claiming runtime resources. */
+    session_rss_clear(ctx);
 
     if (ctx->display_model_initialized) {
         display_model_destroy(&ctx->display_model);
@@ -155,18 +176,27 @@ static void session_cleanup(session_ctx_t *ctx)
     session_tetris_buffers_release(ctx);
     session_game_release_tetris(ctx);
     session_game_release_saved_tetris(ctx);
-    session_safe_free((void **)&ctx->scrollback_buffer);
-    ctx->scrollback_buffer_capacity = 0U;
+    session_game_release_liar(ctx);
+    session_game_release_saved_liar(ctx);
+    session_game_release_alpha(ctx);
+    session_game_release_saved_alpha(ctx);
+    session_game_release_othello(ctx);
+    session_game_release_saved_othello(ctx);
+    session_game_release_gonu(ctx);
+    session_game_release_saved_gonu(ctx);
+    session_scrollback_buffer_release(ctx);
     session_release_interaction_state(ctx);
-    session_release_transport_state(ctx);
 }
 
 static void session_epoch_free(void *ptr)
 {
     session_ctx_t *ctx = (session_ctx_t *)ptr;
+
     if (ctx == nullptr) {
         return;
     }
+
+    session_compressed_buffers_discard(ctx);
 
     if (ctx->channel_mutex_initialized) {
         ttak_mutex_destroy(&ctx->channel_mutex);
@@ -174,18 +204,13 @@ static void session_epoch_free(void *ptr)
     }
 
     if (ctx->output_lock_initialized) {
-        /*
-         * Do not destroy output_lock here.
-         *
-         * Broadcast paths take room-member snapshots and may still attempt to
-         * lock this mutex briefly after a session begins teardown. Destroying
-         * the mutex in that window can trigger glibc aborts in
-         * __pthread_mutex_lock_full (lock-after-destroy UB).
-         *
-         * The mutex storage is embedded in session_ctx_t, so skipping destroy
-         * does not leak heap memory.
-         */
+        pthread_mutex_destroy(&ctx->output_lock);
         ctx->output_lock_initialized = false;
+    }
+
+    if (ctx->session_data != nullptr) {
+        free(ctx->session_data);
+        ctx->session_data = nullptr;
     }
 
     if (ctx->memory_context != nullptr) {
@@ -198,7 +223,7 @@ static void session_epoch_free(void *ptr)
         ctx->session_owner = nullptr;
     }
 
-    sshc_gc_free(ctx);
+    free(ctx);
 }
 
 static void session_destroy(session_ctx_t *ctx)
@@ -208,6 +233,7 @@ static void session_destroy(session_ctx_t *ctx)
     }
 
     session_runtime_unbind(ctx);
+    session_detach_external_state(ctx);
     session_cleanup(ctx);
     if (ctx->memory_context != nullptr) {
         /*
@@ -224,14 +250,16 @@ static void session_destroy(session_ctx_t *ctx)
         host_manual_gc_tick(ctx->owner);
     }
     /*
-     * Free the session object immediately after teardown.
-     *
-     * We already synchronously remove the session from room snapshots before
-     * entering this path, so direct release keeps RSS stable across
-     * join/leave churn (e.g. 150 -> 174 -> 150) instead of waiting for
-     * deferred epoch retirement.
+     * Zero-trust reclamation: even after the bounded drain wait on
+     * room_snapshot_refs, asynchronous paths (RSS, morse feed, JSON API,
+     * translated PM delivery, operator-grant updates) might still observe a
+     * raw pointer they snapshotted under a libttak EBR critical section.
+     * Retire instead of freeing immediately so the storage stays alive until
+     * every reader has left its epoch, then trigger a reclaim pass. The
+     * snapshot_refs gate plus EBR together form belt-and-braces protection.
      */
-    session_epoch_free(ctx);
+    sshc_epoch_retire_with(ctx, session_epoch_free);
+    sshc_epoch_reclaim();
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,
@@ -342,6 +370,70 @@ static void *session_thread(void *arg)
 
     while (ctx->transport_kind == SESSION_TRANSPORT_SSH) {
         if (!authenticated) {
+            session_configure_tcp_keepalive(ctx->session);
+            session_configure_ssh_options(ctx->session);
+
+            hostkey_probe_result_t hostkey_probe =
+                session_probe_client_hostkey_algorithms(
+                    ctx->session, SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS,
+                    SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS_COUNT);
+            if (hostkey_probe.status == HOSTKEY_SUPPORT_REJECTED) {
+                if (hostkey_probe.offered_algorithms[0] != '\0') {
+                    printf("[reject] client %s does not accept one of [%s] "
+                           "host keys (client offered: %s)\n",
+                           ctx->client_ip,
+                           SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS_DISPLAY,
+                           hostkey_probe.offered_algorithms);
+                } else {
+                    printf("[reject] client %s does not accept one of [%s] "
+                           "host keys\n",
+                           ctx->client_ip,
+                           SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS_DISPLAY);
+                }
+                SESSION_THREAD_ERROR_EXIT();
+            }
+
+            if (ssh_handle_key_exchange(ctx->session) != SSH_OK) {
+                humanized_log_error("session", ssh_get_error(ctx->session),
+                                    EPROTO);
+                SESSION_THREAD_ERROR_EXIT();
+            }
+
+            const char *client_banner = ssh_get_clientbanner(ctx->session);
+            const version_ip_ban_rule_t *matched_rule = nullptr;
+            if (host_version_ip_should_ban(ctx->owner, client_banner,
+                                           ctx->client_ip, &matched_rule)) {
+                const char *version_display =
+                    (client_banner != nullptr && client_banner[0] != '\0')
+                        ? client_banner
+                        : "unknown";
+                const char *pattern_display =
+                    (matched_rule != nullptr &&
+                     matched_rule->original_pattern[0] != '\0')
+                        ? matched_rule->original_pattern
+                        : "policy";
+                const char *cidr_display =
+                    (matched_rule != nullptr &&
+                     matched_rule->cidr_text[0] != '\0')
+                        ? matched_rule->cidr_text
+                        : "unknown range";
+                const char *note_display =
+                    (matched_rule != nullptr && matched_rule->note[0] != '\0')
+                        ? matched_rule->note
+                        : "version/IP policy";
+                printf("[reject] %s disconnected for client version '%s' (%s in "
+                       "%s; %s)\n",
+                       ctx->client_ip, version_display, pattern_display,
+                       cidr_display, note_display);
+                SESSION_THREAD_ERROR_EXIT();
+            }
+
+            if (client_banner != nullptr && client_banner[0] != '\0') {
+                snprintf(ctx->client_banner, sizeof(ctx->client_banner), "%s",
+                         client_banner);
+            }
+            session_refresh_output_encoding(ctx);
+
             if (session_authenticate(ctx) != 0) {
                 humanized_log_error("session", "authentication failed", EACCES);
                 SESSION_THREAD_ERROR_EXIT();
@@ -416,9 +508,13 @@ static void *session_thread(void *arg)
                      "%s", preferred_nickname);
         }
 
-        const char *nick_to_apply = preferred_nickname_raw[0] != '\0'
-                                        ? preferred_nickname_raw
-                                        : preferred_nickname;
+        const bool preferred_has_ansi =
+            strchr(preferred_nickname_raw, '\x1b') != nullptr;
+        const char *nick_to_apply =
+            (preferred_has_ansi && preferred_nickname[0] != '\0')
+                ? preferred_nickname
+                : (preferred_nickname_raw[0] != '\0' ? preferred_nickname_raw
+                                                     : preferred_nickname);
 
         if (nick_to_apply[0] != '\0' &&
             strcasecmp(ctx->user.name, nick_to_apply) != 0) {
@@ -569,7 +665,6 @@ static void *session_thread(void *arg)
         chat_room_add(&ctx->owner->room, ctx);
         session_manual_gc_tick(ctx);
         host_manual_gc_tick(ctx->owner);
-        host_reload_cached_state(ctx->owner);
         ctx->has_joined_room = true;
         printf("[join] %s\n", ctx->user.name);
 
@@ -710,6 +805,7 @@ static void *session_thread(void *arg)
         if (session_enforce_lifetime(ctx, &lifetime_now)) {
             break;
         }
+        (void)session_release_optional_buffers_if_idle(ctx, &lifetime_now);
         session_translation_flush_ready(ctx);
 
         if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {
@@ -822,12 +918,21 @@ static void *session_thread(void *arg)
                 session_transport_is_eof(ctx)) {
                 break;
             }
+            ctx->zero_read_streak += 1U;
+            if (ctx->zero_read_streak >= 300U) {
+                const char *username =
+                    ctx->user.name[0] != '\0' ? ctx->user.name : "unknown";
+                printf("[session] zero-read stall limit reached for %s, "
+                       "disconnecting\n", username);
+                break;
+            }
             if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {
                 session_game_tetris_process_timeout(ctx);
             }
             continue;
         }
 
+        ctx->zero_read_streak = 0U;
         ctx->channel_error_retries = 0U;
 
         if (read_result == 0) {
@@ -855,7 +960,13 @@ static void *session_thread(void *arg)
             }
 
             if (ch == 0x01) {
-                if (ctx->bbs_post_pending || ctx->asciiart_pending) {
+                if (ctx->wall_active) {
+                    session_wall_exit(ctx, "Exited graffiti wall.");
+                    if (ctx->should_exit) {
+                        break;
+                    }
+                    session_render_prompt(ctx, false);
+                } else if (ctx->bbs_post_pending || ctx->asciiart_pending) {
                     ctx->input_buffer[ctx->input_length] = '\0';
                     session_apply_background_fill(ctx);
                     if (ctx->bbs_post_pending) {
@@ -915,7 +1026,8 @@ static void *session_thread(void *arg)
                 } else if (ctx->game.active) {
                     bool handled = false;
                     if (ctx->game.type == SESSION_GAME_OTHELLO &&
-                        ctx->game.othello.multiplayer) {
+                        ctx->game.othello != nullptr &&
+                        ctx->game.othello->multiplayer) {
                         handled = session_game_othello_handle_forced_exit(ctx);
                     }
                     if (!handled) {
@@ -1175,6 +1287,19 @@ static void *session_thread(void *arg)
                 session_apply_background_fill(ctx);
                 const bool composing_draft =
                     ctx->bbs_post_pending || ctx->asciiart_pending;
+                if (ctx->wall_active) {
+                    ctx->input_buffer[ctx->input_length] = '\0';
+                    session_wall_process_line(ctx, ctx->input_buffer,
+                                              ctx->input_length);
+                    session_clear_input_without_prompt(ctx);
+                    if (ctx->should_exit) {
+                        break;
+                    }
+                    if (!ctx->wall_active && !ctx->bracket_paste_active) {
+                        session_render_prompt(ctx, false);
+                    }
+                    continue;
+                }
                 if (ctx->bbs_search_active) {
                     ctx->input_buffer[ctx->input_length] = '\0';
                     char status[SSH_CHATTER_MESSAGE_LIMIT];
@@ -1206,7 +1331,14 @@ static void *session_thread(void *arg)
             if (ch == '\b' || ch == 0x7f) {
                 ctx->input_history_position = -1;
                 session_scrollback_reset_position(ctx);
-                if (ctx->bbs_post_pending && ctx->pending_bbs_editing_line &&
+                if (ctx->wall_active && ctx->wall_command_mode) {
+                    if (ctx->input_length > 0U) {
+                        ctx->input_length -= 1U;
+                        ctx->input_buffer[ctx->input_length] = '\0';
+                    }
+                    session_wall_render(ctx, nullptr);
+                } else if (ctx->bbs_post_pending &&
+                           ctx->pending_bbs_editing_line &&
                     !ctx->bbs_search_active) {
                     session_local_backspace(ctx);
                     session_bbs_render_editor(ctx, nullptr);
@@ -1219,6 +1351,14 @@ static void *session_thread(void *arg)
             }
 
             if (ch == '\t') {
+                if (ctx->wall_active && ctx->wall_command_mode) {
+                    if (ctx->input_length + 1U < sizeof(ctx->input_buffer)) {
+                        ctx->input_buffer[ctx->input_length++] = ' ';
+                        ctx->input_buffer[ctx->input_length] = '\0';
+                    }
+                    session_wall_render(ctx, nullptr);
+                    continue;
+                }
                 if (session_try_command_completion(ctx)) {
                     continue;
                 }
@@ -1243,17 +1383,48 @@ static void *session_thread(void *arg)
 
             char encoded[8];
             size_t encoded_len = 0U;
-            if (ctx->cp437_input_enabled) {
-                encoded_len = session_codepage_byte_to_utf8(
-                    ctx->active_codepage, &ctx->codepage_ctx, (unsigned char)ch,
-                    encoded, sizeof(encoded));
-                if (encoded_len == 0U) {
-                    encoded[0] = '?';
-                    encoded_len = 1U;
-                }
-            } else {
-                encoded[0] = ch;
+            /*
+             * Always route input through the codepage decoder so the in-memory
+             * buffer holds canonical UTF-8 regardless of the user's terminal
+             * encoding. When retro mode is disabled we treat input as UTF-8,
+             * which the decoder passes through unchanged (single-byte path).
+             */
+            session_codepage_t input_codepage =
+                ctx->cp437_input_enabled ? ctx->active_codepage
+                                         : SESSION_CODEPAGE_UTF8;
+            encoded_len = session_codepage_byte_to_utf8(
+                input_codepage, &ctx->codepage_ctx, (unsigned char)ch, encoded,
+                sizeof(encoded));
+            if (encoded_len == 0U) {
+                encoded[0] = '?';
                 encoded_len = 1U;
+            }
+
+            if (ctx->wall_active) {
+                if (!ctx->wall_command_mode) {
+                    if (encoded_len == 1U && encoded[0] == ':') {
+                        ctx->wall_command_mode = true;
+                        session_clear_input_without_prompt(ctx);
+                        session_wall_render(ctx, nullptr);
+                        continue;
+                    }
+                    if (encoded_len == 1U &&
+                        (unsigned char)encoded[0] >= 0x20U &&
+                        (unsigned char)encoded[0] <= 0x7eU) {
+                        char wall_input[2] = {encoded[0], '\0'};
+                        session_wall_process_line(ctx, wall_input, 1U);
+                    }
+                    continue;
+                }
+
+                if (ctx->input_length + encoded_len < sizeof(ctx->input_buffer)) {
+                    memcpy(&ctx->input_buffer[ctx->input_length], encoded,
+                           encoded_len);
+                    ctx->input_length += encoded_len;
+                    ctx->input_buffer[ctx->input_length] = '\0';
+                }
+                session_wall_render(ctx, nullptr);
+                continue;
             }
 
             if (ctx->input_length + encoded_len >= sizeof(ctx->input_buffer)) {
@@ -1311,34 +1482,29 @@ static void *session_thread(void *arg)
                      ANSI_RESET, ANSI_BRIGHT_BLUE, ANSI_RESET, ctx->user.name);
         }
         host_history_record_system(ctx->owner, part_message, nullptr);
-        chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
         atomic_store(&ctx->room_snapshot_retired, true);
+        chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
         chat_room_remove(&ctx->owner->room, ctx);
         session_manual_gc_tick(ctx);
         host_manual_gc_tick(ctx->owner);
+    }
 
-        struct timespec drain_started = {0};
-        bool drain_started_valid =
-            (clock_gettime(CLOCK_MONOTONIC, &drain_started) == 0);
-        bool drain_logged = false;
-        while (atomic_load(&ctx->room_snapshot_refs) > 0U) {
-            struct timespec drain_delay = {.tv_sec = 0, .tv_nsec = 1000000L};
-            nanosleep(&drain_delay, nullptr);
-            if (drain_started_valid && !drain_logged) {
-                struct timespec now = {0};
-                if (clock_gettime(CLOCK_MONOTONIC, &now) == 0) {
-                    time_t elapsed_sec = now.tv_sec - drain_started.tv_sec;
-                    if (elapsed_sec >= 5) {
-                        printf("[session] waiting for broadcast drain (%u refs) "
-                               "for %s\n",
-                               atomic_load(&ctx->room_snapshot_refs),
-                               ctx->user.name[0] != '\0' ? ctx->user.name
-                                                         : "unknown");
-                        drain_logged = true;
-                    }
-                }
-            }
+    if (ctx->owner != nullptr) {
+        host_nickname_claim_release(ctx->owner, ctx, nullptr);
+    }
+
+    /*
+     * Bounded drain: other broadcasters may still hold a snapshot ref to ctx
+     * acquired before retired was set. Wait briefly so they finish touching
+     * ctx->output_lock before we free it. Capped to avoid indefinite hang
+     * if a ref is leaked.
+     */
+    for (unsigned int pass = 0U; pass < 500U; ++pass) {
+        if (atomic_load(&ctx->room_snapshot_refs) == 0U) {
+            break;
         }
+        struct timespec drain_delay = {.tv_sec = 0, .tv_nsec = 1000000L};
+        nanosleep(&drain_delay, nullptr);
     }
 
     session_destroy(ctx);

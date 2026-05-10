@@ -299,6 +299,29 @@ static void session_apply_user_data_theme(session_ctx_t *ctx,
     }
 }
 
+static bool session_preferred_nickname_has_ansi(
+    const user_data_record_t *record)
+{
+    if (record == nullptr || record->preferred_nickname[0] == '\0') {
+        return false;
+    }
+
+    return strchr(record->preferred_nickname, '\x1b') != nullptr;
+}
+
+static void session_clear_user_theme_codes(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    ctx->user_color_code[0] = '\0';
+    ctx->user_highlight_code[0] = '\0';
+    ctx->user_color_name[0] = '\0';
+    ctx->user_highlight_name[0] = '\0';
+    ctx->user_is_bold = false;
+}
+
 static void session_apply_saved_preferences(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
@@ -309,6 +332,8 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
     const bool user_data_loaded = session_user_data_load(ctx);
     const user_data_record_t *user_record =
         user_data_loaded ? &ctx->user_data : nullptr;
+    const bool fixed_ansi_nickname =
+        session_preferred_nickname_has_ansi(user_record);
     user_preference_t base_snapshot = (user_preference_t){0};
     user_preference_t ip_snapshot = (user_preference_t){0};
     bool has_base_snapshot = false;
@@ -361,7 +386,7 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
             ctx->ui_language = previous_language;
         }
 
-        if (base_snapshot.has_user_theme) {
+        if (!fixed_ansi_nickname && base_snapshot.has_user_theme) {
             const bool has_custom_color =
                 base_snapshot.user_color_code[0] != '\0';
             const bool has_custom_highlight =
@@ -486,8 +511,12 @@ static void session_apply_saved_preferences(session_ctx_t *ctx)
                  base_snapshot.camouflage_language);
     }
 
-    if (!user_theme_applied && user_record != nullptr) {
+    if (!fixed_ansi_nickname && !user_theme_applied && user_record != nullptr) {
         session_apply_user_data_theme(ctx, user_record);
+    }
+
+    if (fixed_ansi_nickname) {
+        session_clear_user_theme_codes(ctx);
     }
 
     if (has_ip_snapshot && ip_snapshot.ui_language[0] != '\0') {

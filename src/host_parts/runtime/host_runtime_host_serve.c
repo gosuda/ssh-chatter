@@ -65,6 +65,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
     while (host->shutdown_flag == nullptr || *host->shutdown_flag == 0) {
         ssh_bind bind_handle = ssh_bind_new();
+        bool restart_listener = false;
         if (bind_handle == nullptr) {
             humanized_log_error("host", "failed to allocate ssh_bind", ENOMEM);
             host_sleep_after_error(host);
@@ -158,16 +159,12 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         }
 
         if (fatal_key_error) {
-            ssh_bind_free(bind_handle);
-            host_sleep_after_error(host);
-            continue;
+            goto loop_cleanup;
         }
 
         if (algorithm_length == 0U) {
             humanized_log_error("host", "no host keys configured", 0);
-            ssh_bind_free(bind_handle);
-            host_sleep_after_error(host);
-            continue;
+            goto loop_cleanup;
         }
 
         ssh_bind_options_set(bind_handle, SSH_BIND_OPTIONS_HOSTKEY_ALGORITHMS,
@@ -196,9 +193,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
         if (ssh_bind_listen(bind_handle) < 0) {
             humanized_log_error("host", ssh_get_error(bind_handle), EIO);
-            ssh_bind_free(bind_handle);
-            host_sleep_after_error(host);
-            continue;
+            goto loop_cleanup;
         }
 
         host->listener.handle = bind_handle;
@@ -212,12 +207,9 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
         socket_t bind_fd = ssh_bind_get_fd(bind_handle);
         unsigned int idle_poll_cycles = 0U;
         struct timespec last_gc_run = {0};
-        struct timespec last_pressure_check = {0};
         clock_gettime(CLOCK_MONOTONIC, &last_gc_run);
-        last_pressure_check = last_gc_run;
         struct timespec last_idle_check = last_gc_run;
 
-        bool restart_listener = false;
         while (!restart_listener &&
                (host->shutdown_flag == nullptr || *host->shutdown_flag == 0)) {
 
@@ -233,10 +225,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                     poll(&pfd, 1, SSH_CHATTER_ACCEPT_POLL_TIMEOUT_MS);
                 if (poll_rc < 0) {
                     if (errno == EINTR) {
-                        if (host_gc_cycle(host, &last_gc_run,
-                                          &last_pressure_check)) {
-                            break;
-                        }
+                        host_gc_cycle(host, &last_gc_run);
                         continue;
                     }
                     // poll() failed on the bind socket -- treat as fatal
@@ -247,11 +236,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 }
                 if (poll_rc == 0) {
                     // Timeout: no incoming connection yet
-                    if (host_gc_cycle(host, &last_gc_run,
-                                      &last_pressure_check)) {
-                        restart_listener = true;
-                        break;
-                    }
+                    host_gc_cycle(host, &last_gc_run);
                     ++idle_poll_cycles;
                     if (idle_poll_cycles >=
                         SSH_CHATTER_ACCEPT_HEALTH_CHECK_POLLS) {
@@ -281,10 +266,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 idle_poll_cycles = 0U;
             }
 
-            if (host_gc_cycle(host, &last_gc_run, &last_pressure_check)) {
-                restart_listener = true;
-                break;
-            }
+            host_gc_cycle(host, &last_gc_run);
             host_idle_state_maintenance(host, &last_idle_check);
 
             ssh_session session = ssh_new();
@@ -460,48 +442,6 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 continue;
             }
 
-            session_configure_tcp_keepalive(session);
-            session_configure_ssh_options(session);
-
-            hostkey_probe_result_t hostkey_probe =
-                session_probe_client_hostkey_algorithms(
-                    session, SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS,
-                    SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS_COUNT);
-            if (hostkey_probe.status == HOSTKEY_SUPPORT_REJECTED) {
-                char peer_address[NI_MAXHOST];
-                session_describe_peer(session, peer_address,
-                                      sizeof(peer_address));
-                if (peer_address[0] == '\0') {
-                    strncpy(peer_address, "unknown", sizeof(peer_address) - 1U);
-                    peer_address[sizeof(peer_address) - 1U] = '\0';
-                }
-
-                if (hostkey_probe.offered_algorithms[0] != '\0') {
-                    printf("[reject] client %s does not accept one of [%s] "
-                           "host keys "
-                           "(client offered: %s)\n",
-                           peer_address,
-                           SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS_DISPLAY,
-                           hostkey_probe.offered_algorithms);
-                } else {
-                    printf("[reject] client %s does not accept one of [%s] "
-                           "host keys\n",
-                           peer_address,
-                           SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS_DISPLAY);
-                }
-
-                ssh_disconnect(session);
-                ssh_free(session);
-                continue;
-            }
-
-            if (ssh_handle_key_exchange(session) != SSH_OK) {
-                humanized_log_error("host", ssh_get_error(session), EPROTO);
-                ssh_disconnect(session);
-                ssh_free(session);
-                continue;
-            }
-
             char peer_address[NI_MAXHOST];
             session_describe_peer(session, peer_address, sizeof(peer_address));
             if (peer_address[0] == '\0') {
@@ -532,37 +472,6 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
             printf("[connect] accepted client from %s\n", peer_address);
             host->listener.accept_error_streak = 0U;
-
-            const char *client_banner = ssh_get_clientbanner(session);
-            const version_ip_ban_rule_t *matched_rule = nullptr;
-            if (host_version_ip_should_ban(host, client_banner, peer_address,
-                                           &matched_rule)) {
-                const char *version_display =
-                    (client_banner != nullptr && client_banner[0] != '\0')
-                        ? client_banner
-                        : "unknown";
-                const char *pattern_display =
-                    (matched_rule != nullptr &&
-                     matched_rule->original_pattern[0] != '\0')
-                        ? matched_rule->original_pattern
-                        : "policy";
-                const char *cidr_display = (matched_rule != nullptr &&
-                                            matched_rule->cidr_text[0] != '\0')
-                                               ? matched_rule->cidr_text
-                                               : "unknown range";
-                const char *note_display =
-                    (matched_rule != nullptr && matched_rule->note[0] != '\0')
-                        ? matched_rule->note
-                        : "version/IP policy";
-                printf(
-                    "[reject] %s disconnected for client version '%s' (%s in "
-                    "%s; %s)\n",
-                    peer_address, version_display, pattern_display,
-                    cidr_display, note_display);
-                ssh_disconnect(session);
-                ssh_free(session);
-                continue;
-            }
 
             session_ctx_t *ctx = session_create();
             if (ctx == nullptr) {
@@ -638,10 +547,7 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                 ctx->active_codepage =
                     session_codepage_for_language(SESSION_UI_LANGUAGE_EN);
             }
-            if (client_banner != nullptr && client_banner[0] != '\0') {
-                snprintf(ctx->client_banner, sizeof(ctx->client_banner), "%s",
-                         client_banner);
-            }
+
             session_refresh_output_encoding(ctx);
 
             ttak_mutex_lock(&host->lock);
@@ -663,8 +569,18 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
         }
 
-        ssh_bind_free(bind_handle);
-        host->listener.handle = nullptr;
+loop_cleanup:
+        if (bind_handle != nullptr) {
+            ssh_bind_free(bind_handle);
+            host->listener.handle = nullptr;
+        }
+
+        for (size_t idx = 0; idx < host_key_count; ++idx) {
+            if (imported_keys[idx] != nullptr) {
+                ssh_key_free(imported_keys[idx]);
+                imported_keys[idx] = nullptr;
+            }
+        }
 
         // Check for shutdown signal before deciding to restart
         if (host->shutdown_flag != nullptr && *host->shutdown_flag != 0) {

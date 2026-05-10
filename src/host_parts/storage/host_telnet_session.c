@@ -716,7 +716,7 @@ static int session_telnet_read_byte(session_ctx_t *ctx, unsigned char *out,
 }
 
 static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
-                                        size_t length)
+                                        size_t length, bool mask_input)
 {
     if (ctx == nullptr || buffer == nullptr || length == 0U) {
         return false;
@@ -809,17 +809,20 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
         char encoded[8];
         size_t encoded_len = 0U;
 
-        if (ctx->cp437_input_enabled) {
-            encoded_len = session_codepage_byte_to_utf8(
-                ctx->active_codepage, &ctx->codepage_ctx, byte, encoded,
-                sizeof(encoded));
-            if (encoded_len == 0U) {
-                encoded[0] = '?';
-                encoded_len = 1U;
-            }
-        } else {
-            /* UTF-8 mode - pass through */
-            encoded[0] = (char)byte;
+        /*
+         * Route every byte through the codepage decoder so multi-generation
+         * BBS clients (UTF-8 / CP949 / Johab / CP932 / ...) all converge on
+         * canonical UTF-8 in the session buffer. With retro disabled we
+         * select UTF-8 as the source codepage, which the decoder passes
+         * through byte-for-byte.
+         */
+        session_codepage_t input_codepage =
+            ctx->cp437_input_enabled ? ctx->active_codepage
+                                     : SESSION_CODEPAGE_UTF8;
+        encoded_len = session_codepage_byte_to_utf8(
+            input_codepage, &ctx->codepage_ctx, byte, encoded, sizeof(encoded));
+        if (encoded_len == 0U) {
+            encoded[0] = '?';
             encoded_len = 1U;
         }
 
@@ -836,7 +839,13 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
         memcpy(&buffer[written], encoded, encoded_len);
         written += encoded_len;
         buffer[written] = '\0';
-        session_channel_write(ctx, encoded, encoded_len);
+
+        if (mask_input) {
+            const char mask = '*';
+            session_channel_write(ctx, &mask, 1U);
+        } else {
+            session_channel_write(ctx, encoded, encoded_len);
+        }
     }
 
     buffer[written] = '\0';
@@ -1014,7 +1023,7 @@ static bool session_telnet_prompt_unicode_check(session_ctx_t *ctx)
         session_send_plain_line(ctx, "Type N");
         session_channel_write(ctx, "> ", 2U);
 
-        if (!session_telnet_collect_line(ctx, resp, sizeof(resp))) {
+        if (!session_telnet_collect_line(ctx, resp, sizeof(resp), false)) {
             return false;
         }
 
@@ -1066,21 +1075,12 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
         session_channel_write(ctx, "> ", 2U);
 
         char input_line[SSH_CHATTER_MESSAGE_LIMIT];
-        if (!session_telnet_collect_line(ctx, input_line, sizeof(input_line))) {
+        if (!session_telnet_collect_line(ctx, input_line, sizeof(input_line),
+                                         false)) {
             return false;
         }
 
         trim_whitespace_inplace(input_line);
-
-        const char separators[] = " ,;.";
-        char *password_inline = nullptr;
-        for (char *cursor = input_line; *cursor != '\0'; ++cursor) {
-            if (strchr(separators, *cursor) != nullptr) {
-                *cursor = '\0';
-                password_inline = cursor + 1;
-                break;
-            }
-        }
 
         snprintf(id_buffer, sizeof(id_buffer), "%.*s",
                  SSH_CHATTER_USERNAME_LEN - 1, input_line);
@@ -1092,10 +1092,6 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
 
         char provided_password[128];
         provided_password[0] = '\0';
-        if (password_inline != nullptr) {
-            snprintf(provided_password, sizeof(provided_password), "%s",
-                     password_inline);
-        }
 
         user_data_record_t user_data;
         memset(&user_data, 0, sizeof(user_data));
@@ -1156,7 +1152,8 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
 
         char confirmation_response[8];
         if (!session_telnet_collect_line(ctx, confirmation_response,
-                                         sizeof(confirmation_response))) {
+                                         sizeof(confirmation_response),
+                                         false)) {
             return false;
         }
 
@@ -1195,7 +1192,7 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
 
             char password_buffer[128];
             if (!session_telnet_collect_line(ctx, password_buffer,
-                                             sizeof(password_buffer))) {
+                                             sizeof(password_buffer), true)) {
                 return false;
             }
             if (password_buffer[0] == '\0') {

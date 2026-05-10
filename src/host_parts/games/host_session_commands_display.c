@@ -17,7 +17,7 @@ static int session_channel_read_poll(session_ctx_t *ctx, char *buffer,
 
     int fd = ssh_get_fd(ctx->session);
     if (fd < 0) {
-        return session_transport_read(ctx, buffer, length, -1);
+        return session_transport_read(ctx, buffer, length, 0);
     }
 
     int val = 1;
@@ -51,7 +51,7 @@ static int session_channel_read_poll(session_ctx_t *ctx, char *buffer,
         return SESSION_CHANNEL_TIMEOUT;
     }
 
-    return session_transport_read(ctx, buffer, length, -1);
+    return session_transport_read(ctx, buffer, length, 0);
 }
 
 static bool session_parse_color_arguments(char *working, char **tokens,
@@ -102,6 +102,8 @@ static bool session_parse_color_arguments(char *working, char **tokens,
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+#include "ssh_chatter/abstract_byte_buffer.h"
 
 static bool session_valid_ansi_256_sequence(const char *sequence)
 {
@@ -412,6 +414,157 @@ static void session_handle_color(session_ctx_t *ctx, const char *arguments)
     if (ctx->owner != nullptr) {
         host_store_user_theme(ctx->owner, ctx);
     }
+}
+
+static bool session_fixnick_extract_plain_name(const char *source,
+                                               char *plain_name,
+                                               size_t plain_name_len)
+{
+    if (plain_name == nullptr || plain_name_len == 0U) {
+        return false;
+    }
+
+    plain_name[0] = '\0';
+    if (source == nullptr || source[0] == '\0') {
+        return false;
+    }
+
+    if (!user_data_strip_ansi_sequences(source, plain_name, plain_name_len)) {
+        return false;
+    }
+
+    trim_whitespace_inplace(plain_name);
+    return plain_name[0] != '\0';
+}
+
+static void session_fixnick_clear_user_theme_state(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    ctx->user_color_code[0] = '\0';
+    ctx->user_highlight_code[0] = '\0';
+    ctx->user_color_name[0] = '\0';
+    ctx->user_highlight_name[0] = '\0';
+    ctx->user_is_bold = false;
+
+    if (ctx->user_data_loaded) {
+        ctx->user_data.has_user_theme = 0U;
+        ctx->user_data.user_is_bold = 0U;
+        ctx->user_data.user_color_code[0] = '\0';
+        ctx->user_data.user_highlight_code[0] = '\0';
+        ctx->user_data.user_color_name[0] = '\0';
+        ctx->user_data.user_highlight_name[0] = '\0';
+    }
+
+    if (ctx->owner != nullptr) {
+        ttak_mutex_lock(&ctx->owner->lock);
+        user_preference_t *pref =
+            host_find_preference_locked(ctx->owner, ctx->user.name, "");
+        if (pref != nullptr) {
+            pref->has_user_theme = false;
+            pref->user_is_bold = false;
+            pref->user_color_code[0] = '\0';
+            pref->user_highlight_code[0] = '\0';
+            pref->user_color_name[0] = '\0';
+            pref->user_highlight_name[0] = '\0';
+        }
+        host_state_save_locked(ctx->owner);
+        ttak_mutex_unlock(&ctx->owner->lock);
+    }
+}
+
+static void session_handle_fixnick(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    if (arguments != nullptr && arguments[0] != '\0') {
+        session_send_system_line(ctx, "Usage: /fixnick");
+        return;
+    }
+
+    if (!session_user_data_load(ctx)) {
+        session_send_system_line(ctx, "Unable to load user data.");
+        return;
+    }
+
+    if (!user_data_has_password(&ctx->user_data) ||
+        !user_data_reserved_nickname_is_ip_wide(&ctx->user_data)) {
+        session_send_system_line(
+            ctx, "/fixnick is only available for IP-wide reserved nicknames.");
+        return;
+    }
+
+    char fixed_nickname[SSH_CHATTER_USERNAME_LEN];
+    char visible_name[SSH_CHATTER_USERNAME_LEN];
+    fixed_nickname[0] = '\0';
+    visible_name[0] = '\0';
+
+    const char *preferred = ctx->user_data.preferred_nickname;
+    if (preferred[0] != '\0' && session_valid_ansi_256_sequence(preferred)) {
+        snprintf(fixed_nickname, sizeof(fixed_nickname), "%s", preferred);
+        if (!session_fixnick_extract_plain_name(preferred, visible_name,
+                                                sizeof(visible_name))) {
+            snprintf(visible_name, sizeof(visible_name), "%s", ctx->user.name);
+        }
+    } else {
+        const char *source_name =
+            preferred[0] != '\0' ? preferred : ctx->user.name;
+        if (!session_fixnick_extract_plain_name(source_name, visible_name,
+                                                sizeof(visible_name))) {
+            snprintf(visible_name, sizeof(visible_name), "%s", ctx->user.name);
+            trim_whitespace_inplace(visible_name);
+        }
+
+        if (ctx->user_color_code[0] == '\0' &&
+            ctx->user_highlight_code[0] == '\0' && !ctx->user_is_bold) {
+            session_send_system_line(
+                ctx, "No nickname color state is active. Use /color first.");
+            return;
+        }
+
+        snprintf(fixed_nickname, sizeof(fixed_nickname), "%s%s%s%s%s",
+                 ctx->user_highlight_code, ctx->user_color_code,
+                 ctx->user_is_bold ? ANSI_BOLD : "", visible_name,
+                 ANSI_RESET);
+    }
+
+    trim_whitespace_inplace(visible_name);
+    if (visible_name[0] == '\0') {
+        session_send_system_line(ctx, "Unable to derive a valid nickname.");
+        return;
+    }
+
+    snprintf(ctx->user_data.preferred_nickname,
+             sizeof(ctx->user_data.preferred_nickname), "%s", fixed_nickname);
+
+    user_data_set_fixnick_enabled(&ctx->user_data, true);
+
+    session_fixnick_clear_user_theme_state(ctx);
+
+    if (!session_user_data_commit(ctx)) {
+        session_send_system_line(ctx, "Failed to persist fixed nickname.");
+        return;
+    }
+
+    if (ctx->owner != nullptr && ctx->owner->pw_auth_file_path[0] != '\0') {
+        (void)session_pw_auth_update(
+            ctx->owner, ctx->user.name, ctx->user_data.password_salt,
+            sizeof(ctx->user_data.password_salt), ctx->user_data.password_hash,
+            sizeof(ctx->user_data.password_hash),
+            user_data_reserved_nickname_is_ip_wide(&ctx->user_data), true,
+            ctx->client_ip, true);
+    }
+
+    session_send_system_line(
+        ctx, "Nickname colors fixed and stored for all IP addresses.");
+
+    char preview[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(preview, sizeof(preview), "%s%s", fixed_nickname, ANSI_RESET);
+    session_send_line(ctx, preview);
 }
 
 static void session_handle_motd(session_ctx_t *ctx)
@@ -1182,8 +1335,7 @@ static void session_handle_history(session_ctx_t *ctx, const char *arguments)
 }
 
 typedef struct session_weather_buffer {
-    char *data;
-    size_t length;
+    sshc_abstract_byte_buffer_t bytes;
 } session_weather_buffer_t;
 
 static size_t session_weather_write_callback(void *contents, size_t size,
@@ -1195,16 +1347,9 @@ static size_t session_weather_write_callback(void *contents, size_t size,
         return 0U;
     }
 
-    char *resized = sshc_gc_realloc(buffer->data, buffer->length + total + 1U);
-    if (resized == nullptr) {
-        return 0U;
-    }
-
-    buffer->data = resized;
-    memcpy(buffer->data + buffer->length, contents, total);
-    buffer->length += total;
-    buffer->data[buffer->length] = '\0';
-    return total;
+    return sshc_abstract_byte_buffer_append(&buffer->bytes, contents, total)
+               ? total
+               : 0U;
 }
 
 static bool session_fetch_weather_summary(const char *city,
@@ -1222,6 +1367,7 @@ static bool session_fetch_weather_summary(const char *city,
 
     bool success = false;
     session_weather_buffer_t buffer = {0};
+    sshc_abstract_byte_buffer_init(&buffer.bytes);
     char query[128];
     snprintf(query, sizeof(query), "%s", city);
 
@@ -1254,11 +1400,16 @@ static bool session_fetch_weather_summary(const char *city,
 
     long status = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-    if (status < 200L || status >= 300L || buffer.data == nullptr) {
+    if (status < 200L || status >= 300L || buffer.bytes.storage == nullptr) {
         goto cleanup;
     }
 
-    char *trimmed = buffer.data;
+    sshc_abstract_byte_buffer_view_t buffer_view = {0};
+    if (!sshc_abstract_byte_buffer_map_cstr(&buffer.bytes, &buffer_view)) {
+        goto cleanup;
+    }
+
+    char *trimmed = buffer_view.data;
     while (*trimmed != '\0' && isspace((unsigned char)*trimmed)) {
         ++trimmed;
     }
@@ -1268,13 +1419,16 @@ static bool session_fetch_weather_summary(const char *city,
     }
 
     if (trimmed[0] == '\0') {
+        sshc_abstract_byte_buffer_unmap(&buffer_view);
         goto cleanup;
     }
 
     snprintf(summary, summary_len, "%s", trimmed);
     success = true;
+    sshc_abstract_byte_buffer_unmap(&buffer_view);
 
 cleanup:
+    sshc_abstract_byte_buffer_free(&buffer.bytes);
     curl_easy_cleanup(curl);
     return success;
 }

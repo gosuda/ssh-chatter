@@ -21,6 +21,7 @@
 #include <getopt.h>
 
 #include <sys/types.h>
+#include <unistd.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +39,24 @@
 #define HOST_STABLE_RESET_SECONDS 10.0
 #define SSH_CHATTER_MAX_HOST_RESTARTS 2U
 
+/*
+ * Defensive glibc malloc tuning. Each new thread can claim its own arena
+ * (default cap: 8 * NCPU on 64-bit), and arenas don't shrink while sessions
+ * churn. Capping the arena count and lowering trim/mmap thresholds keeps
+ * RSS from drifting up under join/leave bursts. Larger allocations go
+ * straight to mmap so they're released cleanly on free instead of staying
+ * pinned in the heap.
+ */
+static void daemon_tune_allocator_defaults(void)
+{
+#if defined(__GLIBC__)
+    (void)mallopt(M_ARENA_MAX, 2);
+    (void)mallopt(M_TRIM_THRESHOLD, 128 * 1024);
+    (void)mallopt(M_MMAP_THRESHOLD, 128 * 1024);
+    (void)mallopt(M_TOP_PAD, 64 * 1024);
+#endif
+}
+
 static volatile sig_atomic_t g_shutdown_flag = 0;
 static char *g_welcome_banner_content = nullptr;
 static bool g_sync_initialized = false;
@@ -45,9 +64,17 @@ static bool g_sync_initialized = false;
 static void signal_handler(int signum)
 {
     (void)signum;
-    printf("[signal] Received signal %d, setting shutdown flag\n", signum);
-    fflush(stdout);
+    /* Async-signal-safe path only: never call fprintf/printf here, since the
+     * signal can interrupt a thread mid-stdio and corrupt libc buffers — that
+     * has historically surfaced as ttak header-corruption aborts during
+     * shutdown. Atomically set the flag and emit a single write(2). */
+    if (g_shutdown_flag != 0) {
+        return;
+    }
     g_shutdown_flag = 1;
+    static const char message[] =
+        "[signal] Received shutdown signal, setting shutdown flag\n";
+    (void)!write(STDERR_FILENO, message, sizeof(message) - 1U);
 }
 
 static void print_usage(const char *prog_name)
@@ -109,31 +136,10 @@ static void sleep_before_restart(unsigned int attempts)
     }
 }
 
-static void daemon_extreme_gc_collect(void)
-{
-    for (int pass = 0; pass < 4; ++pass) {
-        sshc_epoch_reclaim();
-        sshc_epoch_reclaim();
-#if defined(__GLIBC__)
-        malloc_trim(0);
-#endif
-
-        struct timespec pause = {
-            .tv_sec = 0,
-            .tv_nsec = 20 * 1000 * 1000L,
-        };
-        struct timespec remaining = {0};
-        while (nanosleep(&pause, &remaining) != 0) {
-            if (errno != EINTR) {
-                break;
-            }
-            pause = remaining;
-        }
-    }
-}
-
 int main(int argc, char **argv)
 {
+    daemon_tune_allocator_defaults();
+
     int exit_code = EXIT_SUCCESS;
 
     struct sigaction sa;
@@ -557,7 +563,6 @@ int main(int argc, char **argv)
             host_serve(host, bind_address, bind_port, host_key_dir,
                        telnet_bind_address, telnet_port, json_bind_address,
                        json_port);
-        const bool force_restart_requested = host->force_restart_requested;
 
         const int serve_errno = errno;
 
@@ -581,15 +586,6 @@ int main(int argc, char **argv)
         sshc_gc_free(host);
 
         host = nullptr;
-
-        if (force_restart_requested) {
-            printf("[daemon] memory pressure cleanup complete; restarting "
-                   "listeners without exiting the process\n");
-            daemon_extreme_gc_collect();
-            g_shutdown_flag = 0;
-            restart_attempts = 0U;
-            continue;
-        }
 
         if (g_shutdown_flag) {
             printf("[daemon] shutdown signal received, exiting gracefully\n");

@@ -481,6 +481,7 @@ static void chat_room_remove(chat_room_t *room, const session_ctx_t *session)
         }
     }
     ttak_mutex_unlock(&room->lock);
+    host_feature_slots_reclaim_if_idle(session->owner);
 }
 
 /**
@@ -510,6 +511,14 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
                 if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    continue;
+                }
+                atomic_fetch_add(&member->room_snapshot_refs, 1U);
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+                    continue;
+                }
                 targets[target_count++] = member;
             }
         }
@@ -522,6 +531,7 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
 
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_mark_should_sink(targets[idx]);
+        atomic_fetch_sub(&targets[idx]->room_snapshot_refs, 1U);
     }
 
     sshc_gc_free(targets);
@@ -732,21 +742,12 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
             continue;
         }
 
-        // For telnet, or SSH sessions using the display model: trigger an
-        // incremental history-scroll redraw so the conversation scrolls up
-        // by one line and the new message appears at the bottom.
-        if (member->transport_kind == SESSION_TRANSPORT_TELNET ||
-            member->display_model_initialized) {
-            session_flag_should_sink(member);
-            if (member->history_scroll_position == 0U && !member->no_update) {
-                session_process_pending_sink(member);
-            }
-            session_channel_flush(member);
-            atomic_fetch_sub(&member->room_snapshot_refs, 1U);
-            continue;
-        }
-
-        // --- SSH path (no display model) ---
+        // Append the caption as a regular line at the bottom for every
+        // transport. A full sink redraw cannot reliably surface a reaction
+        // notification when the reacted-to message is outside the current
+        // viewport, so the caption is emitted directly and the next sink
+        // (triggered by any future chat message) will re-render the inline
+        // reaction count from the updated history.
         session_output_buffer_flush(member);
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;
@@ -757,17 +758,12 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
 
         if (member->history_scroll_position == 0U) {
             session_clear_pending_sink(member);
-        }
-
-        if (member->history_scroll_position == 0U) {
             member->prompt_needs_padding = false;
             member->output_lines_since_prompt = 0U;
             session_refresh_input_line(member);
         }
         atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
-
-    // printf("\033[1G[broadcast caption] %s\n", message);
 
     sshc_gc_free(targets);
 }
@@ -968,13 +964,44 @@ chat_room_broadcast_reaction_update(host_t *host,
         if (!host_compact_id_encode(entry->message_id, label, sizeof(label))) {
             snprintf(label, sizeof(label), "%" PRIu64, entry->message_id);
         }
-        snprintf(line, sizeof(line), "    ->[#%s] reactions: %s", label,
-                 summary);
+        snprintf(line, sizeof(line), "    ->[#%s] - %s", label, summary);
     } else {
-        snprintf(line, sizeof(line), "    ->reactions: %s", summary);
+        snprintf(line, sizeof(line), "    - %s", summary);
     }
 
     chat_room_broadcast_caption(&host->room, line);
+}
+
+/* host->history is a perma-WRITE-mapped view over host->history_storage.
+ * The view pointer must be released before any resize call and re-acquired
+ * after.  These helpers centralize that dance so callers cannot accidentally
+ * resize while the view is live. */
+
+static void host_history_view_release(host_t *host)
+{
+    if (host == nullptr || host->history == nullptr) {
+        return;
+    }
+    ttak_abstract_unmap(&host->history_view);
+    host->history = nullptr;
+}
+
+static bool host_history_view_refresh(host_t *host)
+{
+    if (host == nullptr || host->history_storage == nullptr ||
+        host->history_capacity == 0U) {
+        return false;
+    }
+    if (ttak_abstract_map(host->history_storage, 0U,
+                          host->history_capacity *
+                              sizeof(chat_history_entry_t),
+                          TTAK_ABSTRACT_ACCESS_WRITE,
+                          &host->history_view) != 0) {
+        host->history = nullptr;
+        return false;
+    }
+    host->history = (chat_history_entry_t *)host->history_view.data;
+    return host->history != nullptr;
 }
 
 static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
@@ -991,7 +1018,8 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
         min_capacity = SSH_CHATTER_HISTORY_CACHE_LIMIT;
     }
 
-    if (min_capacity <= host->history_capacity) {
+    if (min_capacity <= host->history_capacity &&
+        host->history_storage != nullptr) {
         success = true;
         goto cleanup;
     }
@@ -999,6 +1027,9 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
     if (min_capacity > SIZE_MAX / sizeof(chat_history_entry_t)) {
         humanized_log_error("host-history",
                             "history buffer too large to allocate", ENOMEM);
+        goto cleanup;
+    }
+    if (host->resource_manager == nullptr) {
         goto cleanup;
     }
 
@@ -1023,22 +1054,44 @@ static bool host_history_reserve_locked(host_t *host, size_t min_capacity)
     }
 
     size_t bytes = new_capacity * sizeof(chat_history_entry_t);
-    chat_history_entry_t *resized = sshc_gc_realloc(host->history, bytes);
-    if (resized == nullptr) {
+    size_t old_capacity = host->history_capacity;
+    /* Release the live WRITE map before resizing — abstract_resize may
+     * relocate backing, which is forbidden while a map is held. */
+    host_history_view_release(host);
+
+    if (host->history_storage == nullptr) {
+        host->history_storage = sshc_rm_scope_alloc(
+            host->resource_manager, bytes, "history");
+        if (host->history_storage == nullptr) {
+            humanized_log_error("host-history",
+                                "failed to allocate chat history buffer",
+                                errno != 0 ? errno : ENOMEM);
+            goto cleanup;
+        }
+    } else if (sshc_rm_scope_resize(host->resource_manager,
+                                    host->history_storage, bytes) != 0) {
+        /* Re-map the prior storage so callers see consistent state. */
+        host->history_capacity = old_capacity;
+        (void)host_history_view_refresh(host);
         humanized_log_error("host-history",
                             "failed to grow chat history buffer",
                             errno != 0 ? errno : ENOMEM);
         goto cleanup;
     }
 
-    if (new_capacity > host->history_capacity) {
-        size_t old_capacity = host->history_capacity;
-        size_t added = new_capacity - old_capacity;
-        memset(resized + old_capacity, 0, added * sizeof(chat_history_entry_t));
+    host->history_capacity = new_capacity;
+    if (!host_history_view_refresh(host)) {
+        humanized_log_error("host-history", "history view refresh failed",
+                            EIO);
+        goto cleanup;
     }
 
-    host->history = resized;
-    host->history_capacity = new_capacity;
+    if (new_capacity > old_capacity) {
+        size_t added = new_capacity - old_capacity;
+        memset(host->history + old_capacity, 0,
+               added * sizeof(chat_history_entry_t));
+    }
+
     success = true;
 
 cleanup:
@@ -1777,6 +1830,8 @@ static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
     snprintf(entry->raw_username, sizeof(entry->raw_username), "%s",
              raw_username);
     snprintf(entry->user_ip, sizeof(entry->user_ip), "%s", from->client_ip);
+    session_build_network_topology_key(from, entry->user_topology,
+                                       sizeof(entry->user_topology));
     if (from->user_color_code[0] != '\0') {
         snprintf(entry->user_color_code, sizeof(entry->user_color_code), "%s",
                  from->user_color_code);

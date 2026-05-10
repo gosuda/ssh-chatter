@@ -44,6 +44,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <ttak/ht/map.h>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 typedef struct sshc_memory_allocation {
     void *ptr;
@@ -143,12 +146,10 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
     /* EpochGC: per-context generational collector (local gc init<->destroy cycle). */
     ttak_epoch_gc_init(&ctx->epoch_gc);
 
-    /* Reclamation: 10ms min / 200ms max for adaptive sweep (PR #506 tuning). */
-    ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
-    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
-                                         TT_MILLI_SECOND(10),
-                                         TT_MILLI_SECOND(200));
-
+    /* EpochGC: per-context generational collector.
+     * The rotate thread drives cleanup manually; we do NOT enable the
+     * mem_tree's own background thread here to avoid spawning two
+     * threads per context. */
 }
 
 static sshc_memory_context_t *sshc_memory_context_global(void)
@@ -164,10 +165,12 @@ void sshc_memory_runtime_init(void)
         GC_set_free_space_divisor(10); 
         GC_init(); 
 #endif
-        /* Global TTAK tuning: adaptive 10ms–500ms, pressure threshold = 8. */
+        /* Global TTAK tuning: graceful cadence with generous backoff.
+         * The memory manager now provides hints (alloc/free/realloc)
+         * so the background threads do not have to poll aggressively. */
         ttak_mem_set_trace(
             sshc_env_truthy(getenv("SSH_CHATTER_MEM_TRACE")) ? 1 : 0);
-        ttak_mem_configure_gc(TT_MILLI_SECOND(10), TT_MILLI_SECOND(500), 8);
+        ttak_mem_configure_gc(TT_MILLI_SECOND(100), TT_SECOND(5), 64);
 
         /* Hash map for O(1) ptr → allocation* lookup (initial capacity 1024). */
         sshc_alloc_map = ttak_create_map(1024, ttak_get_tick_count());
@@ -267,9 +270,9 @@ void sshc_memory_runtime_shutdown(void)
     if (sshc_global_context.owner) ttak_owner_destroy(sshc_global_context.owner);
     pthread_mutex_destroy(&sshc_global_context.mutex);
 
-    /* Release the allocation hash map (free SoA arrays then the struct). */
+    /* Release the allocation hash map properly (SoA arrays + struct). */
     if (sshc_alloc_map != nullptr) {
-        ttak_mem_free(sshc_alloc_map);
+        ttak_destroy_map(sshc_alloc_map);
         sshc_alloc_map = nullptr;
     }
 
@@ -291,12 +294,8 @@ sshc_memory_context_t *sshc_memory_context_create(const char *label)
     }
     sshc_memory_context_init(ctx, label);
 
-    /* Session context: adaptive 10ms–200ms, pressure threshold = 4. */
-    ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
-    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
-                                         TT_MILLI_SECOND(10),
-                                         TT_MILLI_SECOND(200));
-    ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 4);
+    /* Session context: the epoch GC rotate thread handles cleanup.
+     * Do NOT enable the mem_tree's own auto-cleanup thread here. */
 
     /* Vertical Hierarchy: Register this session owner as a child of the global owner.
      * This ensures that if the global context is destroyed, all session contexts are audited. */
@@ -456,6 +455,7 @@ void *sshc_gc_malloc(size_t size)
                                SSH_CHATTER_DEFAULT_LIFETIME,
                                ttak_get_tick_count());
     if (ptr == nullptr) return nullptr;
+    ttak_epoch_gc_hint(&ctx->epoch_gc, TTAK_EPOCH_GC_HINT_ALLOC);
 
     sshc_memory_allocation_t *allocation =
         (sshc_memory_allocation_t *)ttak_mem_alloc(
@@ -551,6 +551,7 @@ void *sshc_gc_realloc(void *ptr, size_t size)
         } else {
             ttak_mem_free(ptr);
         }
+        ttak_epoch_gc_hint(&old_allocation->context->epoch_gc, TTAK_EPOCH_GC_HINT_REALLOC);
     }
 
     sshc_memory_allocation_t *allocation = old_allocation;
@@ -586,6 +587,7 @@ void *sshc_gc_realloc(void *ptr, size_t size)
 
     sshc_memory_context_register_allocation(allocation_ctx, allocation);
     sshc_memory_registry_add(allocation);
+    ttak_epoch_gc_hint(&allocation_ctx->epoch_gc, TTAK_EPOCH_GC_HINT_ALLOC);
     return new_ptr;
 }
 
@@ -665,6 +667,7 @@ void sshc_gc_free(void *ptr)
             ttak_mem_free(ptr);
         }
         ttak_mem_free(allocation);
+        ttak_epoch_gc_hint(&allocation->context->epoch_gc, TTAK_EPOCH_GC_HINT_FREE);
     } else {
         /* Not tracked – direct free. */
         ttak_mem_free(ptr);
@@ -701,13 +704,37 @@ void sshc_memory_context_reset(sshc_memory_context_t *ctx)
     }
 
     /* Force a rotation to flush released nodes through the cleanup pass. */
+    ttak_epoch_gc_hint(&ctx->epoch_gc, TTAK_EPOCH_GC_HINT_COLLECT_NOW);
     ttak_epoch_gc_rotate(&ctx->epoch_gc);
 }
 
 void sshc_memory_context_epoch_gc_rotate(sshc_memory_context_t *ctx)
 {
     if (ctx == nullptr) return;
+    ttak_epoch_gc_hint(&ctx->epoch_gc, TTAK_EPOCH_GC_HINT_COLLECT_NOW);
     ttak_epoch_gc_rotate(&ctx->epoch_gc);
+}
+
+void sshc_memory_context_collect(sshc_memory_context_t *ctx,
+                                 unsigned int rotate_passes)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (rotate_passes == 0U) {
+        rotate_passes = 1U;
+    }
+
+    ttak_epoch_gc_hint(&ctx->epoch_gc, TTAK_EPOCH_GC_HINT_COLLECT_NOW);
+    for (unsigned int pass = 0U; pass < rotate_passes; ++pass) {
+        ttak_epoch_gc_rotate(&ctx->epoch_gc);
+        ttak_epoch_reclaim();
+    }
+
+#if defined(__GLIBC__)
+    (void)malloc_trim(0);
+#endif
 }
 
 void sshc_gc_init(void) 

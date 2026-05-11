@@ -28,6 +28,15 @@ static bool host_is_system_reserved_username(host_t *host, const char *username)
             return true;
         }
     }
+
+    if (host->ai_persona_a_name[0] != '\0' &&
+        strcasecmp(username, host->ai_persona_a_name) == 0) {
+        return true;
+    }
+    if (host->ai_persona_b_name[0] != '\0' &&
+        strcasecmp(username, host->ai_persona_b_name) == 0) {
+        return true;
+    }
     return false;
 }
 

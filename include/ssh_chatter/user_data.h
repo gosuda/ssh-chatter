@@ -116,5 +116,8 @@ bool user_data_reserved_nickname_is_ip_wide(
     const user_data_record_t *restrict record);
 void user_data_set_reserved_nickname_ip_wide(
     user_data_record_t *restrict record, bool enabled);
+bool user_data_fixnick_enabled(const user_data_record_t *restrict record);
+void user_data_set_fixnick_enabled(user_data_record_t *restrict record,
+                                   bool enabled);
 
 #endif /* SSH_CHATTER_USER_DATA_H */

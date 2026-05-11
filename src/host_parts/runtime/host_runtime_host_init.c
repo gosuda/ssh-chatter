@@ -1,3 +1,8 @@
+/* Forward declarations for helpers defined later in this file but referenced
+ * by host_init(), which is the first definition. */
+static void host_ai_persona_load_from_env(host_t *host);
+static void host_door_games_load_from_env(host_t *host);
+
 static void host_fix_overlapping_bbs_rss_paths(host_t *host)
 {
     if (host == nullptr) {
@@ -376,6 +381,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_state_load(host);
     host->history_cache_loaded =
         host->history != nullptr && host->history_capacity > 0U;
+    host_pw_auth_load(host);
+    host_ai_persona_load_from_env(host);
+    host_door_games_load_from_env(host);
     host_wall_state_load(host);
     host_ui_language_state_load(host);
     host_vote_state_load(host);

@@ -814,8 +814,15 @@ static void session_handle_ai_member(session_ctx_t *ctx, const char *arguments)
     if (working[0] == '\0') {
         bool enabled = host_ai_member_is_enabled(ctx->owner);
         char status[SSH_CHATTER_MESSAGE_LIMIT];
+        const char *persona_a = ctx->owner->ai_persona_a_name[0] != '\0'
+                                    ? ctx->owner->ai_persona_a_name
+                                    : "kaka";
+        const char *persona_b = ctx->owner->ai_persona_b_name[0] != '\0'
+                                    ? ctx->owner->ai_persona_b_name
+                                    : "dada";
         snprintf(status, sizeof(status),
-                 "AI members (kaka/dada) are %s using %s.",
+                 "AI members (%s/%s) are %s using %s.",
+                 persona_a, persona_b,
                  enabled ? "enabled" : "disabled",
                  ctx->owner->ai_chat_use_gemini ? "Gemini 2.5 Flash-Lite"
                                                 : "Ollama");
@@ -861,8 +868,17 @@ static void session_handle_ai_member(session_ctx_t *ctx, const char *arguments)
                                        "Flash-Lite."
                                      : "AI members enabled with Ollama.");
     } else {
-        session_send_system_line(
-            ctx, "AI members disabled. kaka/dada will stay quiet.");
+        char disabled_msg[SSH_CHATTER_MESSAGE_LIMIT];
+        const char *persona_a = ctx->owner->ai_persona_a_name[0] != '\0'
+                                    ? ctx->owner->ai_persona_a_name
+                                    : "kaka";
+        const char *persona_b = ctx->owner->ai_persona_b_name[0] != '\0'
+                                    ? ctx->owner->ai_persona_b_name
+                                    : "dada";
+        snprintf(disabled_msg, sizeof(disabled_msg),
+                 "AI members disabled. %s/%s will stay quiet.", persona_a,
+                 persona_b);
+        session_send_system_line(ctx, disabled_msg);
     }
 }
 
@@ -889,8 +905,14 @@ static void session_handle_ollama_model(session_ctx_t *ctx,
 
     (void)working;
     char message[SSH_CHATTER_MESSAGE_LIMIT];
+    const char *persona_a = ctx->owner->ai_persona_a_name[0] != '\0'
+                                ? ctx->owner->ai_persona_a_name
+                                : "kaka";
+    const char *persona_b = ctx->owner->ai_persona_b_name[0] != '\0'
+                                ? ctx->owner->ai_persona_b_name
+                                : "dada";
     snprintf(message, sizeof(message),
-             "kaka/dada use %s.",
+             "%s/%s use %s.", persona_a, persona_b,
              ctx->owner->ai_chat_use_gemini ? "Gemini 2.5 Flash-Lite"
                                             : host_ai_chat_default_model());
     session_send_system_line(ctx, message);
@@ -1030,11 +1052,79 @@ bool host_nickname_claim_can_use(host_t *host, const session_ctx_t *ctx,
     return allowed;
 }
 
+static void session_pw_auth_hex_decode(const char *input, uint8_t *output,
+                                       size_t length)
+{
+    if (input == nullptr || output == nullptr) {
+        return;
+    }
+
+    for (size_t idx = 0U; idx < length; ++idx) {
+        unsigned int val;
+        if (sscanf(input + idx * 2U, "%02x", &val) == 1) {
+            output[idx] = (uint8_t)val;
+        } else {
+            output[idx] = 0;
+        }
+    }
+}
+
+void host_pw_auth_load(host_t *host)
+{
+    if (host == nullptr || host->pw_auth_file_path[0] == '\0') {
+        return;
+    }
+
+    FILE *fp = fopen(host->pw_auth_file_path, "rb");
+    if (fp == nullptr) {
+        return;
+    }
+
+    char line[SSH_CHATTER_MESSAGE_LIMIT];
+    while (fgets(line, sizeof(line), fp) != nullptr) {
+        size_t length = strcspn(line, "\r\n");
+        line[length] = '\0';
+
+        char *saveptr;
+        char *username = strtok_r(line, ":", &saveptr);
+        char *salt_hex = strtok_r(nullptr, ":", &saveptr);
+        char *hash_hex = strtok_r(nullptr, ":", &saveptr);
+        char *ip_wide_str = strtok_r(nullptr, ":", &saveptr);
+        char *fixnick_str = strtok_r(nullptr, ":", &saveptr);
+        char *owner_ip = strtok_r(nullptr, ":", &saveptr);
+
+        if (username == nullptr || salt_hex == nullptr || hash_hex == nullptr) {
+            continue;
+        }
+
+        uint8_t salt[16];
+        uint8_t hash[32];
+        session_pw_auth_hex_decode(salt_hex, salt, sizeof(salt));
+        session_pw_auth_hex_decode(hash_hex, hash, sizeof(hash));
+
+        bool ip_wide = (ip_wide_str != nullptr && atoi(ip_wide_str) != 0);
+        bool fixnick = (fixnick_str != nullptr && atoi(fixnick_str) != 0);
+
+        nickname_claim_t *claim = nullptr;
+        if (host_nickname_claim_upsert(host, nullptr, username, salt, hash,
+                                       ip_wide, fixnick)) {
+            claim = host_nickname_claim_find_locked(host, username, nullptr);
+            if (claim != nullptr && owner_ip != nullptr && owner_ip[0] != '\0') {
+                snprintf(claim->owner_ip, sizeof(claim->owner_ip), "%s",
+                         owner_ip);
+            }
+        }
+    }
+
+    fclose(fp);
+}
+
 bool host_nickname_claim_upsert(host_t *host, const session_ctx_t *ctx,
                                 const char *nick, const uint8_t *salt,
-                                const uint8_t *hash, bool ip_wide)
+                                const uint8_t *hash, bool ip_wide,
+                                bool fixnick)
 {
-    if (host == nullptr || ctx == nullptr || nick == nullptr || nick[0] == '\0' ||
+    if (host == nullptr || nick == nullptr || nick[0] == '\0' ||
         salt == nullptr || hash == nullptr || host->nickname_claim_pool == nullptr) {
         return false;
     }
@@ -1053,11 +1143,17 @@ bool host_nickname_claim_upsert(host_t *host, const session_ctx_t *ctx,
     }
     if (claim != nullptr) {
         snprintf(claim->nickname, sizeof(claim->nickname), "%s", nick);
-        snprintf(claim->owner_ip, sizeof(claim->owner_ip), "%s", ctx->client_ip);
+        if (ctx != nullptr) {
+            snprintf(claim->owner_ip, sizeof(claim->owner_ip), "%s", ctx->client_ip);
+            claim->owner_session_id = ctx->session_id;
+        } else {
+            claim->owner_ip[0] = '\0';
+            claim->owner_session_id = 0U;
+        }
         memcpy(claim->password_salt, salt, sizeof(claim->password_salt));
         memcpy(claim->password_hash, hash, sizeof(claim->password_hash));
-        claim->owner_session_id = ctx->session_id;
         claim->ip_wide = ip_wide;
+        claim->fixnick = fixnick;
         success = true;
     }
     ttak_mutex_unlock(&host->nickname_reserve_lock);

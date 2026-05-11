@@ -47,6 +47,9 @@
 #define SSH_CHATTER_MAX_BANS 16384
 #define SSH_CHATTER_HISTORY_LIMIT 64
 #define SSH_CHATTER_HISTORY_CACHE_LIMIT 256
+#define SSH_CHATTER_DOOR_GAME_LIMIT 16
+#define SSH_CHATTER_DOOR_GAME_NAME_LEN 32
+#define SSH_CHATTER_DOOR_GAME_DESC_LEN 128
 #define SSH_CHATTER_INPUT_HISTORY_LIMIT 32
 #define SSH_CHATTER_SCROLLBACK_CHUNK 30
 #define SSH_CHATTER_SCROLLBACK_MAX_CHUNK 64
@@ -76,7 +79,7 @@
 #define SSH_CHATTER_RSS_ITEM_KEY_LEN 1024
 #define SSH_CHATTER_RSS_TITLE_LEN 512
 #define SSH_CHATTER_RSS_LINK_LEN 1024
-#define SSH_CHATTER_RSS_SUMMARY_LEN 65536
+#define SSH_CHATTER_RSS_SUMMARY_LEN 2048
 #define SSH_CHATTER_RSS_DOWNLOAD_MAX_BYTES (4U * 1024U * 1024U)
 #define SSH_CHATTER_RSS_MAX_ITEMS 32
 #define SSH_CHATTER_MAX_GRANTS 128
@@ -287,6 +290,13 @@ typedef struct ai_chat_memory_entry {
     char prompt[SSH_CHATTER_MESSAGE_LIMIT];
     char reply[SSH_CHATTER_MESSAGE_LIMIT];
 } ai_chat_memory_entry_t;
+
+typedef struct door_game_entry {
+    bool in_use;
+    char name[SSH_CHATTER_DOOR_GAME_NAME_LEN];
+    char dosbox_conf[PATH_MAX];
+    char description[SSH_CHATTER_DOOR_GAME_DESC_LEN];
+} door_game_entry_t;
 
 typedef enum version_pattern_match {
     VERSION_PATTERN_MATCH_ANY = 0,
@@ -639,6 +649,7 @@ typedef struct nickname_claim {
     uint8_t password_hash[SECURITY_LAYER_HASH_LEN];
     uint64_t owner_session_id;
     bool ip_wide;
+    bool fixnick;
 } nickname_claim_t;
 
 typedef enum session_newline_mode {
@@ -1090,6 +1101,12 @@ typedef struct host {
     struct timespec ai_chat_last_reply;
     ai_chat_memory_entry_t ai_chat_memory[SSH_CHATTER_AI_MEMORY_MAX];
     size_t ai_chat_memory_count;
+    char ai_persona_a_name[64];
+    char ai_persona_a_alias[64];
+    char ai_persona_b_name[64];
+    char ai_persona_b_alias[64];
+    door_game_entry_t door_games[SSH_CHATTER_DOOR_GAME_LIMIT];
+    size_t door_game_count;
     char rss_state_file_path[PATH_MAX];
     eliza_memory_entry_t eliza_memory[SSH_CHATTER_ELIZA_MEMORY_MAX];
     size_t eliza_memory_count;
@@ -1167,7 +1184,8 @@ bool host_nickname_claim_can_use(host_t *host, const session_ctx_t *ctx,
                                  const char *nick);
 bool host_nickname_claim_upsert(host_t *host, const session_ctx_t *ctx,
                                 const char *nick, const uint8_t *salt,
-                                const uint8_t *hash, bool ip_wide);
+                                const uint8_t *hash, bool ip_wide,
+                                bool fixnick);
 void host_nickname_claim_release(host_t *host, const session_ctx_t *ctx,
                                  const char *nick);
 void host_nickname_claim_remove(host_t *host, const char *nick);

@@ -465,14 +465,30 @@ typedef struct reaction_descriptor {
     const char *command;
     const char *label;
     const char *icon;
+    const char *localized_label[SESSION_UI_LANGUAGE_COUNT];
 } reaction_descriptor_t;
 
 static const reaction_descriptor_t
     REACTION_DEFINITIONS[SSH_CHATTER_REACTION_KIND_COUNT] = {
-        {"good", "good", "b"},         {"sad", "sad", ":("},
-        {"cool", "cool", "(ツ)!"},     {"angry", "angry", ":/"},
-        {"checked", "checked", "[v]"}, {"love", "love", "<3"},
-        {"wtf", "wtf", "凸_(ツ)"},
+        {"good", "good", "b",
+         {"good", "좋음", "良い", "好", "хорошо", "gut", "bien", "dobrze"}},
+        {"sad", "sad", ":(",
+         {"sad", "슬픔", "悲しい", "难过", "грустно", "traurig", "triste",
+          "smutno"}},
+        {"cool", "cool", "(ツ)!",
+         {"cool", "멋짐", "かっこいい", "酷", "круто", "cool", "cool",
+          "fajne"}},
+        {"angry", "angry", ":/",
+         {"angry", "화남", "怒り", "生气", "злой", "wütend", "en colère",
+          "zły"}},
+        {"checked", "checked", "[v]",
+         {"checked", "확인", "確認", "已阅", "проверено", "geprüft",
+          "vérifié", "sprawdzone"}},
+        {"love", "love", "<3",
+         {"love", "사랑", "愛", "爱", "любовь", "liebe", "amour",
+          "miłość"}},
+        {"wtf", "wtf", "凸_(ツ)",
+         {"wtf", "뭐야", "何", "什么", "что", "was", "quoi", "co"}},
 };
 
 typedef struct os_descriptor {

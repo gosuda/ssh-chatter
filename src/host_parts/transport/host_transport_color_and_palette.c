@@ -1359,7 +1359,8 @@ static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
                                         chat_history_entry_t *updated_entry);
 static bool
 chat_history_entry_build_reaction_summary(const chat_history_entry_t *entry,
-                                          char *buffer, size_t length);
+                                          char *buffer, size_t length,
+                                          session_ui_language_t lang);
 static void host_ban_resolve_path(host_t *host);
 static void host_ban_state_save_locked(host_t *host);
 static void host_ban_state_load(host_t *host);

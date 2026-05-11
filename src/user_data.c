@@ -261,6 +261,25 @@ void user_data_set_reserved_nickname_ip_wide(
     record->reserved[0] = enabled ? 1U : 0U;
 }
 
+bool user_data_fixnick_enabled(const user_data_record_t *restrict record)
+{
+    if (record == nullptr) {
+        return false;
+    }
+
+    return record->reserved[1] != 0U;
+}
+
+void user_data_set_fixnick_enabled(user_data_record_t *restrict record,
+                                   bool enabled)
+{
+    if (record == nullptr) {
+        return;
+    }
+
+    record->reserved[1] = enabled ? 1U : 0U;
+}
+
 static bool user_data_load_raw(const char *path, user_data_record_t *record,
                                bool *needs_upgrade)
 {

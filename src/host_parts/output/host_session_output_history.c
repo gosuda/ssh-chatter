@@ -1039,6 +1039,25 @@ static void session_render_history_entry(session_ctx_t *ctx,
             }
         }
 
+        char reaction_summary[SSH_CHATTER_MESSAGE_LIMIT];
+        if (chat_history_entry_build_reaction_summary(
+                entry, reaction_summary, sizeof(reaction_summary),
+                ctx->ui_language)) {
+            char reaction_line[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(reaction_line, sizeof(reaction_line), "    - %s",
+                     reaction_summary);
+            if (ctx->display_model_initialized) {
+                unsigned int width =
+                    (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
+                display_model_append_message(&ctx->display_model,
+                                             entry->message_id, reaction_line,
+                                             width);
+            }
+            if (emit_output) {
+                session_send_plain_line(ctx, reaction_line);
+            }
+        }
+
         session_output_restore_kind(ctx, previous_kind);
         return;
     }
@@ -1248,7 +1267,8 @@ static __attribute__((unused)) void session_list_named_polls(session_ctx_t *ctx)
 
 static bool
 chat_history_entry_build_reaction_summary(const chat_history_entry_t *entry,
-                                          char *buffer, size_t length)
+                                          char *buffer, size_t length,
+                                          session_ui_language_t lang)
 {
     if (entry == nullptr || buffer == nullptr || length == 0U) {
         return false;
@@ -1258,6 +1278,10 @@ chat_history_entry_build_reaction_summary(const chat_history_entry_t *entry,
     bool any = false;
     size_t offset = 0U;
 
+    if (lang >= SESSION_UI_LANGUAGE_COUNT) {
+        lang = SESSION_UI_LANGUAGE_EN;
+    }
+
     for (size_t idx = 0U; idx < SSH_CHATTER_REACTION_KIND_COUNT; ++idx) {
         uint32_t count = entry->reaction_counts[idx];
         if (count == 0U) {
@@ -1265,8 +1289,12 @@ chat_history_entry_build_reaction_summary(const chat_history_entry_t *entry,
         }
 
         const reaction_descriptor_t *descriptor = &REACTION_DEFINITIONS[idx];
+        const char *label = descriptor->localized_label[lang];
+        if (label == nullptr || label[0] == '\0') {
+            label = descriptor->label;
+        }
         char chunk[64];
-        snprintf(chunk, sizeof(chunk), "%s x%u", descriptor->icon, count);
+        snprintf(chunk, sizeof(chunk), "[%s: %u]", label, count);
 
         size_t chunk_len = strlen(chunk);
         if (chunk_len + 1U >= length - offset) {
@@ -1274,6 +1302,8 @@ chat_history_entry_build_reaction_summary(const chat_history_entry_t *entry,
         }
 
         if (any) {
+            buffer[offset++] = ' ';
+            buffer[offset++] = '|';
             buffer[offset++] = ' ';
         }
         memcpy(buffer + offset, chunk, chunk_len);

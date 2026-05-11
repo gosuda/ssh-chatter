@@ -713,7 +713,8 @@ static void session_bbs_show_dashboard(session_ctx_t *ctx)
     session_render_separator(ctx, "BBS Dashboard");
     session_send_system_line(
         ctx, "Commands: list, read <id>, topic read <tag>, post <title> "
-             "[tags...], comment <id>|<text>, regen <id>, delete <id>, exit");
+             "[tags...], comment <id>|<text>, regen <id>, delete <id>, "
+             "door [name], exit");
     session_bbs_list(ctx);
 }
 

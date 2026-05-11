@@ -130,6 +130,13 @@ static void session_detach_external_state(session_ctx_t *ctx)
      * object is reclaimed so stale pointers do not remain in host state. */
     if (ctx->owner != nullptr) {
         host_t *host = ctx->owner;
+
+        ttak_mutex_lock(&host->lock);
+        if (host->connection_count > 0U) {
+            --host->connection_count;
+        }
+        ttak_mutex_unlock(&host->lock);
+
         for (size_t idx = 0U; idx < SSH_CHATTER_OTHELLO_MAX_SLOTS; ++idx) {
             bool should_release = false;
             session_ctx_t *opponent = nullptr;
@@ -386,6 +393,70 @@ static void *session_thread(void *arg)
 
     while (ctx->transport_kind == SESSION_TRANSPORT_SSH) {
         if (!authenticated) {
+            session_configure_tcp_keepalive(ctx->session);
+            session_configure_ssh_options(ctx->session);
+
+            hostkey_probe_result_t hostkey_probe =
+                session_probe_client_hostkey_algorithms(
+                    ctx->session, SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS,
+                    SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS_COUNT);
+            if (hostkey_probe.status == HOSTKEY_SUPPORT_REJECTED) {
+                if (hostkey_probe.offered_algorithms[0] != '\0') {
+                    printf("[reject] client %s does not accept one of [%s] "
+                           "host keys (client offered: %s)\n",
+                           ctx->client_ip,
+                           SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS_DISPLAY,
+                           hostkey_probe.offered_algorithms);
+                } else {
+                    printf("[reject] client %s does not accept one of [%s] "
+                           "host keys\n",
+                           ctx->client_ip,
+                           SSH_CHATTER_REQUIRED_HOSTKEY_ALGORITHMS_DISPLAY);
+                }
+                SESSION_THREAD_ERROR_EXIT();
+            }
+
+            if (ssh_handle_key_exchange(ctx->session) != SSH_OK) {
+                humanized_log_error("session", ssh_get_error(ctx->session),
+                                    EPROTO);
+                SESSION_THREAD_ERROR_EXIT();
+            }
+
+            const char *client_banner = ssh_get_clientbanner(ctx->session);
+            const version_ip_ban_rule_t *matched_rule = nullptr;
+            if (host_version_ip_should_ban(ctx->owner, client_banner,
+                                           ctx->client_ip, &matched_rule)) {
+                const char *version_display =
+                    (client_banner != nullptr && client_banner[0] != '\0')
+                        ? client_banner
+                        : "unknown";
+                const char *pattern_display =
+                    (matched_rule != nullptr &&
+                     matched_rule->original_pattern[0] != '\0')
+                        ? matched_rule->original_pattern
+                        : "policy";
+                const char *cidr_display =
+                    (matched_rule != nullptr &&
+                     matched_rule->cidr_text[0] != '\0')
+                        ? matched_rule->cidr_text
+                        : "unknown range";
+                const char *note_display =
+                    (matched_rule != nullptr && matched_rule->note[0] != '\0')
+                        ? matched_rule->note
+                        : "version/IP policy";
+                printf("[reject] %s disconnected for client version '%s' (%s in "
+                       "%s; %s)\n",
+                       ctx->client_ip, version_display, pattern_display,
+                       cidr_display, note_display);
+                SESSION_THREAD_ERROR_EXIT();
+            }
+
+            if (client_banner != nullptr && client_banner[0] != '\0') {
+                snprintf(ctx->client_banner, sizeof(ctx->client_banner), "%s",
+                         client_banner);
+            }
+            session_refresh_output_encoding(ctx);
+
             if (session_authenticate(ctx) != 0) {
                 humanized_log_error("session", "authentication failed", EACCES);
                 SESSION_THREAD_ERROR_EXIT();

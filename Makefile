@@ -20,7 +20,7 @@ SRC_DIR := src
 INCLUDE_DIR := include
 BUILD_DIR := build
 TTAK_DIR := lib/libttak
-TTAK_LIB := $(TTAK_DIR)/lib/libttak.a
+TTAK_LIB := /usr/local/lib/libttak.a
 
 # NOTE: -march=native builds binaries tuned for the current host CPU and must
 #       be rebuilt on any deployment target with a different microarchitecture.
@@ -28,7 +28,7 @@ TTAK_LIB := $(TTAK_DIR)/lib/libttak.a
 CFLAGS = -std=c2x -Ofast \
               -Werror \
               -Wno-error=deprecated-declarations -DSSH_CHATTER_USE_GC=$(ENABLE_GC) \
-              -I $(INCLUDE_DIR) -I $(TTAK_DIR)/include -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
+              -I $(INCLUDE_DIR) -I /usr/local/include -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
               -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
               -Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
               -fstack-protector-strong -fno-common \
@@ -69,7 +69,7 @@ CFLAGS = -std=c2x -Ofast \
 # LINKER FLAGS (LDFLAGS) - Extreme Security and Optimization
 # ==============================================================================
 COMMON_LDFLAGS = \
-    -L$(TTAK_DIR)/lib \
+    -L/usr/local/lib \
     -lpthread -ldl -lcurl -lm -lcrypto -llz4 -lttak -lutil -lc \
     -Wl,-Ofast \
     -Wl,--hash-style=gnu \

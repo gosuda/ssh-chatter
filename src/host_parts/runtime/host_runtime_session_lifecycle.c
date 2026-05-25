@@ -27,9 +27,9 @@ static bool session_attempt_handshake_restart(session_ctx_t *ctx,
     return true;
 }
 
-#define SESSION_EBR_DRAIN_PASSES 8U
-#define SESSION_GC_ROTATE_PASSES 6U
-#define SESSION_MANUAL_GC_WAIT_PASSES 6U
+#define SESSION_EBR_DRAIN_PASSES 3U
+#define SESSION_GC_ROTATE_PASSES 2U
+#define SESSION_MANUAL_GC_WAIT_PASSES 2U
 #define SESSION_MANUAL_GC_WAIT_NS 5000000L
 
 static void session_drain_reclamation(sshc_memory_context_t *memory_context,
@@ -66,25 +66,18 @@ static void session_release_interaction_state(session_ctx_t *ctx)
     }
 
     /*
-     * Explicitly scrub and reset user-interaction state when a session
-     * disconnects so transient conversation/editor buffers are reclaimed
-     * immediately instead of waiting for process-wide GC pressure.
+     * Reset only the active indices and lengths instead of zeroing entire
+     * embedded buffers.  This avoids cache-thrashing memsets on multi-kilobyte
+     * arrays while still making the session state appear empty.  The buffers
+     * themselves will be zeroed when the session context is recreated via
+     * sshc_gc_calloc.
      */
-    memset(ctx->input_buffer, 0, sizeof(ctx->input_buffer));
     ctx->input_length = 0U;
-    memset(ctx->input_history, 0, sizeof(ctx->input_history));
-    memset(ctx->input_history_is_command, 0, sizeof(ctx->input_history_is_command));
     ctx->input_history_count = 0U;
     ctx->input_history_position = -1;
-    memset(ctx->input_escape_buffer, 0, sizeof(ctx->input_escape_buffer));
     ctx->input_escape_length = 0U;
-    memset(ctx->multibyte_input_buffer, 0, sizeof(ctx->multibyte_input_buffer));
     ctx->multibyte_input_length = 0U;
-    memset(ctx->status_message, 0, sizeof(ctx->status_message));
-    memset(ctx->output_buffer, 0, sizeof(ctx->output_buffer));
     ctx->output_buffer_length = 0U;
-    memset(ctx->realtime_recent_lines, 0, sizeof(ctx->realtime_recent_lines));
-    memset(ctx->last_output_line, 0, sizeof(ctx->last_output_line));
     ctx->has_last_output_line = false;
     ctx->realtime_recent_count = 0U;
     ctx->realtime_recent_start = 0U;
@@ -273,15 +266,13 @@ static void session_destroy(session_ctx_t *ctx)
     (void)malloc_trim(0);
 #endif
     /*
-     * Defer the final session object release through EBR.
-     *
-     * TELNET reconnect bursts still leave a small window where late output
-     * paths can observe the retiring session pointer. Retiring the context
-     * avoids use-after-free corruption in write_dispatch while keeping the
-     * heavy per-session allocations under epoch control until all claimants
-     * have dropped them.
+     * Destroy the session object immediately instead of deferring through
+     * EBR.  By the time we reach here the session has already been removed
+     * from the room and room_snapshot_refs has dropped to zero, so no
+     * other thread can observe this pointer.  This makes session teardown
+     * fully deterministic.
      */
-    sshc_epoch_retire_with(ctx, session_epoch_free);
+    session_epoch_free(ctx);
     session_drain_reclamation(nullptr, ctx->owner);
 }
 
@@ -1502,7 +1493,7 @@ static void *session_thread(void *arg)
             (clock_gettime(CLOCK_MONOTONIC, &drain_started) == 0);
         bool drain_logged = false;
         while (atomic_load(&ctx->room_snapshot_refs) > 0U) {
-            struct timespec drain_delay = {.tv_sec = 0, .tv_nsec = 1000000L};
+            struct timespec drain_delay = {.tv_sec = 0, .tv_nsec = 10000000L};
             nanosleep(&drain_delay, nullptr);
             if (drain_started_valid && !drain_logged) {
                 struct timespec now = {0};

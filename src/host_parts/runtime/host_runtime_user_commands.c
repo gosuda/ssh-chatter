@@ -480,6 +480,9 @@ host_register_join_attempt(host_t *host, const char *username, const char *ip)
         return HOST_JOIN_ATTEMPT_KICK;
     }
 
+    /* Register this successful join attempt in the connection guard. */
+    (void)host_connection_guard_register(host, ip);
+
     return HOST_JOIN_ATTEMPT_OK;
 }
 

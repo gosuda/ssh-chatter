@@ -243,28 +243,28 @@ static const provider_prefix_t kProviderPrefixes[] = {
 
 bool is_pure_ascii(const char *str)
 {
-    size_t len = strlen(str);
-    for (size_t i = 0; i < len; i++) {
-        if ((unsigned char)str[i] > 127) {
+    for (const unsigned char *p = (const unsigned char *)str; *p != '\0'; ++p) {
+        if (*p > 127) {
             return false;
         }
     }
     return true;
 }
 
+static int uint32_t_cmp(const void *a, const void *b)
+{
+    uint32_t va = *(const uint32_t *)a;
+    uint32_t vb = *(const uint32_t *)b;
+    return (va > vb) - (va < vb);
+}
+
 int count_unicode_points(const char *str, utf8_code_count_t **counts_out,
                          size_t *unique_count_out)
 {
     size_t len = strnlen(str, SSH_CHATTER_MESSAGE_LIMIT);
-    size_t unique_count = 0;
-    size_t capacity = 100;
-    utf8_code_count_t *counts =
-        (utf8_code_count_t *)sshc_gc_calloc(capacity, sizeof(utf8_code_count_t));
+    uint32_t points[SSH_CHATTER_MESSAGE_LIMIT];
+    size_t total = 0;
 
-    if (!counts)
-        return -1;
-
-    size_t total_points = 0;
     for (size_t i = 0; i < len;) {
         unsigned int code_point = 0;
         size_t bytes_read = 0;
@@ -293,37 +293,44 @@ int count_unicode_points(const char *str, utf8_code_count_t **counts_out,
         }
 
         i += bytes_read;
-        total_points++;
+        points[total++] = code_point;
+    }
 
-        int found = 0;
-        for (size_t j = 0; j < unique_count; j++) {
-            if (counts[j].code_point == code_point) {
-                counts[j].count++;
-                found = 1;
-                break;
-            }
-        }
+    if (total == 0) {
+        *counts_out = nullptr;
+        *unique_count_out = 0;
+        return 0;
+    }
 
-        if (!found) {
-            if (unique_count >= capacity) {
-                capacity *= 2;
-                utf8_code_count_t *new_counts = (utf8_code_count_t *)sshc_gc_realloc(
-                    counts, capacity * sizeof(utf8_code_count_t));
-                if (!new_counts) {
-                    sshc_gc_free(counts);
-                    return -1;
-                }
-                counts = new_counts;
-            }
-            counts[unique_count].code_point = code_point;
-            counts[unique_count].count = 1;
-            unique_count++;
+    qsort(points, total, sizeof(points[0]), uint32_t_cmp);
+
+    size_t unique = 1;
+    for (size_t i = 1; i < total; ++i) {
+        if (points[i] != points[i - 1])
+            unique++;
+    }
+
+    utf8_code_count_t *counts =
+        (utf8_code_count_t *)sshc_gc_calloc(unique, sizeof(*counts));
+    if (!counts)
+        return -1;
+
+    size_t idx = 0;
+    counts[idx].code_point = points[0];
+    counts[idx].count = 1;
+    for (size_t i = 1; i < total; ++i) {
+        if (points[i] == counts[idx].code_point) {
+            counts[idx].count++;
+        } else {
+            idx++;
+            counts[idx].code_point = points[i];
+            counts[idx].count = 1;
         }
     }
 
     *counts_out = counts;
-    *unique_count_out = unique_count;
-    return (int)total_points;
+    *unique_count_out = unique;
+    return (int)total;
 }
 
 double calculate_chi_squared(const char *str)

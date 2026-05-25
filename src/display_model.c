@@ -43,7 +43,6 @@ static bool display_model_view_lines(const display_model_t *model,
         return false;
     }
 
-    memset(view, 0, sizeof(*view));
     *lines_out = NULL;
     if (model == NULL || model->line_storage == NULL) {
         return false;
@@ -69,7 +68,6 @@ static bool display_model_view_lines_mut(display_model_t *model,
         return false;
     }
 
-    memset(view, 0, sizeof(*view));
     *lines_out = NULL;
     if (model == NULL || model->line_storage == NULL) {
         return false;

@@ -11,4 +11,3 @@
 #include "games/host_game_othello.c"
 #include "games/host_game_alpha.c"
 #include "games/host_game_gonu.c"
-#include "games/host_session_commands_display.c"

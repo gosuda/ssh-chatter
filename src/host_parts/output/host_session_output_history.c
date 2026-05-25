@@ -978,15 +978,18 @@ static void session_render_history_entry(session_ctx_t *ctx,
                      highlight, bold, color, id_display, display_name,
                      ANSI_RESET);
         }
-        strncat(formatted, name_block,
-                sizeof(formatted) - strlen(formatted) - 1U);
+        size_t fmt_len = strlen(name_block);
+        memcpy(formatted, name_block, fmt_len);
+        formatted[fmt_len] = '\0';
 
         if (entry->message[0] != '\0') {
             const bool multiline = strchr(entry->message, '\n') != nullptr;
             if (multiline) {
                 // For multiline messages, send the username first, then each line separately
-                strncat(formatted, " ",
-                        sizeof(formatted) - strlen(formatted) - 1U);
+                if (fmt_len + 1 < sizeof(formatted)) {
+                    formatted[fmt_len++] = ' ';
+                    formatted[fmt_len] = '\0';
+                }
                 if (ctx->display_model_initialized) {
                     unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
                     display_model_append_message(&ctx->display_model, entry->message_id, formatted, width);
@@ -998,10 +1001,16 @@ static void session_render_history_entry(session_ctx_t *ctx,
                 }
             } else {
                 // For single-line messages, send as before
-                strncat(formatted, " ",
-                        sizeof(formatted) - strlen(formatted) - 1U);
-                strncat(formatted, entry->message,
-                        sizeof(formatted) - strlen(formatted) - 1U);
+                if (fmt_len + 1 < sizeof(formatted)) {
+                    formatted[fmt_len++] = ' ';
+                    formatted[fmt_len] = '\0';
+                }
+                size_t msg_len = strlen(entry->message);
+                if (fmt_len + msg_len < sizeof(formatted)) {
+                    memcpy(formatted + fmt_len, entry->message, msg_len);
+                    fmt_len += msg_len;
+                    formatted[fmt_len] = '\0';
+                }
                 if (ctx->display_model_initialized) {
                     unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
                     display_model_append_message(&ctx->display_model, entry->message_id, formatted, width);

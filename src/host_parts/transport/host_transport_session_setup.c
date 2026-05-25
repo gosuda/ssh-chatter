@@ -543,15 +543,19 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     }
 
     session_ctx_t **targets = nullptr;
+    session_ctx_t *stack_targets[64];
     size_t target_count = 0U;
     size_t expected_targets = 0U;
 
     ttak_mutex_lock(&room->lock);
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
-        targets = sshc_gc_malloc(expected_targets * sizeof(*targets));
+        if (expected_targets <= sizeof(stack_targets) / sizeof(stack_targets[0])) {
+            targets = stack_targets;
+        } else {
+            targets = sshc_gc_malloc(expected_targets * sizeof(*targets));
+        }
         if (targets != nullptr) {
-            memset(targets, 0, expected_targets * sizeof(*targets));
             for (size_t idx = 0; idx < room->member_count; ++idx) {
                 session_ctx_t *member = room->members[idx];
                 if (member == nullptr || !session_transport_active(member)) {
@@ -583,12 +587,6 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         }
     }
     ttak_mutex_unlock(&room->lock);
-
-    if (targets == nullptr && expected_targets > 0U) {
-        humanized_log_error("chat-room", "failed to allocate broadcast buffer",
-                            ENOMEM);
-        return;
-    }
 
     // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
@@ -665,7 +663,9 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
         atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
 
-    sshc_gc_free(targets);
+    if (targets != stack_targets) {
+        sshc_gc_free(targets);
+    }
 }
 
 /**
@@ -779,21 +779,22 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     chat_room_broadcast_should_sink(room);
 
     session_ctx_t **targets = nullptr;
+    session_ctx_t *stack_targets[64];
     size_t target_count = 0U;
     size_t expected_targets = 0U;
     session_ctx_t **sink_targets = nullptr;
+    session_ctx_t *stack_sink_targets[64];
     size_t sink_count = 0U;
 
     ttak_mutex_lock(&room->lock);
     expected_targets = room->member_count;
     if (expected_targets > 0U) {
-        targets = sshc_gc_malloc(expected_targets * sizeof(*targets));
-        sink_targets = sshc_gc_malloc(expected_targets * sizeof(*sink_targets));
-        if (targets != nullptr) {
-            memset(targets, 0, expected_targets * sizeof(*targets));
-        }
-        if (sink_targets != nullptr) {
-            memset(sink_targets, 0, expected_targets * sizeof(*sink_targets));
+        if (expected_targets <= sizeof(stack_targets) / sizeof(stack_targets[0])) {
+            targets = stack_targets;
+            sink_targets = stack_sink_targets;
+        } else {
+            targets = sshc_gc_malloc(expected_targets * sizeof(*targets));
+            sink_targets = sshc_gc_malloc(expected_targets * sizeof(*sink_targets));
         }
         if (targets != nullptr) {
             for (size_t idx = 0; idx < room->member_count; ++idx) {
@@ -852,7 +853,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     if (targets == nullptr && expected_targets > 0U) {
         humanized_log_error(
             "chat-room", "failed to allocate entry broadcast buffer", ENOMEM);
-        sshc_gc_free(sink_targets);
+        if (sink_targets != stack_sink_targets) {
+            sshc_gc_free(sink_targets);
+        }
         return;
     }
 
@@ -930,8 +933,12 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
 
-    sshc_gc_free(targets);
-    sshc_gc_free(sink_targets);
+    if (targets != stack_targets) {
+        sshc_gc_free(targets);
+    }
+    if (sink_targets != stack_sink_targets) {
+        sshc_gc_free(sink_targets);
+    }
 }
 
 static void

@@ -326,7 +326,8 @@ char **wrap_text_to_width(const char *text, int max_width, size_t *line_count)
     }
 
     const char *current_pos = text;
-    char active_ansi_codes[256] = ""; // To carry over active ANSI codes
+    char active_ansi_codes[256] = "";
+    size_t active_ansi_len = 0;
 
     while (*current_pos != '\0') {
         char current_line_buffer[SSH_CHATTER_MESSAGE_LIMIT];
@@ -337,20 +338,18 @@ char **wrap_text_to_width(const char *text, int max_width, size_t *line_count)
         size_t last_word_len = 0;
 
         // Add active ANSI codes to the beginning of the new line
-        // Prepend a reset code to ensure consistent styling for each new line
-        if (strlen(active_ansi_codes) > 0) {
+        if (active_ansi_len > 0) {
             const char *reset_code = "\033[0m";
-            size_t reset_len = strlen(reset_code);
-            size_t ansi_len = strlen(active_ansi_codes);
+            size_t reset_len = sizeof("\033[0m") - 1;
 
-            if (current_line_len + reset_len + ansi_len <
+            if (current_line_len + reset_len + active_ansi_len <
                 sizeof(current_line_buffer)) {
                 memcpy(current_line_buffer + current_line_len, reset_code,
                        reset_len);
                 current_line_len += reset_len;
                 memcpy(current_line_buffer + current_line_len,
-                       active_ansi_codes, ansi_len);
-                current_line_len += ansi_len;
+                       active_ansi_codes, active_ansi_len);
+                current_line_len += active_ansi_len;
             }
         }
 
@@ -375,13 +374,13 @@ char **wrap_text_to_width(const char *text, int max_width, size_t *line_count)
                         current_line_len += ansi_seq_len;
                     }
                     // Update active ANSI codes
-                    // This is a simplified approach. A full implementation would parse and track
-                    // active SGR parameters. For now, we just append.
-                    // This might lead to issues if a reset is missed or a new color overrides.
-                    // For basic bubble, this might be sufficient.
-                    strncat(active_ansi_codes, ansi_seq_buffer,
-                            sizeof(active_ansi_codes) -
-                                strlen(active_ansi_codes) - 1);
+                    if (active_ansi_len + ansi_seq_len <
+                        sizeof(active_ansi_codes)) {
+                        memcpy(active_ansi_codes + active_ansi_len,
+                               ansi_seq_buffer, ansi_seq_len);
+                        active_ansi_len += ansi_seq_len;
+                        active_ansi_codes[active_ansi_len] = '\0';
+                    }
                     current_pos += ansi_seq_len;
                     continue;
                 }

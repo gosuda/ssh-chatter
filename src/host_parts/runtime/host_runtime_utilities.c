@@ -53,7 +53,7 @@ static void host_memory_pressure_aggressive_cleanup(host_t *host)
 {
     /* Rotate the host memory context aggressively so deferred allocations
      * become immediately reclaimable before we tear down the listeners. */
-    for (int pass = 0; pass < 4; ++pass) {
+    for (int pass = 0; pass < 2; ++pass) {
         if (host != nullptr && host->memory_context != nullptr) {
             sshc_memory_context_epoch_gc_rotate(host->memory_context);
         }
@@ -245,7 +245,6 @@ static inline bool host_gc_cycle(host_t *host, struct timespec *last_gc_run,
     }
 
     sshc_memory_context_epoch_gc_rotate(host->memory_context);
-    sshc_epoch_reclaim();
     sshc_epoch_reclaim();
     *last_gc_run = now;
     return host_memory_pressure_restart(host, last_pressure_check);

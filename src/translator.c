@@ -1505,14 +1505,19 @@ static char *translator_build_gemini_url(const char *base, const char *model,
     size_t base_len = strlen(base);
     bool base_has_slash = (base_len > 0U && base[base_len - 1U] == '/');
     const char *models_prefix = "models/";
-    size_t models_prefix_len = strlen(models_prefix);
+    size_t models_prefix_len = sizeof("models/") - 1;
     size_t model_len = strlen(model);
     const char *suffix =
         stream_mode ? ":streamGenerateContent" : ":generateContent";
+    size_t suffix_len = stream_mode
+                            ? sizeof(":streamGenerateContent") - 1
+                            : sizeof(":generateContent") - 1;
     const char *query_prefix = stream_mode ? "?alt=sse&key=" : "?key=";
+    size_t query_prefix_len = stream_mode ? sizeof("?alt=sse&key=") - 1
+                                          : sizeof("?key=") - 1;
 
     size_t total = base_len + (base_has_slash ? 0U : 1U) + models_prefix_len +
-                   model_len + strlen(suffix) + strlen(query_prefix) +
+                   model_len + suffix_len + query_prefix_len +
                    strlen(api_key) + 1U;
 
     char *url = sshc_gc_malloc(total);
@@ -1536,7 +1541,7 @@ static char *translator_build_ollama_url(const char *base)
     bool has_trailing_slash = base_len > 0U && address[base_len - 1U] == '/';
     const char *suffix = "api/generate";
     size_t total =
-        base_len + (has_trailing_slash ? 0U : 1U) + strlen(suffix) + 1U;
+        base_len + (has_trailing_slash ? 0U : 1U) + sizeof("api/generate") - 1 + 1U;
 
     char *url = sshc_gc_malloc(total);
     if (url == nullptr) {
@@ -1570,7 +1575,7 @@ static CURLcode translator_issue_gemini_request(
     }
 
     if (api_key != nullptr && api_key[0] != '\0') {
-        size_t header_len = strlen("x-goog-api-key: ") + strlen(api_key) + 1U;
+        size_t header_len = sizeof("x-goog-api-key: ") - 1 + strlen(api_key) + 1U;
         char *header_value = sshc_gc_malloc(header_len);
         if (header_value != nullptr) {
             snprintf(header_value, header_len, "x-goog-api-key: %s", api_key);

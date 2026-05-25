@@ -323,7 +323,8 @@ bool security_layer_encrypt_message(const security_layer_t *layer,
 
     char *encoded_layers[SECURITY_LAYER_LEVELS];
     memset(encoded_layers, 0, sizeof(encoded_layers));
-    size_t required_len = strlen(SECURITY_ONION_PREFIX);
+    const size_t prefix_len = sizeof(SECURITY_ONION_PREFIX) - 1;
+    size_t required_len = prefix_len;
 
     for (size_t idx = 0U; idx < SECURITY_LAYER_LEVELS; ++idx) {
         if (!security_layer_encode_component(
@@ -344,9 +345,8 @@ bool security_layer_encrypt_message(const security_layer_t *layer,
             success = false;
         } else {
             size_t offset = 0U;
-            memcpy(out + offset, SECURITY_ONION_PREFIX,
-                   strlen(SECURITY_ONION_PREFIX));
-            offset += strlen(SECURITY_ONION_PREFIX);
+            memcpy(out + offset, SECURITY_ONION_PREFIX, prefix_len);
+            offset += prefix_len;
             for (size_t idx = 0U; idx < SECURITY_LAYER_LEVELS; ++idx) {
                 size_t len = strlen(encoded_layers[idx]);
                 memcpy(out + offset, encoded_layers[idx], len);
@@ -361,7 +361,8 @@ bool security_layer_encrypt_message(const security_layer_t *layer,
 
     for (size_t idx = 0U; idx < SECURITY_LAYER_LEVELS; ++idx) {
         if (encoded_layers[idx] != nullptr) {
-            OPENSSL_cleanse(encoded_layers[idx], strlen(encoded_layers[idx]));
+            size_t len = strlen(encoded_layers[idx]);
+            OPENSSL_cleanse(encoded_layers[idx], len);
             sshc_gc_free(encoded_layers[idx]);
         }
     }

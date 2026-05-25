@@ -3,6 +3,16 @@
 static void host_ai_persona_load_from_env(host_t *host);
 static void host_door_games_load_from_env(host_t *host);
 
+static void host_ai_persona_load_from_env(host_t *host)
+{
+    (void)host;
+}
+
+static void host_door_games_load_from_env(host_t *host)
+{
+    (void)host;
+}
+
 static void host_fix_overlapping_bbs_rss_paths(host_t *host)
 {
     if (host == nullptr) {
@@ -1655,13 +1665,24 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     host->health_guard.last_error_time.tv_sec = 0;
     host->health_guard.last_error_time.tv_nsec = 0L;
     session_ctx_t **room_members = nullptr;
+    size_t room_member_count = 0U;
     ttak_mutex_lock(&host->room.lock);
     room_members = host->room.members;
+    room_member_count = host->room.member_count;
     host->room.members = nullptr;
     host->room.member_capacity = 0U;
     host->room.member_count = 0U;
     ttak_mutex_unlock(&host->room.lock);
     if (room_members != nullptr) {
+        for (size_t idx = 0U; idx < room_member_count; ++idx) {
+            session_ctx_t *ctx = room_members[idx];
+            if (ctx != nullptr) {
+                /* Force immediate deterministic teardown of every active
+                 * session instead of waiting for detached threads to exit
+                 * on their own. */
+                host_session_destroy_for_testing(ctx);
+            }
+        }
         sshc_gc_free(room_members);
     }
     if (host->user_data_lock_initialized) {

@@ -291,23 +291,6 @@ static bool host_bbs_acquire_storage(host_t *host)
 
     host->bbs_posts = allocated;
     host->bbs_post_capacity = SSH_CHATTER_BBS_MAX_POSTS;
-    for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
-        host->bbs_posts[idx].in_use = false;
-        host->bbs_posts[idx].id = 0U;
-        host->bbs_posts[idx].author[0] = '\0';
-        host->bbs_posts[idx].title[0] = '\0';
-        host->bbs_posts[idx].body[0] = '\0';
-        host->bbs_posts[idx].tag_count = 0U;
-        host->bbs_posts[idx].created_at = 0;
-        host->bbs_posts[idx].bumped_at = 0;
-        host->bbs_posts[idx].comment_count = 0U;
-        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
-             ++comment) {
-            host->bbs_posts[idx].comments[comment].author[0] = '\0';
-            host->bbs_posts[idx].comments[comment].text[0] = '\0';
-            host->bbs_posts[idx].comments[comment].created_at = 0;
-        }
-    }
     host->bbs_cache_loaded = false;
     ttak_mutex_unlock(&host->lock);
     return true;

@@ -146,8 +146,8 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
     /* Reclamation: slightly tighter cadence to keep retired generations short. */
     ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
     ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
-                                         TT_MILLI_SECOND(5),
-                                         TT_MILLI_SECOND(100));
+                                         TT_MILLI_SECOND(50),
+                                         TT_MILLI_SECOND(200));
 
 }
 
@@ -168,7 +168,7 @@ void sshc_memory_runtime_init(void)
          * pressure threshold to reduce deferred-epoch buildup. */
         ttak_mem_set_trace(
             sshc_env_truthy(getenv("SSH_CHATTER_MEM_TRACE")) ? 1 : 0);
-        ttak_mem_configure_gc(TT_MILLI_SECOND(5), TT_MILLI_SECOND(250), 6);
+        ttak_mem_configure_gc(TT_MILLI_SECOND(50), TT_MILLI_SECOND(250), 6);
 
         /* Hash map for O(1) ptr → allocation* lookup (initial capacity 1024). */
         sshc_alloc_map = ttak_create_map(1024, ttak_get_tick_count());
@@ -260,6 +260,13 @@ void sshc_memory_runtime_shutdown(void)
         GC_remove_roots(allocation->ptr,
                         (char *)allocation->ptr + allocation->size);
 #endif
+        /* Immediate free for deterministic shutdown. */
+        ttak_mem_node_t *node = ttak_mem_tree_find_node(
+            &sshc_global_context.epoch_gc.tree, allocation->ptr);
+        if (node) {
+            ttak_mem_tree_remove(&sshc_global_context.epoch_gc.tree, node);
+        }
+        ttak_mem_free(allocation->ptr);
         ttak_mem_free(allocation);
         allocation = next_alloc;
     }
@@ -295,8 +302,8 @@ sshc_memory_context_t *sshc_memory_context_create(const char *label)
     /* Session context: keep generations shorter under reconnect churn. */
     ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
     ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
-                                         TT_MILLI_SECOND(5),
-                                         TT_MILLI_SECOND(100));
+                                         TT_MILLI_SECOND(50),
+                                         TT_MILLI_SECOND(200));
     ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 3);
 
     /* Vertical Hierarchy: Register this session owner as a child of the global owner.
@@ -543,15 +550,13 @@ void *sshc_gc_realloc(void *ptr, size_t size)
 #endif
         sshc_memory_context_remove_allocation(old_allocation->context, ptr);
 
-        /* Epoch-deferred release of the old block: decrement ref_count so
-         * the GC background thread reclaims it asynchronously. */
+        /* Deterministic immediate free of the old block. */
         ttak_mem_node_t *old_node =
             ttak_mem_tree_find_node(&old_allocation->context->epoch_gc.tree, ptr);
         if (old_node) {
-            ttak_mem_node_release(old_node);
-        } else {
-            ttak_mem_free(ptr);
+            ttak_mem_tree_remove(&old_allocation->context->epoch_gc.tree, old_node);
         }
+        ttak_mem_free(ptr);
     }
 
     sshc_memory_allocation_t *allocation = old_allocation;
@@ -654,17 +659,15 @@ void sshc_gc_free(void *ptr)
                         (char *)allocation->ptr + allocation->size);
 #endif
         sshc_secure_zero(allocation->ptr, allocation->size);
-        /* Epoch-deferred release: decrement the GC tree node's ref_count.
-         * The background rotate thread reclaims the block asynchronously,
-         * which is the core "delegate to epochGC" behaviour. */
+        /* Deterministic immediate free: remove the block from the epoch GC
+         * tree and release the underlying memory right now instead of
+         * deferring reclamation to the background rotate thread. */
         ttak_mem_node_t *node =
             ttak_mem_tree_find_node(&allocation->context->epoch_gc.tree, ptr);
         if (node) {
-            ttak_mem_node_release(node);
-        } else {
-            /* Node not in tree (should not happen with ttak_fastalloc). */
-            ttak_mem_free(ptr);
+            ttak_mem_tree_remove(&allocation->context->epoch_gc.tree, node);
         }
+        ttak_mem_free(ptr);
         ttak_mem_free(allocation);
     } else {
         /* Not tracked – direct free. */
@@ -688,20 +691,19 @@ void sshc_memory_context_reset(sshc_memory_context_t *ctx)
         GC_remove_roots(allocation->ptr,
                         (char *)allocation->ptr + allocation->size);
 #endif
-        /* Epoch-deferred release: let the background thread handle the free. */
+        /* Deterministic immediate free: detach from the epoch GC tree and
+         * reclaim the user block synchronously. */
         ttak_mem_node_t *node = ttak_mem_tree_find_node(
             &ctx->epoch_gc.tree, allocation->ptr);
         if (node) {
-            ttak_mem_node_release(node);
-        } else {
-            ttak_mem_free(allocation->ptr);
+            ttak_mem_tree_remove(&ctx->epoch_gc.tree, node);
         }
-
+        ttak_mem_free(allocation->ptr);
         ttak_mem_free(allocation);
         allocation = next;
     }
 
-    /* Force a rotation to flush released nodes through the cleanup pass. */
+    /* Flush any remaining internal epoch GC state. */
     ttak_epoch_gc_rotate(&ctx->epoch_gc);
 }
 

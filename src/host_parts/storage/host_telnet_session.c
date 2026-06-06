@@ -1305,8 +1305,17 @@ static int session_transport_read(session_ctx_t *ctx, void *buffer,
     }
 
     if (timeout_ms >= 0) {
-        return ssh_channel_read_timeout(ctx->channel, buffer, chunk, 0,
-                                        timeout_ms);
+        int total = 0;
+        int result = 0;
+        do {
+            result = ssh_channel_read_timeout(
+                ctx->channel, (char *)buffer + total, chunk - (uint32_t)total,
+                0, total > 0 ? 0 : timeout_ms);
+            if (result > 0) {
+                total += result;
+            }
+        } while (result > 0 && total < (int)chunk);
+        return total > 0 ? total : result;
     }
 
     return ssh_channel_read(ctx->channel, buffer, chunk, 0);

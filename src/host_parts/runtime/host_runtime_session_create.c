@@ -164,6 +164,14 @@ static void session_configure_tcp_keepalive(ssh_session session)
         fprintf(stderr, "[session] setsockopt SO_KEEPALIVE failed\n");
     }
 
+    /* Disable Nagle's algorithm so small interactive packets (e.g.
+     * single-character echo) are sent immediately without waiting for
+     * ACK coalescing.  This removes the typing-delay perceived by users. */
+    if (setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, &enabled,
+                   sizeof(enabled)) < 0) {
+        fprintf(stderr, "[session] setsockopt TCP_NODELAY failed\n");
+    }
+
 #ifdef TCP_KEEPIDLE
     {
         int idle_seconds = SSH_CHATTER_TCP_KEEPALIVE_IDLE;

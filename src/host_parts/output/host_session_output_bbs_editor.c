@@ -1414,7 +1414,18 @@ static void session_local_echo_char(session_ctx_t *ctx, char ch)
         return;
     }
 
+    /* Bypass output buffering for interactive echo so the character
+     * appears immediately on the user's terminal. */
+    bool was_buffering = ctx->output_buffering_enabled;
+    if (was_buffering) {
+        ctx->output_buffering_enabled = false;
+    }
+
     session_channel_write(ctx, &ch, 1U);
+
+    if (was_buffering) {
+        ctx->output_buffering_enabled = true;
+    }
 }
 
 static size_t session_utf8_prev_char_len(const char *buffer, size_t length)

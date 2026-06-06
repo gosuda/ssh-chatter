@@ -826,7 +826,7 @@ static void *session_thread(void *arg)
         }
 
         int read_result =
-            session_transport_read(ctx, buffer, sizeof(buffer) - 1U, 200);
+            session_transport_read(ctx, buffer, sizeof(buffer) - 1U, 50);
         if (read_result == SSH_AGAIN) {
             continue;
         }

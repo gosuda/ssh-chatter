@@ -2005,30 +2005,91 @@ static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
     bool applied = false;
 
     ttak_mutex_lock(&host->lock);
-    if (host->history == nullptr) {
-        ttak_mutex_unlock(&host->lock);
-        return false;
+    if (host->history != nullptr) {
+        for (size_t idx = 0U; idx < host->history_count; ++idx) {
+            chat_history_entry_t *entry = &host->history[idx];
+            if (!entry->is_user_message) {
+                continue;
+            }
+            if (entry->message_id != message_id) {
+                continue;
+            }
+
+            if (entry->reaction_counts[reaction_index] < UINT32_MAX) {
+                entry->reaction_counts[reaction_index] += 1U;
+            }
+
+            if (updated_entry != nullptr) {
+                *updated_entry = *entry;
+            }
+
+            host_state_save_locked(host);
+            applied = true;
+            break;
+        }
     }
-    for (size_t idx = 0U; idx < host->history_count; ++idx) {
-        chat_history_entry_t *entry = &host->history[idx];
-        if (!entry->is_user_message) {
-            continue;
-        }
-        if (entry->message_id != message_id) {
-            continue;
-        }
 
-        if (entry->reaction_counts[reaction_index] < UINT32_MAX) {
-            entry->reaction_counts[reaction_index] += 1U;
-        }
+    if (!applied && host->history_start_index > 0U &&
+        host->state_file_path[0] != '\0') {
+        FILE *fp = nullptr;
+        uint32_t version = 0U;
+        uint32_t file_history_count = 0U;
+        if (host_state_stream_open(host->state_file_path, &fp, &version,
+                                   &file_history_count)) {
+            off_t history_data_offset = ftello(fp);
+            size_t limit = host->history_start_index;
+            if (limit > (size_t)file_history_count) {
+                limit = (size_t)file_history_count;
+            }
 
-        if (updated_entry != nullptr) {
-            *updated_entry = *entry;
-        }
+            size_t found_index = 0U;
+            chat_history_entry_t candidate = {0};
+            bool found = false;
 
-        host_state_save_locked(host);
-        applied = true;
-        break;
+            for (size_t idx = 0U; idx < limit; ++idx) {
+                chat_history_entry_t entry_value = {0};
+                if (!host_state_read_history_entry(fp, version, &entry_value)) {
+                    break;
+                }
+                if (entry_value.message_id != message_id) {
+                    continue;
+                }
+                if (!entry_value.is_user_message) {
+                    break;
+                }
+
+                if (entry_value.reaction_counts[reaction_index] < UINT32_MAX) {
+                    entry_value.reaction_counts[reaction_index] += 1U;
+                }
+
+                candidate = entry_value;
+                found_index = idx;
+                found = true;
+                break;
+            }
+            fclose(fp);
+
+            if (found && history_data_offset >= 0) {
+                size_t stride = host_state_history_entry_stride(version);
+                if (stride > 0U && stride <= SIZE_MAX / found_index) {
+                    off_t offset = history_data_offset +
+                                   (off_t)(stride * found_index);
+                    FILE *wfp = fopen(host->state_file_path, "r+b");
+                    if (wfp != nullptr) {
+                        if (offset >= history_data_offset &&
+                            fseeko(wfp, offset, SEEK_SET) == 0) {
+                            if (host_state_write_history_entry(wfp, &candidate)) {
+                                applied = true;
+                                if (updated_entry != nullptr) {
+                                    *updated_entry = candidate;
+                                }
+                            }
+                        }
+                        fclose(wfp);
+                    }
+                }
+            }
+        }
     }
     ttak_mutex_unlock(&host->lock);
 

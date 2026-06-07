@@ -6,7 +6,7 @@
  * @return None.
  */
 
-#include "../host_internal.h"
+#include "../internal.h"
 #include "ssh_chatter/user_data.h"
 #include "ssh_chatter/security_layer.h"
 #include "ssh_chatter/palettes.h"

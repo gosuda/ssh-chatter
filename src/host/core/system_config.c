@@ -6,7 +6,7 @@
  * @return None.
  */
 
-#include "../host_internal.h"
+#include "../internal.h"
 
 static bool host_is_system_reserved_username(host_t *host, const char *username)
 {

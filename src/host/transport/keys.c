@@ -7,7 +7,7 @@
  */
 
 // Connection setup, listener management, and transport helpers.
-#include "../host_internal.h"
+#include "../internal.h"
 
 static void session_format_telnet_identity(session_ctx_t *ctx,
                                            const char *primary_label)

@@ -6,7 +6,7 @@
  * @return None.
  */
 
-#include "host_parts/host_internal.h"
+#include "host/internal.h"
 
 #include <sys/select.h>
 #include <netinet/tcp.h>

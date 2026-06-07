@@ -1,4 +1,4 @@
-#include "host_parts/host_internal.h"
+#include "host/internal.h"
 
 #include <sys/stat.h>
 #include <sys/uio.h>

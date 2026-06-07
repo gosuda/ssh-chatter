@@ -7,7 +7,7 @@
  */
 
 // Host security pipeline, moderation workers, and persistence utilities.
-#include "../host_internal.h"
+#include "../internal.h"
 
 static const uint32_t UI_LANG_STATE_MAGIC = 0x55494c47U; /* 'UILG' */
 static const uint32_t UI_LANG_STATE_VERSION = 1U;

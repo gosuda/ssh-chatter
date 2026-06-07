@@ -7,7 +7,7 @@
  */
 
 // JSON line-based API for chat commands and events.
-#include "host_internal.h"
+#include "internal.h"
 #include "ssh_chatter/abstract_byte_buffer.h"
 #include "ssh_chatter/utils/jwt.h"
 

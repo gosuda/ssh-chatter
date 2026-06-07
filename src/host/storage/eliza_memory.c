@@ -7,7 +7,7 @@
  */
 
 // Eliza memory management, BBS persistence, and rendering helpers.
-#include "../host_internal.h"
+#include "../internal.h"
 #include <sys/mman.h>
 
 #ifndef MSG_DONTWAIT

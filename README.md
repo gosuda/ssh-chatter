@@ -36,8 +36,8 @@ The codebase is intentionally compact so new contributors can navigate it quickl
 | Path | Description |
 |------|-------------|
 | `src/main.c` | Command-line parsing and process bootstrap (bind address, port, MOTD, host key directory). |
-| `src/host.c`, `include/ssh_chatter/host.h` | Chat host implementation – session lifecycle, MOTD handling, and hooks for future message broadcast logic. |
-| `src/host_parts` | Modular host subsystems that compile into a single translation unit through `src/host.c`. |
+| `src/host_aggregate.c`, `include/ssh_chatter/host.h` | Chat host implementation – session lifecycle, MOTD handling, and hooks for future message broadcast logic. |
+| `src/host` | Modular host subsystems that compile into a single translation unit through `src/host_aggregate.c`. |
 | `include/ssh_chatter` | Shared headers for the daemon, stress tools, and the translation backend. |
 | `include/ssh_chatter/contexts` | Definitions for `session_ctx_t` and related structures that encapsulate per-connection state. |
 | `data/banner/banner` | Sample welcome banner that can be pointed to with `CHATTER_WELCOME_BANNER`. |
@@ -59,7 +59,7 @@ git checkout work
 git merge --no-ff origin/main
 ```
 
-Resolve any conflicts in place (the `src/host.c` helper routines already mirror the
+Resolve any conflicts in place (the `src/host_aggregate.c` helper routines already mirror the
 layout used on `main`, so merges are typically straightforward) and run `make` to
 confirm the build still succeeds before pushing the result.
 

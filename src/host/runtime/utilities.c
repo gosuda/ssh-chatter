@@ -7,7 +7,7 @@
  */
 
 // Remaining operator commands, ban management, and host lifecycle entry points.
-#include "../host_internal.h"
+#include "../internal.h"
 #if defined(__GLIBC__)
 #include <malloc.h>
 #endif

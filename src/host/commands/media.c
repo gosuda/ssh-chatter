@@ -6,7 +6,7 @@
  * @return None.
  */
 
-#include "../host_internal.h"
+#include "../internal.h"
 #include "ssh_chatter/security_layer.h"
 #include <pty.h>
 // Command handlers for chat interactions, media, and user utilities.

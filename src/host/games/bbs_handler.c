@@ -7,7 +7,7 @@
  */
 
 // BBS workflows plus interactive mini-games.
-#include "../host_internal.h"
+#include "../internal.h"
 
 static int session_game_random_range(session_ctx_t *ctx, int max);
 static session_ctx_t *chat_room_find_user(chat_room_t *room,

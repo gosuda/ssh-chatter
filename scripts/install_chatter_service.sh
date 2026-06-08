@@ -50,6 +50,12 @@ This is the default MOTD. Update this file at $CONFIG_DIR/motd to customise.
 MOTD
 fi
 
+if [[ ! -f "$CONFIG_DIR/logo.ans" ]]; then
+  if [[ -f "$PROJECT_ROOT/logo/official_logo_ansiart" ]]; then
+    cp "$PROJECT_ROOT/logo/official_logo_ansiart" "$CONFIG_DIR/logo.ans"
+  fi
+fi
+
 if [[ ! -f "$CONFIG_DIR/chatter.env" ]]; then
   cat <<ENV >"$CONFIG_DIR/chatter.env"
 # Override ssh-chatter runtime defaults by editing and uncommenting the values below.
@@ -57,6 +63,7 @@ if [[ ! -f "$CONFIG_DIR/chatter.env" ]]; then
 # CHATTER_PORT=2222
 # CHATTER_MOTD_FILE=$CONFIG_DIR/motd
 # CHATTER_HOST_KEY_DIR=$STATE_DIR
+# CHATTER_WELCOME_BANNER=$CONFIG_DIR/logo.ans
 # CHATTER_EXTRA_ARGS=
 ENV
 fi

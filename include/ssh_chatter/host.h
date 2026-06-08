@@ -1058,6 +1058,7 @@ typedef struct host {
     struct timespec motd_last_modified;
     char welcome_banner[SSH_CHATTER_BANNER_MAX_LEN];
     bool welcome_banner_loaded;
+    bool welcome_banner_is_ans;
     bool translation_quota_exhausted;
     size_t connection_count;
     chat_history_entry_t *history;
@@ -1255,7 +1256,7 @@ void session_send_raw_text(session_ctx_t *ctx, const char *text);
 void session_channel_write(session_ctx_t *ctx, const void *data, size_t length);
 void host_init(host_t *host, auth_profile_t *auth);
 void host_set_motd(host_t *host, const char *motd);
-void host_set_welcome_banner(host_t *host, const char *banner);
+void host_set_welcome_banner(host_t *host, const char *banner, bool is_ans);
 int host_serve(host_t *host, const char *bind_addr, const char *port,
                const char *key_directory, const char *telnet_bind_addr,
                const char *telnet_port, const char *json_bind_addr,

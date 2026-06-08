@@ -34,6 +34,13 @@ static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
 
     bool locked = session_output_lock(ctx);
 
+    bool is_ans = false;
+    if (ctx->owner != nullptr && ctx->owner->welcome_banner_loaded) {
+        if (strcmp(banner, ctx->owner->welcome_banner) == 0) {
+            is_ans = ctx->owner->welcome_banner_is_ans;
+        }
+    }
+
     const char *cursor = banner;
     while (true) {
         const char *newline = strchr(cursor, '\n');
@@ -44,14 +51,67 @@ static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
             --length;
         }
 
-        session_fill_line_with_theme(ctx);
-        static const char column_reset[] = "\033[1G";
-        session_channel_write(ctx, column_reset, sizeof(column_reset) - 1U);
-        if (length > 0U) {
-            session_channel_write(ctx, cursor, length);
+        if (is_ans) {
+            int state = 0;
+            char write_buf[1024];
+            size_t write_idx = 0;
+
+            for (size_t i = 0; i < length; ++i) {
+                unsigned char b = (unsigned char)cursor[i];
+                if (state == 0) {
+                    if (b == 0x1b) {
+                        state = 1;
+                        write_buf[write_idx++] = (char)b;
+                    } else if (b >= 0x80) {
+                        char utf8_bytes[4];
+                        size_t utf8_len = session_cp437_byte_to_utf8(b, utf8_bytes, sizeof(utf8_bytes));
+                        for (size_t j = 0; j < utf8_len; ++j) {
+                            write_buf[write_idx++] = utf8_bytes[j];
+                            if (write_idx >= sizeof(write_buf) - 8) {
+                                session_channel_write(ctx, write_buf, write_idx);
+                                write_idx = 0;
+                            }
+                        }
+                    } else {
+                        write_buf[write_idx++] = (char)b;
+                    }
+                } else if (state == 1) {
+                    if (b == '[') {
+                        state = 2;
+                        write_buf[write_idx++] = (char)b;
+                    } else {
+                        state = 0;
+                        write_buf[write_idx++] = (char)b;
+                    }
+                } else if (state == 2) {
+                    write_buf[write_idx++] = (char)b;
+                    if (b >= 0x40 && b <= 0x7E) {
+                        state = 0;
+                    }
+                }
+
+                if (write_idx >= sizeof(write_buf) - 8) {
+                    session_channel_write(ctx, write_buf, write_idx);
+                    write_idx = 0;
+                }
+            }
+
+            if (write_idx > 0) {
+                session_channel_write(ctx, write_buf, write_idx);
+            }
+
+            session_channel_write_line_ending(ctx);
+            session_note_output_lines(ctx, 1U);
+        } else {
+            session_fill_line_with_theme(ctx);
+            static const char column_reset[] = "\033[1G";
+            session_channel_write(ctx, column_reset, sizeof(column_reset) - 1U);
+            if (length > 0U) {
+                session_channel_write(ctx, cursor, length);
+            }
+            session_channel_write_line_ending(ctx);
+            session_note_output_lines(ctx, 1U);
         }
-        session_channel_write_line_ending(ctx);
-        session_note_output_lines(ctx, 1U);
 
         if (newline == nullptr) {
             break;
@@ -68,7 +128,7 @@ static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
     }
 }
 
-void host_set_welcome_banner(host_t *host, const char *banner)
+void host_set_welcome_banner(host_t *host, const char *banner, bool is_ans)
 {
     if (host == nullptr) {
         return;
@@ -77,11 +137,13 @@ void host_set_welcome_banner(host_t *host, const char *banner)
     if (banner == nullptr || banner[0] == '\0') {
         host->welcome_banner[0] = '\0';
         host->welcome_banner_loaded = false;
+        host->welcome_banner_is_ans = false;
         return;
     }
 
     snprintf(host->welcome_banner, sizeof(host->welcome_banner), "%s", banner);
     host->welcome_banner_loaded = true;
+    host->welcome_banner_is_ans = is_ans;
 }
 
 static void session_game_show_camouflage(session_ctx_t *ctx);

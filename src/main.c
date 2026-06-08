@@ -535,6 +535,13 @@ int main(int argc, char **argv)
             sshc_memory_context_push(host->memory_context);
 
         const char *welcome_banner_path = getenv("CHATTER_WELCOME_BANNER");
+        bool is_ans = false;
+        if (welcome_banner_path != nullptr) {
+            size_t path_len = strlen(welcome_banner_path);
+            if (path_len >= 4 && strcasecmp(welcome_banner_path + path_len - 4, ".ans") == 0) {
+                is_ans = true;
+            }
+        }
         if (g_welcome_banner_content != nullptr) {
             sshc_gc_free(g_welcome_banner_content);
             g_welcome_banner_content = nullptr;
@@ -550,7 +557,7 @@ int main(int argc, char **argv)
                     welcome_banner_path);
             }
         } else {
-            host_set_welcome_banner(host, g_welcome_banner_content);
+            host_set_welcome_banner(host, g_welcome_banner_content, is_ans);
         }
 
         const int serve_result =

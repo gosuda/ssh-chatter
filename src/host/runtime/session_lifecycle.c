@@ -341,6 +341,79 @@ void host_session_destroy_for_testing(session_ctx_t *ctx)
     session_destroy(ctx);
 }
 
+static void session_ask_ui_mode(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    session_send_system_line(ctx, "");
+    session_send_system_line(ctx, "========================================");
+    session_send_system_line(ctx, "  Welcome to SSH-Chatter");
+    session_send_system_line(ctx, "  Choose your entry mode:");
+    session_send_system_line(ctx, "----------------------------------------");
+    session_send_system_line(ctx, "  [1] Do Anything Mode    - Full access to chat, BBS, RSS, and games");
+    session_send_system_line(ctx, "  [2] Classic BBS Mode    - Bulletin board only");
+    session_send_system_line(ctx, "  [3] Read Newsfeed       - RSS reader only");
+    session_send_system_line(ctx, "  [4] Game Mode           - Built-in games and Door Games");
+    session_send_system_line(ctx, "----------------------------------------");
+    session_send_system_line(ctx, "  Enter mode (1-4):");
+
+    char choice[4] = {0};
+    size_t length = 0U;
+    while (length + 1U < sizeof(choice)) {
+        char ch = '\0';
+        const int read_result = session_transport_read(ctx, &ch, 1, -1);
+        if (read_result <= 0) {
+            return;
+        }
+        if (ch == '\r' || ch == '\n') {
+            session_local_echo_char(ctx, '\n');
+            break;
+        }
+        if (ch == '\b' || (unsigned char)ch == 0x7fU) {
+            if (length > 0U) {
+                --length;
+                session_send_raw_text(ctx, "\b \b");
+            }
+            continue;
+        }
+        if ((unsigned char)ch < 0x20U) {
+            continue;
+        }
+        choice[length++] = ch;
+        session_local_echo_char(ctx, ch);
+    }
+    choice[length] = '\0';
+    trim_whitespace_inplace(choice);
+
+    if (strcmp(choice, "1") == 0) {
+        ctx->ui_mode = SESSION_UI_MODE_ANYTHING;
+        session_send_system_line(ctx, "Mode: Do Anything. Enjoy everything!");
+    } else if (strcmp(choice, "2") == 0) {
+        ctx->ui_mode = SESSION_UI_MODE_BBS;
+        session_send_system_line(ctx, "Mode: Classic BBS. Loading bulletin board...");
+        if (ctx->ops != nullptr && ctx->ops->dispatch_command != nullptr) {
+            ctx->ops->dispatch_command(ctx, "/bbs list");
+        }
+    } else if (strcmp(choice, "3") == 0) {
+        ctx->ui_mode = SESSION_UI_MODE_RSS;
+        session_send_system_line(ctx, "Mode: Read Newsfeed. Loading RSS feeds...");
+        if (ctx->ops != nullptr && ctx->ops->dispatch_command != nullptr) {
+            ctx->ops->dispatch_command(ctx, "/rss list");
+        }
+    } else if (strcmp(choice, "4") == 0) {
+        ctx->ui_mode = SESSION_UI_MODE_GAME;
+        session_send_system_line(ctx, "Mode: Game. Loading game menu...");
+        if (ctx->ops != nullptr && ctx->ops->dispatch_command != nullptr) {
+            ctx->ops->dispatch_command(ctx, "/bbs door");
+        }
+    } else {
+        ctx->ui_mode = SESSION_UI_MODE_ANYTHING;
+        session_send_system_line(ctx, "Invalid choice. Defaulting to Do Anything Mode.");
+    }
+}
+
 static void *session_thread(void *arg)
 {
     session_ctx_t *ctx = (session_ctx_t *)arg;
@@ -682,6 +755,8 @@ static void *session_thread(void *arg)
         ctx->has_joined_room = true;
         printf("[join] %s\n", ctx->user.name);
 
+        session_ask_ui_mode(ctx);
+
         ctx->history_scroll_position = 0U;
         host_refresh_motd(ctx->owner);
         const session_ui_locale_t *locale = session_ui_get_locale(ctx);
@@ -948,6 +1023,29 @@ static void *session_thread(void *arg)
 
         if (read_result > 0) {
             session_mark_activity(ctx);
+            if (ctx->cp437_input_enabled && ctx->active_codepage == SESSION_CODEPAGE_AUTO) {
+                bool has_non_ascii = false;
+                for (int idx = 0; idx < read_result; ++idx) {
+                    if ((unsigned char)buffer[idx] >= 0x80U) {
+                        has_non_ascii = true;
+                        break;
+                    }
+                }
+                if (has_non_ascii) {
+                    session_codepage_t detected = session_codepage_detect_auto((const unsigned char *)buffer, (size_t)read_result);
+                    if (detected != SESSION_CODEPAGE_AUTO) {
+                        ctx->active_codepage = detected;
+                        if (detected == SESSION_CODEPAGE_UTF8) {
+                            ctx->cp437_input_enabled = false;
+                            session_send_system_line(ctx, "Auto-detected UTF-8 input. Retro keyboard disabled.");
+                        } else {
+                            char msg[128];
+                            snprintf(msg, sizeof(msg), "Auto-detected keyboard encoding: %s", session_codepage_name(detected));
+                            session_send_system_line(ctx, msg);
+                        }
+                    }
+                }
+            }
         }
 
         for (int idx = 0; idx < read_result; ++idx) {

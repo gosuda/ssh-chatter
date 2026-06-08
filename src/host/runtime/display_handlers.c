@@ -579,6 +579,9 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
         } else if (strcasecmp(arg, "cp852") == 0) {
             requested_codepage = SESSION_CODEPAGE_CP852;
             has_codepage = true;
+        } else if (strcasecmp(arg, "auto") == 0) {
+            requested_codepage = SESSION_CODEPAGE_AUTO;
+            has_codepage = true;
         }
 
         if (*arg == '\0' || strcasecmp(arg, "status") == 0) {
@@ -1158,6 +1161,9 @@ bool host_nickname_claim_upsert(host_t *host, const session_ctx_t *ctx,
     }
     ttak_mutex_unlock(&host->nickname_reserve_lock);
 
+    if (success) {
+        host_nickname_claims_save(host);
+    }
     return success;
 }
 
@@ -1167,6 +1173,7 @@ void host_nickname_claim_remove(host_t *host, const char *nick)
         return;
     }
 
+    bool success = false;
     ttak_mutex_lock(&host->nickname_reserve_lock);
     size_t index = 0U;
     nickname_claim_t *claim = host_nickname_claim_find_locked(host, nick, &index);
@@ -1177,8 +1184,13 @@ void host_nickname_claim_remove(host_t *host, const char *nick)
         }
         host->nickname_claims[host->nickname_claim_count - 1U] = nullptr;
         host->nickname_claim_count -= 1U;
+        success = true;
     }
     ttak_mutex_unlock(&host->nickname_reserve_lock);
+
+    if (success) {
+        host_nickname_claims_save(host);
+    }
 }
 
 void host_nickname_claim_release(host_t *host, const session_ctx_t *ctx,
@@ -1188,6 +1200,7 @@ void host_nickname_claim_release(host_t *host, const session_ctx_t *ctx,
         return;
     }
 
+    bool success = false;
     ttak_mutex_lock(&host->nickname_reserve_lock);
     for (size_t idx = 0U; idx < host->nickname_claim_count;) {
         nickname_claim_t *claim = host->nickname_claims[idx];
@@ -1203,9 +1216,101 @@ void host_nickname_claim_release(host_t *host, const session_ctx_t *ctx,
             }
             host->nickname_claims[host->nickname_claim_count - 1U] = nullptr;
             host->nickname_claim_count -= 1U;
+            success = true;
             continue;
         }
         ++idx;
     }
     ttak_mutex_unlock(&host->nickname_reserve_lock);
+
+    if (success) {
+        host_nickname_claims_save(host);
+    }
+}
+
+void host_nickname_claims_save(host_t *host)
+{
+    if (host == nullptr || host->nickname_claim_file_path[0] == '\0') {
+        return;
+    }
+
+    FILE *fp = fopen(host->nickname_claim_file_path, "wb");
+    if (fp == nullptr) {
+        return;
+    }
+
+    uint32_t magic = 0x4e434c4dU; /* "NCLM" */
+    uint32_t version = 1U;
+    uint32_t count = (uint32_t)host->nickname_claim_count;
+    if (fwrite(&magic, sizeof(magic), 1, fp) != 1 ||
+        fwrite(&version, sizeof(version), 1, fp) != 1 ||
+        fwrite(&count, sizeof(count), 1, fp) != 1) {
+        fclose(fp);
+        return;
+    }
+
+    for (size_t i = 0; i < host->nickname_claim_count; ++i) {
+        nickname_claim_t *claim = host->nickname_claims[i];
+        if (claim != nullptr) {
+            if (fwrite(claim, sizeof(nickname_claim_t), 1, fp) != 1) {
+                break;
+            }
+        }
+    }
+
+    fclose(fp);
+}
+
+void host_nickname_claims_load(host_t *host)
+{
+    if (host == nullptr || host->nickname_claim_file_path[0] == '\0' || host->nickname_claim_pool == nullptr) {
+        return;
+    }
+
+    FILE *fp = fopen(host->nickname_claim_file_path, "rb");
+    if (fp == nullptr) {
+        return;
+    }
+
+    uint32_t magic = 0;
+    uint32_t version = 0;
+    uint32_t count = 0;
+
+    if (fread(&magic, sizeof(magic), 1, fp) != 1 ||
+        fread(&version, sizeof(version), 1, fp) != 1 ||
+        fread(&count, sizeof(count), 1, fp) != 1) {
+        fclose(fp);
+        return;
+    }
+
+    if (magic != 0x4e434c4dU || version != 1U) {
+        fclose(fp);
+        return;
+    }
+
+    ttak_mutex_lock(&host->nickname_reserve_lock);
+    for (size_t i = 0; i < host->nickname_claim_count; ++i) {
+        if (host->nickname_claims[i] != nullptr) {
+            ttak_object_pool_free(host->nickname_claim_pool, host->nickname_claims[i]);
+            host->nickname_claims[i] = nullptr;
+        }
+    }
+    host->nickname_claim_count = 0;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        if (host->nickname_claim_count >= SSH_CHATTER_MAX_NICKNAME_CLAIMS) {
+            break;
+        }
+        nickname_claim_t temp;
+        if (fread(&temp, sizeof(nickname_claim_t), 1, fp) == 1) {
+            nickname_claim_t *claim = (nickname_claim_t *)ttak_object_pool_alloc(host->nickname_claim_pool);
+            if (claim != nullptr) {
+                *claim = temp;
+                host->nickname_claims[host->nickname_claim_count++] = claim;
+            }
+        }
+    }
+    ttak_mutex_unlock(&host->nickname_reserve_lock);
+
+    fclose(fp);
 }

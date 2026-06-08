@@ -40,6 +40,20 @@ static int g_tests_failed = 0;
     } \
 } while (0)
 
+static display_line_t test_get_line(const display_model_t *model, size_t index)
+{
+    ttak_abstract_map_t map;
+    size_t offset = index * sizeof(display_line_t);
+    size_t bytes = sizeof(display_line_t);
+    display_line_t line = {0};
+    if (ttak_abstract_map(model->line_storage, offset, bytes, TTAK_ABSTRACT_ACCESS_READ, &map) == 0) {
+        line = *(const display_line_t *)map.data;
+        ttak_abstract_unmap(&map);
+    }
+    return line;
+}
+
+
 /* ---- Test: basic init/destroy ---- */
 
 static void test_init_destroy(void)
@@ -187,6 +201,7 @@ static void test_tail_follow(void)
     TEST_ASSERT(strcmp(frame.lines[0].text, "message 16") == 0,
                 "first visible should be message 16");
 
+    display_model_release_visible(&frame);
     display_model_destroy(&model);
     ++g_tests_passed;
 }
@@ -231,6 +246,7 @@ static void test_replay_visible_buffer(void)
     TEST_ASSERT(frame.lines[frame.count - 1].message_id == (uint64_t)total_msgs,
                 "last visible should be the last message");
 
+    display_model_release_visible(&frame);
     display_model_destroy(&model);
     ++g_tests_passed;
 }
@@ -283,6 +299,7 @@ static void test_scroll_up_stable(void)
     TEST_ASSERT(!frame.at_tail, "should NOT be at tail");
     TEST_ASSERT(frame.count > 0U, "should have visible lines");
 
+    display_model_release_visible(&frame);
     display_model_destroy(&model);
     ++g_tests_passed;
 }
@@ -350,7 +367,7 @@ static void test_resize_relayout(void)
     /* Anchor should still resolve to message 2's line */
     size_t resolved = display_model_resolve_anchor(&model, &model.view.anchor);
     TEST_ASSERT(resolved != SIZE_MAX, "anchor should still resolve");
-    TEST_ASSERT(model.lines[resolved].message_id == anchor_msg,
+    TEST_ASSERT(test_get_line(&model, resolved).message_id == anchor_msg,
                 "resolved anchor should point to same message");
 
     display_model_destroy(&model);
@@ -373,7 +390,7 @@ static void test_append_message(void)
     /* Append one more */
     display_model_append_message(&model, 4, "fourth", 80);
     TEST_ASSERT_EQ(model.line_count, 4U, "4 messages after append");
-    TEST_ASSERT(strcmp(model.lines[3].text, "fourth") == 0,
+    TEST_ASSERT(strcmp(test_get_line(&model, 3).text, "fourth") == 0,
                 "appended message text");
 
     display_model_destroy(&model);
@@ -405,6 +422,7 @@ static void test_tail_append_shifts_visible_window(void)
                 "viewport should start at msg 3");
     TEST_ASSERT(strcmp(before.lines[2].text, "msg 5") == 0,
                 "viewport should end at msg 5");
+    display_model_release_visible(&before);
 
     display_model_append_message(&model, ids[5], texts[5], 80);
 
@@ -415,6 +433,7 @@ static void test_tail_append_shifts_visible_window(void)
                 "tail append should shift the first visible line");
     TEST_ASSERT(strcmp(after.lines[2].text, "msg 6") == 0,
                 "tail append should place new message at the bottom");
+    display_model_release_visible(&after);
 
     display_model_destroy(&model);
     ++g_tests_passed;
@@ -432,6 +451,7 @@ static void test_empty_model(void)
     TEST_ASSERT_EQ(frame.count, 0U, "empty model has 0 visible lines");
     TEST_ASSERT(frame.at_tail, "empty model is at tail");
     TEST_ASSERT(frame.at_head, "empty model is at head");
+    display_model_release_visible(&frame);
 
     display_model_destroy(&model);
     ++g_tests_passed;
@@ -507,6 +527,7 @@ static void test_burst_replay(void)
     display_model_compute_visible(&model, 24, &frame);
     TEST_ASSERT(frame.count > 1, "visible must have more than 1 line");
     TEST_ASSERT(frame.at_tail, "should be at tail");
+    display_model_release_visible(&frame);
 
     /* Scroll up */
     display_model_scroll_up(&model, 20);
@@ -523,6 +544,7 @@ static void test_burst_replay(void)
     /* Visible frame should still work */
     display_model_compute_visible(&model, 24, &frame);
     TEST_ASSERT(frame.count > 0, "should have visible lines after resize");
+    display_model_release_visible(&frame);
 
     display_model_destroy(&model);
     ++g_tests_passed;

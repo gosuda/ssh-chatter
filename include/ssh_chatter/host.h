@@ -73,6 +73,9 @@
 #define SSH_CHATTER_BBS_MAX_COMMENTS 64
 #define SSH_CHATTER_BBS_COMMENT_LEN 512
 #define SSH_CHATTER_BBS_VIEW_WINDOW 60
+#define SSH_CHATTER_BBS_MAX_BOARDS 16
+#define SSH_CHATTER_BBS_MAX_VOTES 8192
+#define SSH_CHATTER_BBS_MAX_DRAFTS_PER_USER 8
 #define SSH_CHATTER_RSS_MAX_FEEDS 32
 #define SSH_CHATTER_RSS_TAG_LEN 32
 #define SSH_CHATTER_RSS_URL_LEN 1024
@@ -238,6 +241,18 @@ typedef enum chat_attachment_type {
     CHAT_ATTACHMENT_FILE,
 } chat_attachment_type_t;
 
+typedef enum session_ui_language {
+    SESSION_UI_LANGUAGE_EN = 0,
+    SESSION_UI_LANGUAGE_KO,
+    SESSION_UI_LANGUAGE_JP,
+    SESSION_UI_LANGUAGE_ZH,
+    SESSION_UI_LANGUAGE_RU,
+    SESSION_UI_LANGUAGE_DE,
+    SESSION_UI_LANGUAGE_FR,
+    SESSION_UI_LANGUAGE_PL,
+    SESSION_UI_LANGUAGE_COUNT
+} session_ui_language_t;
+
 typedef struct chat_history_entry {
     bool is_user_message;
     bool preserve_whitespace;
@@ -256,6 +271,7 @@ typedef struct chat_history_entry {
     char attachment_target[SSH_CHATTER_ATTACHMENT_TARGET_LEN];
     char attachment_caption[SSH_CHATTER_ATTACHMENT_CAPTION_LEN];
     time_t created_at;
+    session_ui_language_t sender_ui_language;
     uint32_t reaction_counts[SSH_CHATTER_REACTION_KIND_COUNT];
 } chat_history_entry_t;
 
@@ -555,22 +571,17 @@ typedef enum session_transport_kind {
     SESSION_TRANSPORT_TELNET,
 } session_transport_kind_t;
 
+typedef enum session_ui_mode {
+    SESSION_UI_MODE_ANYTHING = 0,
+    SESSION_UI_MODE_BBS,
+    SESSION_UI_MODE_RSS,
+    SESSION_UI_MODE_GAME,
+} session_ui_mode_t;
+
 typedef enum session_input_mode {
     SESSION_INPUT_MODE_CHAT = 0,
     SESSION_INPUT_MODE_COMMAND,
 } session_input_mode_t;
-
-typedef enum session_ui_language {
-    SESSION_UI_LANGUAGE_EN = 0,
-    SESSION_UI_LANGUAGE_KO,
-    SESSION_UI_LANGUAGE_JP,
-    SESSION_UI_LANGUAGE_ZH,
-    SESSION_UI_LANGUAGE_RU,
-    SESSION_UI_LANGUAGE_DE,
-    SESSION_UI_LANGUAGE_FR,
-    SESSION_UI_LANGUAGE_PL,
-    SESSION_UI_LANGUAGE_COUNT
-} session_ui_language_t;
 
 typedef enum session_asciiart_target {
     SESSION_ASCIIART_TARGET_NONE = 0,
@@ -765,6 +776,7 @@ typedef struct session_ctx {
     bool bbs_view_notice_pending;
     char *bbs_view_notice;
     bool bbs_rendering_editor;
+    uint64_t bbs_current_board_id;
     bool breaking_alerts_enabled;
     bool morse_feed_enabled;
     char morse_filter[SSH_CHATTER_MORSE_FILTER_LEN];
@@ -773,6 +785,8 @@ typedef struct session_ctx {
     bool prefer_cp437_output;
     session_cp437_scope_t cp437_output_scope;
     session_output_kind_t output_kind;
+    session_ui_mode_t ui_mode;
+    bool unicode_all_mode;
     bool hybrid_output_mode;
     session_cp437_override_t cp437_override;
     bool cp437_input_enabled;
@@ -905,6 +919,8 @@ typedef struct user_preference {
     char provider_label[SSH_CHATTER_PROVIDER_LABEL_LEN];
     char camouflage_language[SSH_CHATTER_CAMOUFLAGE_LANGUAGE_LEN];
     bool show_continuous_messages;
+    session_ui_mode_t preferred_ui_mode;
+    bool unicode_all_mode;
     struct {
         char label[SSH_CHATTER_POLL_LABEL_LEN];
         uint64_t poll_id;
@@ -942,11 +958,14 @@ typedef struct bbs_comment {
     char author[SSH_CHATTER_USERNAME_LEN];
     char text[SSH_CHATTER_BBS_COMMENT_LEN];
     time_t created_at;
+    int32_t upvotes;
+    int32_t downvotes;
 } bbs_comment_t;
 
 typedef struct bbs_post {
     bool in_use;
     uint64_t id;
+    uint16_t board_id;
     char author[SSH_CHATTER_USERNAME_LEN];
     char title[SSH_CHATTER_BBS_TITLE_LEN];
     char body[SSH_CHATTER_BBS_BODY_LEN];
@@ -954,9 +973,38 @@ typedef struct bbs_post {
     size_t tag_count;
     time_t created_at;
     time_t bumped_at;
-    bbs_comment_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
+    int32_t upvotes;
+    int32_t downvotes;
+    bbs_comment_t *comments;
     size_t comment_count;
 } bbs_post_t;
+
+typedef struct bbs_board {
+    uint16_t board_id;
+    char name[32];
+    char description[128];
+    bool is_notice;
+} bbs_board_t;
+
+typedef struct bbs_vote {
+    uint64_t target_post_id;
+    int32_t target_comment_idx; /* -1 for post votes */
+    char voter_username[SSH_CHATTER_USERNAME_LEN];
+    int8_t vote_type; /* +1 or -1 */
+    time_t created_at;
+} bbs_vote_t;
+
+typedef struct bbs_draft {
+    bool in_use;
+    uint64_t id;
+    char author[SSH_CHATTER_USERNAME_LEN];
+    uint16_t board_id;
+    char title[SSH_CHATTER_BBS_TITLE_LEN];
+    char body[SSH_CHATTER_BBS_BODY_LEN];
+    char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
+    size_t tag_count;
+    time_t created_at;
+} bbs_draft_t;
 
 typedef struct host {
     sshc_memory_context_t *memory_context;
@@ -1037,6 +1085,7 @@ typedef struct host {
     char ui_lang_state_file_path[PATH_MAX];
     char pw_auth_file_path[PATH_MAX];
     char alpha_landers_file_path[PATH_MAX];
+    char nickname_claim_file_path[PATH_MAX];
     char user_data_root[PATH_MAX];
     bool user_data_ready;
     ttak_mutex_t user_data_lock;
@@ -1063,6 +1112,15 @@ typedef struct host {
     size_t bbs_post_capacity;
     uint64_t next_bbs_id;
     bool bbs_cache_loaded;
+    bbs_board_t *bbs_boards;
+    size_t bbs_board_count;
+    size_t bbs_board_capacity;
+    bbs_vote_t *bbs_votes;
+    size_t bbs_vote_count;
+    size_t bbs_vote_capacity;
+    bbs_draft_t *bbs_drafts;
+    size_t bbs_draft_count;
+    size_t bbs_draft_capacity;
     ascii_pixel_t wall[SSH_CHATTER_WALL_HEIGHT][SSH_CHATTER_WALL_WIDTH];
     rss_feed_t rss_feeds[SSH_CHATTER_RSS_MAX_FEEDS];
     size_t rss_feed_count;
@@ -1189,6 +1247,8 @@ bool host_nickname_claim_upsert(host_t *host, const session_ctx_t *ctx,
 void host_nickname_claim_release(host_t *host, const session_ctx_t *ctx,
                                  const char *nick);
 void host_nickname_claim_remove(host_t *host, const char *nick);
+void host_nickname_claims_save(host_t *host);
+void host_nickname_claims_load(host_t *host);
 void trim_whitespace_inplace(char *text);
 
 void session_send_raw_text(session_ctx_t *ctx, const char *text);

@@ -1803,7 +1803,8 @@ static named_poll_state_t *host_ensure_named_poll_locked(host_t *host,
 static void host_recount_named_polls_locked(host_t *host);
 static bool poll_label_is_valid(const char *label);
 static void session_bbs_show_dashboard(session_ctx_t *ctx);
-static void session_bbs_list(session_ctx_t *ctx);
+static void session_bbs_list(session_ctx_t *ctx, const char *arguments);
+static void session_bbs_select_board(session_ctx_t *ctx, const char *arguments);
 static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic);
 static void session_bbs_read(session_ctx_t *ctx, uint64_t id);
 static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments);

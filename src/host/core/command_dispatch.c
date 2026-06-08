@@ -325,7 +325,19 @@ static void session_bbs_format_usage(session_ctx_t *ctx, const char *canonical,
     const char *args = arguments != nullptr ? arguments : "";
     const char *separator = args[0] != '\0' ? " " : "";
 
-    snprintf(buffer, length, "Usage: %s %s%s%s", bbs_command, subcommand,
+    const char *usage_prefix = "Usage:";
+    switch (session_ui_language_current(ctx)) {
+        case SESSION_UI_LANGUAGE_KO: usage_prefix = "사용법:"; break;
+        case SESSION_UI_LANGUAGE_JP: usage_prefix = "使い方:"; break;
+        case SESSION_UI_LANGUAGE_ZH: usage_prefix = "用法:"; break;
+        case SESSION_UI_LANGUAGE_RU: usage_prefix = "Использование:"; break;
+        case SESSION_UI_LANGUAGE_DE: usage_prefix = "Nutzung:"; break;
+        case SESSION_UI_LANGUAGE_FR: usage_prefix = "Utilisation:"; break;
+        case SESSION_UI_LANGUAGE_PL: usage_prefix = "Użycie:"; break;
+        default: usage_prefix = "Usage:"; break;
+    }
+
+    snprintf(buffer, length, "%s %s %s%s%s", usage_prefix, bbs_command, subcommand,
              separator, args);
 }
 

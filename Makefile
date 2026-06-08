@@ -25,9 +25,26 @@ TTAK_LIB := /usr/local/lib/libttak.a
 # NOTE: -march=native builds binaries tuned for the current host CPU and must
 #       be rebuilt on any deployment target with a different microarchitecture.
 #       For portable/container deployments use -march=x86-64 -mtune=generic.
+
+# Optional third-party libraries for charset conversion
+HAVE_UCHARDET := $(shell pkg-config --exists uchardet && echo 1 || echo 0)
+HAVE_ICU := $(shell pkg-config --exists icu-uc && echo 1 || echo 0)
+
+ifeq ($(HAVE_UCHARDET),1)
+CFLAGS_UCHARDET := $(shell pkg-config --cflags uchardet)
+LDFLAGS_UCHARDET := $(shell pkg-config --libs uchardet)
+endif
+
+ifeq ($(HAVE_ICU),1)
+CFLAGS_ICU := $(shell pkg-config --cflags icu-uc)
+LDFLAGS_ICU := $(shell pkg-config --libs icu-uc)
+endif
+
 CFLAGS = -std=c2x -Ofast \
               -Werror \
               -Wno-error=deprecated-declarations -DSSH_CHATTER_USE_GC=$(ENABLE_GC) \
+              $(if $(filter 1,$(HAVE_UCHARDET)),-DSSH_CHATTER_HAVE_UCHARDET $(CFLAGS_UCHARDET)) \
+              $(if $(filter 1,$(HAVE_ICU)),-DSSH_CHATTER_HAVE_ICU $(CFLAGS_ICU)) \
               -I $(INCLUDE_DIR) -I /usr/local/include -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
               -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
               -Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
@@ -71,6 +88,7 @@ CFLAGS = -std=c2x -Ofast \
 COMMON_LDFLAGS = \
     -L/usr/local/lib \
     -lpthread -ldl -lcurl -lm -lcrypto -llz4 -lttak -lutil -lc \
+    $(LDFLAGS_UCHARDET) $(LDFLAGS_ICU) \
     -Wl,-Ofast \
     -Wl,--hash-style=gnu \
     -Wl,--sort-common \
@@ -133,8 +151,8 @@ $(SHARED_TARGET): $(SHARED_OBJ) $(TTAK_LIB)
 $(STRESS_TARGET): $(filter-out $(BUILD_DIR)/src/main.o,$(OBJ)) $(STRESS_OBJ) $(TTAK_LIB)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(DISPLAY_TEST_TARGET): $(DISPLAY_TEST_OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ -Wno-error
+$(DISPLAY_TEST_TARGET): $(DISPLAY_TEST_OBJ) $(TTAK_LIB)
+	$(CC) $(CFLAGS) -o $@ $^ -Wno-error $(LDFLAGS)
 
 $(TTAK_LIB):
 	$(MAKE) -C $(TTAK_DIR) all

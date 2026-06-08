@@ -1,3 +1,178 @@
+static const char *session_bbs_localize(session_ui_language_t lang, const char *msg)
+{
+    if (msg == nullptr) return nullptr;
+    switch (lang) {
+    case SESSION_UI_LANGUAGE_KO:
+        if (strcmp(msg, "That post is no longer available.") == 0) return "해당 게시물을 더 이상 사용할 수 없습니다.";
+        if (strcmp(msg, "BBS storage is unavailable.") == 0) return "BBS 저장소를 사용할 수 없습니다.";
+        if (strcmp(msg, "No post exists with that identifier.") == 0) return "해당 ID의 게시물이 존재하지 않습니다.";
+        if (strcmp(msg, "The bulletin board is empty.") == 0) return "게시판이 비어 있습니다.";
+        if (strcmp(msg, "Post body was empty. Draft discarded.") == 0) return "게시물 본문이 비어 있어 임시저장이 취소되었습니다.";
+        if (strcmp(msg, "The bulletin board is full right now.") == 0) return "현재 게시판이 가득 찼습니다.";
+        if (strcmp(msg, "A title is required to create a post.") == 0) return "게시물을 작성하려면 제목이 필요합니다.";
+        if (strcmp(msg, "Invalid post identifier.") == 0) return "유효하지 않은 게시물 ID입니다.";
+        if (strcmp(msg, "This post has reached the comment limit.") == 0) return "이 게시물은 댓글 한도에 도달했습니다.";
+        if (strcmp(msg, "Post deleted.") == 0) return "게시물이 삭제되었습니다.";
+        if (strcmp(msg, "The bulletin board is unavailable right now.") == 0) return "현재 게시판을 사용할 수 없습니다.";
+        if (strcmp(msg, "Unable to allocate editor workspace.") == 0) return "편집기 작업 공간을 할당할 수 없습니다.";
+        if (strcmp(msg, "Draft saved.") == 0) return "임시저장이 완료되었습니다.";
+        if (strcmp(msg, "Draft loaded.") == 0) return "임시저장된 글을 불러왔습니다.";
+        if (strcmp(msg, "Comment added.") == 0) return "댓글이 추가되었습니다.";
+        if (strcmp(msg, "You cannot recommend your own post.") == 0) return "자신의 게시물은 추천할 수 없습니다.";
+        if (strcmp(msg, "You have already voted on this post.") == 0) return "이미 이 게시물에 투표하셨습니다.";
+        if (strcmp(msg, "Recommendation added.") == 0) return "추천이 추가되었습니다.";
+        if (strcmp(msg, "Oppose vote added.") == 0) return "반대 투표가 추가되었습니다.";
+        if (strcmp(msg, "Joined board: %s — %s") == 0) return "게시판에 입장했습니다: %s — %s";
+        if (strcmp(msg, "Board not found.") == 0) return "게시판을 찾을 수 없습니다.";
+        break;
+    case SESSION_UI_LANGUAGE_JP:
+        if (strcmp(msg, "That post is no longer available.") == 0) return "その投稿は利用できなくなりました。";
+        if (strcmp(msg, "BBS storage is unavailable.") == 0) return "BBSストレージを利用できません。";
+        if (strcmp(msg, "No post exists with that identifier.") == 0) return "そのIDの投稿は存在しません。";
+        if (strcmp(msg, "The bulletin board is empty.") == 0) return "掲示板は空です。";
+        if (strcmp(msg, "Post body was empty. Draft discarded.") == 0) return "投稿本文が空のため、下書きは破棄されました。";
+        if (strcmp(msg, "The bulletin board is full right now.") == 0) return "現在掲示板がいっぱいです。";
+        if (strcmp(msg, "A title is required to create a post.") == 0) return "投稿を作成するにはタイトルが必要です。";
+        if (strcmp(msg, "Invalid post identifier.") == 0) return "無効な投稿IDです。";
+        if (strcmp(msg, "This post has reached the comment limit.") == 0) return "この投稿はコメント数の上限に達しました。";
+        if (strcmp(msg, "Post deleted.") == 0) return "投稿が削除されました。";
+        if (strcmp(msg, "The bulletin board is unavailable right now.") == 0) return "現在掲示板を利用できません。";
+        if (strcmp(msg, "Unable to allocate editor workspace.") == 0) return "エディタ of ワークスペースを割り当てられません。";
+        if (strcmp(msg, "Draft saved.") == 0) return "下書きが保存されました。";
+        if (strcmp(msg, "Draft loaded.") == 0) return "下書きが読み込まれました。";
+        if (strcmp(msg, "Comment added.") == 0) return "コメントが追加されました。";
+        if (strcmp(msg, "You cannot recommend your own post.") == 0) return "自分の投稿を推薦することはできません。";
+        if (strcmp(msg, "You have already voted on this post.") == 0) return "この投稿には既に投票済みです。";
+        if (strcmp(msg, "Recommendation added.") == 0) return "推薦が追加されました。";
+        if (strcmp(msg, "Oppose vote added.") == 0) return "反対票が追加されました。";
+        if (strcmp(msg, "Joined board: %s — %s") == 0) return "掲示板に移動しました: %s — %s";
+        if (strcmp(msg, "Board not found.") == 0) return "掲示板が見つかりません。";
+        break;
+    case SESSION_UI_LANGUAGE_ZH:
+        if (strcmp(msg, "That post is no longer available.") == 0) return "该帖子已不可用。";
+        if (strcmp(msg, "BBS storage is unavailable.") == 0) return "BBS 存储不可用。";
+        if (strcmp(msg, "No post exists with that identifier.") == 0) return "不存在该 ID 的帖子。";
+        if (strcmp(msg, "The bulletin board is empty.") == 0) return "留言板为空。";
+        if (strcmp(msg, "Post body was empty. Draft discarded.") == 0) return "帖子正文为空。草稿已丢弃。";
+        if (strcmp(msg, "The bulletin board is full right now.") == 0) return "留言板目前已满。";
+        if (strcmp(msg, "A title is required to create a post.") == 0) return "发帖需要标题。";
+        if (strcmp(msg, "Invalid post identifier.") == 0) return "帖子 ID 无效。";
+        if (strcmp(msg, "This post has reached the comment limit.") == 0) return "该帖子已达到评论上限。";
+        if (strcmp(msg, "Post deleted.") == 0) return "帖子已删除。";
+        if (strcmp(msg, "The bulletin board is unavailable right now.") == 0) return "留言板目前不可用。";
+        if (strcmp(msg, "Unable to allocate editor workspace.") == 0) return "无法分配编辑器工作区。";
+        if (strcmp(msg, "Draft saved.") == 0) return "草稿已保存。";
+        if (strcmp(msg, "Draft loaded.") == 0) return "草稿已加载。";
+        if (strcmp(msg, "Comment added.") == 0) return "评论已添加。";
+        if (strcmp(msg, "You cannot recommend your own post.") == 0) return "您不能推荐自己的帖子。";
+        if (strcmp(msg, "You have already voted on this post.") == 0) return "您已经对该帖子投票。";
+        if (strcmp(msg, "Recommendation added.") == 0) return "推荐已添加。";
+        if (strcmp(msg, "Oppose vote added.") == 0) return "反对票已添加。";
+        if (strcmp(msg, "Joined board: %s — %s") == 0) return "已进入版面: %s — %s";
+        if (strcmp(msg, "Board not found.") == 0) return "未找到版面。";
+        break;
+    case SESSION_UI_LANGUAGE_RU:
+        if (strcmp(msg, "That post is no longer available.") == 0) return "Этот пост больше недоступен.";
+        if (strcmp(msg, "BBS storage is unavailable.") == 0) return "Хранилище BBS недоступно.";
+        if (strcmp(msg, "No post exists with that identifier.") == 0) return "Поста с таким идентификатором не существует.";
+        if (strcmp(msg, "The bulletin board is empty.") == 0) return "Доска объявлений пуста.";
+        if (strcmp(msg, "Post body was empty. Draft discarded.") == 0) return "Тело поста было пустым. Черновик отброшен.";
+        if (strcmp(msg, "The bulletin board is full right now.") == 0) return "Доска объявлений сейчас заполнена.";
+        if (strcmp(msg, "A title is required to create a post.") == 0) return "Для создания поста требуется заголовок.";
+        if (strcmp(msg, "Invalid post identifier.") == 0) return "Недопустимый идентификатор поста.";
+        if (strcmp(msg, "This post has reached the comment limit.") == 0) return "Этот пост достиг лимита комментариев.";
+        if (strcmp(msg, "Post deleted.") == 0) return "Пост удален.";
+        if (strcmp(msg, "The bulletin board is unavailable right now.") == 0) return "Доска объявлений сейчас недоступна.";
+        if (strcmp(msg, "Unable to allocate editor workspace.") == 0) return "Не удалось выделить рабочую область редактора.";
+        if (strcmp(msg, "Draft saved.") == 0) return "Черновик сохранен.";
+        if (strcmp(msg, "Draft loaded.") == 0) return "Черновик загружен.";
+        if (strcmp(msg, "Comment added.") == 0) return "Комментарий добавлен.";
+        if (strcmp(msg, "You cannot recommend your own post.") == 0) return "Вы не можете рекомендовать свой собственный пост.";
+        if (strcmp(msg, "You have already voted on this post.") == 0) return "Вы уже проголосовали за этот пост.";
+        if (strcmp(msg, "Recommendation added.") == 0) return "Рекомендация добавлена.";
+        if (strcmp(msg, "Oppose vote added.") == 0) return "Голос против добавлен.";
+        if (strcmp(msg, "Joined board: %s — %s") == 0) return "Вы вошли на доску: %s — %s";
+        if (strcmp(msg, "Board not found.") == 0) return "Доска не найдена.";
+        break;
+    case SESSION_UI_LANGUAGE_DE:
+        if (strcmp(msg, "That post is no longer available.") == 0) return "Dieser Beitrag ist nicht mehr verfügbar.";
+        if (strcmp(msg, "BBS storage is unavailable.") == 0) return "BBS-Speicher ist nicht verfügbar.";
+        if (strcmp(msg, "No post exists with that identifier.") == 0) return "Es existiert kein Beitrag mit dieser Kennung.";
+        if (strcmp(msg, "The bulletin board is empty.") == 0) return "Das Schwarze Brett ist leer.";
+        if (strcmp(msg, "Post body was empty. Draft discarded.") == 0) return "Beitragstext war leer. Entwurf verworfen.";
+        if (strcmp(msg, "The bulletin board is full right now.") == 0) return "Das Schwarze Brett ist derzeit voll.";
+        if (strcmp(msg, "A title is required to create a post.") == 0) return "Ein Titel ist erforderlich, um einen Beitrag zu erstellen.";
+        if (strcmp(msg, "Invalid post identifier.") == 0) return "Ungültige Beitragskennung.";
+        if (strcmp(msg, "This post has reached the comment limit.") == 0) return "Dieser Beitrag hat das Kommentarlimit erreicht.";
+        if (strcmp(msg, "Post deleted.") == 0) return "Beitrag gelöscht.";
+        if (strcmp(msg, "The bulletin board is unavailable right now.") == 0) return "Das Schwarze Brett ist derzeit nicht verfügbar.";
+        if (strcmp(msg, "Unable to allocate editor workspace.") == 0) return "Editor-Arbeitsbereich konnte nicht zugewiesen werden.";
+        if (strcmp(msg, "Draft saved.") == 0) return "Entwurf gespeichert.";
+        if (strcmp(msg, "Draft loaded.") == 0) return "Entwurf geladen.";
+        if (strcmp(msg, "Comment added.") == 0) return "Kommentar hinzugefügt.";
+        if (strcmp(msg, "You cannot recommend your own post.") == 0) return "Sie können Ihren eigenen Beitrag nicht empfehlen.";
+        if (strcmp(msg, "You have already voted on this post.") == 0) return "Sie haben bereits über diesen Beitrag abgestimmt.";
+        if (strcmp(msg, "Recommendation added.") == 0) return "Empfehlung hinzugefügt.";
+        if (strcmp(msg, "Oppose vote added.") == 0) return "Gegenstimme hinzugefügt.";
+        if (strcmp(msg, "Joined board: %s — %s") == 0) return "Board beigetreten: %s — %s";
+        if (strcmp(msg, "Board not found.") == 0) return "Board nicht gefunden.";
+        break;
+    case SESSION_UI_LANGUAGE_FR:
+        if (strcmp(msg, "That post is no longer available.") == 0) return "Ce message n'est plus disponible.";
+        if (strcmp(msg, "BBS storage is unavailable.") == 0) return "Le stockage BBS est indisponible.";
+        if (strcmp(msg, "No post exists with that identifier.") == 0) return "Aucun message n'existe avec cet identifiant.";
+        if (strcmp(msg, "The bulletin board is empty.") == 0) return "Le panneau d'affichage est vide.";
+        if (strcmp(msg, "Post body was empty. Draft discarded.") == 0) return "Le corps du message était vide. Brouillon jeté.";
+        if (strcmp(msg, "The bulletin board is full right now.") == 0) return "Le panneau d'affichage est complet pour le moment.";
+        if (strcmp(msg, "A title is required to create a post.") == 0) return "Un titre est requis pour créer un message.";
+        if (strcmp(msg, "Invalid post identifier.") == 0) return "Identifiant de message invalide.";
+        if (strcmp(msg, "This post has reached the comment limit.") == 0) return "Ce message a atteint la limite de commentaires.";
+        if (strcmp(msg, "Post deleted.") == 0) return "Message supprimé.";
+        if (strcmp(msg, "The bulletin board is unavailable right now.") == 0) return "Le panneau d'affichage est indisponible pour le moment.";
+        if (strcmp(msg, "Unable to allocate editor workspace.") == 0) return "Impossible d'allouer l'espace de travail de l'éditeur.";
+        if (strcmp(msg, "Draft saved.") == 0) return "Brouillon enregistré.";
+        if (strcmp(msg, "Draft loaded.") == 0) return "Brouillon chargé.";
+        if (strcmp(msg, "Comment added.") == 0) return "Commentaire ajouté.";
+        if (strcmp(msg, "You cannot recommend your own post.") == 0) return "Vous ne pouvez pas recommander votre propre message.";
+        if (strcmp(msg, "You have already voted on this post.") == 0) return "Vous avez déjà voté sur ce message.";
+        if (strcmp(msg, "Recommendation added.") == 0) return "Recommandation ajoutée.";
+        if (strcmp(msg, "Oppose vote added.") == 0) return "Vote contre ajouté.";
+        if (strcmp(msg, "Joined board: %s — %s") == 0) return "Sujet rejoint: %s — %s";
+        if (strcmp(msg, "Board not found.") == 0) return "Sujet non trouvé.";
+        break;
+    case SESSION_UI_LANGUAGE_PL:
+        if (strcmp(msg, "That post is no longer available.") == 0) return "Ten post nie jest już dostępny.";
+        if (strcmp(msg, "BBS storage is unavailable.") == 0) return "Pamięć BBS jest niedostępna.";
+        if (strcmp(msg, "No post exists with that identifier.") == 0) return "Nie istnieje post o tym identyfikatorze.";
+        if (strcmp(msg, "The bulletin board is empty.") == 0) return "Tablica ogłoszeń jest pusta.";
+        if (strcmp(msg, "Post body was empty. Draft discarded.") == 0) return "Treść posta była pusta. Szkic odrzucony.";
+        if (strcmp(msg, "The bulletin board is full right now.") == 0) return "Tablica ogłoszeń jest obecnie pełna.";
+        if (strcmp(msg, "A title is required to create a post.") == 0) return "Tytuł jest wymagany do utworzenia posta.";
+        if (strcmp(msg, "Invalid post identifier.") == 0) return "Nieprawidłowy identyfikator posta.";
+        if (strcmp(msg, "This post has reached the comment limit.") == 0) return "Ten post osiągnął limit komentarzy.";
+        if (strcmp(msg, "Post deleted.") == 0) return "Post usunięty.";
+        if (strcmp(msg, "The bulletin board is unavailable right now.") == 0) return "Tablica ogłoszeń jest obecnie niedostępna.";
+        if (strcmp(msg, "Unable to allocate editor workspace.") == 0) return "Nie można przydzielić obszaru roboczego edytora.";
+        if (strcmp(msg, "Draft saved.") == 0) return "Szkic zapisany.";
+        if (strcmp(msg, "Draft loaded.") == 0) return "Szkic wczytany.";
+        if (strcmp(msg, "Comment added.") == 0) return "Komentarz dodany.";
+        if (strcmp(msg, "You cannot recommend your own post.") == 0) return "Nie możesz polecić własnego posta.";
+        if (strcmp(msg, "You have already voted on this post.") == 0) return "Już głosowałeś na ten post.";
+        if (strcmp(msg, "Recommendation added.") == 0) return "Polecenie dodane.";
+        if (strcmp(msg, "Oppose vote added.") == 0) return "Sprzeciw dodany.";
+        if (strcmp(msg, "Joined board: %s — %s") == 0) return "Dołączono do tablicy: %s — %s";
+        if (strcmp(msg, "Board not found.") == 0) return "Nie znaleziono tablicy.";
+        break;
+    default:
+        break;
+    }
+    return msg;
+}
+
+#define session_send_system_line(ctx, msg) session_send_system_line((ctx), session_bbs_localize((ctx)->ui_language, (msg)))
+#define session_bbs_render_editor(ctx, status) session_bbs_render_editor((ctx), session_bbs_localize((ctx)->ui_language, (status)))
+#define session_bbs_render_post(ctx, post, status, is_new) session_bbs_render_post((ctx), (post), session_bbs_localize((ctx)->ui_language, (status)), (is_new))
+
 static void bbs_format_time(time_t value, char *buffer, size_t length)
 {
     if (buffer == nullptr || length == 0U) {
@@ -33,6 +208,7 @@ static bool bbs_post_has_required_fields(const bbs_post_t *post)
 
 typedef struct bbs_listing {
     uint64_t id;
+    uint16_t board_id;
     char title[SSH_CHATTER_BBS_TITLE_LEN];
     char author[SSH_CHATTER_USERNAME_LEN];
     char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
@@ -59,6 +235,7 @@ static bool session_bbs_read_serialized_entry(
     const unsigned char **cursor_ptr, size_t *remaining_ptr, uint32_t version,
     bbs_state_post_entry_t *serialized)
 {
+    (void)version;
     if (cursor_ptr == nullptr || remaining_ptr == nullptr ||
         serialized == nullptr) {
         return false;
@@ -68,119 +245,12 @@ static bool session_bbs_read_serialized_entry(
     size_t remaining = *remaining_ptr;
     memset(serialized, 0, sizeof(*serialized));
 
-    if (version == 1U) {
-        bbs_state_post_entry_v1_t legacy = {0};
-        if (remaining < sizeof(legacy)) {
-            return false;
-        }
-        memcpy(&legacy, cursor, sizeof(legacy));
-        cursor += sizeof(legacy);
-        remaining -= sizeof(legacy);
-
-        serialized->id = legacy.id;
-        serialized->created_at = legacy.created_at;
-        serialized->bumped_at = legacy.bumped_at;
-        serialized->tag_count = legacy.tag_count;
-        serialized->comment_count = legacy.comment_count;
-        snprintf(serialized->author, sizeof(serialized->author), "%s",
-                 legacy.author);
-        snprintf(serialized->title, sizeof(serialized->title), "%s",
-                 legacy.title);
-        snprintf(serialized->body, sizeof(serialized->body), "%s",
-                 legacy.body);
-        for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
-            snprintf(serialized->tags[tag], sizeof(serialized->tags[tag]), "%s",
-                     legacy.tags[tag]);
-        }
-        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
-             ++comment) {
-            snprintf(serialized->comments[comment].author,
-                     sizeof(serialized->comments[comment].author), "%s",
-                     legacy.comments[comment].author);
-            snprintf(serialized->comments[comment].text,
-                     sizeof(serialized->comments[comment].text), "%s",
-                     legacy.comments[comment].text);
-            serialized->comments[comment].created_at =
-                legacy.comments[comment].created_at;
-        }
-    } else if (version == 2U) {
-        bbs_state_post_entry_v2_t legacy = {0};
-        if (remaining < sizeof(legacy)) {
-            return false;
-        }
-        memcpy(&legacy, cursor, sizeof(legacy));
-        cursor += sizeof(legacy);
-        remaining -= sizeof(legacy);
-
-        serialized->id = legacy.id;
-        serialized->created_at = legacy.created_at;
-        serialized->bumped_at = legacy.bumped_at;
-        serialized->tag_count = legacy.tag_count;
-        serialized->comment_count = legacy.comment_count;
-        snprintf(serialized->author, sizeof(serialized->author), "%s",
-                 legacy.author);
-        snprintf(serialized->title, sizeof(serialized->title), "%s",
-                 legacy.title);
-        snprintf(serialized->body, sizeof(serialized->body), "%s",
-                 legacy.body);
-        for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
-            snprintf(serialized->tags[tag], sizeof(serialized->tags[tag]), "%s",
-                     legacy.tags[tag]);
-        }
-        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
-             ++comment) {
-            snprintf(serialized->comments[comment].author,
-                     sizeof(serialized->comments[comment].author), "%s",
-                     legacy.comments[comment].author);
-            snprintf(serialized->comments[comment].text,
-                     sizeof(serialized->comments[comment].text), "%s",
-                     legacy.comments[comment].text);
-            serialized->comments[comment].created_at =
-                legacy.comments[comment].created_at;
-        }
-    } else if (version == 3U) {
-        bbs_state_post_entry_v3_t legacy = {0};
-        if (remaining < sizeof(legacy)) {
-            return false;
-        }
-        memcpy(&legacy, cursor, sizeof(legacy));
-        cursor += sizeof(legacy);
-        remaining -= sizeof(legacy);
-
-        serialized->id = legacy.id;
-        serialized->created_at = legacy.created_at;
-        serialized->bumped_at = legacy.bumped_at;
-        serialized->tag_count = legacy.tag_count;
-        serialized->comment_count = legacy.comment_count;
-        snprintf(serialized->author, sizeof(serialized->author), "%s",
-                 legacy.author);
-        snprintf(serialized->title, sizeof(serialized->title), "%s",
-                 legacy.title);
-        snprintf(serialized->body, sizeof(serialized->body), "%s",
-                 legacy.body);
-        for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
-            snprintf(serialized->tags[tag], sizeof(serialized->tags[tag]), "%s",
-                     legacy.tags[tag]);
-        }
-        for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
-             ++comment) {
-            snprintf(serialized->comments[comment].author,
-                     sizeof(serialized->comments[comment].author), "%s",
-                     legacy.comments[comment].author);
-            snprintf(serialized->comments[comment].text,
-                     sizeof(serialized->comments[comment].text), "%s",
-                     legacy.comments[comment].text);
-            serialized->comments[comment].created_at =
-                legacy.comments[comment].created_at;
-        }
-    } else {
-        if (remaining < sizeof(*serialized)) {
-            return false;
-        }
-        memcpy(serialized, cursor, sizeof(*serialized));
-        cursor += sizeof(*serialized);
-        remaining -= sizeof(*serialized);
+    if (remaining < sizeof(*serialized)) {
+        return false;
     }
+    memcpy(serialized, cursor, sizeof(*serialized));
+    cursor += sizeof(*serialized);
+    remaining -= sizeof(*serialized);
 
     *cursor_ptr = cursor;
     *remaining_ptr = remaining;
@@ -340,6 +410,7 @@ static bool session_bbs_collect_listings_from_state(host_t *host,
         bbs_listing_t *entry = &listings[*count];
         memset(entry, 0, sizeof(*entry));
         entry->id = serialized.id;
+        entry->board_id = serialized.board_id;
         entry->tag_count = serialized.tag_count;
         entry->created_at = (time_t)serialized.created_at;
         entry->bumped_at = (time_t)serialized.bumped_at;
@@ -378,6 +449,7 @@ static bool session_bbs_collect_listings(host_t *host, bbs_listing_t *listings,
             bbs_listing_t *entry = &listings[*count];
             memset(entry, 0, sizeof(*entry));
             entry->id = post->id;
+            entry->board_id = post->board_id;
             entry->tag_count = post->tag_count;
             entry->created_at = post->created_at;
             entry->bumped_at = post->bumped_at;
@@ -404,7 +476,12 @@ static bool session_bbs_load_post_from_state(host_t *host, uint64_t id,
         return false;
     }
 
+    bbs_comment_t *saved_comments = post->comments;
     memset(post, 0, sizeof(*post));
+    post->comments = saved_comments;
+    if (post->comments == nullptr) {
+        post->comments = sshc_gc_calloc(SSH_CHATTER_BBS_MAX_COMMENTS, sizeof(bbs_comment_t));
+    }
 
     unsigned char *mapped = nullptr;
     size_t mapped_len = 0U;
@@ -472,12 +549,23 @@ static bool session_bbs_load_post(host_t *host, uint64_t id, bbs_post_t *post)
         return false;
     }
 
+    bbs_comment_t *saved_comments = post->comments;
     memset(post, 0, sizeof(*post));
+    post->comments = saved_comments;
+
     if (host_bbs_storage_ready(host) && host->bbs_cache_loaded) {
         ttak_mutex_lock(&host->lock);
         bbs_post_t *live = host_find_bbs_post_locked(host, id);
         if (live != nullptr && live->in_use) {
+            bbs_comment_t *dest_comments = post->comments;
+            if (dest_comments == nullptr) {
+                dest_comments = sshc_gc_calloc(SSH_CHATTER_BBS_MAX_COMMENTS, sizeof(bbs_comment_t));
+            }
             *post = *live;
+            post->comments = dest_comments;
+            if (live->comments != nullptr && dest_comments != nullptr) {
+                memcpy(dest_comments, live->comments, sizeof(bbs_comment_t) * SSH_CHATTER_BBS_MAX_COMMENTS);
+            }
         }
         ttak_mutex_unlock(&host->lock);
         if (post->in_use) {
@@ -715,11 +803,11 @@ static void session_bbs_show_dashboard(session_ctx_t *ctx)
         ctx, "Commands: list, read <id>, topic read <tag>, post <title> "
              "[tags...], comment <id>|<text>, regen <id>, delete <id>, "
              "door [name], exit");
-    session_bbs_list(ctx);
+    session_bbs_list(ctx, nullptr);
 }
 
 // List posts sorted by most recent activity.
-static void session_bbs_list(session_ctx_t *ctx)
+static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
         return;
@@ -736,6 +824,18 @@ static void session_bbs_list(session_ctx_t *ctx)
         session_send_system_line(ctx, "BBS storage is unavailable.");
         session_translation_pop_scope_override(ctx, previous_override);
         return;
+    }
+
+    // Filter by current board selection unless "/bbs list all" is requested
+    bool list_all = (arguments != nullptr && strcasecmp(arguments, "all") == 0);
+    if (!list_all) {
+        size_t write_idx = 0U;
+        for (size_t read_idx = 0U; read_idx < count; ++read_idx) {
+            if (listings[read_idx].board_id == ctx->bbs_current_board_id) {
+                listings[write_idx++] = listings[read_idx];
+            }
+        }
+        count = write_idx;
     }
 
     if (count == 0U) {
@@ -810,7 +910,22 @@ static void session_bbs_list(session_ctx_t *ctx)
         topics[position] = key;
     }
 
-    session_render_separator(ctx, "BBS Posts by Topic");
+    char separator_title[128];
+    if (list_all) {
+        snprintf(separator_title, sizeof(separator_title), "BBS Posts (All Boards)");
+    } else {
+        const char *board_name = "general";
+        ttak_mutex_lock(&host->lock);
+        for (size_t i = 0; i < host->bbs_board_count; ++i) {
+            if (host->bbs_boards[i].board_id == ctx->bbs_current_board_id) {
+                board_name = host->bbs_boards[i].name;
+                break;
+            }
+        }
+        ttak_mutex_unlock(&host->lock);
+        snprintf(separator_title, sizeof(separator_title), "BBS Posts (Board: %s)", board_name);
+    }
+    session_render_separator(ctx, separator_title);
     for (size_t topic_idx = 0U; topic_idx < topic_count; ++topic_idx) {
         char section_label[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(section_label, sizeof(section_label), "Topic: %.*s",
@@ -1305,6 +1420,7 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
         return;
     }
 
+    post->board_id = (uint16_t)ctx->bbs_current_board_id;
     snprintf(post->author, sizeof(post->author), "%s", ctx->user.name);
     snprintf(post->title, sizeof(post->title), "%s", ctx->pending_bbs_title);
     memcpy(post->body, ctx->pending_bbs_body, ctx->pending_bbs_body_length);
@@ -1847,3 +1963,481 @@ static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id)
 
     session_bbs_render_post(ctx, &snapshot, "Post bumped to the top.", false);
 }
+
+/* ------------------------------------------------------------------ */
+/* BBS v2 enhancements: boards, votes, profile, drafts                */
+/* ------------------------------------------------------------------ */
+
+void session_bbs_boards(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+    session_bbs_prepare_canvas(ctx);
+    session_render_separator(ctx, "Boards");
+    ttak_mutex_lock(&host->lock);
+    for (size_t i = 0; i < host->bbs_board_count; ++i) {
+        const bbs_board_t *b = &host->bbs_boards[i];
+        size_t post_count = 0;
+        for (size_t p = 0; p < host->bbs_post_capacity; ++p) {
+            if (host->bbs_posts[p].in_use && host->bbs_posts[p].board_id == b->board_id) {
+                ++post_count;
+            }
+        }
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(line, sizeof(line), "  [%s] %s — %s (%zu posts)%s",
+                 b->is_notice ? "NOTICE" : "board",
+                 b->name, b->description, post_count,
+                 b->is_notice ? " [PINNED]" : "");
+        session_send_system_line(ctx, line);
+    }
+    ttak_mutex_unlock(&host->lock);
+}
+
+void session_bbs_upvote(session_ctx_t *ctx, uint64_t post_id)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || post_id == 0U) {
+        return;
+    }
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *post = host_find_bbs_post_locked(host, post_id);
+    if (post == nullptr || !post->in_use) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "No post exists with that identifier.");
+        return;
+    }
+    /* check if already voted */
+    bool already = false;
+    for (size_t i = 0; i < host->bbs_vote_count; ++i) {
+        bbs_vote_t *v = &host->bbs_votes[i];
+        if (v->target_post_id == post_id && v->target_comment_idx == -1 &&
+            strcmp(v->voter_username, ctx->user.name) == 0) {
+            if (v->vote_type == 1) {
+                ttak_mutex_unlock(&host->lock);
+                session_send_system_line(ctx, "You already upvoted this post.");
+                return;
+            }
+            post->downvotes -= 1;
+            v->vote_type = 1;
+            already = true;
+            break;
+        }
+    }
+    if (!already) {
+        if (host->bbs_vote_count < host->bbs_vote_capacity) {
+            bbs_vote_t *v = &host->bbs_votes[host->bbs_vote_count++];
+            v->target_post_id = post_id;
+            v->target_comment_idx = -1;
+            v->vote_type = 1;
+            v->created_at = time(nullptr);
+            snprintf(v->voter_username, sizeof(v->voter_username), "%s", ctx->user.name);
+        }
+    }
+    post->upvotes += 1;
+    host_bbs_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+    session_send_system_line(ctx, "Upvoted.");
+}
+
+void session_bbs_downvote(session_ctx_t *ctx, uint64_t post_id)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || post_id == 0U) {
+        return;
+    }
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *post = host_find_bbs_post_locked(host, post_id);
+    if (post == nullptr || !post->in_use) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "No post exists with that identifier.");
+        return;
+    }
+    bool already = false;
+    for (size_t i = 0; i < host->bbs_vote_count; ++i) {
+        bbs_vote_t *v = &host->bbs_votes[i];
+        if (v->target_post_id == post_id && v->target_comment_idx == -1 &&
+            strcmp(v->voter_username, ctx->user.name) == 0) {
+            if (v->vote_type == -1) {
+                ttak_mutex_unlock(&host->lock);
+                session_send_system_line(ctx, "You already downvoted this post.");
+                return;
+            }
+            post->upvotes -= 1;
+            v->vote_type = -1;
+            already = true;
+            break;
+        }
+    }
+    if (!already) {
+        if (host->bbs_vote_count < host->bbs_vote_capacity) {
+            bbs_vote_t *v = &host->bbs_votes[host->bbs_vote_count++];
+            v->target_post_id = post_id;
+            v->target_comment_idx = -1;
+            v->vote_type = -1;
+            v->created_at = time(nullptr);
+            snprintf(v->voter_username, sizeof(v->voter_username), "%s", ctx->user.name);
+        }
+    }
+    post->downvotes += 1;
+    host_bbs_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+    session_send_system_line(ctx, "Downvoted.");
+}
+
+void session_bbs_cmtvote(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || arguments == nullptr || arguments[0] == '\0') {
+        if (ctx != nullptr) {
+            session_send_system_line(ctx, "Usage: /bbs cmtvote <post_id> <comment_idx> [up|down]");
+        }
+        return;
+    }
+    uint64_t post_id;
+    int comment_idx;
+    char vote_dir[8];
+    if (sscanf(arguments, "%" SCNu64 " %d %7s", &post_id, &comment_idx, vote_dir) != 3) {
+        session_send_system_line(ctx, "Usage: /bbs cmtvote <post_id> <comment_idx> [up|down]");
+        return;
+    }
+    int vote_type = (strcasecmp(vote_dir, "up") == 0) ? 1 : -1;
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *post = host_find_bbs_post_locked(host, post_id);
+    if (post == nullptr || !post->in_use || comment_idx < 0 ||
+        (size_t)comment_idx >= post->comment_count) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "Invalid post or comment index.");
+        return;
+    }
+    bool already = false;
+    for (size_t i = 0; i < host->bbs_vote_count; ++i) {
+        bbs_vote_t *v = &host->bbs_votes[i];
+        if (v->target_post_id == post_id && v->target_comment_idx == comment_idx &&
+            strcmp(v->voter_username, ctx->user.name) == 0) {
+            if (v->vote_type == vote_type) {
+                ttak_mutex_unlock(&host->lock);
+                session_send_system_line(ctx, "You already voted this comment.");
+                return;
+            }
+            if (v->vote_type == 1) post->comments[comment_idx].upvotes -= 1;
+            else post->comments[comment_idx].downvotes -= 1;
+            v->vote_type = (int8_t)vote_type;
+            already = true;
+            break;
+        }
+    }
+    if (!already) {
+        if (host->bbs_vote_count < host->bbs_vote_capacity) {
+            bbs_vote_t *v = &host->bbs_votes[host->bbs_vote_count++];
+            v->target_post_id = post_id;
+            v->target_comment_idx = comment_idx;
+            v->vote_type = (int8_t)vote_type;
+            v->created_at = time(nullptr);
+            snprintf(v->voter_username, sizeof(v->voter_username), "%s", ctx->user.name);
+        }
+    }
+    if (vote_type == 1) post->comments[comment_idx].upvotes += 1;
+    else post->comments[comment_idx].downvotes += 1;
+    host_bbs_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+    session_send_system_line(ctx, vote_type == 1 ? "Comment upvoted." : "Comment downvoted.");
+}
+
+void session_bbs_profile(session_ctx_t *ctx, const char *username)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+    const char *target = (username != nullptr && username[0] != '\0') ? username : ctx->user.name;
+    session_bbs_prepare_canvas(ctx);
+    session_render_separator(ctx, "User Profile");
+
+    /* Load user data to get profile picture */
+    user_data_record_t record = {0};
+    bool has_data = false;
+    const char *root = getenv("CHATTER_USER_DATA_ROOT");
+    if (root == nullptr || root[0] == '\0') {
+        root = "/etc/ssh-chatter/user-data";
+    }
+    if (user_data_load(root, target, "", &record)) {
+        has_data = true;
+    }
+
+    if (has_data && record.profile_picture[0] != '\0') {
+        session_send_system_line(ctx, record.profile_picture);
+    } else {
+        session_send_system_line(ctx, "(No profile picture set)");
+    }
+
+    host_t *host = ctx->owner;
+    size_t post_count = 0;
+    size_t comment_count = 0;
+    int32_t total_upvotes = 0;
+    if (host != nullptr && host->bbs_posts != nullptr) {
+        for (size_t i = 0; i < host->bbs_post_capacity; ++i) {
+            if (!host->bbs_posts[i].in_use) continue;
+            if (strcmp(host->bbs_posts[i].author, target) == 0) {
+                ++post_count;
+                total_upvotes += host->bbs_posts[i].upvotes;
+            }
+            for (size_t c = 0; c < host->bbs_posts[i].comment_count; ++c) {
+                if (strcmp(host->bbs_posts[i].comments[c].author, target) == 0) {
+                    ++comment_count;
+                }
+            }
+        }
+    }
+    char stats[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(stats, sizeof(stats), "Posts: %zu | Comments: %zu | Total Upvotes: %d",
+             post_count, comment_count, total_upvotes);
+    session_send_system_line(ctx, stats);
+
+    if (post_count > 0) {
+        session_send_system_line(ctx, "Recent posts:");
+        size_t shown = 0;
+        for (size_t i = 0; i < host->bbs_post_capacity && shown < 5; ++i) {
+            if (!host->bbs_posts[i].in_use) continue;
+            if (strcmp(host->bbs_posts[i].author, target) == 0) {
+                char line[SSH_CHATTER_MESSAGE_LIMIT];
+                snprintf(line, sizeof(line), "  [#%zu] %s", (size_t)host->bbs_posts[i].id, host->bbs_posts[i].title);
+                session_send_system_line(ctx, line);
+                ++shown;
+            }
+        }
+    }
+}
+
+void session_bbs_set_profile(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    if (!ctx->asciiart_pending || ctx->asciiart_buffer == nullptr ||
+        ctx->asciiart_length == 0U) {
+        session_send_system_line(ctx, "No ASCII art pending. Use /asciiart to create one first.");
+        return;
+    }
+    const char *root = getenv("CHATTER_USER_DATA_ROOT");
+    if (root == nullptr || root[0] == '\0') {
+        root = "/etc/ssh-chatter/user-data";
+    }
+    user_data_record_t record = {0};
+    if (!user_data_load(root, ctx->user.name, ctx->client_ip, &record)) {
+        if (!user_data_init(&record, ctx->user.name, ctx->client_ip)) {
+            session_send_system_line(ctx, "Failed to initialize user data.");
+            return;
+        }
+    }
+    size_t copy_len = ctx->asciiart_length;
+    if (copy_len >= sizeof(record.profile_picture)) {
+        copy_len = sizeof(record.profile_picture) - 1;
+    }
+    memcpy(record.profile_picture, ctx->asciiart_buffer, copy_len);
+    record.profile_picture[copy_len] = '\0';
+    if (user_data_save(root, &record, ctx->client_ip)) {
+        session_send_system_line(ctx, "Profile picture updated.");
+    } else {
+        session_send_system_line(ctx, "Failed to save profile picture.");
+    }
+}
+
+void session_bbs_draft(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+    if (arguments == nullptr || arguments[0] == '\0') {
+        session_send_system_line(ctx, "Usage: /bbs draft <save|list|load|delete>");
+        return;
+    }
+    char action[16] = {0};
+    const char *rest = nullptr;
+    sscanf(arguments, "%15s", action);
+    rest = arguments + strlen(action);
+    while (*rest == ' ' || *rest == '\t') ++rest;
+
+    host_t *host = ctx->owner;
+    if (strcmp(action, "save") == 0) {
+        if (!ctx->bbs_post_pending || ctx->pending_bbs_body == nullptr) {
+            session_send_system_line(ctx, "Nothing to save. Start a post first.");
+            return;
+        }
+        ttak_mutex_lock(&host->lock);
+        bbs_draft_t *slot = nullptr;
+        for (size_t i = 0; i < host->bbs_draft_capacity; ++i) {
+            if (!host->bbs_drafts[i].in_use) {
+                slot = &host->bbs_drafts[i];
+                break;
+            }
+        }
+        if (slot == nullptr) {
+            ttak_mutex_unlock(&host->lock);
+            session_send_system_line(ctx, "Draft storage full. Delete old drafts first.");
+            return;
+        }
+        slot->in_use = true;
+        slot->id = host->next_bbs_id++; /* reuse next_bbs_id for draft ids */
+        slot->board_id = (uint16_t)ctx->bbs_current_board_id;
+        snprintf(slot->author, sizeof(slot->author), "%s", ctx->user.name);
+        snprintf(slot->title, sizeof(slot->title), "%s",
+                 ctx->pending_bbs_title != nullptr ? ctx->pending_bbs_title : "");
+        snprintf(slot->body, sizeof(slot->body), "%s", ctx->pending_bbs_body);
+        slot->tag_count = ctx->pending_bbs_tag_count;
+        for (size_t t = 0; t < ctx->pending_bbs_tag_count && t < SSH_CHATTER_BBS_MAX_TAGS; ++t) {
+            snprintf(slot->tags[t], sizeof(slot->tags[t]), "%s", ctx->pending_bbs_tags[t]);
+        }
+        slot->created_at = time(nullptr);
+        host->bbs_draft_count++;
+        host_bbs_state_save_locked(host);
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "Draft saved.");
+    } else if (strcmp(action, "list") == 0) {
+        session_bbs_prepare_canvas(ctx);
+        session_render_separator(ctx, "My Drafts");
+        ttak_mutex_lock(&host->lock);
+        size_t shown = 0;
+        for (size_t i = 0; i < host->bbs_draft_capacity; ++i) {
+            bbs_draft_t *d = &host->bbs_drafts[i];
+            if (!d->in_use || strcmp(d->author, ctx->user.name) != 0) continue;
+            char line[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(line, sizeof(line), "  [%zu] %s", i, d->title);
+            session_send_system_line(ctx, line);
+            ++shown;
+        }
+        ttak_mutex_unlock(&host->lock);
+        if (shown == 0) {
+            session_send_system_line(ctx, "No drafts.");
+        }
+    } else if (strcmp(action, "load") == 0) {
+        size_t idx = 0;
+        if (rest == nullptr || rest[0] == '\0' || sscanf(rest, "%zu", &idx) != 1) {
+            session_send_system_line(ctx, "Usage: /bbs draft load <index>");
+            return;
+        }
+        ttak_mutex_lock(&host->lock);
+        if (idx >= host->bbs_draft_capacity || !host->bbs_drafts[idx].in_use ||
+            strcmp(host->bbs_drafts[idx].author, ctx->user.name) != 0) {
+            ttak_mutex_unlock(&host->lock);
+            session_send_system_line(ctx, "Draft not found.");
+            return;
+        }
+        bbs_draft_t *d = &host->bbs_drafts[idx];
+        if (ctx->pending_bbs_title != nullptr) {
+            sshc_gc_free(ctx->pending_bbs_title);
+        }
+        if (ctx->pending_bbs_body != nullptr) {
+            sshc_gc_free(ctx->pending_bbs_body);
+        }
+        ctx->pending_bbs_title = sshc_strdup(d->title);
+        ctx->pending_bbs_body = sshc_strdup(d->body);
+        ctx->pending_bbs_body_length = strlen(d->body);
+        ctx->pending_bbs_body_length = ctx->pending_bbs_body_length;
+        ctx->pending_bbs_tag_count = d->tag_count;
+        for (size_t t = 0; t < d->tag_count && t < SSH_CHATTER_BBS_MAX_TAGS; ++t) {
+            snprintf(ctx->pending_bbs_tags[t], sizeof(ctx->pending_bbs_tags[t]), "%s", d->tags[t]);
+        }
+        ctx->bbs_post_pending = true;
+        ctx->editor_mode = SESSION_EDITOR_MODE_BBS_CREATE;
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "Draft loaded. Continue editing with the post editor.");
+    } else if (strcmp(action, "delete") == 0) {
+        size_t idx = 0;
+        if (rest == nullptr || rest[0] == '\0' || sscanf(rest, "%zu", &idx) != 1) {
+            session_send_system_line(ctx, "Usage: /bbs draft delete <index>");
+            return;
+        }
+        ttak_mutex_lock(&host->lock);
+        if (idx >= host->bbs_draft_capacity || !host->bbs_drafts[idx].in_use ||
+            strcmp(host->bbs_drafts[idx].author, ctx->user.name) != 0) {
+            ttak_mutex_unlock(&host->lock);
+            session_send_system_line(ctx, "Draft not found.");
+            return;
+        }
+        host->bbs_drafts[idx].in_use = false;
+        if (host->bbs_draft_count > 0) --host->bbs_draft_count;
+        host_bbs_state_save_locked(host);
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "Draft deleted.");
+    } else {
+        session_send_system_line(ctx, "Usage: /bbs draft <save|list|load|delete>");
+    }
+}
+
+void session_bbs_select_board(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+
+    if (arguments == nullptr || arguments[0] == '\0') {
+        session_bbs_boards(ctx);
+        return;
+    }
+
+    char target[64];
+    snprintf(target, sizeof(target), "%s", arguments);
+    trim_whitespace_inplace(target);
+
+    // Try parsing as integer ID first
+    char *endptr = nullptr;
+    long long parsed_id = strtoll(target, &endptr, 10);
+    bool is_id = (endptr != nullptr && *endptr == '\0');
+
+    ttak_mutex_lock(&host->lock);
+    const bbs_board_t *found = nullptr;
+    for (size_t i = 0; i < host->bbs_board_count; ++i) {
+        const bbs_board_t *b = &host->bbs_boards[i];
+        if (is_id && b->board_id == (uint16_t)parsed_id) {
+            found = b;
+            break;
+        }
+        if (strcasecmp(b->name, target) == 0) {
+            found = b;
+            break;
+        }
+    }
+
+    if (found != nullptr) {
+        ctx->bbs_current_board_id = found->board_id;
+        ttak_mutex_unlock(&host->lock);
+        
+        char msg[256];
+        const char *fmt = session_bbs_localize(ctx->ui_language, "Joined board: %s — %s");
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+        snprintf(msg, sizeof(msg), fmt, found->name, found->description);
+#pragma GCC diagnostic pop
+        session_send_system_line(ctx, msg);
+    } else {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "Board not found.");
+    }
+}
+
+#undef session_send_system_line
+#undef session_bbs_render_editor
+#undef session_bbs_render_post
+

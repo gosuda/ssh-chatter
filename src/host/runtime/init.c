@@ -212,6 +212,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_ui_language_state_resolve_path(host);
     host->pw_auth_file_path[0] = '\0';
     host_pw_auth_resolve_path(host);
+    host->nickname_claim_file_path[0] = '\0';
+    host_nickname_claim_resolve_path(host);
     host->alpha_landers_file_path[0] = '\0';
     host_alpha_landers_resolve_path(host);
     snprintf(host->user_data_root, sizeof(host->user_data_root), "%s",
@@ -392,6 +394,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->history_cache_loaded =
         host->history != nullptr && host->history_capacity > 0U;
     host_pw_auth_load(host);
+    host_nickname_claims_load(host);
     host_ai_persona_load_from_env(host);
     host_door_games_load_from_env(host);
     host_wall_state_load(host);

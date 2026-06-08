@@ -623,6 +623,26 @@ static void host_pw_auth_resolve_path(host_t *host)
     }
 }
 
+static void host_nickname_claim_resolve_path(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    const char *claim_path = getenv("CHATTER_NICKNAME_CLAIM_FILE");
+    if (claim_path == nullptr || claim_path[0] == '\0') {
+        claim_path = "nickname_claims.dat";
+    }
+
+    int written = snprintf(host->nickname_claim_file_path,
+                           sizeof(host->nickname_claim_file_path), "%s", claim_path);
+    if (written < 0 || (size_t)written >= sizeof(host->nickname_claim_file_path)) {
+        humanized_log_error("host", "nickname claim file path is too long",
+                            ENAMETOOLONG);
+        host->nickname_claim_file_path[0] = '\0';
+    }
+}
+
 static void host_alpha_landers_resolve_path(host_t *host)
 {
     if (host == nullptr) {

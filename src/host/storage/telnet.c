@@ -728,6 +728,8 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
     size_t glyph_count = 0U;
     unsigned int idle_time_ms = 0U;
     bool idle_warning_sent = false;
+    unsigned char raw_buf[SSH_CHATTER_MESSAGE_LIMIT];
+    size_t raw_len = 0U;
 
     while (!ctx->should_exit) {
         unsigned char byte = 0U;
@@ -794,6 +796,9 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
             }
             /* Also reset multi-byte buffer on backspace */
             ctx->multibyte_input_length = 0U;
+            if (raw_len > 0U) {
+                raw_len--;
+            }
             continue;
         }
 
@@ -804,6 +809,25 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
 
         if (byte < 0x20U) {
             continue;
+        }
+
+        if (raw_len + 1U < sizeof(raw_buf)) {
+            raw_buf[raw_len++] = byte;
+        }
+
+        if (ctx->cp437_input_enabled && ctx->active_codepage == SESSION_CODEPAGE_AUTO && byte >= 0x80U) {
+            session_codepage_t detected = session_codepage_detect_auto(raw_buf, raw_len);
+            if (detected != SESSION_CODEPAGE_AUTO) {
+                ctx->active_codepage = detected;
+                if (detected == SESSION_CODEPAGE_UTF8) {
+                    ctx->cp437_input_enabled = false;
+                    session_send_system_line(ctx, "Auto-detected UTF-8 input. Retro keyboard disabled.");
+                } else {
+                    char msg[128];
+                    snprintf(msg, sizeof(msg), "Auto-detected keyboard encoding: %s", session_codepage_name(detected));
+                    session_send_system_line(ctx, msg);
+                }
+            }
         }
 
         char encoded[8];

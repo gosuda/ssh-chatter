@@ -45,6 +45,23 @@ typedef struct sshc_bbs_cold_meta {
     uint64_t next_bbs_id;
 } sshc_bbs_cold_meta_t;
 
+typedef struct bbs_post_cold {
+    bool in_use;
+    uint64_t id;
+    uint16_t board_id;
+    char author[SSH_CHATTER_USERNAME_LEN];
+    char title[SSH_CHATTER_BBS_TITLE_LEN];
+    char body[SSH_CHATTER_BBS_BODY_LEN];
+    char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
+    size_t tag_count;
+    time_t created_at;
+    time_t bumped_at;
+    int32_t upvotes;
+    int32_t downvotes;
+    bbs_comment_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
+    size_t comment_count;
+} bbs_post_cold_t;
+
 static bool host_cold_file_path(char *out, size_t out_len, const char *base_path,
                                 const char *suffix)
 {
@@ -282,9 +299,26 @@ static bool host_bbs_acquire_storage(host_t *host)
         return false;
     }
 
+    for (size_t i = 0; i < SSH_CHATTER_BBS_MAX_POSTS; ++i) {
+        allocated[i].comments = (bbs_comment_t *)sshc_gc_calloc(
+            SSH_CHATTER_BBS_MAX_COMMENTS, sizeof(bbs_comment_t));
+        if (allocated[i].comments == nullptr) {
+            for (size_t j = 0; j < i; ++j) {
+                sshc_gc_free(allocated[j].comments);
+            }
+            sshc_gc_free(allocated);
+            humanized_log_error("bbs", "failed to allocate comments cache",
+                                errno != 0 ? errno : ENOMEM);
+            return false;
+        }
+    }
+
     ttak_mutex_lock(&host->lock);
     if (host->bbs_posts != nullptr) {
         ttak_mutex_unlock(&host->lock);
+        for (size_t i = 0; i < SSH_CHATTER_BBS_MAX_POSTS; ++i) {
+            sshc_gc_free(allocated[i].comments);
+        }
         sshc_gc_free(allocated);
         return true;
     }
@@ -325,12 +359,41 @@ static void host_bbs_release_cache(host_t *host)
         char cold_path[PATH_MAX];
         if (host_cold_file_path(cold_path, sizeof(cold_path),
                                 host->bbs_state_file_path, "bbs")) {
-            (void)host_cold_blob_save(cold_path, posts, sizeof(bbs_post_t),
-                                      post_capacity, &meta, sizeof(meta));
+            bbs_post_cold_t *cold_posts = (bbs_post_cold_t *)sshc_gc_calloc(
+                post_capacity, sizeof(bbs_post_cold_t));
+            if (cold_posts != nullptr) {
+                for (size_t i = 0; i < post_capacity; ++i) {
+                    cold_posts[i].in_use = posts[i].in_use;
+                    cold_posts[i].id = posts[i].id;
+                    cold_posts[i].board_id = posts[i].board_id;
+                    memcpy(cold_posts[i].author, posts[i].author, sizeof(cold_posts[i].author));
+                    memcpy(cold_posts[i].title, posts[i].title, sizeof(cold_posts[i].title));
+                    memcpy(cold_posts[i].body, posts[i].body, sizeof(cold_posts[i].body));
+                    memcpy(cold_posts[i].tags, posts[i].tags, sizeof(cold_posts[i].tags));
+                    cold_posts[i].tag_count = posts[i].tag_count;
+                    cold_posts[i].created_at = posts[i].created_at;
+                    cold_posts[i].bumped_at = posts[i].bumped_at;
+                    cold_posts[i].upvotes = posts[i].upvotes;
+                    cold_posts[i].downvotes = posts[i].downvotes;
+                    cold_posts[i].comment_count = posts[i].comment_count;
+                    if (posts[i].comments != nullptr) {
+                        memcpy(cold_posts[i].comments, posts[i].comments,
+                               sizeof(bbs_comment_t) * SSH_CHATTER_BBS_MAX_COMMENTS);
+                    }
+                }
+                (void)host_cold_blob_save(cold_path, cold_posts, sizeof(bbs_post_cold_t),
+                                          post_capacity, &meta, sizeof(meta));
+                sshc_gc_free(cold_posts);
+            }
         }
     }
 
     if (posts != nullptr) {
+        for (size_t i = 0; i < post_capacity; ++i) {
+            if (posts[i].comments != nullptr) {
+                sshc_gc_free(posts[i].comments);
+            }
+        }
         sshc_gc_free(posts);
     }
 }
@@ -386,22 +449,60 @@ static __attribute__((unused)) void host_reload_cached_state(host_t *host)
                                 host->bbs_state_file_path, "bbs")) {
             sshc_bbs_cold_meta_t meta = {0};
             size_t slot_count = 0U;
-            bbs_post_t *restored_posts = (bbs_post_t *)host_cold_blob_load(
-                cold_path, sizeof(bbs_post_t), sizeof(meta), &slot_count, &meta);
-            if (restored_posts != nullptr && slot_count > 0U) {
-                ttak_mutex_lock(&host->lock);
-                if (host->bbs_posts == nullptr) {
-                    host->bbs_posts = restored_posts;
-                    host->bbs_post_capacity = slot_count;
-                    host->bbs_post_count = meta.post_count;
-                    host->next_bbs_id = meta.next_bbs_id;
-                    host->bbs_cache_loaded = true;
-                    restored = true;
+            bbs_post_cold_t *restored_cold_posts = (bbs_post_cold_t *)host_cold_blob_load(
+                cold_path, sizeof(bbs_post_cold_t), sizeof(meta), &slot_count, &meta);
+            if (restored_cold_posts != nullptr && slot_count > 0U) {
+                bbs_post_t *allocated_posts = (bbs_post_t *)sshc_gc_calloc(
+                    slot_count, sizeof(bbs_post_t));
+                if (allocated_posts != nullptr) {
+                    bool allocation_ok = true;
+                    for (size_t i = 0; i < slot_count; ++i) {
+                        allocated_posts[i].comments = (bbs_comment_t *)sshc_gc_calloc(
+                            SSH_CHATTER_BBS_MAX_COMMENTS, sizeof(bbs_comment_t));
+                        if (allocated_posts[i].comments == nullptr) {
+                            for (size_t j = 0; j < i; ++j) {
+                                sshc_gc_free(allocated_posts[j].comments);
+                            }
+                            sshc_gc_free(allocated_posts);
+                            allocation_ok = false;
+                            break;
+                        }
+                        allocated_posts[i].in_use = restored_cold_posts[i].in_use;
+                        allocated_posts[i].id = restored_cold_posts[i].id;
+                        allocated_posts[i].board_id = restored_cold_posts[i].board_id;
+                        memcpy(allocated_posts[i].author, restored_cold_posts[i].author, sizeof(allocated_posts[i].author));
+                        memcpy(allocated_posts[i].title, restored_cold_posts[i].title, sizeof(allocated_posts[i].title));
+                        memcpy(allocated_posts[i].body, restored_cold_posts[i].body, sizeof(allocated_posts[i].body));
+                        memcpy(allocated_posts[i].tags, restored_cold_posts[i].tags, sizeof(allocated_posts[i].tags));
+                        allocated_posts[i].tag_count = restored_cold_posts[i].tag_count;
+                        allocated_posts[i].created_at = restored_cold_posts[i].created_at;
+                        allocated_posts[i].bumped_at = restored_cold_posts[i].bumped_at;
+                        allocated_posts[i].upvotes = restored_cold_posts[i].upvotes;
+                        allocated_posts[i].downvotes = restored_cold_posts[i].downvotes;
+                        allocated_posts[i].comment_count = restored_cold_posts[i].comment_count;
+                        memcpy(allocated_posts[i].comments, restored_cold_posts[i].comments,
+                               sizeof(bbs_comment_t) * SSH_CHATTER_BBS_MAX_COMMENTS);
+                    }
+                    if (allocation_ok) {
+                        ttak_mutex_lock(&host->lock);
+                        if (host->bbs_posts == nullptr) {
+                            host->bbs_posts = allocated_posts;
+                            host->bbs_post_capacity = slot_count;
+                            host->bbs_post_count = meta.post_count;
+                            host->next_bbs_id = meta.next_bbs_id;
+                            host->bbs_cache_loaded = true;
+                            restored = true;
+                        }
+                        ttak_mutex_unlock(&host->lock);
+                        if (!restored) {
+                            for (size_t i = 0; i < slot_count; ++i) {
+                                sshc_gc_free(allocated_posts[i].comments);
+                            }
+                            sshc_gc_free(allocated_posts);
+                        }
+                    }
                 }
-                ttak_mutex_unlock(&host->lock);
-                if (!restored) {
-                    sshc_gc_free(restored_posts);
-                }
+                sshc_gc_free(restored_cold_posts);
             }
         }
 

@@ -329,13 +329,8 @@ typedef struct host_state_grant_entry {
     char ip[SSH_CHATTER_IP_LEN];
 } host_state_grant_entry_t;
 
-static const uint32_t BBS_STATE_MAGIC = 0x42425331U; /* 'BBS1' */
-static const uint32_t BBS_STATE_VERSION = 4U;
-
-#define SSH_CHATTER_BBS_TITLE_LEN_V1 96U
-#define SSH_CHATTER_BBS_BODY_LEN_V1 2048U
-#define SSH_CHATTER_BBS_BODY_LEN_V2 10240U
-#define SSH_CHATTER_BBS_BODY_LEN_V3 20480U
+static const uint32_t BBS_STATE_MAGIC = 0x42425332U; /* 'BBS2' */
+static const uint32_t BBS_STATE_VERSION = 1U;
 
 typedef struct bbs_state_header {
     uint32_t magic;
@@ -349,12 +344,18 @@ typedef struct bbs_state_comment_entry {
     char author[SSH_CHATTER_USERNAME_LEN];
     char text[SSH_CHATTER_BBS_COMMENT_LEN];
     int64_t created_at;
+    int32_t upvotes;
+    int32_t downvotes;
 } bbs_state_comment_entry_t;
 
 typedef struct bbs_state_post_entry {
     uint64_t id;
+    uint16_t board_id;
+    uint16_t reserved;
     int64_t created_at;
     int64_t bumped_at;
+    int32_t upvotes;
+    int32_t downvotes;
     uint32_t tag_count;
     uint32_t comment_count;
     char author[SSH_CHATTER_USERNAME_LEN];
@@ -364,44 +365,43 @@ typedef struct bbs_state_post_entry {
     bbs_state_comment_entry_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
 } bbs_state_post_entry_t;
 
-typedef struct bbs_state_post_entry_v1 {
-    uint64_t id;
-    int64_t created_at;
-    int64_t bumped_at;
-    uint32_t tag_count;
-    uint32_t comment_count;
-    char author[SSH_CHATTER_USERNAME_LEN];
-    char title[SSH_CHATTER_BBS_TITLE_LEN_V1];
-    char body[SSH_CHATTER_BBS_BODY_LEN_V1];
-    char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
-    bbs_state_comment_entry_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
-} bbs_state_post_entry_v1_t;
+static const uint32_t BBS_BOARDS_MAGIC = 0x42425244U; /* 'BBRD' */
+static const uint32_t BBS_BOARDS_VERSION = 1U;
 
-typedef struct bbs_state_post_entry_v2 {
-    uint64_t id;
-    int64_t created_at;
-    int64_t bumped_at;
-    uint32_t tag_count;
-    uint32_t comment_count;
-    char author[SSH_CHATTER_USERNAME_LEN];
-    char title[SSH_CHATTER_BBS_TITLE_LEN];
-    char body[SSH_CHATTER_BBS_BODY_LEN_V2];
-    char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
-    bbs_state_comment_entry_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
-} bbs_state_post_entry_v2_t;
+typedef struct bbs_state_board_entry {
+    uint16_t board_id;
+    char name[32];
+    char description[128];
+    uint8_t is_notice;
+    uint8_t reserved[7];
+} bbs_state_board_entry_t;
 
-typedef struct bbs_state_post_entry_v3 {
-    uint64_t id;
+static const uint32_t BBS_VOTES_MAGIC = 0x42425654U; /* 'BBVT' */
+static const uint32_t BBS_VOTES_VERSION = 1U;
+
+typedef struct bbs_state_vote_entry {
+    uint64_t target_post_id;
+    int32_t target_comment_idx;
+    char voter_username[SSH_CHATTER_USERNAME_LEN];
+    int8_t vote_type;
+    uint8_t reserved[7];
     int64_t created_at;
-    int64_t bumped_at;
-    uint32_t tag_count;
-    uint32_t comment_count;
+} bbs_state_vote_entry_t;
+
+static const uint32_t BBS_DRAFTS_MAGIC = 0x42424454U; /* 'BBDT' */
+static const uint32_t BBS_DRAFTS_VERSION = 1U;
+
+typedef struct bbs_state_draft_entry {
+    uint64_t id;
     char author[SSH_CHATTER_USERNAME_LEN];
+    uint16_t board_id;
+    uint16_t reserved;
+    int64_t created_at;
+    uint32_t tag_count;
     char title[SSH_CHATTER_BBS_TITLE_LEN];
-    char body[SSH_CHATTER_BBS_BODY_LEN_V3];
+    char body[SSH_CHATTER_BBS_BODY_LEN];
     char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
-    bbs_state_comment_entry_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
-} bbs_state_post_entry_v3_t;
+} bbs_state_draft_entry_t;
 
 static const uint32_t ALPHA_LANDERS_STATE_MAGIC = 0x464C4147U; /* 'FLAG' */
 static const uint32_t ALPHA_LANDERS_STATE_VERSION = 1U;

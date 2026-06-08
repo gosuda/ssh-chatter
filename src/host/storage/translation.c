@@ -365,6 +365,28 @@ static void session_translation_pop_scope_override(session_ctx_t *ctx,
     ctx->translation_manual_scope_override = previous;
 }
 
+static const char *session_translation_pending_text(session_ui_language_t lang, bool is_pm)
+{
+    switch (lang) {
+    case SESSION_UI_LANGUAGE_KO:
+        return is_pm ? "[귓속말 번역 중...]" : "[메시지 번역 중...]";
+    case SESSION_UI_LANGUAGE_JP:
+        return is_pm ? "[プライベートメッセージ翻訳中...]" : "[メッセージ翻訳中...]";
+    case SESSION_UI_LANGUAGE_ZH:
+        return is_pm ? "[正在翻译私信...]" : "[正在翻译消息...]";
+    case SESSION_UI_LANGUAGE_RU:
+        return is_pm ? "[Перевод личного сообщения...]" : "[Перевод сообщения...]";
+    case SESSION_UI_LANGUAGE_DE:
+        return is_pm ? "[Private Nachricht wird übersetzt...]" : "[Nachricht wird übersetzt...]";
+    case SESSION_UI_LANGUAGE_FR:
+        return is_pm ? "[Traduction du message privé...]" : "[Traduction du message...]";
+    case SESSION_UI_LANGUAGE_PL:
+        return is_pm ? "[Tłumaczenie prywatnej wiadomości...]" : "[Tłumaczenie wiadomości...]";
+    default:
+        return is_pm ? "[Translating private message...]" : "[Translating message...]";
+    }
+}
+
 static bool session_translation_queue_private_message(session_ctx_t *ctx,
                                                       session_ctx_t *target,
                                                       const char *message)
@@ -411,6 +433,7 @@ static bool session_translation_queue_private_message(session_ctx_t *ctx,
     ttak_cond_signal(&ctx->translation_cond);
     ttak_mutex_unlock(&ctx->translation_mutex);
 
+    session_send_system_line(ctx, session_translation_pending_text(ctx->ui_language, true));
     return true;
 }
 
@@ -453,6 +476,7 @@ static bool session_translation_queue_input(session_ctx_t *ctx,
     ttak_cond_signal(&ctx->translation_cond);
     ttak_mutex_unlock(&ctx->translation_mutex);
 
+    session_send_system_line(ctx, session_translation_pending_text(ctx->ui_language, false));
     return true;
 }
 

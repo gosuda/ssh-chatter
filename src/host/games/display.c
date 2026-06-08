@@ -1051,12 +1051,18 @@ static void session_handle_set_ui_lang(session_ctx_t *ctx,
         const char *format = (locale->set_ui_lang_usage != nullptr &&
                               locale->set_ui_lang_usage[0] != '\0')
                                  ? locale->set_ui_lang_usage
-                                 : "Usage: %sset-ui-lang <ko|en|jp|zh|ru>";
+                                 : "Usage: %sset-ui-lang <ko|en|jp|zh|ru|de|fr|pl>";
         const char *args[] = {prefix};
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         session_format_template(format, args, sizeof(args) / sizeof(args[0]),
                                 message, sizeof(message));
         session_send_system_line(ctx, message);
+        return;
+    }
+
+    if (strcasecmp(token, "unicode-all") == 0) {
+        ctx->unicode_all_mode = true;
+        session_send_system_line(ctx, "Unicode-all mode enabled. All languages are now visible.");
         return;
     }
 
@@ -1066,7 +1072,7 @@ static void session_handle_set_ui_lang(session_ctx_t *ctx,
             (locale->set_ui_lang_invalid != nullptr &&
              locale->set_ui_lang_invalid[0] != '\0')
                 ? locale->set_ui_lang_invalid
-                : "Unsupported language. Use one of: ko, en, jp, zh, ru.";
+                : "Unsupported language. Use one of: ko, en, jp, zh, ru, de, fr, pl.";
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         session_format_template(format, nullptr, 0U, message, sizeof(message));
         session_send_system_line(ctx, message);
@@ -1074,6 +1080,7 @@ static void session_handle_set_ui_lang(session_ctx_t *ctx,
     }
 
     ctx->ui_language = language;
+    ctx->unicode_all_mode = false;
     const session_ui_locale_t *updated_locale = session_ui_get_locale(ctx);
     const char *language_name =
         session_ui_language_name(language, ctx->ui_language);

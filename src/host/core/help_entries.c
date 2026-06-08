@@ -106,6 +106,73 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_RU] = "дверь",
             },
     },
+    {
+        .canonical = "boards",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "boards",
+                [SESSION_UI_LANGUAGE_KO] = "게시판",
+            },
+    },
+    {
+        .canonical = "upvote",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "upvote",
+                [SESSION_UI_LANGUAGE_KO] = "추천",
+            },
+    },
+    {
+        .canonical = "downvote",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "downvote",
+                [SESSION_UI_LANGUAGE_KO] = "반대",
+            },
+    },
+    {
+        .canonical = "cmtvote",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "cmtvote",
+                [SESSION_UI_LANGUAGE_KO] = "댓글투표",
+            },
+    },
+    {
+        .canonical = "profile",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "profile",
+                [SESSION_UI_LANGUAGE_KO] = "프로필",
+            },
+    },
+    {
+        .canonical = "set-profile",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "set-profile",
+                [SESSION_UI_LANGUAGE_KO] = "프로필설정",
+            },
+    },
+    {
+        .canonical = "draft",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "draft",
+                [SESSION_UI_LANGUAGE_KO] = "임시저장",
+            },
+    },
+    {
+        .canonical = "board",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "board",
+                [SESSION_UI_LANGUAGE_KO] = "게시판이동",
+                [SESSION_UI_LANGUAGE_JP] = "板移動",
+                [SESSION_UI_LANGUAGE_ZH] = "版面",
+                [SESSION_UI_LANGUAGE_RU] = "доска",
+            },
+    },
 };
 
 static const size_t kSessionBbsSubcommandCount =

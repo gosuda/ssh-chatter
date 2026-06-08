@@ -252,6 +252,14 @@ bool session_bbs_workspace_acquire(session_ctx_t *ctx);
 void session_bbs_workspace_release(session_ctx_t *ctx);
 bool session_bbs_view_notice_acquire(session_ctx_t *ctx);
 void session_bbs_view_notice_release(session_ctx_t *ctx);
+
+void session_bbs_boards(session_ctx_t *ctx);
+void session_bbs_upvote(session_ctx_t *ctx, uint64_t post_id);
+void session_bbs_downvote(session_ctx_t *ctx, uint64_t post_id);
+void session_bbs_cmtvote(session_ctx_t *ctx, const char *arguments);
+void session_bbs_profile(session_ctx_t *ctx, const char *username);
+void session_bbs_set_profile(session_ctx_t *ctx);
+void session_bbs_draft(session_ctx_t *ctx, const char *arguments);
 bool session_asciiart_buffer_acquire(session_ctx_t *ctx);
 void session_asciiart_buffer_release(session_ctx_t *ctx);
 bool session_tetris_buffers_acquire(session_ctx_t *ctx);

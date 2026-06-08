@@ -11,6 +11,16 @@
 #include <string.h>
 #include <iconv.h>
 #include <errno.h>
+#include <stdlib.h>
+
+#ifdef SSH_CHATTER_HAVE_ICU
+#include <unicode/ucnv.h>
+#include <unicode/utypes.h>
+#endif
+
+#ifdef SSH_CHATTER_HAVE_UCHARDET
+#include <uchardet.h>
+#endif
 
 /* Forward declaration of UTF-8 encoding function from host_runtime.c */
 static size_t session_encode_utf8_codepoint(uint32_t codepoint, char *output,
@@ -438,6 +448,8 @@ const char *session_codepage_name(session_codepage_t codepage)
         return "CP850";
     case SESSION_CODEPAGE_CP852:
         return "CP852";
+    case SESSION_CODEPAGE_AUTO:
+        return "AUTO";
     default:
         return "Unknown";
     }
@@ -462,6 +474,8 @@ const char *session_codepage_iconv_name(session_codepage_t codepage)
         return "CP850//TRANSLIT";
     case SESSION_CODEPAGE_CP852:
         return "CP852//TRANSLIT";
+    case SESSION_CODEPAGE_AUTO:
+        return NULL; /* Resolved dynamically */
     default:
         return NULL;
     }
@@ -598,6 +612,94 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
     }
 
     return output_capacity - output_remaining;
+}
+
+session_codepage_t session_codepage_detect_auto(const unsigned char *input,
+                                                size_t input_length)
+{
+    if (input == NULL || input_length == 0U) {
+        return SESSION_CODEPAGE_UTF8;
+    }
+
+    /* Fast UTF-8 validation */
+    size_t i = 0;
+    while (i < input_length) {
+        if ((input[i] & 0x80) == 0) {
+            ++i;
+        } else if ((input[i] & 0xE0) == 0xC0 && i + 1 < input_length &&
+                   (input[i + 1] & 0xC0) == 0x80) {
+            i += 2;
+        } else if ((input[i] & 0xF0) == 0xE0 && i + 2 < input_length &&
+                   (input[i + 1] & 0xC0) == 0x80 &&
+                   (input[i + 2] & 0xC0) == 0x80) {
+            i += 3;
+        } else if ((input[i] & 0xF8) == 0xF0 && i + 3 < input_length &&
+                   (input[i + 1] & 0xC0) == 0x80 &&
+                   (input[i + 2] & 0xC0) == 0x80 &&
+                   (input[i + 3] & 0xC0) == 0x80) {
+            i += 4;
+        } else {
+            break;
+        }
+    }
+    if (i == input_length) {
+        return SESSION_CODEPAGE_UTF8;
+    }
+
+#ifdef SSH_CHATTER_HAVE_UCHARDET
+    uchardet_t ud = uchardet_new();
+    if (ud != NULL) {
+        if (uchardet_handle_data(ud, (const char *)input,
+                                 (size_t)input_length) == 0) {
+            uchardet_data_end(ud);
+            const char *charset = uchardet_get_charset(ud);
+            if (charset != NULL && charset[0] != '\0') {
+                session_codepage_t result = SESSION_CODEPAGE_UTF8;
+                if (strcasecmp(charset, "UTF-8") == 0)
+                    result = SESSION_CODEPAGE_UTF8;
+                else if (strncasecmp(charset, "EUC-KR", 6) == 0 ||
+                         strncasecmp(charset, "CP949", 5) == 0 ||
+                         strncasecmp(charset, "ISO-2022-KR", 11) == 0)
+                    result = SESSION_CODEPAGE_CP949;
+                else if (strncasecmp(charset, "SHIFT_JIS", 9) == 0 ||
+                         strncasecmp(charset, "CP932", 5) == 0 ||
+                         strncasecmp(charset, "EUC-JP", 6) == 0 ||
+                         strncasecmp(charset, "ISO-2022-JP", 11) == 0)
+                    result = SESSION_CODEPAGE_CP932;
+                else if (strncasecmp(charset, "GB2312", 6) == 0 ||
+                         strncasecmp(charset, "GBK", 3) == 0 ||
+                         strncasecmp(charset, "CP936", 5) == 0 ||
+                         strncasecmp(charset, "GB18030", 7) == 0)
+                    result = SESSION_CODEPAGE_CP936;
+                else if (strncasecmp(charset, "KOI8-R", 6) == 0 ||
+                         strncasecmp(charset, "CP1251", 6) == 0 ||
+                         strncasecmp(charset, "WINDOWS-1251", 12) == 0)
+                    result = SESSION_CODEPAGE_CP1251;
+                else if (strncasecmp(charset, "CP437", 5) == 0)
+                    result = SESSION_CODEPAGE_CP437;
+                else if (strncasecmp(charset, "CP850", 5) == 0)
+                    result = SESSION_CODEPAGE_CP850;
+                else if (strncasecmp(charset, "CP852", 5) == 0)
+                    result = SESSION_CODEPAGE_CP852;
+                uchardet_delete(ud);
+                return result;
+            }
+        }
+        uchardet_delete(ud);
+    }
+#endif
+
+    /* Simple heuristics without uchardet */
+    bool has_kr = false, has_jp = false, has_cn = false;
+    for (size_t j = 0; j < input_length; ++j) {
+        if (input[j] >= 0xB0 && input[j] <= 0xC8) has_kr = true;
+        if (input[j] >= 0x81 && input[j] <= 0x9F) has_jp = true;
+        if (input[j] >= 0xA1 && input[j] <= 0xF7) has_cn = true;
+    }
+    if (has_kr && !has_jp && !has_cn) return SESSION_CODEPAGE_CP949;
+    if (has_jp && !has_kr && !has_cn) return SESSION_CODEPAGE_CP932;
+    if (has_cn && !has_kr && !has_jp) return SESSION_CODEPAGE_CP936;
+    return SESSION_CODEPAGE_UTF8;
 }
 
 size_t session_utf8_to_codepage(session_codepage_t codepage, const char *input,

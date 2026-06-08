@@ -71,7 +71,7 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
 
     if (strcmp(canonical_command, "list") == 0) {
         session_bbs_prepare_canvas(ctx);
-        session_bbs_list(ctx);
+        session_bbs_list(ctx, rest);
     } else if (strcmp(canonical_command, "read") == 0) {
         if (rest == nullptr || rest[0] == '\0') {
             session_bbs_send_usage(ctx, "read", "<id>");
@@ -161,6 +161,32 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         const char *door_name = (rest != nullptr && rest[0] != '\0') ? rest
                                                                      : nullptr;
         session_bbs_door_run(ctx, door_name);
+    } else if (strcmp(canonical_command, "boards") == 0) {
+        session_bbs_boards(ctx);
+    } else if (strcmp(canonical_command, "upvote") == 0) {
+        if (rest == nullptr || rest[0] == '\0') {
+            session_bbs_send_usage(ctx, "upvote", "<post_id>");
+            return;
+        }
+        uint64_t id = (uint64_t)strtoull(rest, nullptr, 10);
+        session_bbs_upvote(ctx, id);
+    } else if (strcmp(canonical_command, "downvote") == 0) {
+        if (rest == nullptr || rest[0] == '\0') {
+            session_bbs_send_usage(ctx, "downvote", "<post_id>");
+            return;
+        }
+        uint64_t id = (uint64_t)strtoull(rest, nullptr, 10);
+        session_bbs_downvote(ctx, id);
+    } else if (strcmp(canonical_command, "cmtvote") == 0) {
+        session_bbs_cmtvote(ctx, rest);
+    } else if (strcmp(canonical_command, "profile") == 0) {
+        session_bbs_profile(ctx, rest);
+    } else if (strcmp(canonical_command, "set-profile") == 0) {
+        session_bbs_set_profile(ctx);
+    } else if (strcmp(canonical_command, "draft") == 0) {
+        session_bbs_draft(ctx, rest);
+    } else if (strcmp(canonical_command, "board") == 0) {
+        session_bbs_select_board(ctx, rest);
     } else {
         session_send_system_line(
             ctx, "Unknown /bbs subcommand. Try /bbs for usage.");

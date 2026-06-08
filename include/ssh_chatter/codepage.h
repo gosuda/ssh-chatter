@@ -16,6 +16,7 @@ typedef enum session_codepage {
     SESSION_CODEPAGE_CP1251,   /* Russian (Cyrillic) */
     SESSION_CODEPAGE_CP850,    /* Western European (DOS Latin 1) */
     SESSION_CODEPAGE_CP852,    /* Central European (DOS Latin 2) */
+    SESSION_CODEPAGE_AUTO,     /* Automatically detect encoding */
     SESSION_CODEPAGE_COUNT
 } session_codepage_t;
 
@@ -105,5 +106,12 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
 size_t session_utf8_to_codepage(session_codepage_t codepage, const char *input,
                                 size_t input_length, char *output,
                                 size_t output_capacity);
+
+/**
+ * Automatically detect the code page of the given input bytes.
+ * Returns SESSION_CODEPAGE_UTF8 if detection fails or input is already UTF-8.
+ */
+session_codepage_t session_codepage_detect_auto(const unsigned char *input,
+                                                size_t input_length);
 
 #endif /* SSH_CHATTER_CODEPAGE_H */

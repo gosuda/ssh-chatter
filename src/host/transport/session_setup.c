@@ -866,6 +866,14 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             continue;
         }
 
+        // Language/encoding filtering based on sender's ui_language
+        if (entry->is_user_message && !member->unicode_all_mode) {
+            if ((int)entry->sender_ui_language != (int)member->ui_language) {
+                atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+                continue;
+            }
+        }
+
         // For telnet, or SSH sessions using the display model: trigger an
         // incremental history-scroll redraw so the conversation scrolls up
         // by one line and the new message appears at the bottom, rather than
@@ -1768,6 +1776,7 @@ static void chat_history_entry_prepare_user(chat_history_entry_t *entry,
     snprintf(entry->username, sizeof(entry->username), "%s", username);
     snprintf(entry->raw_username, sizeof(entry->raw_username), "%s",
              raw_username);
+    entry->sender_ui_language = from->ui_language;
     snprintf(entry->user_ip, sizeof(entry->user_ip), "%s", from->client_ip);
     session_build_network_topology_key(from, entry->user_topology,
                                        sizeof(entry->user_topology));

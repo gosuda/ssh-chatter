@@ -272,8 +272,9 @@ static void session_destroy(session_ctx_t *ctx)
      * other thread can observe this pointer.  This makes session teardown
      * fully deterministic.
      */
+    host_t *owner = ctx->owner;
     session_epoch_free(ctx);
-    session_drain_reclamation(nullptr, ctx->owner);
+    session_drain_reclamation(nullptr, owner);
 }
 
 session_ctx_t *host_session_create_for_testing(host_t *host,

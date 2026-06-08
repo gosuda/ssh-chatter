@@ -30,7 +30,7 @@ static bool session_attempt_handshake_restart(session_ctx_t *ctx,
 #define SESSION_EBR_DRAIN_PASSES 3U
 #define SESSION_GC_ROTATE_PASSES 2U
 #define SESSION_MANUAL_GC_WAIT_PASSES 2U
-#define SESSION_MANUAL_GC_WAIT_NS 5000000L
+#define SESSION_MANUAL_GC_WAIT_NS 1000000L
 
 static void session_drain_reclamation(sshc_memory_context_t *memory_context,
                                       host_t *owner)

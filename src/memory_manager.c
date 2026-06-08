@@ -143,11 +143,12 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
     /* EpochGC: per-context generational collector (local gc init<->destroy cycle). */
     ttak_epoch_gc_init(&ctx->epoch_gc);
 
-    /* Reclamation: slightly tighter cadence to keep retired generations short. */
+    /* Reclamation: relaxed cadence to reduce CPU overhead under load.
+     * The background thread still runs, but less aggressively. */
     ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
     ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
-                                         TT_MILLI_SECOND(50),
-                                         TT_MILLI_SECOND(200));
+                                         TT_MILLI_SECOND(100),
+                                         TT_MILLI_SECOND(400));
 
 }
 
@@ -168,7 +169,7 @@ void sshc_memory_runtime_init(void)
          * pressure threshold to reduce deferred-epoch buildup. */
         ttak_mem_set_trace(
             sshc_env_truthy(getenv("SSH_CHATTER_MEM_TRACE")) ? 1 : 0);
-        ttak_mem_configure_gc(TT_MILLI_SECOND(50), TT_MILLI_SECOND(250), 6);
+        ttak_mem_configure_gc(TT_MILLI_SECOND(100), TT_MILLI_SECOND(500), 4096);
 
         /* Hash map for O(1) ptr → allocation* lookup (initial capacity 1024). */
         sshc_alloc_map = ttak_create_map(1024, ttak_get_tick_count());
@@ -299,12 +300,14 @@ sshc_memory_context_t *sshc_memory_context_create(const char *label)
     }
     sshc_memory_context_init(ctx, label);
 
-    /* Session context: keep generations shorter under reconnect churn. */
+    /* Session context: relaxed intervals to batch cleanups under churn.
+     * Pressure threshold raised to 4 KiB so tiny allocations don't force
+     * immediate background passes. */
     ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
     ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
-                                         TT_MILLI_SECOND(50),
-                                         TT_MILLI_SECOND(200));
-    ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 3);
+                                         TT_MILLI_SECOND(100),
+                                         TT_MILLI_SECOND(400));
+    ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 4096);
 
     /* Vertical Hierarchy: Register this session owner as a child of the global owner.
      * This ensures that if the global context is destroyed, all session contexts are audited. */

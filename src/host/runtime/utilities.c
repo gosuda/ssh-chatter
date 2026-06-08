@@ -240,7 +240,12 @@ static inline bool host_gc_cycle(host_t *host, struct timespec *last_gc_run,
     const long elapsed_nsec = now.tv_nsec - last_gc_run->tv_nsec;
     const long long elapsed_total_ns =
         (long long)elapsed_sec * 1000000000LL + (long long)elapsed_nsec;
-    if (elapsed_total_ns < 250000000LL) {
+
+    /* Adaptive interval: faster under heavy load, slower when idle.
+     * This reduces CPU overhead from frequent epoch-rotates. */
+    const long long base_interval_ns =
+        (host->connection_count >= 32U) ? 250000000LL : 500000000LL;
+    if (elapsed_total_ns < base_interval_ns) {
         return host_memory_pressure_restart(host, last_pressure_check);
     }
 

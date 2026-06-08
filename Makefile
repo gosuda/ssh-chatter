@@ -41,7 +41,6 @@ LDFLAGS_ICU := $(shell pkg-config --libs icu-uc)
 endif
 
 CFLAGS = -std=c2x -Ofast \
-              -Werror \
               -Wno-error=deprecated-declarations -DSSH_CHATTER_USE_GC=$(ENABLE_GC) \
               $(if $(filter 1,$(HAVE_UCHARDET)),-DSSH_CHATTER_HAVE_UCHARDET $(CFLAGS_UCHARDET)) \
               $(if $(filter 1,$(HAVE_ICU)),-DSSH_CHATTER_HAVE_ICU $(CFLAGS_ICU)) \
@@ -97,7 +96,6 @@ COMMON_LDFLAGS = \
     -Wl,-Bsymbolic \
     -Wl,--gc-sections \
     -Wl,--as-needed \
-    -Wl,--strip-all \
     -Wl,--relax \
     -Wl,--no-undefined \
     -Wl,--warn-execstack -Wl,-z,noexecstack \

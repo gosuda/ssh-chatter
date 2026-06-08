@@ -117,7 +117,7 @@ char *session_show_welcome_banner(const char *path)
         return nullptr;
     }
 
-    FILE *banner_file = fopen(path, "r");
+    FILE *banner_file = fopen(path, "rb");
     if (banner_file == nullptr) {
         // Error opening file, return nullptr
         return nullptr;
@@ -151,6 +151,30 @@ char *session_show_welcome_banner(const char *path)
     banner_content[file_size] = '\0'; // Null-terminate the string
 
     fclose(banner_file);
+
+    /* Strip SAUCE metadata record (128 bytes at end, starts with "SAUCE"). */
+    if (bytes_read >= 128U) {
+        const char *sauce_ptr = banner_content + bytes_read - 128;
+        if (memcmp(sauce_ptr, "SAUCE", 5) == 0) {
+            size_t sauce_start = bytes_read - 128;
+            /* Check for optional COMNT block preceding SAUCE. */
+            if (sauce_start >= 5U) {
+                for (size_t scan = sauce_start; scan >= 5U; --scan) {
+                    if (memcmp(banner_content + scan - 5, "COMNT", 5) == 0) {
+                        sauce_start = scan - 5;
+                        break;
+                    }
+                }
+            }
+            while (sauce_start > 0U &&
+                   (unsigned char)banner_content[sauce_start - 1U] == 0x1AU) {
+                --sauce_start;
+            }
+            bytes_read = sauce_start;
+            file_size = (long)sauce_start;
+            banner_content[file_size] = '\0';
+        }
+    }
 
     // Ensure there is at least a newline at the end if the file didn't have one
     if (file_size == 0 || banner_content[file_size - 1] != '\n') {

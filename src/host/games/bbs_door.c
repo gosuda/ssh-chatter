@@ -319,6 +319,21 @@ static void door_emit_converted(session_ctx_t *ctx, host_door_runner_t *runner,
     iconv_close(cd);
 }
 
+static void door_flush_detect_buffer(session_ctx_t *ctx,
+                                     host_door_runner_t *runner)
+{
+    if (ctx == nullptr || runner == nullptr || runner->detect_length == 0U) {
+        return;
+    }
+
+    runner->detected_encoding =
+        door_enc_decide(runner->detect_buffer, runner->detect_length);
+    runner->encoding_decided = true;
+    door_emit_converted(ctx, runner, runner->detect_buffer,
+                        runner->detect_length);
+    runner->detect_length = 0U;
+}
+
 static const door_game_entry_t *host_door_lookup(const host_t *host,
                                                  const char *name)
 {
@@ -522,6 +537,7 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
             }
             if (got == 0) {
                 /* PTY closed — child exited. */
+                door_flush_detect_buffer(ctx, runner);
                 break;
             }
             if (got > 0) {
@@ -529,6 +545,7 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
                  * detect buffer; once decided, every chunk goes through the
                  * converter. */
                 if (!runner->encoding_decided) {
+                    size_t previous_detect_length = runner->detect_length;
                     size_t room =
                         sizeof(runner->detect_buffer) - runner->detect_length;
                     size_t copy = ((size_t)got < room) ? (size_t)got : room;
@@ -540,11 +557,16 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
                     bool buffer_full = runner->detect_length ==
                                        sizeof(runner->detect_buffer);
                     bool seen_high_bit = false;
-                    for (size_t k = 0U; k < runner->detect_length; ++k) {
-                        if (runner->detect_buffer[k] >= 0x80U) {
+                    for (ssize_t k = 0; k < got; ++k) {
+                        if ((unsigned char)buffer[k] >= 0x80U) {
                             seen_high_bit = true;
                             break;
                         }
+                    }
+                    if (!seen_high_bit && previous_detect_length == 0U) {
+                        door_emit_converted(ctx, runner, buffer, (size_t)got);
+                        runner->detect_length = 0U;
+                        continue;
                     }
                     bool decide_now =
                         buffer_full ||
@@ -566,6 +588,7 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
             }
         } else if (poll_result > 0 &&
                    (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))) {
+            door_flush_detect_buffer(ctx, runner);
             break;
         }
 
@@ -595,6 +618,7 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
                 }
                 door_emit_converted(ctx, runner, buffer, (size_t)residual);
             }
+            door_flush_detect_buffer(ctx, runner);
             break;
         }
 
@@ -671,14 +695,14 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
         return;
     }
 
-    if (!session_bbs_door_caller_authorised(ctx)) {
-        session_send_system_line(
-            ctx, "Only operators may launch DOOR games on this server.");
+    if (name == nullptr || name[0] == '\0') {
+        session_bbs_door_list(ctx);
         return;
     }
 
-    if (name == nullptr || name[0] == '\0') {
-        session_bbs_door_list(ctx);
+    if (!session_bbs_door_caller_authorised(ctx)) {
+        session_send_system_line(
+            ctx, "Only operators may launch DOOR games on this server.");
         return;
     }
 
@@ -717,5 +741,14 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
     }
 
     (void)session_bbs_door_io_loop(ctx, &runner);
-    session_send_system_line(ctx, "[door] session ended.");
+
+    time_t elapsed = time(nullptr) - runner.started_at;
+    if (elapsed <= 2) {
+        session_send_system_line(
+            ctx,
+            "[door] session ended immediately. Verify that 'dosbox' is "
+            "installed and the conf/game files exist at the configured path.");
+    } else {
+        session_send_system_line(ctx, "[door] session ended.");
+    }
 }

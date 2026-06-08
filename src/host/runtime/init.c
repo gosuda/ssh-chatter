@@ -10,7 +10,89 @@ static void host_ai_persona_load_from_env(host_t *host)
 
 static void host_door_games_load_from_env(host_t *host)
 {
-    (void)host;
+    if (host == nullptr) {
+        return;
+    }
+
+    host->door_game_count = 0U;
+    memset(host->door_games, 0, sizeof(host->door_games));
+
+    for (size_t idx = 1U; idx <= SSH_CHATTER_DOOR_GAME_LIMIT; ++idx) {
+        char env_name[32];
+        int env_written =
+            snprintf(env_name, sizeof(env_name), "CHATTER_DOOR_%zu", idx);
+        if (env_written < 0 || (size_t)env_written >= sizeof(env_name)) {
+            continue;
+        }
+
+        const char *value = getenv(env_name);
+        if (value == nullptr || value[0] == '\0') {
+            continue;
+        }
+
+        char buffer[PATH_MAX + SSH_CHATTER_DOOR_GAME_NAME_LEN +
+                    SSH_CHATTER_DOOR_GAME_DESC_LEN + 4U];
+        int copied = snprintf(buffer, sizeof(buffer), "%s", value);
+        if (copied < 0 || (size_t)copied >= sizeof(buffer)) {
+            humanized_log_error("door",
+                                "CHATTER_DOOR entry is too long; ignoring",
+                                ENAMETOOLONG);
+            continue;
+        }
+
+        char *name = buffer;
+        char *conf = strchr(name, ':');
+        if (conf == nullptr) {
+            humanized_log_error("door",
+                                "CHATTER_DOOR entry is missing conf path",
+                                EINVAL);
+            continue;
+        }
+        *conf++ = '\0';
+
+        char *desc = strchr(conf, ':');
+        if (desc != nullptr) {
+            *desc++ = '\0';
+        }
+
+        trim_whitespace_inplace(name);
+        trim_whitespace_inplace(conf);
+        if (desc != nullptr) {
+            trim_whitespace_inplace(desc);
+        }
+
+        if (name[0] == '\0' || conf[0] == '\0') {
+            humanized_log_error("door",
+                                "CHATTER_DOOR entry has empty name or conf",
+                                EINVAL);
+            continue;
+        }
+
+        door_game_entry_t *entry = &host->door_games[host->door_game_count];
+        int name_result =
+            snprintf(entry->name, sizeof(entry->name), "%s", name);
+        int conf_result =
+            snprintf(entry->dosbox_conf, sizeof(entry->dosbox_conf), "%s",
+                     conf);
+        int desc_result =
+            snprintf(entry->description, sizeof(entry->description), "%s",
+                     desc != nullptr ? desc : "");
+
+        if (name_result < 0 ||
+            (size_t)name_result >= sizeof(entry->name) || conf_result < 0 ||
+            (size_t)conf_result >= sizeof(entry->dosbox_conf) ||
+            desc_result < 0 ||
+            (size_t)desc_result >= sizeof(entry->description)) {
+            memset(entry, 0, sizeof(*entry));
+            humanized_log_error("door",
+                                "CHATTER_DOOR field is too long; ignoring",
+                                ENAMETOOLONG);
+            continue;
+        }
+
+        entry->in_use = true;
+        ++host->door_game_count;
+    }
 }
 
 static void host_fix_overlapping_bbs_rss_paths(host_t *host)

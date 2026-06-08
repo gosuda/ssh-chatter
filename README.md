@@ -14,7 +14,11 @@ SSH-Chatter has started from a C reimplementation of the Go [`ssh-chat`](https:/
 
 - Terminal-friendly RSS reader accessible with `/rss list`, `/rss read <tag>`, plus `/rss add <url> <tag>` and `/rss del <tag>` (operators only) so the room can browse headlines together.
 - Background BBS watchdog thread that uses the Gemini/Ollama moderation backends to remove posts that advertise crimes or harmful material, plus `/delete-msg` for targeted chat history cleanup.
-- `/bbs` command unlocking a retro bulletin board system with tags, comments, bumping, and a multi-line composer that ends on a locale-aware terminator (defaulting to `>/__BBS_END>`).
+- `/bbs` command unlocking an immersive retro bulletin board system with tags, comments, bumping, and a multi-line composer.
+  - **Dynamic Sorting (Reddit/Discord Style):** View posts sorted by `bumped` (recent activity), `hot` (trending by score & comments), `top` (highest net upvotes score), or `new` (creation date) using `list [hot|top|new|bumped|all]`.
+  - **Search (Google Search Sense):** Instantly search post titles, bodies, authors, or tags case-insensitively with `search <query>`.
+  - **Upvote/Comment Badges (Reddit/Discord Style):** Displays net upvote score and comment counts in colorized status badges (`▲ 12 💬 5`) directly in listings.
+  - **Seamless Navigation:** Instantly return to the dashboard list by hitting Enter while reading a post, or refresh the list by hitting Enter from the listing screen. Auto-routes commands without needing a `/bbs` prefix inside BBS mode.
 - `/asciiart` live composer with a 640-line limit, a ten-minute per-IP cooldown, multi-line output, and keyboard shortcuts for cancelling with Ctrl+A and submitting with Ctrl+S or the locale-aware `>/__ARTWORK_END>` default.
 - `/birthday` to register birthdays, `/grant <ip>` so LAN operators can delegate privileges by address, and `/revoke <ip>` so top LAN admins can reclaim them.
 - Chat UI refresh with a clean divider between history and input, instant input clearing after send, and a friendly "Wait for a moment..." banner
@@ -105,6 +109,9 @@ Building the project requires a POSIX environment with:
 - `make`
 - `libssh` development headers and library (`libssh-dev` on Debian/Ubuntu)
 - `libcurl` development headers and library (`libcurl4-openssl-dev` on Debian/Ubuntu)
+- `uchardet` development headers and library (`libuchardet-dev` on Debian/Ubuntu)
+- `icu` (International Components for Unicode) development headers and library (`libicu-dev` on Debian/Ubuntu)
+- `lz4` compression library and development headers (`liblz4-dev` on Debian/Ubuntu)
 - POSIX threads (usually supplied by the system `libpthread`)
 - `python3-pygments` (provides the `pygmentize` highlighter for the Tetris camouflage screen)
 
@@ -112,7 +119,7 @@ On Debian/Ubuntu the dependencies can be installed with:
 
 ```bash
 sudo apt-get update
-sudo apt-get install build-essential libssh-dev libcurl4-openssl-dev
+sudo apt-get install build-essential libssh-dev libcurl4-openssl-dev libuchardet-dev libicu-dev liblz4-dev
 ```
 
 ## Building from source

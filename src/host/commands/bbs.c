@@ -215,6 +215,9 @@ typedef struct bbs_listing {
     size_t tag_count;
     time_t created_at;
     time_t bumped_at;
+    size_t comment_count;
+    int32_t upvotes;
+    int32_t downvotes;
 } bbs_listing_t;
 
 static bool session_bbs_ensure_live_storage(host_t *host)
@@ -413,6 +416,9 @@ static bool session_bbs_collect_listings_from_state(host_t *host,
         entry->tag_count = serialized.tag_count;
         entry->created_at = (time_t)serialized.created_at;
         entry->bumped_at = (time_t)serialized.bumped_at;
+        entry->comment_count = serialized.comment_count;
+        entry->upvotes = serialized.upvotes;
+        entry->downvotes = serialized.downvotes;
         snprintf(entry->title, sizeof(entry->title), "%s", serialized.title);
         snprintf(entry->author, sizeof(entry->author), "%s",
                  serialized.author);
@@ -452,6 +458,9 @@ static bool session_bbs_collect_listings(host_t *host, bbs_listing_t *listings,
             entry->tag_count = post->tag_count;
             entry->created_at = post->created_at;
             entry->bumped_at = post->bumped_at;
+            entry->comment_count = post->comment_count;
+            entry->upvotes = post->upvotes;
+            entry->downvotes = post->downvotes;
             snprintf(entry->title, sizeof(entry->title), "%s", post->title);
             snprintf(entry->author, sizeof(entry->author), "%s",
                      post->author);
@@ -796,6 +805,10 @@ static void session_bbs_show_dashboard(session_ctx_t *ctx)
     ctx->in_bbs_mode = true;
     ctx->bbs_view_active = false;
     ctx->bbs_view_post_id = 0U;
+
+    session_send_system_line(ctx, "\n\033[1;36m>>> Connecting to Retro BBS Network... <<<\033[0m");
+    session_send_system_line(ctx, "\033[1;32m>>> Baud Rate: 14400 bps | Terminal: ANSI-BBS | STATUS: ONLINE <<<\033[0m\n");
+
     session_bbs_prepare_canvas(ctx);
     session_render_separator(ctx, "BBS Dashboard");
     session_send_system_line(
@@ -825,8 +838,37 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    // Filter by current board selection unless "/bbs list all" is requested
-    bool list_all = (arguments != nullptr && strcasecmp(arguments, "all") == 0);
+    // Filter by current board selection unless "/bbs list all" (or variant) is requested
+    bool list_all = false;
+    enum { SORT_BUMPED, SORT_HOT, SORT_TOP, SORT_NEW } sort_mode = SORT_BUMPED;
+
+    if (arguments != nullptr) {
+        char args_copy[128];
+        snprintf(args_copy, sizeof(args_copy), "%s", arguments);
+        trim_whitespace_inplace(args_copy);
+
+        char *token = args_copy;
+        while (token != nullptr && *token != '\0') {
+            char *next = strchr(token, ' ');
+            if (next != nullptr) {
+                *next = '\0';
+                ++next;
+                while (*next == ' ') ++next;
+            }
+
+            if (strcasecmp(token, "all") == 0) {
+                list_all = true;
+            } else if (strcasecmp(token, "hot") == 0) {
+                sort_mode = SORT_HOT;
+            } else if (strcasecmp(token, "top") == 0) {
+                sort_mode = SORT_TOP;
+            } else if (strcasecmp(token, "new") == 0) {
+                sort_mode = SORT_NEW;
+            }
+            token = next;
+        }
+    }
+
     if (!list_all) {
         size_t write_idx = 0U;
         for (size_t read_idx = 0U; read_idx < count; ++read_idx) {
@@ -852,10 +894,41 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
     for (size_t outer = 1U; outer < count; ++outer) {
         bbs_listing_t key = listings[outer];
         size_t position = outer;
-        while (position > 0U &&
-               listings[position - 1U].bumped_at < key.bumped_at) {
-            listings[position] = listings[position - 1U];
-            --position;
+        while (position > 0U) {
+            bool swap = false;
+            bbs_listing_t prev = listings[position - 1U];
+            if (sort_mode == SORT_HOT) {
+                int64_t score_prev = (int64_t)(prev.upvotes - prev.downvotes) * 2 + (int64_t)prev.comment_count;
+                int64_t score_key = (int64_t)(key.upvotes - key.downvotes) * 2 + (int64_t)key.comment_count;
+                if (score_prev < score_key) {
+                    swap = true;
+                } else if (score_prev == score_key && prev.bumped_at < key.bumped_at) {
+                    swap = true;
+                }
+            } else if (sort_mode == SORT_TOP) {
+                int32_t score_prev = prev.upvotes - prev.downvotes;
+                int32_t score_key = key.upvotes - key.downvotes;
+                if (score_prev < score_key) {
+                    swap = true;
+                } else if (score_prev == score_key && prev.bumped_at < key.bumped_at) {
+                    swap = true;
+                }
+            } else if (sort_mode == SORT_NEW) {
+                if (prev.created_at < key.created_at) {
+                    swap = true;
+                }
+            } else {
+                if (prev.bumped_at < key.bumped_at) {
+                    swap = true;
+                }
+            }
+
+            if (swap) {
+                listings[position] = listings[position - 1U];
+                --position;
+            } else {
+                break;
+            }
         }
         listings[position] = key;
     }
@@ -910,8 +983,13 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
     }
 
     char separator_title[128];
+    const char *sort_name = "bumped";
+    if (sort_mode == SORT_HOT) sort_name = "hot";
+    else if (sort_mode == SORT_TOP) sort_name = "top";
+    else if (sort_mode == SORT_NEW) sort_name = "new";
+
     if (list_all) {
-        snprintf(separator_title, sizeof(separator_title), "BBS Posts (All Boards)");
+        snprintf(separator_title, sizeof(separator_title), "BBS Posts (All Boards / Sort: %s)", sort_name);
     } else {
         const char *board_name = "general";
         ttak_mutex_lock(&host->lock);
@@ -922,7 +1000,7 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
             }
         }
         ttak_mutex_unlock(&host->lock);
-        snprintf(separator_title, sizeof(separator_title), "BBS Posts (Board: %s)", board_name);
+        snprintf(separator_title, sizeof(separator_title), "BBS Posts (Board: %s / Sort: %s)", board_name, sort_name);
     }
     session_render_separator(ctx, separator_title);
     for (size_t topic_idx = 0U; topic_idx < topic_count; ++topic_idx) {
@@ -944,9 +1022,14 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
             if (title_preview > 80) {
                 title_preview = 80;
             }
+
+            int32_t score = entry->upvotes - entry->downvotes;
+            char stats_buf[64];
+            snprintf(stats_buf, sizeof(stats_buf), "\033[1;32mScore: %d\033[0m \033[1;36mComments: %zu\033[0m", score, entry->comment_count);
+
             if (entry->tag_count == 0U) {
-                snprintf(line, sizeof(line), "#%" PRIu64 " [%s] %.*s|(no tags)",
-                         entry->id, created_buffer, title_preview,
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | (no tags)",
+                         stats_buf, entry->id, created_buffer, title_preview,
                          entry->title);
             } else {
                 char tag_buffer[SSH_CHATTER_MESSAGE_LIMIT];
@@ -968,8 +1051,8 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
                 if (tags_preview > 80) {
                     tags_preview = 80;
                 }
-                snprintf(line, sizeof(line), "#%" PRIu64 " [%s] %.*s|%.*s",
-                         entry->id, created_buffer, title_preview, entry->title,
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | %.*s",
+                         stats_buf, entry->id, created_buffer, title_preview, entry->title,
                          tags_preview, tag_buffer);
             }
             session_send_system_line(ctx, line);
@@ -977,6 +1060,11 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
     }
 
     session_render_separator(ctx, "End");
+    session_send_system_line(ctx, "--------------------------------------------------");
+    session_send_system_line(ctx, "[Tip] Share your thoughts on the board!");
+    session_send_system_line(ctx, " - Write a post:  Type '\033[1;32mpost <title>\033[0m'");
+    session_send_system_line(ctx, " - Read a post:   Type '\033[1;32mread <id>\033[0m'");
+    session_send_system_line(ctx, "--------------------------------------------------");
     session_translation_pop_scope_override(ctx, previous_override);
 }
 
@@ -1103,6 +1191,124 @@ static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
     session_translation_pop_scope_override(ctx, previous_override);
 }
 
+static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    if (arguments == nullptr || arguments[0] == '\0') {
+        session_send_system_line(ctx, "Usage: search <keyword>");
+        return;
+    }
+
+    char keyword[128];
+    snprintf(keyword, sizeof(keyword), "%s", arguments);
+    trim_whitespace_inplace(keyword);
+    if (keyword[0] == '\0') {
+        session_send_system_line(ctx, "Usage: search <keyword>");
+        return;
+    }
+
+    bool previous_override = session_translation_push_scope_override(ctx);
+    bbs_listing_t listings[SSH_CHATTER_BBS_MAX_POSTS];
+    size_t count = 0U;
+
+    host_t *host = ctx->owner;
+    if (!session_bbs_collect_listings(host, listings, &count)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
+
+    bbs_listing_t results[SSH_CHATTER_BBS_MAX_POSTS];
+    size_t result_count = 0U;
+
+    for (size_t idx = 0U; idx < count; ++idx) {
+        bbs_post_t *post = (bbs_post_t *)sshc_gc_calloc(1U, sizeof(*post));
+        if (post == nullptr) {
+            continue;
+        }
+
+        if (session_bbs_load_post(host, listings[idx].id, post) && post->in_use) {
+            bool match = false;
+            if (strcasestr(post->title, keyword) != nullptr ||
+                strcasestr(post->body, keyword) != nullptr ||
+                strcasestr(post->author, keyword) != nullptr) {
+                match = true;
+            } else {
+                for (size_t t = 0; t < post->tag_count; ++t) {
+                    if (strcasecmp(post->tags[t], keyword) == 0) {
+                        match = true;
+                        break;
+                    }
+                }
+            }
+
+            if (match) {
+                results[result_count++] = listings[idx];
+            }
+        }
+        sshc_gc_free(post);
+    }
+
+    char separator_title[256];
+    snprintf(separator_title, sizeof(separator_title), "Search Results for: '%s' (%zu found)", keyword, result_count);
+    session_render_separator(ctx, separator_title);
+
+    if (result_count == 0U) {
+        session_send_system_line(ctx, "No posts found matching the keyword.");
+    } else {
+        for (size_t idx = 0U; idx < result_count; ++idx) {
+            const bbs_listing_t *entry = &results[idx];
+            char created_buffer[32];
+            bbs_format_time(entry->bumped_at, created_buffer, sizeof(created_buffer));
+            
+            char line[SSH_CHATTER_MESSAGE_LIMIT];
+            int title_preview = (int)strnlen(entry->title, sizeof(entry->title));
+            if (title_preview > 80) {
+                title_preview = 80;
+            }
+
+            int32_t score = entry->upvotes - entry->downvotes;
+            char stats_buf[64];
+            snprintf(stats_buf, sizeof(stats_buf), "\033[1;32mScore: %d\033[0m \033[1;36mComments: %zu\033[0m", score, entry->comment_count);
+
+            if (entry->tag_count == 0U) {
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | (no tags)",
+                         stats_buf, entry->id, created_buffer, title_preview, entry->title);
+            } else {
+                char tag_buffer[SSH_CHATTER_MESSAGE_LIMIT];
+                size_t buffer_offset = 0U;
+                tag_buffer[0] = '\0';
+                for (size_t tag = 0U; tag < entry->tag_count; ++tag) {
+                    size_t len = strlen(entry->tags[tag]);
+                    if (buffer_offset + len + 2U >= sizeof(tag_buffer)) {
+                        break;
+                    }
+                    if (tag > 0U) {
+                        tag_buffer[buffer_offset++] = ',';
+                    }
+                    memcpy(tag_buffer + buffer_offset, entry->tags[tag], len);
+                    buffer_offset += len;
+                    tag_buffer[buffer_offset] = '\0';
+                }
+                int tags_preview = (int)strnlen(tag_buffer, sizeof(tag_buffer));
+                if (tags_preview > 80) {
+                    tags_preview = 80;
+                }
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | %.*s",
+                         stats_buf, entry->id, created_buffer, title_preview, entry->title,
+                         tags_preview, tag_buffer);
+            }
+            session_send_system_line(ctx, line);
+        }
+    }
+
+    session_render_separator(ctx, "End");
+    session_translation_pop_scope_override(ctx, previous_override);
+}
+
 // Display a single post to the user.
 static void session_bbs_read(session_ctx_t *ctx, uint64_t id)
 {
@@ -1129,6 +1335,10 @@ static void session_bbs_read(session_ctx_t *ctx, uint64_t id)
         session_send_system_line(ctx, "BBS storage is unavailable.");
         return;
     }
+
+    char loading_msg[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(loading_msg, sizeof(loading_msg), "\033[1;33m>>> Loading Post #%" PRIu64 "... Please wait. <<<\033[0m", id);
+    session_send_system_line(ctx, loading_msg);
 
     session_bbs_render_post(ctx, snapshot, nullptr, true);
     sshc_gc_free(snapshot);
@@ -1820,22 +2030,33 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
     }
 
     char *separator = strchr(working, '|');
+    char *id_text = nullptr;
+    char *comment_text = nullptr;
+    uint64_t id = 0U;
+
     if (separator == nullptr) {
-        session_bbs_send_usage(ctx, "comment", "<id>|<text>");
-        return;
-    }
-    *separator = '\0';
-    char *id_text = working;
-    char *comment_text = separator + 1;
-    trim_whitespace_inplace(id_text);
-    trim_whitespace_inplace(comment_text);
+        if (ctx->bbs_view_active && ctx->bbs_view_post_id != 0U) {
+            id = ctx->bbs_view_post_id;
+            comment_text = working;
+        } else {
+            session_bbs_send_usage(ctx, "comment", "<id>|<text>");
+            return;
+        }
+    } else {
+        *separator = '\0';
+        id_text = working;
+        comment_text = separator + 1;
+        trim_whitespace_inplace(id_text);
+        trim_whitespace_inplace(comment_text);
 
-    if (id_text[0] == '\0' || comment_text[0] == '\0') {
-        session_bbs_send_usage(ctx, "comment", "<id>|<text>");
-        return;
+        if (id_text[0] == '\0' || comment_text[0] == '\0') {
+            session_bbs_send_usage(ctx, "comment", "<id>|<text>");
+            return;
+        }
+
+        id = (uint64_t)strtoull(id_text, nullptr, 10);
     }
 
-    uint64_t id = (uint64_t)strtoull(id_text, nullptr, 10);
     if (id == 0U) {
         session_send_system_line(ctx, "Invalid post identifier.");
         return;

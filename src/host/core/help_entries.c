@@ -19,6 +19,17 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             },
     },
     {
+        .canonical = "search",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "search",
+                [SESSION_UI_LANGUAGE_KO] = "검색",
+                [SESSION_UI_LANGUAGE_JP] = "検索",
+                [SESSION_UI_LANGUAGE_ZH] = "搜索",
+                [SESSION_UI_LANGUAGE_RU] = "поиск",
+            },
+    },
+    {
         .canonical = "read",
         .localized =
             {

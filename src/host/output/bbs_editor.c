@@ -122,6 +122,12 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
         session_send_system_line(ctx, notice);
     }
 
+    session_send_system_line(ctx, "--------------------------------------------------");
+    session_send_system_line(ctx, "[Tip] Reply to this post!");
+    session_send_system_line(ctx, " - Add comment:   Type '\033[1;32mcomment <text>\033[0m' (e.g. comment Great post!)");
+    session_send_system_line(ctx, " - Back to list:  Type '\033[1;31mlist\033[0m' or press Enter on empty line");
+    session_send_system_line(ctx, "--------------------------------------------------");
+
     session_render_prompt(ctx, true);
 
     // Flush all buffered output at once

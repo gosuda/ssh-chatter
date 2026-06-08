@@ -12,6 +12,7 @@
 static int session_game_random_range(session_ctx_t *ctx, int max);
 static session_ctx_t *chat_room_find_user(chat_room_t *room,
                                           const char *username);
+static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments);
 
 // Handle the /bbs command entry point.
 static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
@@ -187,6 +188,8 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         session_bbs_draft(ctx, rest);
     } else if (strcmp(canonical_command, "board") == 0) {
         session_bbs_select_board(ctx, rest);
+    } else if (strcmp(canonical_command, "search") == 0) {
+        session_bbs_search_posts(ctx, rest);
     } else {
         session_send_system_line(
             ctx, "Unknown /bbs subcommand. Try /bbs for usage.");

@@ -972,6 +972,31 @@ static void session_release_cpu_slot(session_ctx_t *ctx)
     ttak_mutex_unlock(&host->lock);
 }
 
+static const char *session_bbs_subcommand_canonicalize(const session_ctx_t *ctx, const char *command);
+static void session_bbs_show_dashboard(session_ctx_t *ctx);
+static bool session_bbs_refresh_view(session_ctx_t *ctx);
+
+static const char *bbs_consume_first_word(const char *input, char *token, size_t length)
+{
+    if (input == nullptr || token == nullptr || length == 0U) {
+        return nullptr;
+    }
+    token[0] = '\0';
+    const char *cursor = input;
+    while (*cursor != '\0' && isspace((unsigned char)*cursor)) {
+        ++cursor;
+    }
+    size_t out_idx = 0U;
+    while (*cursor != '\0' && !isspace((unsigned char)*cursor)) {
+        if (out_idx + 1U < length) {
+            token[out_idx++] = *cursor;
+        }
+        ++cursor;
+    }
+    token[out_idx] = '\0';
+    return cursor;
+}
+
 static void session_process_line(session_ctx_t *ctx, const char *line)
 {
     if (ctx == nullptr || line == nullptr) {
@@ -1012,12 +1037,47 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
 
     char command_line[SSH_CHATTER_MAX_INPUT_LEN];
 
+    if (ctx->in_bbs_mode && normalized[0] == '\0') {
+        if (!session_acquire_cpu_slot(ctx)) {
+            return;
+        }
+        session_bbs_show_dashboard(ctx);
+        session_release_cpu_slot(ctx);
+        return;
+    }
+
     if (normalized[0] == '\0') {
         return;
     }
 
     if (!session_acquire_cpu_slot(ctx)) {
         return;
+    }
+
+    if (ctx->in_bbs_mode) {
+        char command_word[128];
+        bbs_consume_first_word(normalized, command_word, sizeof(command_word));
+        const char *canonical = session_bbs_subcommand_canonicalize(ctx, command_word);
+
+        if (canonical != nullptr) {
+            char bbs_forwarded[SSH_CHATTER_MAX_INPUT_LEN];
+            snprintf(bbs_forwarded, sizeof(bbs_forwarded), "/bbs %s", normalized);
+            ctx->ops->dispatch_command(ctx, bbs_forwarded);
+            session_release_cpu_slot(ctx);
+            return;
+        }
+
+        if (normalized[0] != '/') {
+            session_send_system_line(ctx, "--------------------------------------------------");
+            session_send_system_line(ctx, "[BBS] \033[1;33mClassic BBS Mode is active.\033[0m Chat messages cannot be sent here.");
+            session_send_system_line(ctx, " - Write a Post:  Type '\033[1;32mpost <title>\033[0m' to start a draft.");
+            session_send_system_line(ctx, " - Add a Comment: Type '\033[1;32mcomment <id>|<text>\033[0m' to reply.");
+            session_send_system_line(ctx, " - Read a Post:   Type '\033[1;32mread <id>\033[0m' to view content.");
+            session_send_system_line(ctx, " - Leave BBS:     Type '\033[1;31mexit\033[0m' to return to general chat.");
+            session_send_system_line(ctx, "--------------------------------------------------");
+            session_release_cpu_slot(ctx);
+            return;
+        }
     }
 
     if (ctx->game.active) {

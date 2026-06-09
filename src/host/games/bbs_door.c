@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <string.h>
+#include <libgen.h>
 
 #ifdef SSH_CHATTER_HAVE_UCHARDET
 #include <uchardet.h>
@@ -506,6 +507,13 @@ static bool session_bbs_door_spawn(const char *dosbox_conf,
         return false;
     }
 
+    char conf_dir_copy[PATH_MAX];
+    snprintf(conf_dir_copy, sizeof(conf_dir_copy), "%s", dosbox_conf);
+    const char *game_dir = dirname(conf_dir_copy);
+
+    int debug_fd = open("/tmp/door_debug.log",
+                        O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+
     if (pid == 0) {
         /* Child: hook up PTY slave as stdio, drop libssh fds, exec dosbox. */
         close(master_fd);
@@ -524,10 +532,26 @@ static bool session_bbs_door_spawn(const char *dosbox_conf,
             close(slave_fd);
         }
 
+        /* Redirect stderr to a persistent debug log so exec/dosbox errors
+         * survive after the PTY is torn down. */
+        if (debug_fd >= 0) {
+            dup2(debug_fd, STDERR_FILENO);
+            close(debug_fd);
+        }
+
         /* Close any other inherited fds so dosbox cannot accidentally talk
          * to a chat socket. */
         for (int fd = STDERR_FILENO + 1; fd < 1024; ++fd) {
             close(fd);
+        }
+
+        /* Ensure dosbox runs in the directory where the conf and game files
+         * live, so relative mounts / autoexec paths resolve correctly. */
+        if (game_dir != nullptr && game_dir[0] != '\0') {
+            if (chdir(game_dir) != 0) {
+                fprintf(stderr, "[door] chdir(%s) failed: %s\n",
+                        game_dir, strerror(errno));
+            }
         }
 
         setenv("SDL_VIDEODRIVER", "dummy", 1);
@@ -588,6 +612,9 @@ static bool session_bbs_door_spawn(const char *dosbox_conf,
     }
 
     close(slave_fd);
+    if (debug_fd >= 0) {
+        close(debug_fd);
+    }
     if (session_bbs_door_set_nonblocking(master_fd) < 0) {
         kill(pid, SIGKILL);
         (void)waitpid(pid, nullptr, 0);
@@ -631,9 +658,24 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
                 break;
             }
             if (got == 0) {
-                /* PTY closed — child exited. */
-                door_flush_detect_buffer(ctx, runner);
-                break;
+                /* PTY master read 0: slave closed.  Do not assume the child
+                 * is gone — DOSBox may have closed stdout briefly during
+                 * startup.  Verify with waitpid before tearing down. */
+                int verify_status = 0;
+                pid_t reaped = waitpid(runner->child_pid, &verify_status,
+                                       WNOHANG);
+                if (reaped == runner->child_pid) {
+                    runner->child_pid = -1;
+                    door_flush_detect_buffer(ctx, runner);
+                    break;
+                }
+                /* Child still alive — give it a moment and keep polling. */
+                struct timespec naptime = {
+                    .tv_sec = 0,
+                    .tv_nsec = 50 * 1000 * 1000L,
+                };
+                nanosleep(&naptime, nullptr);
+                continue;
             }
             if (got > 0) {
                 /* Encoding detection: pre-decision, accumulate into the
@@ -693,28 +735,32 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
         pid_t reaped = waitpid(runner->child_pid, &status, WNOHANG);
         if (reaped == runner->child_pid) {
             runner->child_pid = -1;
-            /* Drain any final output before returning. */
-            for (;;) {
-                ssize_t residual =
-                    read(runner->master_fd, buffer, sizeof(buffer));
-                if (residual <= 0) {
-                    break;
-                }
-                if (!runner->encoding_decided) {
-                    runner->detected_encoding =
-                        door_enc_decide(runner->detect_buffer,
-                                        runner->detect_length);
-                    runner->encoding_decided = true;
-                    if (runner->detect_length > 0U) {
-                        door_emit_converted(ctx, runner, runner->detect_buffer,
-                                            runner->detect_length);
-                        runner->detect_length = 0U;
+            if (WIFEXITED(status) || WIFSIGNALED(status)) {
+                /* Drain any final output before returning. */
+                for (;;) {
+                    ssize_t residual =
+                        read(runner->master_fd, buffer, sizeof(buffer));
+                    if (residual <= 0) {
+                        break;
                     }
+                    if (!runner->encoding_decided) {
+                        runner->detected_encoding =
+                            door_enc_decide(runner->detect_buffer,
+                                            runner->detect_length);
+                        runner->encoding_decided = true;
+                        if (runner->detect_length > 0U) {
+                            door_emit_converted(ctx, runner,
+                                                runner->detect_buffer,
+                                                runner->detect_length);
+                            runner->detect_length = 0U;
+                        }
+                    }
+                    door_emit_converted(ctx, runner, buffer,
+                                        (size_t)residual);
                 }
-                door_emit_converted(ctx, runner, buffer, (size_t)residual);
+                door_flush_detect_buffer(ctx, runner);
+                break;
             }
-            door_flush_detect_buffer(ctx, runner);
-            break;
         }
 
         /* Optionally read from the user, with a small timeout so we keep
@@ -808,6 +854,15 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
                  "Unknown DOOR game '%s'. Try `/bbs door` for the list.",
                  name);
         session_send_system_line(ctx, message);
+        return;
+    }
+
+    /* Default to the TCP-nullmodem relay path (door_relay.c).  The legacy
+     * PTY path can be forced back with CHATTER_DOOR_USE_PTY=1. */
+    if (getenv("CHATTER_DOOR_USE_PTY") == nullptr) {
+        extern bool door_relay_run_session(session_ctx_t *,
+                                           const door_game_entry_t *);
+        (void)door_relay_run_session(ctx, entry);
         return;
     }
 

@@ -23,6 +23,10 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <time.h>
+#include <libgen.h>
+#include <limits.h>
+
+#include "ssh_chatter/host.h"
 
 #ifndef nullptr
 #define nullptr (void *)(NULL)
@@ -272,10 +276,26 @@ void launch_dosbox(const char *conf_path)
         return;
     }
 
+    if (setsid() < 0) {
+        _exit(127);
+    }
+
+    /* Derive game directory from the conf path so relative mounts resolve. */
+    char conf_dir_copy[PATH_MAX];
+    snprintf(conf_dir_copy, sizeof(conf_dir_copy), "%s", conf_path);
+    const char *game_dir = dirname(conf_dir_copy);
+
     /* Child: ensure headless operation. */
     setenv("SDL_VIDEODRIVER", "dummy", 1);
     setenv("SDL_AUDIODRIVER", "dummy", 1);
     unsetenv("DISPLAY");
+
+    if (game_dir != nullptr && game_dir[0] != '\0') {
+        if (chdir(game_dir) != 0) {
+            fprintf(stderr, "[door_relay] chdir(%s) failed: %s\n",
+                    game_dir, strerror(errno));
+        }
+    }
 
     /* Close inherited descriptors so DOSBox cannot leak into chat sockets. */
     for (int fd = 3; fd < 1024; ++fd) {
@@ -302,6 +322,87 @@ void launch_dosbox(const char *conf_path)
  * @param game_binary  Command to run after mounting (e.g., "LORD.EXE").
  * @return             Newly-allocated configuration string, or nullptr.
  */
+/**
+ * @desc Inject or replace a [serial] section inside an existing dosbox.conf,
+ *       write the result to a temporary file, and return its path.
+ *       The caller must free() the returned pointer and unlink() the file.
+ */
+static char *door_relay_build_temp_conf(const char *original_conf, int port)
+{
+    FILE *in = fopen(original_conf, "r");
+    if (in == nullptr) {
+        return nullptr;
+    }
+
+    if (fseek(in, 0, SEEK_END) != 0) {
+        fclose(in);
+        return nullptr;
+    }
+    long size = ftell(in);
+    if (size < 0 || fseek(in, 0, SEEK_SET) != 0) {
+        fclose(in);
+        return nullptr;
+    }
+
+    char *buf = nullptr;
+    if (size > 0) {
+        buf = (char *)malloc((size_t)size + 1U);
+        if (buf == nullptr) {
+            fclose(in);
+            return nullptr;
+        }
+        size_t n = fread(buf, 1, (size_t)size, in);
+        if (n != (size_t)size) {
+            free(buf);
+            fclose(in);
+            return nullptr;
+        }
+        buf[size] = '\0';
+    }
+    fclose(in);
+
+    char temp_path[PATH_MAX];
+    snprintf(temp_path, sizeof(temp_path), "/tmp/door_relay_XXXXXX.conf");
+    int fd = mkstemps(temp_path, 5);
+    if (fd < 0) {
+        free(buf);
+        return nullptr;
+    }
+
+    FILE *out = fdopen(fd, "w");
+    if (out == nullptr) {
+        close(fd);
+        unlink(temp_path);
+        free(buf);
+        return nullptr;
+    }
+
+    if (buf != nullptr) {
+        char *serial_start = strstr(buf, "[serial]");
+        if (serial_start != nullptr) {
+            fwrite(buf, 1, (size_t)(serial_start - buf), out);
+            fprintf(out, "[serial]\n");
+            fprintf(out, "serial1=nullmodem client:127.0.0.1:%d\n", port);
+            char *after_serial = serial_start + strlen("[serial]");
+            char *next_section = strchr(after_serial, '[');
+            if (next_section != nullptr) {
+                fwrite(next_section, 1, strlen(next_section), out);
+            }
+        } else {
+            fprintf(out, "[serial]\n");
+            fprintf(out, "serial1=nullmodem client:127.0.0.1:%d\n\n", port);
+            fprintf(out, "%s", buf);
+        }
+        free(buf);
+    } else {
+        fprintf(out, "[serial]\n");
+        fprintf(out, "serial1=nullmodem client:127.0.0.1:%d\n", port);
+    }
+
+    fclose(out);
+    return strdup(temp_path);
+}
+
 char *door_relay_build_dosbox_conf(int port, const char *game_dir,
                                    const char *game_binary)
 {
@@ -502,6 +603,77 @@ static bool door_relay_spawn_zmodem(int client_fd, char *const argv[],
  * @param working_dir  Directory where the file will be saved.
  * @return             true on success, false on failure.
  */
+/* Forward declaration from the BBS door subsystem. */
+void session_send_system_line(session_ctx_t *ctx, const char *message);
+
+/**
+ * @desc High-level entry point: bind a loopback port, patch the user's
+ *       dosbox.conf with a nullmodem serial section, launch DOSBox,
+ *       and relay bytes between the SSH/Telnet fd and the DOSBox TCP
+ *       connection.  Returns true if the relay ran, false on setup error.
+ */
+bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
+{
+    if (ctx == nullptr || entry == nullptr || entry->dosbox_conf[0] == '\0') {
+        return false;
+    }
+
+    int port = 0;
+    int listen_fd = setup_door_listener(&port);
+    if (listen_fd < 0) {
+        session_send_system_line(ctx,
+            "[door] failed to bind relay listener.");
+        return false;
+    }
+
+    char *temp_conf = door_relay_build_temp_conf(entry->dosbox_conf, port);
+    if (temp_conf == nullptr) {
+        close(listen_fd);
+        session_send_system_line(ctx,
+            "[door] failed to build temporary dosbox.conf.");
+        return false;
+    }
+
+    launch_dosbox(temp_conf);
+
+    int ssh_fd = -1;
+    if (ctx->transport_kind == SESSION_TRANSPORT_SSH) {
+        ssh_fd = ssh_get_fd(ctx->session);
+    } else if (ctx->transport_kind == SESSION_TRANSPORT_TELNET) {
+        ssh_fd = ctx->telnet_fd;
+    }
+
+    if (ssh_fd >= 0) {
+        run_door_relay(ssh_fd, listen_fd);
+    } else {
+        session_send_system_line(ctx,
+            "[door] unable to obtain transport fd for relay.");
+    }
+
+    close(listen_fd);
+    unlink(temp_conf);
+    free(temp_conf);
+
+    /* Reap the DOSBox child launched by launch_dosbox. */
+    for (int i = 0; i < 50; ++i) {
+        int status = 0;
+        pid_t reaped = waitpid(-1, &status, WNOHANG);
+        if (reaped <= 0) {
+            break;
+        }
+        if (reaped > 0 && !WIFEXITED(status) && !WIFSIGNALED(status)) {
+            continue;
+        }
+        struct timespec nap = {
+            .tv_sec = 0,
+            .tv_nsec = 100 * 1000 * 1000L,
+        };
+        nanosleep(&nap, nullptr);
+    }
+
+    return true;
+}
+
 bool door_relay_zmodem_receive(int client_fd, const char *working_dir)
 {
     if (client_fd < 0 || working_dir == nullptr || working_dir[0] == '\0') {

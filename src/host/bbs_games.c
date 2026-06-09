@@ -5,6 +5,7 @@
 
 #include "games/display.c"
 #include "games/bbs_door.c"
+#include "games/door_relay.c"
 #include "games/bbs_handler.c"
 #include "games/tetris.c"
 #include "games/misc.c"

@@ -270,6 +270,11 @@ static bool host_protected_ip_add_unlocked(host_t *host, const char *ip)
         return false;
     }
 
+    host_protected_ips_ensure(host);
+    if (host->protected_ips == nullptr) {
+        return false;
+    }
+
     snprintf(host->protected_ips[host->protected_ip_count], SSH_CHATTER_IP_LEN,
              "%s", normalized);
     ++host->protected_ip_count;

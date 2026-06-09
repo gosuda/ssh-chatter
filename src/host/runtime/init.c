@@ -505,6 +505,14 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->ai_chat_memory_count = 0U;
     host->ai_chat_memory_capacity = 0U;
     host->ai_chat_memory_count = 0U;
+    host_bans_ensure(host);
+    host_replies_ensure(host);
+    host_preferences_ensure(host);
+    host_eliza_memory_ensure(host);
+    host_ai_chat_memory_ensure(host);
+    host_gonu_games_ensure(host);
+    host_operator_grants_ensure(host);
+    host_protected_ips_ensure(host);
     (void)host_try_load_motd_from_path(host, "/etc/ssh-chatter/motd");
 
     host_state_load(host);

@@ -1,3 +1,36 @@
+const char * const kSessionAvatarArt[AVATAR_COUNT] = {
+    [AVATAR_NONE]     = "",
+    [AVATAR_MONITOR]  =
+        "   .-----------.\n"
+        "   |  \033[1;36m^_^\033[0m      |\n"
+        "   |  \033[1;36m|===|\033[0m     |\n"
+        "   `-----------'\n"
+        "        | |\n"
+        "       _|_|_",
+    [AVATAR_MOUSE]    =
+        "      (\\-/)\n"
+        "     (\033[1;37mo . o\033[0m)\n"
+        "      (  \033[1;37m>\033[0m  )\n"
+        "       `---'",
+    [AVATAR_HUMAN]    =
+        "       \033[1;33mo\033[0m\n"
+        "      \033[1;33m/|\\\033[0m\n"
+        "      \033[1;33m/ \\033[0m",
+    [AVATAR_MUSHROOM] =
+        "      \033[1;31m_.-._\033[0m\n"
+        "    \033[1;31m(     )\033[0m\n"
+        "     \033[1;37m`---'\033[0m\n"
+        "      \033[1;37m| | |\033[0m",
+};
+
+const char * const kSessionAvatarNames[AVATAR_COUNT] = {
+    [AVATAR_NONE]     = "none",
+    [AVATAR_MONITOR]  = "monitor",
+    [AVATAR_MOUSE]    = "mouse",
+    [AVATAR_HUMAN]    = "human",
+    [AVATAR_MUSHROOM] = "mushroom",
+};
+
 static void session_enable_alternate_screen(session_ctx_t *ctx)
 {
     if (ctx == nullptr || !session_transport_active(ctx)) {
@@ -87,6 +120,17 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
     strftime(bumped_line, sizeof(bumped_line),
              "Last activity: %Y-%m-%d %H:%M:%S", &bumped_tm);
 
+    const char *data_root = getenv("CHATTER_USER_DATA_ROOT");
+    if (data_root == nullptr || data_root[0] == '\0') {
+        data_root = "/etc/ssh-chatter/user-data";
+    }
+
+    user_data_record_t author_record = {0};
+    if (user_data_load(data_root, post->author, "", &author_record) &&
+        author_record.profile_picture[0] != '\0') {
+        session_send_system_line(ctx, author_record.profile_picture);
+    }
+
     session_send_plain_line(ctx, title_line);
     session_send_plain_line(ctx, author_line);
     session_send_plain_line(ctx, created_line);
@@ -102,6 +146,13 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
         session_render_separator(ctx, "Comments");
         for (size_t idx = 0U; idx < post->comment_count; ++idx) {
             const bbs_comment_t *comment = &post->comments[idx];
+
+            user_data_record_t commenter_record = {0};
+            if (user_data_load(data_root, comment->author, "", &commenter_record) &&
+                commenter_record.profile_picture[0] != '\0') {
+                session_send_system_line(ctx, commenter_record.profile_picture);
+            }
+
             char comment_author_line[SSH_CHATTER_MESSAGE_LIMIT];
             snprintf(comment_author_line, sizeof(comment_author_line), "Comment by: %s", comment->author);
 

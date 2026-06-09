@@ -1404,4 +1404,17 @@ static inline void host_protected_ips_ensure(host_t *host)
         host->protected_ip_capacity = SSH_CHATTER_MAX_PROTECTED_IPS;
     }
 }
+
+typedef enum {
+    AVATAR_NONE = 0,
+    AVATAR_MONITOR,
+    AVATAR_MOUSE,
+    AVATAR_HUMAN,
+    AVATAR_MUSHROOM,
+    AVATAR_COUNT
+} session_avatar_type_t;
+
+extern const char * const kSessionAvatarArt[AVATAR_COUNT];
+extern const char * const kSessionAvatarNames[AVATAR_COUNT];
+
 #endif

@@ -2479,6 +2479,70 @@ void session_bbs_set_profile(session_ctx_t *ctx)
     }
 }
 
+void session_bbs_setavatar(session_ctx_t *ctx, const char *name)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+    if (name == nullptr || name[0] == '\0') {
+        session_send_system_line(
+            ctx, "Usage: /bbs setavatar <monitor|mouse|human|mushroom|none>");
+        session_send_system_line(ctx, "Available avatars:");
+        for (size_t i = 1; i < AVATAR_COUNT; ++i) {
+            session_send_system_line(ctx, kSessionAvatarArt[i]);
+            char line[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(line, sizeof(line), "  -> %s", kSessionAvatarNames[i]);
+            session_send_system_line(ctx, line);
+        }
+        return;
+    }
+
+    session_avatar_type_t chosen = AVATAR_NONE;
+    for (size_t i = 0; i < AVATAR_COUNT; ++i) {
+        if (strcmp(name, kSessionAvatarNames[i]) == 0) {
+            chosen = (session_avatar_type_t)i;
+            break;
+        }
+    }
+
+    if (chosen == AVATAR_NONE && strcmp(name, "none") != 0 &&
+        strcmp(name, "off") != 0) {
+        session_send_system_line(ctx, "Unknown avatar name.");
+        return;
+    }
+
+    const char *root = getenv("CHATTER_USER_DATA_ROOT");
+    if (root == nullptr || root[0] == '\0') {
+        root = "/etc/ssh-chatter/user-data";
+    }
+    user_data_record_t record = {0};
+    if (!user_data_load(root, ctx->user.name, ctx->client_ip, &record)) {
+        if (!user_data_init(&record, ctx->user.name, ctx->client_ip)) {
+            session_send_system_line(ctx, "Failed to initialize user data.");
+            return;
+        }
+    }
+
+    if (chosen == AVATAR_NONE) {
+        record.profile_picture[0] = '\0';
+    } else {
+        const char *art = kSessionAvatarArt[chosen];
+        size_t len = strlen(art);
+        if (len >= sizeof(record.profile_picture)) {
+            len = sizeof(record.profile_picture) - 1;
+        }
+        memcpy(record.profile_picture, art, len);
+        record.profile_picture[len] = '\0';
+    }
+
+    if (user_data_save(root, &record, ctx->client_ip)) {
+        session_send_system_line(
+            ctx, chosen == AVATAR_NONE ? "Avatar removed." : "Avatar updated.");
+    } else {
+        session_send_system_line(ctx, "Failed to save avatar.");
+    }
+}
+
 void session_bbs_draft(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {

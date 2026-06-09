@@ -196,6 +196,14 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             },
     },
     {
+        .canonical = "setavatar",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "setavatar",
+                [SESSION_UI_LANGUAGE_KO] = "아바타설정",
+            },
+    },
+    {
         .canonical = "setgamelock",
         .localized =
             {

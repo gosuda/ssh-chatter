@@ -400,9 +400,12 @@ static void session_ask_ui_mode(session_ctx_t *ctx)
     } else if (strcmp(choice, "3") == 0) {
         ctx->ui_mode = SESSION_UI_MODE_RSS;
         session_send_system_line(ctx, "Mode: Read Newsfeed. Loading RSS feeds...");
+        ctx->in_rss_mode = true;
         if (ctx->ops != nullptr && ctx->ops->dispatch_command != nullptr) {
             ctx->ops->dispatch_command(ctx, "/rss list");
         }
+        session_send_system_line(
+            ctx, "RSS Newsfeeds mode: type 'list', 'read <tag>', or 'exit'.");
     } else if (strcmp(choice, "4") == 0) {
         ctx->ui_mode = SESSION_UI_MODE_GAME;
         session_send_system_line(ctx, "Mode: Game. Loading game menu...");

@@ -1115,18 +1115,41 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
         return;
     }
 
-    if (ctx->in_rss_mode) {
-        if (strcmp(normalized, "/exit") == 0) {
+    if (ctx->in_rss_mode || ctx->ui_mode == SESSION_UI_MODE_RSS) {
+        if (strcmp(normalized, "/exit") == 0 ||
+            strcasecmp(normalized, "exit") == 0) {
             session_rss_exit(ctx, nullptr);
+            ctx->ui_mode = SESSION_UI_MODE_ANYTHING;
+            session_send_system_line(ctx, "Returned to general chat mode.");
         } else {
             const char *rss_args = nullptr;
             if (session_parse_command(normalized, "/rss", &rss_args)) {
-                session_rss_exit(ctx, nullptr);
-                session_handle_rss(ctx, rss_args);
+                char rss_working[SSH_CHATTER_MAX_INPUT_LEN];
+                snprintf(rss_working, sizeof(rss_working), "%s",
+                         rss_args != nullptr ? rss_args : "");
+                trim_whitespace_inplace(rss_working);
+                if (strcasecmp(rss_working, "exit") == 0) {
+                    session_rss_exit(ctx, nullptr);
+                    ctx->ui_mode = SESSION_UI_MODE_ANYTHING;
+                    session_send_system_line(ctx,
+                                             "Returned to general chat mode.");
+                } else {
+                    ctx->in_rss_mode = true;
+                    session_handle_rss(ctx, rss_args);
+                }
+            } else if (normalized[0] != '/') {
+                char rss_forwarded[SSH_CHATTER_MAX_INPUT_LEN];
+                snprintf(rss_forwarded, sizeof(rss_forwarded), "%s",
+                         normalized);
+                trim_whitespace_inplace(rss_forwarded);
+                if (rss_forwarded[0] == '\0') {
+                    snprintf(rss_forwarded, sizeof(rss_forwarded), "list");
+                }
+                session_handle_rss(ctx, rss_forwarded);
             } else {
                 session_send_system_line(
-                    ctx, "RSS reader active. Use /rss exit Ctrl+Z, or "
-                         "Terminate to return to chat.");
+                    ctx, "RSS Newsfeeds mode is active. Use list, read <tag>, "
+                         "/rss list, /rss read <tag>, or exit.");
             }
         }
         session_release_cpu_slot(ctx);

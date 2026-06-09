@@ -434,6 +434,7 @@ static void *session_thread(void *arg)
     do {                                                                       \
         if (memory_scope != nullptr) {                                         \
             session_memory_scope_pop(memory_scope);                            \
+            memory_scope = nullptr;                                            \
         }                                                                      \
         sshc_epoch_thread_exit();                                              \
         return (value);                                                        \
@@ -441,8 +442,13 @@ static void *session_thread(void *arg)
 
 #define SESSION_THREAD_ERROR_EXIT()                                            \
     do {                                                                       \
+        if (memory_scope != nullptr) {                                         \
+            session_memory_scope_pop(memory_scope);                            \
+            memory_scope = nullptr;                                            \
+        }                                                                      \
         session_destroy(ctx);                                                  \
-        SESSION_THREAD_RETURN(nullptr);                                        \
+        sshc_epoch_thread_exit();                                              \
+        return nullptr;                                                        \
     } while (0)
 
     ctx->exit_status = EXIT_FAILURE;
@@ -1618,9 +1624,13 @@ static void *session_thread(void *arg)
         host_nickname_claim_release(ctx->owner, ctx, nullptr);
     }
 
+    if (memory_scope != nullptr) {
+        session_memory_scope_pop(memory_scope);
+        memory_scope = nullptr;
+    }
     session_destroy(ctx);
-
-    SESSION_THREAD_RETURN(nullptr);
+    sshc_epoch_thread_exit();
+    return nullptr;
 
 #undef SESSION_THREAD_RETURN
 }

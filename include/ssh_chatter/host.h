@@ -312,6 +312,7 @@ typedef struct door_game_entry {
     char name[SSH_CHATTER_DOOR_GAME_NAME_LEN];
     char dosbox_conf[PATH_MAX];
     char description[SSH_CHATTER_DOOR_GAME_DESC_LEN];
+    bool locked;
 } door_game_entry_t;
 
 typedef enum version_pattern_match {

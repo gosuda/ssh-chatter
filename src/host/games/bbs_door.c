@@ -40,6 +40,233 @@ extern bool session_channel_write_all(session_ctx_t *ctx, const void *data,
                                       size_t length);
 void session_send_system_line(session_ctx_t *ctx, const char *message);
 
+/* ---- Door game localized messages ---- */
+enum {
+    DOOR_MSG_AVAILABLE = 0,
+    DOOR_MSG_LAUNCH_HINT,
+    DOOR_MSG_NO_DOORS,
+    DOOR_MSG_LAUNCHING,
+    DOOR_MSG_WAITING,
+    DOOR_MSG_CONNECTED,
+    DOOR_MSG_TIMEOUT,
+    DOOR_MSG_FAILED_LAUNCH,
+    DOOR_MSG_SESSION_ENDED,
+    DOOR_MSG_ENDED_IMMEDIATELY,
+    DOOR_MSG_ESCAPE,
+    DOOR_MSG_MAX_RUNTIME,
+    DOOR_MSG_TOO_MANY,
+    DOOR_MSG_ONLY_OPS_LOCK,
+    DOOR_MSG_GAME_LOCKED,
+    DOOR_MSG_SETGAMELOCK_USAGE,
+    DOOR_MSG_NOW_LOCKED,
+    DOOR_MSG_NOW_UNLOCKED,
+    DOOR_MSG_LIST_LOCKED,
+    DOOR_MSG_COUNT
+};
+
+static const char *door_localized(session_ctx_t *ctx, int msg_id)
+{
+    session_ui_language_t lang = session_ui_language_current(ctx);
+    if (lang < 0 || lang >= SESSION_UI_LANGUAGE_COUNT) {
+        lang = SESSION_UI_LANGUAGE_EN;
+    }
+
+    switch (msg_id) {
+        case DOOR_MSG_AVAILABLE:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "사용 가능한 DOOR 게임:";
+                case SESSION_UI_LANGUAGE_JP: return "利用可能なDOORゲーム:";
+                case SESSION_UI_LANGUAGE_ZH: return "可用的DOOR游戏：";
+                case SESSION_UI_LANGUAGE_RU: return "Доступные DOOR игры:";
+                case SESSION_UI_LANGUAGE_DE: return "Verfügbare DOOR-Spiele:";
+                case SESSION_UI_LANGUAGE_FR: return "Jeux DOOR disponibles :";
+                default: return "Available DOOR games:";
+            }
+        case DOOR_MSG_LAUNCH_HINT:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "`/bbs door <name>`으로 실행. 실행 중인 게임은 Ctrl-]로 종료.";
+                case SESSION_UI_LANGUAGE_JP: return "`/bbs door <name>`で起動。実行中のゲームはCtrl-]で終了。";
+                case SESSION_UI_LANGUAGE_ZH: return "使用 `/bbs door <name>` 启动。按 Ctrl-] 退出正在运行的游戏。";
+                case SESSION_UI_LANGUAGE_RU: return "Запуск: `/bbs door <name>`. Выход: Ctrl-].";
+                case SESSION_UI_LANGUAGE_DE: return "Starten mit `/bbs door <name>`. Ctrl-] beendet das Spiel.";
+                case SESSION_UI_LANGUAGE_FR: return "Lancez avec `/bbs door <name>`. Ctrl-] pour quitter.";
+                default: return "Launch with `/bbs door <name>`. Press Ctrl-] to exit a running game.";
+            }
+        case DOOR_MSG_NO_DOORS:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "설정된 DOOR 게임이 없습니다. 관리자: CHATTER_DOOR_1=name:dosbox_conf[:desc] (및 _2, _3 ...) 형식으로 등록하세요.";
+                case SESSION_UI_LANGUAGE_JP: return "DOORゲームが設定されていません。管理者: CHATTER_DOOR_1=name:dosbox_conf[:desc] で登録してください。";
+                case SESSION_UI_LANGUAGE_ZH: return "未配置 DOOR 游戏。管理员请使用 CHATTER_DOOR_1=name:dosbox_conf[:desc] 注册。";
+                case SESSION_UI_LANGUAGE_RU: return "DOOR игры не настроены. Оператор: установите CHATTER_DOOR_1=name:dosbox_conf[:desc].";
+                case SESSION_UI_LANGUAGE_DE: return "Keine DOOR-Spiele konfiguriert. Operator: CHATTER_DOOR_1=name:dosbox_conf[:desc] setzen.";
+                case SESSION_UI_LANGUAGE_FR: return "Aucun jeu DOOR configuré. Opérateur : définissez CHATTER_DOOR_1=name:dosbox_conf[:desc].";
+                default: return "No DOOR games configured. Operators: set CHATTER_DOOR_1=name:dosbox_conf[:desc] (and _2, _3 ...) to register doors.";
+            }
+        case DOOR_MSG_LAUNCHING:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] '%s' 실행 중 (Ctrl-]로 종료, 최대 %ds).";
+                case SESSION_UI_LANGUAGE_JP: return "[door] '%s' を起動中 (Ctrl-] で終了、最大 %ds)。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] 正在启动 '%s'（按 Ctrl-] 退出，最多 %d 秒）。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] запуск '%s' (Ctrl-] для выхода, макс. %dс).";
+                case SESSION_UI_LANGUAGE_DE: return "[door] starte '%s' (Ctrl-] zum Beenden, max. %ds).";
+                case SESSION_UI_LANGUAGE_FR: return "[door] lancement de '%s' (Ctrl-] pour quitter, max. %ds).";
+                default: return "[door] launching '%s' (Ctrl-] to exit, %ds max).";
+            }
+        case DOOR_MSG_WAITING:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] DOSBox 연결 대기 중...";
+                case SESSION_UI_LANGUAGE_JP: return "[door] DOSBox の接続を待っています...";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] 等待 DOSBox 连接...";
+                case SESSION_UI_LANGUAGE_RU: return "[door] ожидание подключения DOSBox...";
+                case SESSION_UI_LANGUAGE_DE: return "[door] warte auf DOSBox-Verbindung...";
+                case SESSION_UI_LANGUAGE_FR: return "[door] attente de la connexion DOSBox...";
+                default: return "[door] waiting for DOSBox to connect...";
+            }
+        case DOOR_MSG_CONNECTED:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] 연결됨. 종료하려면 Ctrl-]를 누르세요.";
+                case SESSION_UI_LANGUAGE_JP: return "[door] 接続完了。Ctrl-] で終了します。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] 已连接。按 Ctrl-] 退出。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] подключено. Ctrl-] для выхода.";
+                case SESSION_UI_LANGUAGE_DE: return "[door] verbunden. Ctrl-] zum Beenden.";
+                case SESSION_UI_LANGUAGE_FR: return "[door] connecté. Ctrl-] pour quitter.";
+                default: return "[door] connected. Press Ctrl-] to exit.";
+            }
+        case DOOR_MSG_TIMEOUT:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] DOSBox가 시간 내에 연결되지 않았습니다. dosbox가 설치되어 있고 설정이 유효한지 확인하세요.";
+                case SESSION_UI_LANGUAGE_JP: return "[door] DOSBox が時間内に接続しませんでした。dosbox がインストールされ設定が有効か確認してください。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] DOSBox 未在时限内连接。请确认 dosbox 已安装且配置有效。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] DOSBox не подключился вовремя. Проверьте установку и конфигурацию.";
+                case SESSION_UI_LANGUAGE_DE: return "[door] DOSBox hat sich nicht rechtzeitig verbunden. Überprüfen Sie Installation und Konfiguration.";
+                case SESSION_UI_LANGUAGE_FR: return "[door] DOSBox ne s'est pas connecté à temps. Vérifiez l'installation et la configuration.";
+                default: return "[door] DOSBox did not connect in time. Verify dosbox is installed and the configuration is valid.";
+            }
+        case DOOR_MSG_FAILED_LAUNCH:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] dosbox 실행 실패. 설정 경로가 존재하고 dosbox가 PATH에 있는지 확인하세요.";
+                case SESSION_UI_LANGUAGE_JP: return "[door] dosbox の起動に失敗しました。設定パスと PATH を確認してください。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] 无法启动 dosbox。请确认配置路径存在且 dosbox 在 PATH 中。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] не удалось запустить dosbox. Проверьте путь и наличие в PATH.";
+                case SESSION_UI_LANGUAGE_DE: return "[door] dosbox konnte nicht gestartet werden. Prüfen Sie den Pfad und PATH.";
+                case SESSION_UI_LANGUAGE_FR: return "[door] échec du lancement de dosbox. Vérifiez le chemin et la variable PATH.";
+                default: return "[door] failed to launch dosbox. Verify the conf path exists and dosbox is on PATH.";
+            }
+        case DOOR_MSG_SESSION_ENDED:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] 세션 종료.";
+                case SESSION_UI_LANGUAGE_JP: return "[door] セッション終了。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] 会话已结束。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] сессия завершена.";
+                case SESSION_UI_LANGUAGE_DE: return "[door] Sitzung beendet.";
+                case SESSION_UI_LANGUAGE_FR: return "[door] session terminée.";
+                default: return "[door] session ended.";
+            }
+        case DOOR_MSG_ENDED_IMMEDIATELY:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] 세션이 즉시 종료되었습니다. 'dosbox'가 설치되어 있고 게임 파일이 설정된 경로에 있는지 확인하세요.";
+                case SESSION_UI_LANGUAGE_JP: return "[door] セッションがすぐに終了しました。'dosbox' がインストールされゲームファイルが存在するか確認してください。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] 会话立即结束。请确认 dosbox 已安装且游戏文件位于配置路径。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] сессия завершилась сразу. Проверьте установку dosbox и наличие файлов.";
+                case SESSION_UI_LANGUAGE_DE: return "[door] Sitzung sofort beendet. Prüfen Sie, ob dosbox installiert und die Spieldateien vorhanden sind.";
+                case SESSION_UI_LANGUAGE_FR: return "[door] session terminée immédiatement. Vérifiez l'installation de dosbox et les fichiers de jeu.";
+                default: return "[door] session ended immediately. Verify that 'dosbox' is installed and the conf/game files exist at the configured path.";
+            }
+        case DOOR_MSG_ESCAPE:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] 이탈 시퀀스 감지, 게임 종료.";
+                case SESSION_UI_LANGUAGE_JP: return "[door] エスケープシーケンスを検出、ゲームを終了します。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] 检测到退出序列，正在结束游戏。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] обнаружена escape-последовательность, завершение игры.";
+                case SESSION_UI_LANGUAGE_DE: return "[door] Escape-Sequenz erkannt, Spiel wird beendet.";
+                case SESSION_UI_LANGUAGE_FR: return "[door] séquence d'échappement détectée, fin du jeu.";
+                default: return "[door] escape sequence detected, ending door game.";
+            }
+        case DOOR_MSG_MAX_RUNTIME:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] 최대 실행 시간 도달, 게임 종료.";
+                case SESSION_UI_LANGUAGE_JP: return "[door] 最大実行時間に達しました、ゲームを終了します。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] 已达到最大运行时间，正在结束游戏。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] достигнут максимальный runtime, завершение игры.";
+                case SESSION_UI_LANGUAGE_DE: return "[door] maximale Laufzeit erreicht, Spiel wird beendet.";
+                case SESSION_UI_LANGUAGE_FR: return "[door] durée maximale atteinte, fin du jeu.";
+                default: return "[door] maximum runtime reached, terminating door game.";
+            }
+        case DOOR_MSG_TOO_MANY:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] 활성 door 세션이 너무 많습니다. 나중에 다시 시도하세요.";
+                case SESSION_UI_LANGUAGE_JP: return "[door] アクティブな door セッションが多すぎます。後でもう一度お試しください。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] 活跃的 door 会话过多，请稍后再试。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] слишком много активных сессий. Попробуйте позже.";
+                case SESSION_UI_LANGUAGE_DE: return "[door] zu viele aktive Sitzungen. Versuchen Sie es später erneut.";
+                case SESSION_UI_LANGUAGE_FR: return "[door] trop de sessions actives. Réessayez plus tard.";
+                default: return "[door] too many active door sessions. Try again later.";
+            }
+        case DOOR_MSG_ONLY_OPS_LOCK:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "관리자만 door 게임을 잠그거나 해제할 수 있습니다.";
+                case SESSION_UI_LANGUAGE_JP: return "オペレータのみが door ゲームのロック/解除ができます。";
+                case SESSION_UI_LANGUAGE_ZH: return "只有管理员可以锁定或解锁 door 游戏。";
+                case SESSION_UI_LANGUAGE_RU: return "Только операторы могут блокировать/разблокировать DOOR игры.";
+                case SESSION_UI_LANGUAGE_DE: return "Nur Operatoren können DOOR-Spiele sperren/entsperren.";
+                case SESSION_UI_LANGUAGE_FR: return "Seuls les opérateurs peuvent verrouiller/déverrouiller les jeux DOOR.";
+                default: return "Only operators may lock or unlock door games.";
+            }
+        case DOOR_MSG_GAME_LOCKED:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] 이 게임은 현재 관리자에 의해 잠겨 있습니다.";
+                case SESSION_UI_LANGUAGE_JP: return "[door] このゲームは現在オペレータによってロックされています。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] 此游戏当前已被管理员锁定。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] эта игра заблокирована оператором.";
+                case SESSION_UI_LANGUAGE_DE: return "[door] dieses Spiel ist derzeit vom Operator gesperrt.";
+                case SESSION_UI_LANGUAGE_FR: return "[door] ce jeu est actuellement verrouillé par l'opérateur.";
+                default: return "[door] This game is currently locked by the operator.";
+            }
+        case DOOR_MSG_SETGAMELOCK_USAGE:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "사용법: /bbs setgamelock <game_name>";
+                case SESSION_UI_LANGUAGE_JP: return "使い方: /bbs setgamelock <game_name>";
+                case SESSION_UI_LANGUAGE_ZH: return "用法: /bbs setgamelock <game_name>";
+                case SESSION_UI_LANGUAGE_RU: return "Использование: /bbs setgamelock <game_name>";
+                case SESSION_UI_LANGUAGE_DE: return "Nutzung: /bbs setgamelock <game_name>";
+                case SESSION_UI_LANGUAGE_FR: return "Utilisation : /bbs setgamelock <game_name>";
+                default: return "Usage: /bbs setgamelock <game_name>";
+            }
+        case DOOR_MSG_NOW_LOCKED:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] '%s'이(가) 잠금 상태로 변경되었습니다.";
+                case SESSION_UI_LANGUAGE_JP: return "[door] '%s' をロックしました。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] '%s' 已锁定。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] '%s' заблокирована.";
+                case SESSION_UI_LANGUAGE_DE: return "[door] '%s' ist jetzt GESPERRT.";
+                case SESSION_UI_LANGUAGE_FR: return "[door] '%s' est maintenant VERROUILLÉ.";
+                default: return "[door] '%s' is now LOCKED.";
+            }
+        case DOOR_MSG_NOW_UNLOCKED:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return "[door] '%s'의 잠금이 해제되었습니다.";
+                case SESSION_UI_LANGUAGE_JP: return "[door] '%s' のロックを解除しました。";
+                case SESSION_UI_LANGUAGE_ZH: return "[door] '%s' 已解锁。";
+                case SESSION_UI_LANGUAGE_RU: return "[door] '%s' разблокирована.";
+                case SESSION_UI_LANGUAGE_DE: return "[door] '%s' ist jetzt ENTSPERRT.";
+                case SESSION_UI_LANGUAGE_FR: return "[door] '%s' est maintenant DÉVERROUILLÉ.";
+                default: return "[door] '%s' is now UNLOCKED.";
+            }
+        case DOOR_MSG_LIST_LOCKED:
+            switch (lang) {
+                case SESSION_UI_LANGUAGE_KO: return " [잠김]";
+                case SESSION_UI_LANGUAGE_JP: return " [ロック]";
+                case SESSION_UI_LANGUAGE_ZH: return " [已锁定]";
+                case SESSION_UI_LANGUAGE_RU: return " [ЗАБЛОКИРОВАНО]";
+                case SESSION_UI_LANGUAGE_DE: return " [GESPERRT]";
+                case SESSION_UI_LANGUAGE_FR: return " [VERROUILLÉ]";
+                default: return " [LOCKED]";
+            }
+        default:
+            return "";
+    }
+}
+
 #define SSH_CHATTER_DOOR_IDLE_POLL_MS 100
 #define SSH_CHATTER_DOOR_MAX_RUNTIME_SECONDS 3600
 #define SSH_CHATTER_DOOR_BUFFER_SIZE 4096
@@ -410,31 +637,29 @@ static void session_bbs_door_list(session_ctx_t *ctx)
     }
     host_t *host = ctx->owner;
     if (host->door_game_count == 0U) {
-        session_send_system_line(
-            ctx,
-            "No DOOR games configured. Operators: set CHATTER_DOOR_1="
-            "name:dosbox_conf[:desc] (and _2, _3 ...) to register doors.");
+        session_send_system_line(ctx, door_localized(ctx, DOOR_MSG_NO_DOORS));
         return;
     }
 
-    session_send_system_line(ctx, "Available DOOR games:");
+    session_send_system_line(ctx, door_localized(ctx, DOOR_MSG_AVAILABLE));
     char buffer[SSH_CHATTER_MESSAGE_LIMIT];
     for (size_t idx = 0U; idx < host->door_game_count; ++idx) {
         if (!host->door_games[idx].in_use) {
             continue;
         }
         const char *desc = host->door_games[idx].description;
+        const char *locked_tag =
+            host->door_games[idx].locked ? door_localized(ctx, DOOR_MSG_LIST_LOCKED) : "";
         if (desc[0] == '\0') {
-            snprintf(buffer, sizeof(buffer), "  %s", host->door_games[idx].name);
+            snprintf(buffer, sizeof(buffer), "  %s%s",
+                     host->door_games[idx].name, locked_tag);
         } else {
-            snprintf(buffer, sizeof(buffer), "  %s — %s",
-                     host->door_games[idx].name, desc);
+            snprintf(buffer, sizeof(buffer), "  %s%s — %s",
+                     host->door_games[idx].name, locked_tag, desc);
         }
         session_send_system_line(ctx, buffer);
     }
-    session_send_system_line(
-        ctx,
-        "Launch with `/bbs door <name>`. Press Ctrl-] to exit a running game.");
+    session_send_system_line(ctx, door_localized(ctx, DOOR_MSG_LAUNCH_HINT));
 }
 
 static bool session_bbs_door_caller_authorised(const session_ctx_t *ctx)
@@ -816,7 +1041,7 @@ static bool session_bbs_door_io_loop(session_ctx_t *ctx,
             time(nullptr) - runner->started_at >
                 SSH_CHATTER_DOOR_MAX_RUNTIME_SECONDS) {
             session_send_system_line(
-                ctx, "[door] maximum runtime reached, terminating door game.");
+                ctx, door_localized(ctx, DOOR_MSG_MAX_RUNTIME));
             break;
         }
 
@@ -858,6 +1083,13 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
         return;
     }
 
+    if (entry->locked && !ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(
+            ctx,
+            "[door] This game is currently locked by the operator.");
+        return;
+    }
+
     host_t *host = ctx->owner;
     if (host != nullptr && host->max_door_sessions > 0U &&
         host->active_door_sessions >= host->max_door_sessions) {
@@ -877,9 +1109,12 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
     }
 
     char status[SSH_CHATTER_MESSAGE_LIMIT];
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     snprintf(status, sizeof(status),
-             "[door] launching '%s' (Ctrl-] to exit, %ds max).",
+             door_localized(ctx, DOOR_MSG_LAUNCHING),
              entry->name, SSH_CHATTER_DOOR_MAX_RUNTIME_SECONDS);
+#pragma GCC diagnostic pop
     session_send_system_line(ctx, status);
 
     host_door_runner_t runner = {
@@ -904,10 +1139,7 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
         if (host != nullptr && host->active_door_sessions > 0U) {
             --host->active_door_sessions;
         }
-        session_send_system_line(
-            ctx,
-            "[door] failed to launch dosbox. Verify the conf path exists and "
-            "dosbox is on PATH.");
+        session_send_system_line(ctx, door_localized(ctx, DOOR_MSG_FAILED_LAUNCH));
         return;
     }
 
@@ -920,11 +1152,64 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
 
     time_t elapsed = time(nullptr) - runner.started_at;
     if (elapsed <= 2) {
-        session_send_system_line(
-            ctx,
-            "[door] session ended immediately. Verify that 'dosbox' is "
-            "installed and the conf/game files exist at the configured path.");
+        session_send_system_line(ctx, door_localized(ctx, DOOR_MSG_ENDED_IMMEDIATELY));
     } else {
-        session_send_system_line(ctx, "[door] session ended.");
+        session_send_system_line(ctx, door_localized(ctx, DOOR_MSG_SESSION_ENDED));
     }
+}
+
+static void session_bbs_setgamelock(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(
+            ctx, door_localized(ctx, DOOR_MSG_ONLY_OPS_LOCK));
+        return;
+    }
+
+    if (arguments == nullptr || arguments[0] == '\0') {
+        session_send_system_line(ctx, door_localized(ctx, DOOR_MSG_SETGAMELOCK_USAGE));
+        return;
+    }
+
+    char name[SSH_CHATTER_DOOR_GAME_NAME_LEN];
+    snprintf(name, sizeof(name), "%s", arguments);
+    trim_whitespace_inplace(name);
+
+    host_t *host = ctx->owner;
+    door_game_entry_t *target = nullptr;
+    for (size_t i = 0U; i < host->door_game_count; ++i) {
+        if (host->door_games[i].in_use &&
+            strcasecmp(host->door_games[i].name, name) == 0) {
+            target = &host->door_games[i];
+            break;
+        }
+    }
+
+    if (target == nullptr) {
+        char msg[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(msg, sizeof(msg),
+                 "Unknown door game '%s'. Try `/bbs door` for the list.",
+                 name);
+        session_send_system_line(ctx, msg);
+        return;
+    }
+
+    target->locked = !target->locked;
+
+    void host_door_games_save_locked(host_t *host);
+    host_door_games_save_locked(host);
+
+    char msg[SSH_CHATTER_MESSAGE_LIMIT];
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+    snprintf(msg, sizeof(msg),
+             door_localized(ctx, target->locked ? DOOR_MSG_NOW_LOCKED
+                                                : DOOR_MSG_NOW_UNLOCKED),
+             target->name);
+#pragma GCC diagnostic pop
+    session_send_system_line(ctx, msg);
 }

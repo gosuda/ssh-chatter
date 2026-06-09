@@ -293,7 +293,7 @@ static bool door_relay_session_loop(session_ctx_t *ctx, int client_fd)
         if (started_at != (time_t)-1 &&
             time(nullptr) - started_at > DOOR_RELAY_MAX_RUNTIME_SECONDS) {
             session_send_system_line(
-                ctx, "[door] maximum runtime reached, terminating door game.");
+                ctx, door_localized(ctx, DOOR_MSG_MAX_RUNTIME));
             break;
         }
 
@@ -675,8 +675,7 @@ bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
     if (host != nullptr && host->max_door_sessions > 0U &&
         host->active_door_sessions >= host->max_door_sessions) {
         session_send_system_line(
-            ctx,
-            "[door] too many active door sessions. Try again later.");
+            ctx, door_localized(ctx, DOOR_MSG_TOO_MANY));
         return false;
     }
 
@@ -702,7 +701,7 @@ bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
         unlink(temp_conf);
         free(temp_conf);
         session_send_system_line(ctx,
-            "[door] failed to launch dosbox.");
+            door_localized(ctx, DOOR_MSG_FAILED_LAUNCH));
         return false;
     }
 
@@ -711,13 +710,12 @@ bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
     }
 
     session_send_system_line(ctx,
-        "[door] waiting for DOSBox to connect...");
+        door_localized(ctx, DOOR_MSG_WAITING));
 
     int client_fd = door_relay_accept(listen_fd);
     if (client_fd < 0) {
         session_send_system_line(ctx,
-            "[door] DOSBox did not connect in time.  Verify dosbox is "
-            "installed and the configuration is valid.");
+            door_localized(ctx, DOOR_MSG_TIMEOUT));
         close(listen_fd);
         unlink(temp_conf);
         free(temp_conf);
@@ -736,7 +734,7 @@ bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
         return false;
     }
 
-    session_send_system_line(ctx, "[door] connected.  Press Ctrl-] to exit.");
+    session_send_system_line(ctx, door_localized(ctx, DOOR_MSG_CONNECTED));
 
     (void)door_relay_session_loop(ctx, client_fd);
 
@@ -767,7 +765,7 @@ bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
         --host->active_door_sessions;
     }
 
-    session_send_system_line(ctx, "[door] session ended.");
+    session_send_system_line(ctx, door_localized(ctx, DOOR_MSG_SESSION_ENDED));
     return true;
 }
 

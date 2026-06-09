@@ -195,6 +195,19 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_RU] = "exit",
             },
     },
+    {
+        .canonical = "setgamelock",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "setgamelock",
+                [SESSION_UI_LANGUAGE_KO] = "게임잠금",
+                [SESSION_UI_LANGUAGE_JP] = "ゲームロック",
+                [SESSION_UI_LANGUAGE_ZH] = "游戏锁定",
+                [SESSION_UI_LANGUAGE_RU] = "игроблок",
+                [SESSION_UI_LANGUAGE_DE] = "spielsperre",
+                [SESSION_UI_LANGUAGE_FR] = "verroujeu",
+            },
+    },
 };
 
 static const size_t kSessionBbsSubcommandCount =

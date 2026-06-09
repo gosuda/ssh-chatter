@@ -103,6 +103,9 @@ static void host_door_games_load_from_env(host_t *host)
         entry->in_use = true;
         ++host->door_game_count;
     }
+
+    void host_door_games_load_locked(host_t *host);
+    host_door_games_load_locked(host);
 }
 
 static void host_fix_overlapping_bbs_rss_paths(host_t *host)

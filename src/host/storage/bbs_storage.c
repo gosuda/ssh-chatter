@@ -1153,3 +1153,85 @@ static void host_bbs_start_watchdog(host_t *host)
 
     host->bbs_watchdog_thread_initialized = true;
 }
+
+/* ------------------------------------------------------------------ */
+/* Door game lock persistence                                          */
+/* ------------------------------------------------------------------ */
+
+void host_door_games_save_locked(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "door_games.dat",
+                     path, sizeof(path));
+    char temp_path[PATH_MAX + 16];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
+
+    int fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        return;
+    }
+    FILE *fp = fdopen(fd, "w");
+    if (fp == nullptr) {
+        close(fd);
+        return;
+    }
+
+    for (size_t i = 0U; i < host->door_game_count; ++i) {
+        if (!host->door_games[i].in_use) {
+            continue;
+        }
+        fprintf(fp, "%s:%d\n", host->door_games[i].name,
+                host->door_games[i].locked ? 1 : 0);
+    }
+
+    fclose(fp);
+    if (rename(temp_path, path) != 0) {
+        humanized_log_error("door", "failed to update door game state file",
+                            errno);
+        unlink(temp_path);
+    } else if (chmod(path, S_IRUSR | S_IWUSR) != 0) {
+        humanized_log_error("door",
+                            "failed to tighten door game state permissions",
+                            errno != 0 ? errno : EACCES);
+    }
+}
+
+void host_door_games_load_locked(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0' ||
+        host->door_game_count == 0U) {
+        return;
+    }
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "door_games.dat",
+                     path, sizeof(path));
+    FILE *fp = fopen(path, "r");
+    if (fp == nullptr) {
+        return;
+    }
+
+    char line[SSH_CHATTER_DOOR_GAME_NAME_LEN + 8];
+    while (fgets(line, sizeof(line), fp) != nullptr) {
+        size_t len = strlen(line);
+        if (len > 0U && line[len - 1] == '\n') {
+            line[len - 1] = '\0';
+        }
+        char *colon = strchr(line, ':');
+        if (colon == nullptr) {
+            continue;
+        }
+        *colon = '\0';
+        int locked_val = atoi(colon + 1);
+        for (size_t i = 0U; i < host->door_game_count; ++i) {
+            if (host->door_games[i].in_use &&
+                strcasecmp(host->door_games[i].name, line) == 0) {
+                host->door_games[i].locked = (locked_val != 0);
+                break;
+            }
+        }
+    }
+    fclose(fp);
+}

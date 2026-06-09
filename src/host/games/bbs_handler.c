@@ -190,6 +190,8 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         session_bbs_select_board(ctx, rest);
     } else if (strcmp(canonical_command, "search") == 0) {
         session_bbs_search_posts(ctx, rest);
+    } else if (strcmp(canonical_command, "setgamelock") == 0) {
+        session_bbs_setgamelock(ctx, rest);
     } else {
         session_send_system_line(
             ctx, "Unknown /bbs subcommand. Try /bbs for usage.");

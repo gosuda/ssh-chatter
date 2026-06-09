@@ -93,7 +93,7 @@ static void host_strip_column_reset(char *text)
 }
 
 static bool host_bbs_serialized_has_required_fields(
-    const bbs_state_post_entry_t *serialized)
+    const bbs_state_post_entry_disk_t *serialized)
 {
     if (serialized == nullptr) {
         return false;
@@ -129,7 +129,7 @@ static bool host_bbs_text_has_disallowed_controls(const char *text)
     return false;
 }
 
-static bool host_bbs_serialized_is_sane(const bbs_state_post_entry_t *serialized,
+static bool host_bbs_serialized_is_sane(const bbs_state_post_entry_disk_t *serialized,
                                         time_t now)
 {
     if (serialized == nullptr) {
@@ -226,7 +226,7 @@ static void host_bbs_state_save_locked(host_t *host)
             continue;
         }
 
-        bbs_state_post_entry_t serialized = {0};
+        bbs_state_post_entry_disk_t serialized = {0};
         serialized.id = post->id;
         serialized.board_id = post->board_id;
         serialized.created_at = (int64_t)post->created_at;
@@ -760,7 +760,7 @@ static void host_bbs_state_load(host_t *host)
     }
 
     for (uint32_t idx = 0U; idx < header.post_count; ++idx) {
-        bbs_state_post_entry_t serialized = {0};
+        bbs_state_post_entry_disk_t serialized = {0};
         if (remaining < sizeof(serialized)) {
             success = false;
             break;

@@ -236,7 +236,7 @@ static bool session_bbs_ensure_live_storage(host_t *host)
 
 static bool session_bbs_read_serialized_entry(
     const unsigned char **cursor_ptr, size_t *remaining_ptr,
-    bbs_state_post_entry_t *serialized)
+    bbs_state_post_entry_disk_t *serialized)
 {
     if (cursor_ptr == nullptr || remaining_ptr == nullptr ||
         serialized == nullptr) {
@@ -260,7 +260,7 @@ static bool session_bbs_read_serialized_entry(
 }
 
 static void session_bbs_normalize_serialized_entry(
-    bbs_state_post_entry_t *serialized)
+    bbs_state_post_entry_disk_t *serialized)
 {
     if (serialized == nullptr) {
         return;
@@ -398,7 +398,7 @@ static bool session_bbs_collect_listings_from_state(host_t *host,
 
     for (uint32_t idx = 0U;
          idx < header.post_count && *count < SSH_CHATTER_BBS_MAX_POSTS; ++idx) {
-        bbs_state_post_entry_t serialized = {0};
+        bbs_state_post_entry_disk_t serialized = {0};
         if (!session_bbs_read_serialized_entry(&cursor, &remaining,
                                                &serialized)) {
             break;
@@ -507,7 +507,7 @@ static bool session_bbs_load_post_from_state(host_t *host, uint64_t id,
 
     bool found = false;
     for (uint32_t idx = 0U; idx < header.post_count; ++idx) {
-        bbs_state_post_entry_t serialized = {0};
+        bbs_state_post_entry_disk_t serialized = {0};
         if (!session_bbs_read_serialized_entry(&cursor, &remaining,
                                                &serialized)) {
             break;

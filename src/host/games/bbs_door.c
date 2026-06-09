@@ -22,6 +22,12 @@
 #include <pty.h>
 #include <iconv.h>
 #include <errno.h>
+#include <limits.h>
+#include <string.h>
+
+#ifdef SSH_CHATTER_HAVE_UCHARDET
+#include <uchardet.h>
+#endif
 
 /* Forward declarations of helpers from sibling translation units in the
  * same aggregated TU. */
@@ -59,6 +65,7 @@ enum {
     DOOR_ENC_UTF8 = 2,
     DOOR_ENC_CP949 = 3,
     DOOR_ENC_JOHAB = 4,
+    DOOR_ENC_CP437 = 5,
 };
 
 /* ---- Encoding detection ----
@@ -202,16 +209,56 @@ static int door_enc_decide(const unsigned char *data, size_t len)
         return DOOR_ENC_UTF8;
     }
 
+#ifdef SSH_CHATTER_HAVE_UCHARDET
+    uchardet_t ud = uchardet_new();
+    if (ud != nullptr) {
+        if (uchardet_handle_data(ud, (const char *)data, len) == 0) {
+            uchardet_data_end(ud);
+            const char *charset = uchardet_get_charset(ud);
+            if (charset != nullptr && charset[0] != '\0') {
+                int result = DOOR_ENC_UNKNOWN;
+                if (strcasecmp(charset, "UTF-8") == 0) {
+                    result = DOOR_ENC_UTF8;
+                } else if (strncasecmp(charset, "EUC-KR", 6) == 0 ||
+                           strncasecmp(charset, "CP949", 5) == 0 ||
+                           strncasecmp(charset, "ISO-2022-KR", 11) == 0) {
+                    result = DOOR_ENC_CP949;
+                } else if (strncasecmp(charset, "JOHAB", 5) == 0) {
+                    result = DOOR_ENC_JOHAB;
+                } else if (strncasecmp(charset, "CP437", 5) == 0 ||
+                           strncasecmp(charset, "IBM437", 6) == 0) {
+                    result = DOOR_ENC_CP437;
+                } else if (strncasecmp(charset, "ASCII", 5) == 0) {
+                    result = DOOR_ENC_PASSTHROUGH;
+                }
+                if (result != DOOR_ENC_UNKNOWN) {
+                    uchardet_delete(ud);
+                    return result;
+                }
+            }
+        }
+        uchardet_delete(ud);
+    }
+#endif
+
+    size_t high_byte_count = 0;
+    for (size_t idx = 0; idx < len; ++idx) {
+        if (data[idx] >= 0x80U) {
+            high_byte_count++;
+        }
+    }
+
     int cp949_score = door_enc_score_cp949(data, len);
     int johab_score = door_enc_score_johab(data, len);
 
-    if (cp949_score <= 0 && johab_score <= 0) {
-        return DOOR_ENC_PASSTHROUGH;
-    }
-    if (cp949_score >= johab_score) {
+    if (cp949_score > 0 && (size_t)cp949_score > high_byte_count / 2 && cp949_score >= johab_score) {
         return DOOR_ENC_CP949;
     }
-    return DOOR_ENC_JOHAB;
+    if (johab_score > 0 && (size_t)johab_score > high_byte_count / 2 && johab_score > cp949_score) {
+        return DOOR_ENC_JOHAB;
+    }
+
+    return DOOR_ENC_CP437;
 }
 
 static const char *door_enc_iconv_label(int encoding)
@@ -223,6 +270,8 @@ static const char *door_enc_iconv_label(int encoding)
             return "JOHAB";
         case DOOR_ENC_UTF8:
             return "UTF-8";
+        case DOOR_ENC_CP437:
+            return "CP437";
         default:
             return nullptr;
     }
@@ -481,14 +530,60 @@ static bool session_bbs_door_spawn(const char *dosbox_conf,
             close(fd);
         }
 
+        setenv("SDL_VIDEODRIVER", "dummy", 1);
+        setenv("SDL_AUDIODRIVER", "dummy", 1);
+        unsetenv("DISPLAY");
+
+        const char *chosen_runner = getenv("CHATTER_DOOR_RUNNER");
+        if (chosen_runner == nullptr || chosen_runner[0] == '\0') {
+            chosen_runner = getenv("DOSBOX_RUNNER");
+        }
+
+        char resolved_runner[PATH_MAX];
+        if (chosen_runner == nullptr || chosen_runner[0] == '\0') {
+            chosen_runner = nullptr;
+            const char *candidates[] = {"dosbox", "dosbox-x", "dosbox-staging"};
+            const char *path_env = getenv("PATH");
+            if (path_env != nullptr && path_env[0] != '\0') {
+                char *path_copy = strdup(path_env);
+                if (path_copy != nullptr) {
+                    for (size_t i = 0U; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
+                        char *saveptr = nullptr;
+                        char *token = strtok_r(path_copy, ":", &saveptr);
+                        bool found = false;
+                        while (token != nullptr) {
+                            char full_path[PATH_MAX];
+                            snprintf(full_path, sizeof(full_path), "%s/%s", token, candidates[i]);
+                            struct stat st;
+                            if (stat(full_path, &st) == 0 && (st.st_mode & S_IXUSR) && !S_ISDIR(st.st_mode)) {
+                                snprintf(resolved_runner, sizeof(resolved_runner), "%s", candidates[i]);
+                                chosen_runner = resolved_runner;
+                                found = true;
+                                break;
+                            }
+                            token = strtok_r(nullptr, ":", &saveptr);
+                        }
+                        if (found) {
+                            break;
+                        }
+                        strcpy(path_copy, path_env);
+                    }
+                    free(path_copy);
+                }
+            }
+            if (chosen_runner == nullptr) {
+                chosen_runner = "dosbox"; // default fallback
+            }
+        }
+
         char *const argv[] = {
-            (char *)"dosbox",
+            (char *)chosen_runner,
             (char *)"-conf",
             (char *)dosbox_conf,
             (char *)"-exit",
             nullptr,
         };
-        execvp("dosbox", argv);
+        execvp(chosen_runner, argv);
         _exit(127);
     }
 

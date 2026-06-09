@@ -184,6 +184,17 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_RU] = "доска",
             },
     },
+    {
+        .canonical = "exit",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "exit",
+                [SESSION_UI_LANGUAGE_KO] = "exit",
+                [SESSION_UI_LANGUAGE_JP] = "exit",
+                [SESSION_UI_LANGUAGE_ZH] = "exit",
+                [SESSION_UI_LANGUAGE_RU] = "exit",
+            },
+    },
 };
 
 static const size_t kSessionBbsSubcommandCount =

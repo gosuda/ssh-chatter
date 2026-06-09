@@ -20,7 +20,22 @@ SRC_DIR := src
 INCLUDE_DIR := include
 BUILD_DIR := build
 TTAK_DIR := lib/libttak
+HAVE_GLOBAL_TTAK := $(shell test -f /usr/local/lib/libttak.a && echo 1 || echo 0)
+ifeq ($(HAVE_GLOBAL_TTAK),1)
 TTAK_LIB := /usr/local/lib/libttak.a
+CFLAGS_TTAK := -I /usr/local/include
+LDFLAGS_TTAK := -lttak
+else
+TTAK_LIB := $(TTAK_DIR)/lib/libttak.a
+CFLAGS_TTAK := -I $(TTAK_DIR)/include
+LDFLAGS_TTAK :=
+endif
+
+CFLAGS_LIBSSH := $(shell pkg-config --cflags libssh 2>/dev/null)
+LDFLAGS_LIBSSH := $(shell pkg-config --libs libssh 2>/dev/null || echo "-lssh")
+
+CFLAGS_LIBCURL := $(shell pkg-config --cflags libcurl 2>/dev/null)
+LDFLAGS_LIBCURL := $(shell pkg-config --libs libcurl 2>/dev/null || echo "-lcurl")
 
 # NOTE: -march=native builds binaries tuned for the current host CPU and must
 #       be rebuilt on any deployment target with a different microarchitecture.
@@ -44,7 +59,7 @@ CFLAGS = -std=c2x -Ofast \
               -Wno-error=deprecated-declarations -DSSH_CHATTER_USE_GC=$(ENABLE_GC) \
               $(if $(filter 1,$(HAVE_UCHARDET)),-DSSH_CHATTER_HAVE_UCHARDET $(CFLAGS_UCHARDET)) \
               $(if $(filter 1,$(HAVE_ICU)),-DSSH_CHATTER_HAVE_ICU $(CFLAGS_ICU)) \
-              -I $(INCLUDE_DIR) -I /usr/local/include -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu \
+              -I $(INCLUDE_DIR) $(CFLAGS_TTAK) $(CFLAGS_LIBSSH) $(CFLAGS_LIBCURL) -I /usr/local/include -I/usr/include \
               -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
               -Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
               -fstack-protector-strong -fno-common \
@@ -86,7 +101,7 @@ CFLAGS = -std=c2x -Ofast \
 # ==============================================================================
 COMMON_LDFLAGS = \
     -L/usr/local/lib \
-    -lpthread -ldl -lcurl -lm -lcrypto -llz4 -lttak -lutil -lc \
+    -lpthread -ldl -lm -lcrypto -llz4 $(LDFLAGS_TTAK) $(LDFLAGS_LIBCURL) -lutil -lc \
     $(LDFLAGS_UCHARDET) $(LDFLAGS_ICU) \
     -Wl,-Ofast \
     -Wl,--hash-style=gnu \
@@ -104,7 +119,7 @@ COMMON_LDFLAGS = \
     -Wl,-z,combreloc \
     -Wl,--build-id=none
 
-LDFLAGS = $(COMMON_LDFLAGS) -lssh
+LDFLAGS = $(COMMON_LDFLAGS) $(LDFLAGS_LIBSSH)
 
 ifeq ($(ENABLE_LTO),1)
 CFLAGS += -flto=$(LTO_JOBS) -fuse-linker-plugin

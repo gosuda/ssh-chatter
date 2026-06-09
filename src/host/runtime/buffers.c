@@ -45,7 +45,7 @@ typedef struct sshc_bbs_cold_meta {
     uint64_t next_bbs_id;
 } sshc_bbs_cold_meta_t;
 
-typedef struct bbs_post_cold {
+typedef struct bbs_post_cold_disk {
     bool in_use;
     uint64_t id;
     uint16_t board_id;
@@ -59,6 +59,23 @@ typedef struct bbs_post_cold {
     int32_t upvotes;
     int32_t downvotes;
     bbs_comment_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
+    size_t comment_count;
+} bbs_post_cold_disk_t;
+
+typedef struct bbs_post_cold {
+    bool in_use;
+    uint64_t id;
+    uint16_t board_id;
+    char author[SSH_CHATTER_USERNAME_LEN];
+    char title[SSH_CHATTER_BBS_TITLE_LEN];
+    char body[SSH_CHATTER_BBS_BODY_LEN];
+    char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
+    size_t tag_count;
+    time_t created_at;
+    time_t bumped_at;
+    int32_t upvotes;
+    int32_t downvotes;
+    bbs_comment_t *comments;
     size_t comment_count;
 } bbs_post_cold_t;
 
@@ -359,8 +376,8 @@ static void host_bbs_release_cache(host_t *host)
         char cold_path[PATH_MAX];
         if (host_cold_file_path(cold_path, sizeof(cold_path),
                                 host->bbs_state_file_path, "bbs")) {
-            bbs_post_cold_t *cold_posts = (bbs_post_cold_t *)sshc_gc_calloc(
-                post_capacity, sizeof(bbs_post_cold_t));
+            bbs_post_cold_disk_t *cold_posts = (bbs_post_cold_disk_t *)sshc_gc_calloc(
+                post_capacity, sizeof(bbs_post_cold_disk_t));
             if (cold_posts != nullptr) {
                 for (size_t i = 0; i < post_capacity; ++i) {
                     cold_posts[i].in_use = posts[i].in_use;
@@ -381,7 +398,7 @@ static void host_bbs_release_cache(host_t *host)
                                sizeof(bbs_comment_t) * SSH_CHATTER_BBS_MAX_COMMENTS);
                     }
                 }
-                (void)host_cold_blob_save(cold_path, cold_posts, sizeof(bbs_post_cold_t),
+                (void)host_cold_blob_save(cold_path, cold_posts, sizeof(bbs_post_cold_disk_t),
                                           post_capacity, &meta, sizeof(meta));
                 sshc_gc_free(cold_posts);
             }
@@ -449,8 +466,8 @@ static __attribute__((unused)) void host_reload_cached_state(host_t *host)
                                 host->bbs_state_file_path, "bbs")) {
             sshc_bbs_cold_meta_t meta = {0};
             size_t slot_count = 0U;
-            bbs_post_cold_t *restored_cold_posts = (bbs_post_cold_t *)host_cold_blob_load(
-                cold_path, sizeof(bbs_post_cold_t), sizeof(meta), &slot_count, &meta);
+            bbs_post_cold_disk_t *restored_cold_posts = (bbs_post_cold_disk_t *)host_cold_blob_load(
+                cold_path, sizeof(bbs_post_cold_disk_t), sizeof(meta), &slot_count, &meta);
             if (restored_cold_posts != nullptr && slot_count > 0U) {
                 bbs_post_t *allocated_posts = (bbs_post_t *)sshc_gc_calloc(
                     slot_count, sizeof(bbs_post_t));

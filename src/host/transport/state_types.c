@@ -348,7 +348,7 @@ typedef struct bbs_state_comment_entry {
     int32_t downvotes;
 } bbs_state_comment_entry_t;
 
-typedef struct bbs_state_post_entry {
+typedef struct bbs_state_post_entry_disk {
     uint64_t id;
     uint16_t board_id;
     uint16_t reserved;
@@ -363,6 +363,23 @@ typedef struct bbs_state_post_entry {
     char body[SSH_CHATTER_BBS_BODY_LEN];
     char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
     bbs_state_comment_entry_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
+} bbs_state_post_entry_disk_t;
+
+typedef struct bbs_state_post_entry {
+    uint64_t id;
+    uint16_t board_id;
+    uint16_t reserved;
+    int64_t created_at;
+    int64_t bumped_at;
+    int32_t upvotes;
+    int32_t downvotes;
+    uint32_t tag_count;
+    uint32_t comment_count;
+    char author[SSH_CHATTER_USERNAME_LEN];
+    char title[SSH_CHATTER_BBS_TITLE_LEN];
+    char body[SSH_CHATTER_BBS_BODY_LEN];
+    char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
+    bbs_state_comment_entry_t *comments;
 } bbs_state_post_entry_t;
 
 static const uint32_t BBS_BOARDS_MAGIC = 0x42425244U; /* 'BBRD' */

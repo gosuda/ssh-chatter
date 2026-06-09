@@ -11,6 +11,48 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+static ssize_t ddial_send_all(int fd, const char *buf, size_t len)
+{
+    size_t sent = 0;
+    while (sent < len) {
+        ssize_t n = send(fd, buf + sent, len - sent, MSG_NOSIGNAL);
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        if (n == 0) {
+            return -1;
+        }
+        sent += (size_t)n;
+    }
+    return (ssize_t)sent;
+}
+
+static bool ddial_buffer_contains_prompt(const char *buf, size_t len)
+{
+    if (buf == nullptr || len == 0U) {
+        return false;
+    }
+    // Bridge.py flushes on --> (Retro-Dial prompt), "assword" (Password
+    // prompt), or "Remote" (remote bridge prompt).
+    static const char *needles[] = {"-->", "assword", "Remote"};
+    for (size_t i = 0; i < sizeof(needles) / sizeof(needles[0]); ++i) {
+        const char *found = buf;
+        size_t remain = len;
+        while (remain > 0) {
+            const char *hit =
+                (const char *)memmem(found, remain, needles[i], strlen(needles[i]));
+            if (hit != nullptr) {
+                return true;
+            }
+            break;
+        }
+    }
+    return false;
+}
+
 static bool ddial_relay_connect_socket(ddial_relay_t *relay)
 {
     if (relay == nullptr || relay->host[0] == '\0' || relay->port <= 0) {
@@ -119,7 +161,8 @@ static void ddial_relay_broadcast_line(host_t *host, const char *line)
     chat_room_broadcast(&host->room, prefixed, nullptr);
 }
 
-static void ddial_relay_process_buffer(host_t *host, ddial_relay_t *relay)
+static void ddial_relay_process_buffer(host_t *host, ddial_relay_t *relay,
+                                       bool force_flush)
 {
     if (host == nullptr || relay == nullptr) {
         return;
@@ -129,18 +172,34 @@ static void ddial_relay_process_buffer(host_t *host, ddial_relay_t *relay)
     size_t len = relay->recv_buf_len;
 
     for (;;) {
-        char *crlf = nullptr;
+        char *eol = nullptr;
+        size_t eol_len = 0;
+
+        // Look for \r\n first
         for (size_t i = 0; i + 1 < len; ++i) {
             if (buf[i] == '\r' && buf[i + 1] == '\n') {
-                crlf = &buf[i];
+                eol = &buf[i];
+                eol_len = 2;
                 break;
             }
         }
-        if (crlf == nullptr) {
+
+        // Then look for plain \n (bridge.py splits on \n)
+        if (eol == nullptr) {
+            for (size_t i = 0; i < len; ++i) {
+                if (buf[i] == '\n') {
+                    eol = &buf[i];
+                    eol_len = 1;
+                    break;
+                }
+            }
+        }
+
+        if (eol == nullptr) {
             break;
         }
 
-        size_t line_len = (size_t)(crlf - buf);
+        size_t line_len = (size_t)(eol - buf);
         if (line_len >= SSH_CHATTER_MESSAGE_LIMIT) {
             line_len = SSH_CHATTER_MESSAGE_LIMIT - 1;
         }
@@ -157,9 +216,29 @@ static void ddial_relay_process_buffer(host_t *host, ddial_relay_t *relay)
             ddial_relay_broadcast_line(host, line);
         }
 
-        size_t consumed = line_len + 2; // +2 for \r\n
+        size_t consumed = line_len + eol_len;
         memmove(buf, buf + consumed, len - consumed);
         len -= consumed;
+    }
+
+    // If forced, emit the remainder as a single line even without a newline.
+    if (force_flush && len > 0) {
+        size_t line_len = len;
+        if (line_len >= SSH_CHATTER_MESSAGE_LIMIT) {
+            line_len = SSH_CHATTER_MESSAGE_LIMIT - 1;
+        }
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        memcpy(line, buf, line_len);
+        line[line_len] = '\0';
+
+        if (line_len > 0 && line[line_len - 1] == '\r') {
+            line[line_len - 1] = '\0';
+        }
+
+        if (line[0] != '\0') {
+            ddial_relay_broadcast_line(host, line);
+        }
+        len = 0;
     }
 
     relay->recv_buf_len = len;
@@ -186,13 +265,13 @@ static void *ddial_relay_thread(void *arg)
                 char key_line[128];
                 snprintf(key_line, sizeof(key_line), "%s\r\n",
                          relay->login_key);
-                (void)send(relay->upstream_fd, key_line, strlen(key_line),
-                           MSG_NOSIGNAL);
+                (void)ddial_send_all(relay->upstream_fd, key_line,
+                                     strlen(key_line));
                 relay->auth_sent = true;
             }
         }
 
-        char temp[1024];
+        char temp[4096];
         ssize_t n = recv(relay->upstream_fd, temp, sizeof(temp), 0);
         if (n <= 0) {
             ddial_relay_disconnect(relay);
@@ -200,17 +279,33 @@ static void *ddial_relay_thread(void *arg)
             continue;
         }
 
+        bool force_flush = ddial_buffer_contains_prompt(temp, (size_t)n);
+
         ttak_mutex_lock(&relay->lock);
         size_t space = sizeof(relay->recv_buffer) - relay->recv_buf_len;
         size_t to_copy = (size_t)n;
+
+        // Bridge.py style: if the buffer is full, drop the oldest half
+        // to make room for new data.
         if (to_copy > space) {
-            to_copy = space;
+            const size_t buf_cap = sizeof(relay->recv_buffer);
+            if (relay->recv_buf_len > buf_cap / 2) {
+                size_t drop = relay->recv_buf_len / 2;
+                memmove(relay->recv_buffer, relay->recv_buffer + drop,
+                        relay->recv_buf_len - drop);
+                relay->recv_buf_len -= drop;
+                space = buf_cap - relay->recv_buf_len;
+            }
+            if (to_copy > space) {
+                to_copy = space;
+            }
         }
+
         if (to_copy > 0) {
             memcpy(relay->recv_buffer + relay->recv_buf_len, temp, to_copy);
             relay->recv_buf_len += to_copy;
         }
-        ddial_relay_process_buffer(host, relay);
+        ddial_relay_process_buffer(host, relay, force_flush);
         ttak_mutex_unlock(&relay->lock);
     }
 
@@ -301,7 +396,7 @@ static void host_ddial_relay_send(host_t *host, const char *handle,
 
     ttak_mutex_lock(&relay->lock);
     if (relay->connected && relay->upstream_fd >= 0) {
-        (void)send(relay->upstream_fd, line, strlen(line), MSG_NOSIGNAL);
+        (void)ddial_send_all(relay->upstream_fd, line, strlen(line));
     }
     ttak_mutex_unlock(&relay->lock);
 }

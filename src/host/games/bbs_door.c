@@ -4,7 +4,7 @@
  *       stdin/stdout between the chat session and the child PTY. Doors are
  *       declared at startup via env vars `CHATTER_DOOR_<N>=name:conf[:desc]`.
  *
- *       Operator-only by default. The launch path uses execvp directly with a
+ *       Open to all authenticated users. The launch path uses execvp directly with a
  *       fixed argv — there is no shell layer and no user-controlled string
  *       reaches a shell, so users cannot inject extra arguments by naming a
  *       door creatively.
@@ -36,6 +36,8 @@ static int session_channel_read_poll(session_ctx_t *ctx, char *buffer,
                                      size_t length, int timeout_ms);
 void session_channel_write(session_ctx_t *ctx, const void *data,
                            size_t length);
+extern bool session_channel_write_all(session_ctx_t *ctx, const void *data,
+                                      size_t length);
 void session_send_system_line(session_ctx_t *ctx, const char *message);
 
 #define SSH_CHATTER_DOOR_IDLE_POLL_MS 100
@@ -293,19 +295,19 @@ static void door_emit_converted(session_ctx_t *ctx, host_door_runner_t *runner,
     if (runner->detected_encoding == DOOR_ENC_PASSTHROUGH ||
         runner->detected_encoding == DOOR_ENC_UTF8 ||
         runner->detected_encoding == DOOR_ENC_UNKNOWN) {
-        session_channel_write(ctx, src, len);
+        (void)session_channel_write_all(ctx, src, len);
         return;
     }
 
     const char *label = door_enc_iconv_label(runner->detected_encoding);
     if (label == nullptr) {
-        session_channel_write(ctx, src, len);
+        (void)session_channel_write_all(ctx, src, len);
         return;
     }
 
     iconv_t cd = iconv_open("UTF-8", label);
     if (cd == (iconv_t)-1) {
-        session_channel_write(ctx, src, len);
+        (void)session_channel_write_all(ctx, src, len);
         return;
     }
 
@@ -363,7 +365,7 @@ static void door_emit_converted(session_ctx_t *ctx, host_door_runner_t *runner,
 
     size_t produced = out_capacity - out_left;
     if (produced > 0U) {
-        session_channel_write(ctx, out_buffer, produced);
+        (void)session_channel_write_all(ctx, out_buffer, produced);
     }
     sshc_gc_free(out_buffer);
     iconv_close(cd);
@@ -437,10 +439,9 @@ static void session_bbs_door_list(session_ctx_t *ctx)
 
 static bool session_bbs_door_caller_authorised(const session_ctx_t *ctx)
 {
-    if (ctx == nullptr) {
-        return false;
-    }
-    return ctx->user.is_operator || ctx->user.is_lan_operator;
+    (void)ctx;
+    /* Door games are open to all authenticated users. */
+    return true;
 }
 
 static int session_bbs_door_set_nonblocking(int fd)
@@ -857,6 +858,15 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
         return;
     }
 
+    host_t *host = ctx->owner;
+    if (host != nullptr && host->max_door_sessions > 0U &&
+        host->active_door_sessions >= host->max_door_sessions) {
+        session_send_system_line(
+            ctx,
+            "[door] too many active door sessions. Try again later.");
+        return;
+    }
+
     /* Default to the TCP-nullmodem relay path (door_relay.c).  The legacy
      * PTY path can be forced back with CHATTER_DOOR_USE_PTY=1. */
     if (getenv("CHATTER_DOOR_USE_PTY") == nullptr) {
@@ -882,7 +892,18 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
         .detected_encoding = DOOR_ENC_UNKNOWN,
     };
 
+    bool was_buffering = ctx->output_buffering_enabled;
+    ctx->output_buffering_enabled = false;
+
+    if (host != nullptr) {
+        ++host->active_door_sessions;
+    }
+
     if (!session_bbs_door_spawn(entry->dosbox_conf, &runner)) {
+        ctx->output_buffering_enabled = was_buffering;
+        if (host != nullptr && host->active_door_sessions > 0U) {
+            --host->active_door_sessions;
+        }
         session_send_system_line(
             ctx,
             "[door] failed to launch dosbox. Verify the conf path exists and "
@@ -891,6 +912,11 @@ static void session_bbs_door_run(session_ctx_t *ctx, const char *name)
     }
 
     (void)session_bbs_door_io_loop(ctx, &runner);
+
+    ctx->output_buffering_enabled = was_buffering;
+    if (host != nullptr && host->active_door_sessions > 0U) {
+        --host->active_door_sessions;
+    }
 
     time_t elapsed = time(nullptr) - runner.started_at;
     if (elapsed <= 2) {

@@ -45,14 +45,6 @@ static int door_relay_set_nonblocking(int fd)
     return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-static int door_relay_restore_flags(int fd, int original_flags)
-{
-    if (fd < 0) {
-        return -1;
-    }
-    return fcntl(fd, F_SETFL, original_flags);
-}
-
 /**
  * @desc Bind a TCP listener to 127.0.0.1 on an ephemeral port.
  * @param port  Output pointer receiving the allocated port number.
@@ -148,22 +140,27 @@ static int door_relay_write_all(int fd, const void *data, size_t length)
     return 0;
 }
 
-/**
- * @desc Accept a single DOSBox TCP connection and run a bidirectional
- *       relay between ssh_fd and the accepted socket.
- * @param ssh_fd     File descriptor for the terminal / SSH side.
- * @param listen_fd  Listening socket fd (created by setup_door_listener).
- */
-void run_door_relay(int ssh_fd, int listen_fd)
-{
-    if (ssh_fd < 0 || listen_fd < 0) {
-        return;
-    }
+/* Forward declarations from the BBS door subsystem for channel-safe I/O. */
+extern int session_channel_read_poll(session_ctx_t *ctx, char *buffer,
+                                     size_t length, int timeout_ms);
+extern void session_channel_write(session_ctx_t *ctx, const void *data,
+                                  size_t length);
+extern bool session_channel_write_all(session_ctx_t *ctx, const void *data,
+                                      size_t length);
+extern void session_send_system_line(session_ctx_t *ctx, const char *message);
 
+#define DOOR_RELAY_QUIT_BYTE 0x1D /* Ctrl-] */
+#define DOOR_RELAY_MAX_RUNTIME_SECONDS 3600
+
+/**
+ * @desc Accept a single DOSBox TCP connection with timeout.
+ * @return Accepted socket fd, or -1 on error/timeout.
+ */
+static int door_relay_accept(int listen_fd)
+{
     struct sockaddr_in client_addr;
     socklen_t client_addrlen = sizeof(client_addr);
 
-    /* Wait for DOSBox to connect back. */
     struct pollfd accept_pfd = {
         .fd = listen_fd,
         .events = POLLIN,
@@ -172,37 +169,52 @@ void run_door_relay(int ssh_fd, int listen_fd)
 
     int accept_ready = poll(&accept_pfd, 1, DOOR_RELAY_ACCEPT_TIMEOUT_MS);
     if (accept_ready <= 0 || (accept_pfd.revents & POLLIN) == 0) {
-        return;
+        return -1;
     }
 
-    int client_fd = accept(listen_fd, (struct sockaddr *)&client_addr,
-                           &client_addrlen);
-    if (client_fd < 0) {
-        return;
+    return accept(listen_fd, (struct sockaddr *)&client_addr,
+                  &client_addrlen);
+}
+
+/**
+ * @desc Run a bidirectional relay between the SSH/Telnet session (via
+ *       session_channel_read_poll / session_channel_write) and the DOSBox
+ *       TCP socket.  This avoids corrupting the libssh state by never
+ *       reading or writing the raw transport fd directly.
+ * @param ctx        Session context.
+ * @param client_fd  Accepted TCP socket from DOSBox nullmodem.
+ * @return           true if the relay ran, false on early error.
+ */
+static bool door_relay_session_loop(session_ctx_t *ctx, int client_fd)
+{
+    if (ctx == nullptr || client_fd < 0) {
+        return false;
     }
 
-    int ssh_flags = fcntl(ssh_fd, F_GETFL, 0);
-    if (door_relay_set_nonblocking(ssh_fd) < 0 ||
-        door_relay_set_nonblocking(client_fd) < 0) {
-        close(client_fd);
-        return;
+    if (door_relay_set_nonblocking(client_fd) < 0) {
+        return false;
     }
 
-    /* Disable Nagle for low-latency character relay. */
     int nodelay = 1;
     (void)setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay,
                      sizeof(nodelay));
 
     char buffer[DOOR_RELAY_BUFFER_SIZE];
     bool running = true;
+    time_t started_at = time(nullptr);
+
+    /* Disable output buffering so ANSI sequences arrive in real time. */
+    bool was_buffering = ctx->output_buffering_enabled;
+    ctx->output_buffering_enabled = false;
 
     while (running) {
-        struct pollfd pfds[2] = {
-            {.fd = ssh_fd,    .events = POLLIN, .revents = 0},
-            {.fd = client_fd, .events = POLLIN, .revents = 0},
+        /* Poll DOSBox output. */
+        struct pollfd pfd = {
+            .fd = client_fd,
+            .events = POLLIN,
+            .revents = 0,
         };
-
-        int poll_result = poll(pfds, 2, DOOR_RELAY_POLL_TIMEOUT_MS);
+        int poll_result = poll(&pfd, 1, DOOR_RELAY_POLL_TIMEOUT_MS);
         if (poll_result < 0) {
             if (errno == EINTR) {
                 continue;
@@ -210,29 +222,7 @@ void run_door_relay(int ssh_fd, int listen_fd)
             break;
         }
 
-        /* ssh_fd -> client_fd (user keystrokes to DOSBox serial input) */
-        if (pfds[0].revents & POLLIN) {
-            ssize_t got = read(ssh_fd, buffer, sizeof(buffer));
-            if (got < 0) {
-                if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                    break;
-                }
-            } else if (got == 0) {
-                /* EOF — remote side closed. */
-                break;
-            } else {
-                if (door_relay_write_all(client_fd, buffer, (size_t)got) < 0) {
-                    break;
-                }
-            }
-        }
-
-        if (pfds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            break;
-        }
-
-        /* client_fd -> ssh_fd (DOSBox ANSI output to user terminal) */
-        if (pfds[1].revents & POLLIN) {
+        if (poll_result > 0 && (pfd.revents & POLLIN)) {
             ssize_t got = read(client_fd, buffer, sizeof(buffer));
             if (got < 0) {
                 if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
@@ -242,38 +232,101 @@ void run_door_relay(int ssh_fd, int listen_fd)
                 /* EOF — DOSBox disconnected. */
                 break;
             } else {
-                if (door_relay_write_all(ssh_fd, buffer, (size_t)got) < 0) {
-                    break;
-                }
+                /* Use raw channel write to avoid codepage/encoding
+                 * transformations that would corrupt ANSI sequences. */
+                (void)session_channel_write_all(ctx, buffer, (size_t)got);
             }
         }
 
-        if (pfds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+        if (poll_result > 0 &&
+            (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))) {
+            break;
+        }
+
+        /* Poll user input via the safe channel API. */
+        int read_result =
+            session_channel_read_poll(ctx, buffer, sizeof(buffer), 10);
+        if (read_result == SESSION_CHANNEL_TIMEOUT) {
+            /* nothing to forward */
+        } else if (read_result <= 0) {
+            /* Session lost; tear down the door. */
+            break;
+        } else {
+            /* Look for the escape byte (Ctrl-]). */
+            int escape_idx = -1;
+            for (int idx = 0; idx < read_result; ++idx) {
+                if ((unsigned char)buffer[idx] == DOOR_RELAY_QUIT_BYTE) {
+                    escape_idx = idx;
+                    break;
+                }
+            }
+            int forward_len = (escape_idx >= 0) ? escape_idx : read_result;
+            ssize_t cursor = 0;
+            while (cursor < forward_len) {
+                ssize_t wrote = write(client_fd, buffer + cursor,
+                                      (size_t)(forward_len - cursor));
+                if (wrote < 0) {
+                    if (errno == EINTR) {
+                        continue;
+                    }
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        struct timespec nap = {
+                            .tv_sec = 0,
+                            .tv_nsec = 1L * 1000L * 1000L,
+                        };
+                        nanosleep(&nap, nullptr);
+                        continue;
+                    }
+                    forward_len = (int)cursor;
+                    break;
+                }
+                cursor += wrote;
+            }
+            if (escape_idx >= 0) {
+                session_send_system_line(
+                    ctx, "[door] escape sequence detected, ending door game.");
+                break;
+            }
+        }
+
+        /* Hard runtime cap. */
+        if (started_at != (time_t)-1 &&
+            time(nullptr) - started_at > DOOR_RELAY_MAX_RUNTIME_SECONDS) {
+            session_send_system_line(
+                ctx, "[door] maximum runtime reached, terminating door game.");
+            break;
+        }
+
+        /* Honour a host shutdown signal. */
+        if (ctx->owner != nullptr && ctx->owner->shutdown_flag != nullptr &&
+            *ctx->owner->shutdown_flag != 0) {
             break;
         }
     }
 
-    if (ssh_flags >= 0) {
-        (void)door_relay_restore_flags(ssh_fd, ssh_flags);
-    }
-    close(client_fd);
+    ctx->output_buffering_enabled = was_buffering;
+    return true;
 }
 
 /**
  * @desc Fork and execute DOSBox headlessly with the given configuration.
- *       The parent returns immediately; the caller is responsible for
+ *       The parent receives the child PID; the caller is responsible for
  *       reaping the child process.
  * @param conf_path  Path to the dosbox.conf file.
+ * @return           Child PID, or -1 on error.
  */
-void launch_dosbox(const char *conf_path)
+static pid_t launch_dosbox(const char *conf_path)
 {
     if (conf_path == nullptr || conf_path[0] == '\0') {
-        return;
+        return -1;
     }
 
     pid_t pid = fork();
-    if (pid != 0) {
-        return;
+    if (pid < 0) {
+        return -1;
+    }
+    if (pid > 0) {
+        return pid;
     }
 
     if (setsid() < 0) {
@@ -609,12 +662,21 @@ void session_send_system_line(session_ctx_t *ctx, const char *message);
 /**
  * @desc High-level entry point: bind a loopback port, patch the user's
  *       dosbox.conf with a nullmodem serial section, launch DOSBox,
- *       and relay bytes between the SSH/Telnet fd and the DOSBox TCP
+ *       and relay bytes between the SSH/Telnet session and the DOSBox TCP
  *       connection.  Returns true if the relay ran, false on setup error.
  */
 bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
 {
     if (ctx == nullptr || entry == nullptr || entry->dosbox_conf[0] == '\0') {
+        return false;
+    }
+
+    host_t *host = ctx->owner;
+    if (host != nullptr && host->max_door_sessions > 0U &&
+        host->active_door_sessions >= host->max_door_sessions) {
+        session_send_system_line(
+            ctx,
+            "[door] too many active door sessions. Try again later.");
         return false;
     }
 
@@ -634,35 +696,64 @@ bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
         return false;
     }
 
-    launch_dosbox(temp_conf);
-
-    int ssh_fd = -1;
-    if (ctx->transport_kind == SESSION_TRANSPORT_SSH) {
-        ssh_fd = ssh_get_fd(ctx->session);
-    } else if (ctx->transport_kind == SESSION_TRANSPORT_TELNET) {
-        ssh_fd = ctx->telnet_fd;
-    }
-
-    if (ssh_fd >= 0) {
-        run_door_relay(ssh_fd, listen_fd);
-    } else {
+    pid_t child_pid = launch_dosbox(temp_conf);
+    if (child_pid < 0) {
+        close(listen_fd);
+        unlink(temp_conf);
+        free(temp_conf);
         session_send_system_line(ctx,
-            "[door] unable to obtain transport fd for relay.");
+            "[door] failed to launch dosbox.");
+        return false;
     }
 
+    if (host != nullptr) {
+        ++host->active_door_sessions;
+    }
+
+    session_send_system_line(ctx,
+        "[door] waiting for DOSBox to connect...");
+
+    int client_fd = door_relay_accept(listen_fd);
+    if (client_fd < 0) {
+        session_send_system_line(ctx,
+            "[door] DOSBox did not connect in time.  Verify dosbox is "
+            "installed and the configuration is valid.");
+        close(listen_fd);
+        unlink(temp_conf);
+        free(temp_conf);
+        kill(child_pid, SIGTERM);
+        for (int i = 0; i < 20; ++i) {
+            if (waitpid(child_pid, nullptr, WNOHANG) == child_pid) {
+                break;
+            }
+            struct timespec nap = {
+                .tv_sec = 0,
+                .tv_nsec = 50 * 1000 * 1000L,
+            };
+            nanosleep(&nap, nullptr);
+        }
+        (void)waitpid(child_pid, nullptr, 0);
+        return false;
+    }
+
+    session_send_system_line(ctx, "[door] connected.  Press Ctrl-] to exit.");
+
+    (void)door_relay_session_loop(ctx, client_fd);
+
+    close(client_fd);
     close(listen_fd);
     unlink(temp_conf);
     free(temp_conf);
 
-    /* Reap the DOSBox child launched by launch_dosbox. */
+    /* Reap the specific DOSBox child we launched. */
     for (int i = 0; i < 50; ++i) {
         int status = 0;
-        pid_t reaped = waitpid(-1, &status, WNOHANG);
-        if (reaped <= 0) {
+        pid_t reaped = waitpid(child_pid, &status, WNOHANG);
+        if (reaped == child_pid) {
             break;
         }
-        if (reaped > 0 && !WIFEXITED(status) && !WIFSIGNALED(status)) {
-            continue;
+        if (reaped < 0) {
+            break;
         }
         struct timespec nap = {
             .tv_sec = 0,
@@ -670,7 +761,13 @@ bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
         };
         nanosleep(&nap, nullptr);
     }
+    (void)waitpid(child_pid, nullptr, 0);
 
+    if (host != nullptr && host->active_door_sessions > 0U) {
+        --host->active_door_sessions;
+    }
+
+    session_send_system_line(ctx, "[door] session ended.");
     return true;
 }
 

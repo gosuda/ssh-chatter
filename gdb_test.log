@@ -1,0 +1,98 @@
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+[New Thread 0x7ffff615d6c0 (LWP 2511560)]
+[New Thread 0x7ffff59596c0 (LWP 2511561)]
+[Thread 0x7ffff59596c0 (LWP 2511561) exited]
+[New Thread 0x7ffff59596c0 (LWP 2511562)]
+[New Thread 0x7ffff51586c0 (LWP 2511563)]
+[SSH_SYNC] Initialized SSH Chatter Sync module.
+[SSH_SYNC] Retry thread started.
+
+[New Thread 0x7ffff49576c0 (LWP 2511564)]
+[SSH_SYNC] Retry thread stopped.
+
+[Thread 0x7ffff49576c0 (LWP 2511564) exited]
+[New Thread 0x7ffff49576c0 (LWP 2511565)]
+[Thread 0x7ffff49576c0 (LWP 2511565) exited]
+[New Thread 0x7ffff49576c0 (LWP 2511566)]
+[New Thread 0x7ffff2d366c0 (LWP 2511567)]
+[New Thread 0x7ffff25356c0 (LWP 2511568)]
+[Detaching after fork from child process 2511569]
+[New Thread 0x7ffff1d346c0 (LWP 2511570)]
+[files] unable to prepare storage directory (code: 13)
+[security] AI payload moderation disabled (set CHATTER_SECURITY_AI=on to enable)
+[security] loaded version/IP ban rule: SSH-2.0-Go* @ 34.80.0.0/12 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Go* @ 34.96.0.0/14 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-paramiko_* @ 52.78.0.0/15 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-AsyncSSH_* @ 20.214.0.0/15 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-libssh_0.4* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-libssh_0.5* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-libssh_0.6* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-libssh_0.7* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-libssh_0.8* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-libssh_0.9* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-paramiko* @ 3.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-paramiko_1.* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-paramiko_2.* @ 44.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-JSch* @ 35.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-JSch_0.1.55 @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-JSch_0.1.53 @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-JSch_0.1.54 @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-PuTTY* @ 23.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-PuTTY_Release_0.6* @ 52.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-PuTTY_Release_0.7* @ 104.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-masscan* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Nmap* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Go-SSH* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Python-requests* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-PHPSecLib* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Dropbear* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-BlackRose* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-PumaBot* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-SSH-Client-v1.* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-sshj* @ 0.0.0.0/0 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Java* @ 13.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Python* @ 104.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Curl* @ 172.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Ruby* @ 18.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-SSH* @ 134.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-1.99* @ 0.0.0.0/0 (version/IP policy)
+[security] invalid version pattern ''
+[security] loaded version/IP ban rule: SSH-2.0-Go* @ 147.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Python* @ 13.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-libssh* @ 192.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-paramiko* @ 172.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-JSch* @ 10.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Curl* @ 103.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-Go* @ 167.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2.0-paramiko* @ 69.0.0.0/8 (version/IP policy)
+[security] loaded version/IP ban rule: SSH-2[host] data directory permissions are too loose (code: 13)
+[host] data directory permissions are too loose (code: 13)
+[host] data directory permissions are too loose (code: 13)
+[host] data directory permissions are too loose (code: 13)
+[host] data directory permissions are too loose (code: 13)
+[mailbox] failed to prepare mailbox directory (code: 13)
+[New Thread 0x7fffebfff6c0 (LWP 2511571)]
+[New Thread 0x7fffeb7fe6c0 (LWP 2511572)]
+[New Thread 0x7fffeaffd6c0 (LWP 2511573)]
+[New Thread 0x7fffea7fc6c0 (LWP 2511574)]
+[New Thread 0x7ffff13ea6c0 (LWP 2511608)]
+[Thread 0x7ffff13ea6c0 (LWP 2511608) exited]
+[New Thread 0x7ffff13ea6c0 (LWP 2511609)]
+[New Thread 0x7fffe9ffb6c0 (LWP 2511610)]
+[New Thread 0x7fffe97fa6c0 (LWP 2511611)]
+[session] Socket error: disconnected (code: 71)
+[Thread 0x7fffe9ffb6c0 (LWP 2511610) exited]
+[Thread 0x7ffff13ea6c0 (LWP 2511609) exited]
+[Thread 0x7fffe97fa6c0 (LWP 2511611) exited]
+
+Thread 1 "ssh-chatter" received signal SIGHUP, Hangup.
+__syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+warning: 56	../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S: 그런 파일이나 디렉터리가 없습니다
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x00007ffff75df668 in __internal_syscall_cancel (a1=a1@entry=140737488327952, a2=a2@entry=1, a3=a3@entry=2000, a4=a4@entry=0, a5=a5@entry=0, a6=a6@entry=0, nr=7) at ./nptl/cancellation.c:49
+#2  0x00007ffff75df6ad in __syscall_cancel (a1=a1@entry=140737488327952, a2=a2@entry=1, a3=a3@entry=2000, a4=a4@entry=0, a5=a5@entry=0, a6=a6@entry=0, nr=7) at ./nptl/cancellation.c:75
+#3  0x00007ffff7653a06 in __GI___poll (fds=fds@entry=0x7fffffff9510, nfds=nfds@entry=1, timeout=timeout@entry=2000) at ../sysdeps/unix/sysv/linux/poll.c:29
+#4  0x0000555555614a4a in poll (__fds=<optimized out>, __nfds=<optimized out>, __timeout=<optimized out>, __fds=<optimized out>, __nfds=<optimized out>, __timeout=<optimized out>) at /usr/include/x86_64-linux-gnu/bits/poll2.h:44
+#5  host_serve (host=<optimized out>, bind_addr=<optimized out>, port=<optimized out>, key_directory=<optimized out>, telnet_bind_addr=<optimized out>, telnet_port=<optimized out>, json_bind_addr=<optimized out>, json_port=<optimized out>) at src/host/runtime/serve.c:227
+#6  0x0000555555577ed7 in main (argc=<optimized out>, argv=<optimized out>) at src/main.c:563

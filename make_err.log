@@ -1,0 +1,222 @@
+gcc -std=c2x -Ofast -Wno-error=deprecated-declarations -DSSH_CHATTER_USE_GC=0 -DSSH_CHATTER_HAVE_UCHARDET -I/usr/include/uchardet  -DSSH_CHATTER_HAVE_ICU  -I include -I /usr/local/include -I/usr/include -I/usr/include/libssh -I/usr/include/x86_64-linux-gnu -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 -Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion -fstack-protector-strong -fno-common -fPIC -ftls-model=global-dynamic -g -D_FORTIFY_SOURCE=3 -march=native -mtune=native -fomit-frame-pointer -fno-signed-zeros -funroll-loops -falign-functions=32 -falign-loops=32 -falign-jumps=32 -falign-labels=32 -ftree-vectorize -fno-math-errno -freciprocal-math -fmerge-all-constants -fipa-pta -fdevirtualize-at-ltrans -fpeel-loops -fweb -fdata-sections -ffunction-sections -fno-asynchronous-unwind-tables -fstrict-aliasing -fno-trapping-math -fstrict-overflow -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -fipa-pure-const -fipa-cp-clone -floop-nest-optimize -fgraphite-identity -floop-interchange -floop-strip-mine -floop-block -fno-semantic-interposition -fprefetch-loop-arrays -fivopts -faggressive-loop-optimizations -fipa-sra -fmodulo-sched -fmodulo-sched-allow-regmoves -ftracer -fvisibility=hidden -fno-plt -funsafe-math-optimizations -ftree-loop-vectorize -ftree-slp-vectorize -fno-exceptions -fdelete-null-pointer-checks -MMD -MP -flto=3 -fuse-linker-plugin -c src/host_aggregate.c -o build/src/host_aggregate.o
+In file included from src/host/session_output.c:12,
+                 from src/host_aggregate.c:20:
+src/host/output/auth.c: In function ‘session_authenticate’:
+src/host/output/auth.c:112:17: warning: ‘ssh_message_auth_password’ is deprecated [-Wdeprecated-declarations]
+  112 |                 const char *password = ssh_message_auth_password(message);
+      |                 ^~~~~
+In file included from include/ssh_chatter/host.h:23,
+                 from include/ssh_chatter/translation_helpers.h:6,
+                 from src/host_aggregate.c:14:
+/usr/include/libssh/server.h:306:39: note: declared here
+  306 | SSH_DEPRECATED LIBSSH_API const char *ssh_message_auth_password(ssh_message msg);
+      |                                       ^~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/auth.c:146:17: warning: ‘ssh_message_auth_password’ is deprecated [-Wdeprecated-declarations]
+  146 |                 const char *password = ssh_message_auth_password(message);
+      |                 ^~~~~
+/usr/include/libssh/server.h:306:39: note: declared here
+  306 | SSH_DEPRECATED LIBSSH_API const char *ssh_message_auth_password(ssh_message msg);
+      |                                       ^~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/auth.c: In function ‘session_prepare_shell’:
+src/host/output/auth.c:304:25: warning: ‘ssh_message_channel_request_pty_width’ is deprecated [-Wdeprecated-declarations]
+  304 |                         ssh_message_channel_request_pty_width(message);
+      |                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/include/libssh/server.h:366:31: note: declared here
+  366 | SSH_DEPRECATED LIBSSH_API int ssh_message_channel_request_pty_width(ssh_message msg);
+      |                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/auth.c:306:25: warning: ‘ssh_message_channel_request_pty_height’ is deprecated [-Wdeprecated-declarations]
+  306 |                         ssh_message_channel_request_pty_height(message);
+      |                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/include/libssh/server.h:367:31: note: declared here
+  367 | SSH_DEPRECATED LIBSSH_API int ssh_message_channel_request_pty_height(ssh_message msg);
+      |                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from src/host/runtime.c:13,
+                 from src/host_aggregate.c:24:
+src/host/runtime/session_lifecycle.c: In function ‘session_destroy’:
+src/host/runtime/session_lifecycle.c:713:5: warning: "/*" within comment [-Wcomment]
+  713 |     /* Duplicate the MOTD string because strtok_r modifies the source string */
+src/host/runtime/session_lifecycle.c:758:9: error: implicit declaration of function ‘session_ask_ui_mode’; did you mean ‘session_rss_move’? [-Wimplicit-function-declaration]
+  758 |         session_ask_ui_mode(ctx);
+      |         ^~~~~~~~~~~~~~~~~~~
+      |         session_rss_move
+src/host/runtime/session_lifecycle.c: At top level:
+src/host/runtime/session_lifecycle.c:887:5: warning: data definition has no type or storage class
+  887 |     session_clear_input_without_prompt(ctx);
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/runtime/session_lifecycle.c:887:5: error: type defaults to ‘int’ in declaration of ‘session_clear_input_without_prompt’ [-Wimplicit-int]
+src/host/runtime/session_lifecycle.c:887:5: error: parameter names (without types) in function declaration [-Wdeclaration-missing-parameter-type]
+src/host/runtime/session_lifecycle.c:887:5: error: conflicting types for ‘session_clear_input_without_prompt’; have ‘int()’
+In file included from src/host/session_output.c:9:
+src/host/output/bbs_editor.c:1570:13: note: previous definition of ‘session_clear_input_without_prompt’ with type ‘void(session_ctx_t *)’ {aka ‘void(struct session_ctx *)’}
+ 1570 | static void session_clear_input_without_prompt(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/runtime/session_lifecycle.c:888:31: error: expected ‘)’ before ‘true’
+  888 |     session_render_prompt(ctx, true);
+      |                               ^~~~~
+      |                               )
+src/host/runtime/session_lifecycle.c:892:5: error: expected identifier or ‘(’ before ‘while’
+  892 |     while (!ctx->should_exit) {
+      |     ^~~~~
+src/host/runtime/session_lifecycle.c:1563:5: warning: data definition has no type or storage class
+ 1563 |     session_translation_flush_ready(ctx);
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/runtime/session_lifecycle.c:1563:5: error: type defaults to ‘int’ in declaration of ‘session_translation_flush_ready’ [-Wimplicit-int]
+src/host/runtime/session_lifecycle.c:1563:5: error: parameter names (without types) in function declaration [-Wdeclaration-missing-parameter-type]
+src/host/runtime/session_lifecycle.c:1563:5: error: conflicting types for ‘session_translation_flush_ready’; have ‘int()’
+In file included from src/host/eliza_storage.c:10,
+                 from src/host_aggregate.c:19:
+src/host/storage/translation.c:697:13: note: previous definition of ‘session_translation_flush_ready’ with type ‘void(session_ctx_t *)’ {aka ‘void(struct session_ctx *)’}
+  697 | static void session_translation_flush_ready(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/runtime/session_lifecycle.c:1565:5: error: expected identifier or ‘(’ before ‘if’
+ 1565 |     if (!ctx->should_exit && ctx->input_length > 0U) {
+      |     ^~
+src/host/runtime/session_lifecycle.c:1572:5: error: expected identifier or ‘(’ before ‘if’
+ 1572 |     if (ctx->has_joined_room) {
+      |     ^~
+src/host/runtime/session_lifecycle.c:1613:5: error: expected identifier or ‘(’ before ‘if’
+ 1613 |     if (ctx->owner != nullptr) {
+      |     ^~
+src/host/runtime/session_lifecycle.c:1617:5: warning: data definition has no type or storage class
+ 1617 |     session_destroy(ctx);
+      |     ^~~~~~~~~~~~~~~
+src/host/runtime/session_lifecycle.c:1617:5: error: type defaults to ‘int’ in declaration of ‘session_destroy’ [-Wimplicit-int]
+src/host/runtime/session_lifecycle.c:1617:5: error: parameter names (without types) in function declaration [-Wdeclaration-missing-parameter-type]
+src/host/runtime/session_lifecycle.c:1617:5: error: conflicting types for ‘session_destroy’; have ‘int()’
+src/host/runtime/session_lifecycle.c:256:13: note: previous definition of ‘session_destroy’ with type ‘void(session_ctx_t *)’ {aka ‘void(struct session_ctx *)’}
+  256 | static void session_destroy(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~
+In file included from include/ssh_chatter/host.h:16:
+include/ssh_chatter/memory_manager.h:19:17: error: expected declaration specifiers or ‘...’ before ‘(’ token
+   19 | #define nullptr (void *)(NULL)
+      |                 ^
+src/host/runtime/session_lifecycle.c:1619:27: note: in expansion of macro ‘nullptr’
+ 1619 |     SESSION_THREAD_RETURN(nullptr);
+      |                           ^~~~~~~
+src/host/runtime/session_lifecycle.c:1622:1: error: expected identifier or ‘(’ before ‘}’ token
+ 1622 | }
+      | ^
+In file included from src/host/runtime.c:14:
+src/host/runtime/init.c: In function ‘host_ai_chat_memory_collect_tokens’:
+src/host/runtime/init.c:1048:14: warning: declaration of ‘buffer’ shadows a global declaration [-Wshadow]
+ 1048 |         char buffer[32];
+      |              ^~~~~~
+src/host/runtime/session_lifecycle.c:890:10: note: shadowed declaration is here
+  890 |     char buffer[SSH_CHATTER_MAX_INPUT_LEN];
+      |          ^~~~~~
+In file included from src/host/transport.c:8,
+                 from src/host_aggregate.c:17:
+src/host/transport/color_and_palette.c: At top level:
+src/host/transport/color_and_palette.c:1310:14: warning: ‘session_thread’ used but never defined
+ 1310 | static void *session_thread(void *arg);
+      |              ^~~~~~~~~~~~~~
+src/host/runtime/session_lifecycle.c:214:13: warning: ‘session_epoch_free’ defined but not used [-Wunused-function]
+  214 | static void session_epoch_free(void *ptr)
+      |             ^~~~~~~~~~~~~~~~~~
+src/host/runtime/session_lifecycle.c:2:13: warning: ‘session_attempt_handshake_restart’ defined but not used [-Wunused-function]
+    2 | static bool session_attempt_handshake_restart(session_ctx_t *ctx,
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from src/host/runtime.c:12:
+src/host/runtime/telnet.c:113:13: warning: ‘session_runtime_bind’ defined but not used [-Wunused-function]
+  113 | static bool session_runtime_bind(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~
+In file included from src/host/runtime.c:10:
+src/host/runtime/user_commands.c:537:13: warning: ‘host_is_ip_banned’ defined but not used [-Wunused-function]
+  537 | static bool host_is_ip_banned(host_t *host, const char *ip)
+      |             ^~~~~~~~~~~~~~~~~
+src/host/runtime/user_commands.c:397:1: warning: ‘host_register_join_attempt’ defined but not used [-Wunused-function]
+  397 | host_register_join_attempt(host_t *host, const char *username, const char *ip)
+      | ^~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from src/host/runtime.c:8:
+src/host/runtime/session_create.c:233:13: warning: ‘session_configure_ssh_options’ defined but not used [-Wunused-function]
+  233 | static void session_configure_ssh_options(ssh_session session)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/runtime/session_create.c:150:13: warning: ‘session_configure_tcp_keepalive’ defined but not used [-Wunused-function]
+  150 | static void session_configure_tcp_keepalive(ssh_session session)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from src/host/bbs_games.c:9,
+                 from src/host_aggregate.c:22:
+src/host/games/tetris.c:472:13: warning: ‘session_game_tetris_process_raw_input’ defined but not used [-Wunused-function]
+  472 | static bool session_game_tetris_process_raw_input(session_ctx_t *ctx, char ch)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/auth.c:760:13: warning: ‘session_is_captcha_exempt’ defined but not used [-Wunused-function]
+  760 | static bool session_is_captcha_exempt(const session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/auth.c:671:13: warning: ‘session_run_captcha’ defined but not used [-Wunused-function]
+  671 | static bool session_run_captcha(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~
+src/host/output/auth.c:289:12: warning: ‘session_prepare_shell’ defined but not used [-Wunused-function]
+  289 | static int session_prepare_shell(session_ctx_t *ctx)
+      |            ^~~~~~~~~~~~~~~~~~~~~
+src/host/output/auth.c:271:13: warning: ‘session_install_channel_callbacks’ defined but not used [-Wunused-function]
+  271 | static void session_install_channel_callbacks(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/auth.c:189:12: warning: ‘session_accept_channel’ defined but not used [-Wunused-function]
+  189 | static int session_accept_channel(session_ctx_t *ctx)
+      |            ^~~~~~~~~~~~~~~~~~~~~~
+src/host/output/auth.c:28:12: warning: ‘session_authenticate’ defined but not used [-Wunused-function]
+   28 | static int session_authenticate(session_ctx_t *ctx)
+      |            ^~~~~~~~~~~~~~~~~~~~
+In file included from src/host/session_output.c:11:
+src/host/output/history.c:525:13: warning: ‘session_consume_escape_sequence’ defined but not used [-Wunused-function]
+  525 | static bool session_consume_escape_sequence(session_ctx_t *ctx, char ch)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/history.c:6:13: warning: ‘session_history_record’ defined but not used [-Wunused-function]
+    6 | static void session_history_record(session_ctx_t *ctx, const char *line)
+      |             ^~~~~~~~~~~~~~~~~~~~~~
+In file included from src/host/session_output.c:10:
+src/host/output/sink.c:19:13: warning: ‘session_try_command_completion’ defined but not used [-Wunused-function]
+   19 | static bool session_try_command_completion(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/bbs_editor.c:1565:13: warning: ‘session_clear_input’ defined but not used [-Wunused-function]
+ 1565 | static void session_clear_input(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~
+src/host/output/bbs_editor.c:1495:13: warning: ‘session_local_backspace’ defined but not used [-Wunused-function]
+ 1495 | static void session_local_backspace(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/bbs_editor.c:1242:13: warning: ‘session_render_prelogin_banner’ defined but not used [-Wunused-function]
+ 1242 | static void session_render_prelogin_banner(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/bbs_editor.c:873:13: warning: ‘session_bbs_search_keyword’ defined but not used [-Wunused-function]
+  873 | static bool session_bbs_search_keyword(session_ctx_t *ctx, const char *keyword,
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/bbs_editor.c:829:13: warning: ‘session_bbs_insert_clipboard’ defined but not used [-Wunused-function]
+  829 | static bool session_bbs_insert_clipboard(session_ctx_t *ctx, char *status,
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/bbs_editor.c:767:13: warning: ‘session_bbs_remove_line_range’ defined but not used [-Wunused-function]
+  767 | static bool session_bbs_remove_line_range(session_ctx_t *ctx, size_t start,
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/output/bbs_editor.c:715:13: warning: ‘session_bbs_copy_line_range’ defined but not used [-Wunused-function]
+  715 | static bool session_bbs_copy_line_range(const session_ctx_t *ctx, size_t start,
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from src/host/session_output.c:8:
+src/host/output/messaging.c:145:13: warning: ‘session_telnet_capture_startup_metadata’ defined but not used [-Wunused-function]
+  145 | static void session_telnet_capture_startup_metadata(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from src/host/eliza_storage.c:12:
+src/host/storage/telnet.c:1028:13: warning: ‘session_telnet_prompt_unicode_check’ defined but not used [-Wunused-function]
+ 1028 | static bool session_telnet_prompt_unicode_check(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/storage/telnet.c:377:13: warning: ‘session_telnet_initialize’ defined but not used [-Wunused-function]
+  377 | static void session_telnet_initialize(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from src/host/transport.c:10:
+src/host/transport/session_setup.c:421:13: warning: ‘session_apply_granted_privileges’ defined but not used [-Wunused-function]
+  421 | static void session_apply_granted_privileges(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/transport/session_setup.c:393:13: warning: ‘session_assign_lan_privileges’ defined but not used [-Wunused-function]
+  393 | static void session_assign_lan_privileges(session_ctx_t *ctx)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+src/host/transport/session_setup.c:103:1: warning: ‘session_probe_client_hostkey_algorithms’ defined but not used [-Wunused-function]
+  103 | session_probe_client_hostkey_algorithms(ssh_session session,
+      | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from src/host/core.c:7,
+                 from src/host_aggregate.c:16:
+src/host/core/ip_ban.c:868:1: warning: ‘host_version_ip_should_ban’ defined but not used [-Wunused-function]
+  868 | host_version_ip_should_ban(host_t *host, const char *version, const char *ip,
+      | ^~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from src/host/core.c:6:
+src/host/core/system_config.c:11:13: warning: ‘host_is_system_reserved_username’ defined but not used [-Wunused-function]
+   11 | static bool host_is_system_reserved_username(host_t *host, const char *username)
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+make: *** [Makefile:161: build/src/host_aggregate.o] 오류 1

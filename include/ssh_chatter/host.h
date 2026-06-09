@@ -1166,6 +1166,8 @@ typedef struct host {
     char ai_persona_b_alias[64];
     door_game_entry_t door_games[SSH_CHATTER_DOOR_GAME_LIMIT];
     size_t door_game_count;
+    size_t active_door_sessions;
+    size_t max_door_sessions;
     char rss_state_file_path[PATH_MAX];
     eliza_memory_entry_t eliza_memory[SSH_CHATTER_ELIZA_MEMORY_MAX];
     size_t eliza_memory_count;

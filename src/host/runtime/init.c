@@ -15,7 +15,17 @@ static void host_door_games_load_from_env(host_t *host)
     }
 
     host->door_game_count = 0U;
+    host->active_door_sessions = 0U;
+    host->max_door_sessions = 0U;
     memset(host->door_games, 0, sizeof(host->door_games));
+
+    const char *max_sessions_env = getenv("CHATTER_DOOR_MAX_SESSIONS");
+    if (max_sessions_env != nullptr && max_sessions_env[0] != '\0') {
+        long parsed = strtol(max_sessions_env, nullptr, 10);
+        if (parsed > 0) {
+            host->max_door_sessions = (size_t)parsed;
+        }
+    }
 
     for (size_t idx = 1U; idx <= SSH_CHATTER_DOOR_GAME_LIMIT; ++idx) {
         char env_name[32];

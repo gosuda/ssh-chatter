@@ -67,6 +67,52 @@ static void ddial_relay_broadcast_line(host_t *host, const char *line)
         return;
     }
 
+    // Try Retro-Dial format: #number(channel:status) message
+    const char *p = line;
+    if (*p == '#') {
+        ++p;
+        while (*p >= '0' && *p <= '9') {
+            ++p;
+        }
+        if (*p == '(') {
+            const char *paren_end = strchr(p, ')');
+            if (paren_end != nullptr && paren_end[1] == ' ') {
+                size_t handle_len = (size_t)(paren_end - line);
+                if (handle_len > 0 && handle_len < SSH_CHATTER_USERNAME_LEN) {
+                    char handle[SSH_CHATTER_USERNAME_LEN];
+                    memcpy(handle, line, handle_len);
+                    handle[handle_len] = '\0';
+                    const char *message = paren_end + 2;
+                    if (message[0] != '\0') {
+                        host_post_client_message(host, handle, message, nullptr,
+                                                 nullptr, false);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    // Try generic [handle] message format
+    if (line[0] == '[') {
+        const char *end = strchr(line + 1, ']');
+        if (end != nullptr && end[1] == ' ') {
+            size_t handle_len = (size_t)(end - line - 1);
+            if (handle_len > 0 && handle_len < SSH_CHATTER_USERNAME_LEN) {
+                char handle[SSH_CHATTER_USERNAME_LEN];
+                memcpy(handle, line + 1, handle_len);
+                handle[handle_len] = '\0';
+                const char *message = end + 2;
+                if (message[0] != '\0') {
+                    host_post_client_message(host, handle, message, nullptr,
+                                             nullptr, false);
+                    return;
+                }
+            }
+        }
+    }
+
+    // Fallback: broadcast as raw DDial line
     char prefixed[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(prefixed, sizeof(prefixed),
              "\033[1;33m[DDial]\033[0m %s", line);

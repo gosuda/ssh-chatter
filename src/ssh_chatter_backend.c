@@ -176,6 +176,24 @@ char *session_show_welcome_banner(const char *path)
         }
     }
 
+    /* Normalize CRLF to LF only; preserve consecutive LFs. */
+    {
+        size_t out = 0;
+        for (size_t in = 0; in < bytes_read; ++in) {
+            if (banner_content[in] == '\r') {
+                if (in + 1 < bytes_read && banner_content[in + 1] == '\n') {
+                    continue;
+                }
+                banner_content[out++] = '\n';
+            } else {
+                banner_content[out++] = banner_content[in];
+            }
+        }
+        banner_content[out] = '\0';
+        bytes_read = out;
+        file_size = (long)out;
+    }
+
     // Ensure there is at least a newline at the end if the file didn't have one
     if (file_size == 0 || banner_content[file_size - 1] != '\n') {
         char *temp = (char *)sshc_gc_realloc(banner_content, (size_t)file_size + 2);

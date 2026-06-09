@@ -1,3 +1,6 @@
 [submodule "lib/libttak"]
 	path = lib/libttak
 	url = https://github.com/religiya-serdtsa/libttak
+[submodule "lib/inih"]
+	path = lib/inih
+	url = https://github.com/benhoyt/inih.git

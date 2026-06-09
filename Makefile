@@ -20,6 +20,7 @@ SRC_DIR := src
 INCLUDE_DIR := include
 BUILD_DIR := build
 TTAK_DIR := lib/libttak
+INIH_DIR := lib/inih
 HAVE_GLOBAL_TTAK := $(shell test -f /usr/local/lib/libttak.a && echo 1 || echo 0)
 ifeq ($(HAVE_GLOBAL_TTAK),1)
 TTAK_LIB := /usr/local/lib/libttak.a
@@ -59,7 +60,7 @@ CFLAGS = -std=c2x -Ofast \
               -Wno-error=deprecated-declarations -DSSH_CHATTER_USE_GC=$(ENABLE_GC) \
               $(if $(filter 1,$(HAVE_UCHARDET)),-DSSH_CHATTER_HAVE_UCHARDET $(CFLAGS_UCHARDET)) \
               $(if $(filter 1,$(HAVE_ICU)),-DSSH_CHATTER_HAVE_ICU $(CFLAGS_ICU)) \
-              -I $(INCLUDE_DIR) $(CFLAGS_TTAK) $(CFLAGS_LIBSSH) $(CFLAGS_LIBCURL) -I /usr/local/include -I/usr/include \
+              -I $(INCLUDE_DIR) -I $(INIH_DIR) $(CFLAGS_TTAK) $(CFLAGS_LIBSSH) $(CFLAGS_LIBCURL) -I /usr/local/include -I/usr/include \
               -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
               -Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
               -fstack-protector-strong -fno-common \
@@ -130,7 +131,7 @@ endif
 TARGET := ssh-chatter
 SHARED_TARGET := libssh_chatter_backend.so
 SRC := $(filter-out $(EXCLUDED_SRC),\
-       $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/stubs/*.c) $(wildcard $(SRC_DIR)/utils/*.c))
+       $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/stubs/*.c) $(wildcard $(SRC_DIR)/utils/*.c) $(INIH_DIR)/ini.c)
 OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRC))
 SHARED_SRC := src/translator.c src/translation_helpers.c src/ssh_chatter_backend.c src/memory_manager.c
 SHARED_OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SHARED_SRC))

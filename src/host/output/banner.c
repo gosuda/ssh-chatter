@@ -52,6 +52,9 @@ static void session_render_banner_text(session_ctx_t *ctx, const char *banner)
         }
 
         if (is_ans) {
+            static const char cursor_home[] = "\033[H";
+            session_channel_write(ctx, cursor_home, sizeof(cursor_home) - 1U);
+
             int state = 0;
             char write_buf[1024];
             size_t write_idx = 0;

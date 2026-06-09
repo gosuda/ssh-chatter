@@ -27,6 +27,7 @@
 #include <limits.h>
 
 #include "ssh_chatter/host.h"
+#include "ini.h"
 
 #ifndef nullptr
 #define nullptr (void *)(NULL)
@@ -46,13 +47,13 @@ static int door_relay_set_nonblocking(int fd)
 }
 
 /**
- * @desc Bind a TCP listener to 127.0.0.1 on an ephemeral port.
- * @param port  Output pointer receiving the allocated port number.
+ * @desc Bind a TCP listener to 127.0.0.1 on the specified port.
+ * @param port  Port number to bind (as specified in dosbox.conf).
  * @return      Listening socket fd, or -1 on error (errno set).
  */
-int setup_door_listener(int *port)
+int setup_door_listener(int port)
 {
-    if (port == nullptr) {
+    if (port <= 0 || port > 65535) {
         errno = EINVAL;
         return -1;
     }
@@ -73,18 +74,10 @@ int setup_door_listener(int *port)
     struct sockaddr_in addr = {
         .sin_family = AF_INET,
         .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
-        .sin_port = 0,
+        .sin_port = htons((uint16_t)port),
     };
 
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        int saved_errno = errno;
-        close(fd);
-        errno = saved_errno;
-        return -1;
-    }
-
-    socklen_t addrlen = sizeof(addr);
-    if (getsockname(fd, (struct sockaddr *)&addr, &addrlen) < 0) {
         int saved_errno = errno;
         close(fd);
         errno = saved_errno;
@@ -98,7 +91,6 @@ int setup_door_listener(int *port)
         return -1;
     }
 
-    *port = (int)ntohs(addr.sin_port);
     return fd;
 }
 
@@ -375,125 +367,6 @@ static pid_t launch_dosbox(const char *conf_path)
  * @param game_binary  Command to run after mounting (e.g., "LORD.EXE").
  * @return             Newly-allocated configuration string, or nullptr.
  */
-/**
- * @desc Inject or replace a [serial] section inside an existing dosbox.conf,
- *       write the result to a temporary file, and return its path.
- *       The caller must free() the returned pointer and unlink() the file.
- */
-static char *door_relay_build_temp_conf(const char *original_conf, int port)
-{
-    FILE *in = fopen(original_conf, "r");
-    if (in == nullptr) {
-        return nullptr;
-    }
-
-    if (fseek(in, 0, SEEK_END) != 0) {
-        fclose(in);
-        return nullptr;
-    }
-    long size = ftell(in);
-    if (size < 0 || fseek(in, 0, SEEK_SET) != 0) {
-        fclose(in);
-        return nullptr;
-    }
-
-    char *buf = nullptr;
-    if (size > 0) {
-        buf = (char *)malloc((size_t)size + 1U);
-        if (buf == nullptr) {
-            fclose(in);
-            return nullptr;
-        }
-        size_t n = fread(buf, 1, (size_t)size, in);
-        if (n != (size_t)size) {
-            free(buf);
-            fclose(in);
-            return nullptr;
-        }
-        buf[size] = '\0';
-    }
-    fclose(in);
-
-    char temp_path[PATH_MAX];
-    snprintf(temp_path, sizeof(temp_path), "/tmp/door_relay_XXXXXX.conf");
-    int fd = mkstemps(temp_path, 5);
-    if (fd < 0) {
-        free(buf);
-        return nullptr;
-    }
-
-    FILE *out = fdopen(fd, "w");
-    if (out == nullptr) {
-        close(fd);
-        unlink(temp_path);
-        free(buf);
-        return nullptr;
-    }
-
-    if (buf != nullptr) {
-        char *serial_start = strstr(buf, "[serial]");
-        if (serial_start != nullptr) {
-            fwrite(buf, 1, (size_t)(serial_start - buf), out);
-            fprintf(out, "[serial]\n");
-            fprintf(out, "serial1=nullmodem client:127.0.0.1:%d\n", port);
-            char *after_serial = serial_start + strlen("[serial]");
-            char *next_section = strchr(after_serial, '[');
-            if (next_section != nullptr) {
-                fwrite(next_section, 1, strlen(next_section), out);
-            }
-        } else {
-            fprintf(out, "[serial]\n");
-            fprintf(out, "serial1=nullmodem client:127.0.0.1:%d\n\n", port);
-            fprintf(out, "%s", buf);
-        }
-        free(buf);
-    } else {
-        fprintf(out, "[serial]\n");
-        fprintf(out, "serial1=nullmodem client:127.0.0.1:%d\n", port);
-    }
-
-    fclose(out);
-    return strdup(temp_path);
-}
-
-char *door_relay_build_dosbox_conf(int port, const char *game_dir,
-                                   const char *game_binary)
-{
-    if (port <= 0 || port > 65535 || game_dir == nullptr ||
-        game_dir[0] == '\0' || game_binary == nullptr ||
-        game_binary[0] == '\0') {
-        return nullptr;
-    }
-
-    static const char kTemplate[] =
-        "[serial]\n"
-        "serial1=nullmodem client:127.0.0.1:%d\n"
-        "\n"
-        "[autoexec]\n"
-        "mount c \"%s\"\n"
-        "c:\n"
-        "%s\n";
-
-    int need = snprintf(nullptr, 0, kTemplate, port, game_dir, game_binary);
-    if (need < 0) {
-        return nullptr;
-    }
-
-    size_t size = (size_t)need + 1U;
-    char *buf = malloc(size);
-    if (buf == nullptr) {
-        return nullptr;
-    }
-
-    int wrote = snprintf(buf, size, kTemplate, port, game_dir, game_binary);
-    if (wrote < 0 || wrote >= (int)size) {
-        free(buf);
-        return nullptr;
-    }
-
-    return buf;
-}
-
 #define ZMODEM_IO_CHUNK 4096
 #define ZMODEM_POLL_TIMEOUT_MS 200
 
@@ -665,6 +538,28 @@ void session_send_system_line(session_ctx_t *ctx, const char *message);
  *       and relay bytes between the SSH/Telnet session and the DOSBox TCP
  *       connection.  Returns true if the relay ran, false on setup error.
  */
+typedef struct {
+    int port;
+    bool found;
+} serial_parse_ctx_t;
+
+static int door_relay_ini_handler(void* user, const char* section,
+                                  const char* name, const char* value)
+{
+    serial_parse_ctx_t *ctx = (serial_parse_ctx_t*)user;
+    if (strcasecmp(section, "serial") == 0 && strcasecmp(name, "serial1") == 0) {
+        const char *last_colon = strrchr(value, ':');
+        if (last_colon != nullptr) {
+            int port = atoi(last_colon + 1);
+            if (port > 0 && port <= 65535) {
+                ctx->port = port;
+                ctx->found = true;
+            }
+        }
+    }
+    return 1;
+}
+
 bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
 {
     if (ctx == nullptr || entry == nullptr || entry->dosbox_conf[0] == '\0') {
@@ -679,27 +574,28 @@ bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
         return false;
     }
 
-    int port = 0;
-    int listen_fd = setup_door_listener(&port);
+    serial_parse_ctx_t parse_ctx = { .port = 0, .found = false };
+    if (ini_parse(entry->dosbox_conf, door_relay_ini_handler, &parse_ctx) < 0) {
+        session_send_system_line(ctx,
+            "[door] failed to parse dosbox.conf.");
+        return false;
+    }
+    if (!parse_ctx.found) {
+        session_send_system_line(ctx,
+            "[door] serial1 port not found in dosbox.conf.");
+        return false;
+    }
+
+    int listen_fd = setup_door_listener(parse_ctx.port);
     if (listen_fd < 0) {
         session_send_system_line(ctx,
             "[door] failed to bind relay listener.");
         return false;
     }
 
-    char *temp_conf = door_relay_build_temp_conf(entry->dosbox_conf, port);
-    if (temp_conf == nullptr) {
-        close(listen_fd);
-        session_send_system_line(ctx,
-            "[door] failed to build temporary dosbox.conf.");
-        return false;
-    }
-
-    pid_t child_pid = launch_dosbox(temp_conf);
+    pid_t child_pid = launch_dosbox(entry->dosbox_conf);
     if (child_pid < 0) {
         close(listen_fd);
-        unlink(temp_conf);
-        free(temp_conf);
         session_send_system_line(ctx,
             door_localized(ctx, DOOR_MSG_FAILED_LAUNCH));
         return false;
@@ -717,8 +613,6 @@ bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
         session_send_system_line(ctx,
             door_localized(ctx, DOOR_MSG_TIMEOUT));
         close(listen_fd);
-        unlink(temp_conf);
-        free(temp_conf);
         kill(child_pid, SIGTERM);
         for (int i = 0; i < 20; ++i) {
             if (waitpid(child_pid, nullptr, WNOHANG) == child_pid) {
@@ -740,8 +634,6 @@ bool door_relay_run_session(session_ctx_t *ctx, const door_game_entry_t *entry)
 
     close(client_fd);
     close(listen_fd);
-    unlink(temp_conf);
-    free(temp_conf);
 
     /* Reap the specific DOSBox child we launched. */
     for (int i = 0; i < 50; ++i) {

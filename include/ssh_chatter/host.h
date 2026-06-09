@@ -1030,8 +1030,10 @@ typedef struct ddial_relay {
     char host[256];
     int port;
     char login_key[64];
+    char handle[SSH_CHATTER_USERNAME_LEN];
     char recv_buffer[SSH_CHATTER_MESSAGE_LIMIT * 4];
     size_t recv_buf_len;
+    struct timespec last_send_time;
 } ddial_relay_t;
 
 typedef struct host {

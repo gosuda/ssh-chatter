@@ -69,6 +69,7 @@ if [[ ! -f "$CONFIG_DIR/chatter.env" ]]; then
 # CHATTER_DDIAL_HOST=magviz.ca
 # CHATTER_DDIAL_PORT=23
 # CHATTER_DDIAL_KEY=
+# CHATTER_DDIAL_HANDLE=ChatterBridge
 ENV
 fi
 
@@ -104,6 +105,7 @@ Environment=CHATTER_EXTRA_ARGS=
 Environment=CHATTER_DDIAL_HOST=
 Environment=CHATTER_DDIAL_PORT=
 Environment=CHATTER_DDIAL_KEY=
+Environment=CHATTER_DDIAL_HANDLE=
 EnvironmentFile=-$CONFIG_DIR/chatter.env
 Restart=on-failure
 RestartSec=2s

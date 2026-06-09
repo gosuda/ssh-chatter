@@ -3,13 +3,30 @@
  * @desc DDial native relay: bidirectional text bridge between Chatter
  *       chat room and an upstream DDial node (e.g. magviz.ca).
  *       Modelled after jace-ddial bridge.py behaviour.
+ *
+ * Full protocol support:
+ *   - ANSI escape sequence stripping so colourised Retro-Dial lines parse
+ *     correctly.
+ *   - Telnet IAC option negotiation filtering + minimal response (keeps
+ *     port-23 telnet links alive).
+ *   - poll()-based recv loop with periodic keepalive to avoid guest
+ *     timeout on idle connections.
+ *   - getaddrinfo() instead of deprecated gethostbyname().
  */
 
+#include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
+#include <poll.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+
+#define DDIAL_KEEPALIVE_INTERVAL_SEC 45
+#define DDIAL_POLL_TIMEOUT_MS 5000
+#define DDIAL_RECONNECT_BACKOFF_SEC 5
+#define DDIAL_RECV_CHUNK_SIZE 4096
 
 static ssize_t ddial_send_all(int fd, const char *buf, size_t len)
 {
@@ -30,24 +47,163 @@ static ssize_t ddial_send_all(int fd, const char *buf, size_t len)
     return (ssize_t)sent;
 }
 
+static void ddial_relay_send_nop(ddial_relay_t *relay)
+{
+    if (relay == nullptr || relay->upstream_fd < 0) {
+        return;
+    }
+    /* Telnet NOP -- harmless on raw TCP too. */
+    const unsigned char nop[2] = {0xFF, 0xF1};
+    (void)ddial_send_all(relay->upstream_fd, (const char *)nop, 2);
+}
+
+static void ddial_relay_update_send_time(ddial_relay_t *relay)
+{
+    if (relay == nullptr) {
+        return;
+    }
+    clock_gettime(CLOCK_MONOTONIC, &relay->last_send_time);
+}
+
+static void ddial_relay_maybe_keepalive(ddial_relay_t *relay)
+{
+    if (relay == nullptr || relay->upstream_fd < 0 ||
+        relay->last_send_time.tv_sec == 0) {
+        return;
+    }
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        return;
+    }
+    time_t delta = now.tv_sec - relay->last_send_time.tv_sec;
+    if (delta >= (time_t)DDIAL_KEEPALIVE_INTERVAL_SEC) {
+        ddial_relay_send_nop(relay);
+        ddial_relay_update_send_time(relay);
+    }
+}
+
+/* Strip ANSI escape sequences and other terminal control chars. */
+static size_t ddial_strip_ansi(const char *src, size_t src_len,
+                               char *dst, size_t dst_cap)
+{
+    size_t j = 0;
+    for (size_t i = 0; i < src_len && j + 1 < dst_cap; ++i) {
+        unsigned char c = (unsigned char)src[i];
+        if (c == 0x1B) {
+            if (i + 1 < src_len && src[i + 1] == '[') {
+                /* CSI: ESC [ params final_byte */
+                i += 2;
+                while (i < src_len) {
+                    unsigned char p = (unsigned char)src[i];
+                    if ((p >= 0x40 && p <= 0x7E)) {
+                        break; /* final byte */
+                    }
+                    ++i;
+                }
+                continue;
+            }
+            if (i + 1 < src_len &&
+                (src[i + 1] == ']' || src[i + 1] == 'P' ||
+                 src[i + 1] == '_' || src[i + 1] == '^')) {
+                /* OSC / DCS / APC / PM -- skip until ST (ESC \) or BEL */
+                unsigned char ender = (src[i + 1] == ']') ? 0x07 : 0x1B;
+                i += 2;
+                while (i < src_len) {
+                    if ((unsigned char)src[i] == ender) {
+                        if (ender == 0x1B && i + 1 < src_len &&
+                            src[i + 1] == '\\') {
+                            ++i;
+                        }
+                        break;
+                    }
+                    ++i;
+                }
+                continue;
+            }
+            if (i + 1 < src_len) {
+                /* Two-byte escape sequence */
+                ++i;
+                continue;
+            }
+            /* Truncated ESC at end of buffer -- drop it. */
+            continue;
+        }
+        if (c == 0x07 || c == 0x08) {
+            /* Bell or backspace */
+            continue;
+        }
+        dst[j++] = (char)c;
+    }
+    dst[j] = '\0';
+    return j;
+}
+
+/* Filter Telnet IAC sequences out of the data stream.  Respond to basic
+ * DO/DONT/WILL/WONT so the server doesn't drop us for ignoring negotiation. */
+static size_t ddial_filter_telnet_iac(ddial_relay_t *relay, const char *src,
+                                      size_t src_len, char *dst,
+                                      size_t dst_cap)
+{
+    size_t j = 0;
+    for (size_t i = 0; i < src_len && j < dst_cap; ++i) {
+        unsigned char c = (unsigned char)src[i];
+        if (c != 0xFF) {
+            dst[j++] = (char)c;
+            continue;
+        }
+        if (i + 1 >= src_len) {
+            break; /* truncated IAC */
+        }
+        unsigned char cmd = (unsigned char)src[i + 1];
+        if (cmd == 0xFF) {
+            /* IAC IAC -> literal 0xFF */
+            dst[j++] = '\xFF';
+            ++i;
+        } else if (cmd >= 0xF0 && cmd <= 0xF9) {
+            /* 2-byte command (NOP, GA, etc.) */
+            ++i;
+        } else if ((cmd >= 0xFB && cmd <= 0xFE) && i + 2 < src_len) {
+            /* 3-byte negotiation */
+            unsigned char opt = (unsigned char)src[i + 2];
+            if (relay != nullptr && relay->upstream_fd >= 0) {
+                unsigned char resp_cmd = 0;
+                if (cmd == 0xFD) {
+                    /* DO opt -> WILL for SGA (3), WONT for everything else */
+                    resp_cmd = (opt == 3) ? 0xFB : 0xFC;
+                } else if (cmd == 0xFE) {
+                    /* DONT opt -> WONT */
+                    resp_cmd = 0xFC;
+                } else if (cmd == 0xFB) {
+                    /* WILL opt -> DO for SGA (3), DONT for everything else */
+                    resp_cmd = (opt == 3) ? 0xFD : 0xFE;
+                } else if (cmd == 0xFC) {
+                    /* WONT opt -> DONT */
+                    resp_cmd = 0xFE;
+                }
+                if (resp_cmd != 0) {
+                    unsigned char resp[3] = {0xFF, resp_cmd, opt};
+                    (void)ddial_send_all(relay->upstream_fd,
+                                         (const char *)resp, 3);
+                }
+            }
+            i += 2;
+        } else {
+            /* Unrecognised 2-byte IAC sequence -- drop it. */
+            ++i;
+        }
+    }
+    return j;
+}
+
 static bool ddial_buffer_contains_prompt(const char *buf, size_t len)
 {
     if (buf == nullptr || len == 0U) {
         return false;
     }
-    // Bridge.py flushes on --> (Retro-Dial prompt), "assword" (Password
-    // prompt), or "Remote" (remote bridge prompt).
     static const char *needles[] = {"-->", "assword", "Remote"};
     for (size_t i = 0; i < sizeof(needles) / sizeof(needles[0]); ++i) {
-        const char *found = buf;
-        size_t remain = len;
-        while (remain > 0) {
-            const char *hit =
-                (const char *)memmem(found, remain, needles[i], strlen(needles[i]));
-            if (hit != nullptr) {
-                return true;
-            }
-            break;
+        if (memmem(buf, len, needles[i], strlen(needles[i])) != nullptr) {
+            return true;
         }
     }
     return false;
@@ -59,24 +215,33 @@ static bool ddial_relay_connect_socket(ddial_relay_t *relay)
         return false;
     }
 
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    char port_str[16];
+    snprintf(port_str, sizeof(port_str), "%d", relay->port);
+
+    struct addrinfo hints = {0};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    struct addrinfo *res = nullptr;
+    if (getaddrinfo(relay->host, port_str, &hints, &res) != 0 || res == nullptr) {
+        return false;
+    }
+
+    int fd = -1;
+    for (struct addrinfo *rp = res; rp != nullptr; rp = rp->ai_next) {
+        fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (fd < 0) {
+            continue;
+        }
+        if (connect(fd, rp->ai_addr, rp->ai_addrlen) == 0) {
+            break;
+        }
+        close(fd);
+        fd = -1;
+    }
+    freeaddrinfo(res);
+
     if (fd < 0) {
-        return false;
-    }
-
-    struct hostent *server = gethostbyname(relay->host);
-    if (server == nullptr) {
-        close(fd);
-        return false;
-    }
-
-    struct sockaddr_in addr = {0};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons((uint16_t)relay->port);
-    memcpy(&addr.sin_addr.s_addr, server->h_addr, (size_t)server->h_length);
-
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        close(fd);
         return false;
     }
 
@@ -84,6 +249,7 @@ static bool ddial_relay_connect_socket(ddial_relay_t *relay)
     relay->connected = true;
     relay->auth_sent = false;
     relay->recv_buf_len = 0U;
+    ddial_relay_update_send_time(relay);
     return true;
 }
 
@@ -100,6 +266,8 @@ static void ddial_relay_disconnect(ddial_relay_t *relay)
     relay->connected = false;
     relay->auth_sent = false;
     relay->recv_buf_len = 0U;
+    relay->last_send_time.tv_sec = 0;
+    relay->last_send_time.tv_nsec = 0;
     ttak_mutex_unlock(&relay->lock);
 }
 
@@ -109,8 +277,16 @@ static void ddial_relay_broadcast_line(host_t *host, const char *line)
         return;
     }
 
-    // Try Retro-Dial format: #number(channel:status) message
-    const char *p = line;
+    /* Strip any residual ANSI from the line before parsing formats. */
+    char clean[SSH_CHATTER_MESSAGE_LIMIT];
+    ddial_strip_ansi(line, strlen(line), clean, sizeof(clean));
+    if (clean[0] == '\0') {
+        return;
+    }
+
+    const char *p = clean;
+
+    /* Try Retro-Dial format: #number(channel:status) message */
     if (*p == '#') {
         ++p;
         while (*p >= '0' && *p <= '9') {
@@ -119,10 +295,10 @@ static void ddial_relay_broadcast_line(host_t *host, const char *line)
         if (*p == '(') {
             const char *paren_end = strchr(p, ')');
             if (paren_end != nullptr && paren_end[1] == ' ') {
-                size_t handle_len = (size_t)(paren_end - line);
+                size_t handle_len = (size_t)(paren_end - clean);
                 if (handle_len > 0 && handle_len < SSH_CHATTER_USERNAME_LEN) {
                     char handle[SSH_CHATTER_USERNAME_LEN];
-                    memcpy(handle, line, handle_len);
+                    memcpy(handle, clean, handle_len);
                     handle[handle_len] = '\0';
                     const char *message = paren_end + 2;
                     if (message[0] != '\0') {
@@ -135,14 +311,14 @@ static void ddial_relay_broadcast_line(host_t *host, const char *line)
         }
     }
 
-    // Try generic [handle] message format
-    if (line[0] == '[') {
-        const char *end = strchr(line + 1, ']');
+    /* Try generic [handle] message format */
+    if (clean[0] == '[') {
+        const char *end = strchr(clean + 1, ']');
         if (end != nullptr && end[1] == ' ') {
-            size_t handle_len = (size_t)(end - line - 1);
+            size_t handle_len = (size_t)(end - clean - 1);
             if (handle_len > 0 && handle_len < SSH_CHATTER_USERNAME_LEN) {
                 char handle[SSH_CHATTER_USERNAME_LEN];
-                memcpy(handle, line + 1, handle_len);
+                memcpy(handle, clean + 1, handle_len);
                 handle[handle_len] = '\0';
                 const char *message = end + 2;
                 if (message[0] != '\0') {
@@ -154,10 +330,10 @@ static void ddial_relay_broadcast_line(host_t *host, const char *line)
         }
     }
 
-    // Fallback: broadcast as raw DDial line
+    /* Fallback: broadcast as raw DDial line */
     char prefixed[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(prefixed, sizeof(prefixed),
-             "\033[1;33m[DDial]\033[0m %s", line);
+             "\033[1;33m[DDial]\033[0m %s", clean);
     chat_room_broadcast(&host->room, prefixed, nullptr);
 }
 
@@ -175,7 +351,7 @@ static void ddial_relay_process_buffer(host_t *host, ddial_relay_t *relay,
         char *eol = nullptr;
         size_t eol_len = 0;
 
-        // Look for \r\n first
+        /* Look for \r\n first */
         for (size_t i = 0; i + 1 < len; ++i) {
             if (buf[i] == '\r' && buf[i + 1] == '\n') {
                 eol = &buf[i];
@@ -184,10 +360,23 @@ static void ddial_relay_process_buffer(host_t *host, ddial_relay_t *relay,
             }
         }
 
-        // Then look for plain \n (bridge.py splits on \n)
+        /* Then look for plain \n (bridge.py splits on \n) */
         if (eol == nullptr) {
             for (size_t i = 0; i < len; ++i) {
                 if (buf[i] == '\n') {
+                    eol = &buf[i];
+                    eol_len = 1;
+                    break;
+                }
+            }
+        }
+
+        /* Retro-Dial / old BBS systems sometimes use bare \r.
+         * If the buffer ends with \r, defer splitting in case the next
+         * chunk starts with \n (standard telnet \r\n split across reads). */
+        if (eol == nullptr && len > 0 && buf[len - 1] != '\r') {
+            for (size_t i = 0; i < len; ++i) {
+                if (buf[i] == '\r') {
                     eol = &buf[i];
                     eol_len = 1;
                     break;
@@ -207,7 +396,7 @@ static void ddial_relay_process_buffer(host_t *host, ddial_relay_t *relay,
         memcpy(line, buf, line_len);
         line[line_len] = '\0';
 
-        // Strip trailing CR if any
+        /* Strip trailing CR if any */
         if (line_len > 0 && line[line_len - 1] == '\r') {
             line[line_len - 1] = '\0';
         }
@@ -221,7 +410,7 @@ static void ddial_relay_process_buffer(host_t *host, ddial_relay_t *relay,
         len -= consumed;
     }
 
-    // If forced, emit the remainder as a single line even without a newline.
+    /* If forced, emit the remainder as a single line even without a newline. */
     if (force_flush && len > 0) {
         size_t line_len = len;
         if (line_len >= SSH_CHATTER_MESSAGE_LIMIT) {
@@ -256,11 +445,15 @@ static void *ddial_relay_thread(void *arg)
     while (!relay->stop) {
         if (!relay->connected) {
             if (!ddial_relay_connect_socket(relay)) {
-                sleep(5);
+                sleep(DDIAL_RECONNECT_BACKOFF_SEC);
                 continue;
             }
 
-            // Send login key if configured (bridge.py style)
+            /* Send login key if configured (bridge.py style) */
+            /* Give the server a moment to finish banner / telnet negotation
+             * before blasting credentials. */
+            usleep(300000);
+
             if (relay->login_key[0] != '\0') {
                 char key_line[128];
                 snprintf(key_line, sizeof(key_line), "%s\r\n",
@@ -268,25 +461,72 @@ static void *ddial_relay_thread(void *arg)
                 (void)ddial_send_all(relay->upstream_fd, key_line,
                                      strlen(key_line));
                 relay->auth_sent = true;
+                ddial_relay_update_send_time(relay);
+            }
+
+            /* Some DDial nodes expect a handle/nickname after the key. */
+            if (relay->handle[0] != '\0') {
+                char handle_line[SSH_CHATTER_USERNAME_LEN + 4];
+                snprintf(handle_line, sizeof(handle_line), "%s\r\n",
+                         relay->handle);
+                (void)ddial_send_all(relay->upstream_fd, handle_line,
+                                     strlen(handle_line));
+                ddial_relay_update_send_time(relay);
             }
         }
 
-        char temp[4096];
+        struct pollfd pfd;
+        pfd.fd = relay->upstream_fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+
+        int poll_rc = poll(&pfd, 1, DDIAL_POLL_TIMEOUT_MS);
+        if (poll_rc < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            ddial_relay_disconnect(relay);
+            sleep(DDIAL_RECONNECT_BACKOFF_SEC);
+            continue;
+        }
+
+        if (poll_rc == 0) {
+            /* Timeout -- send keepalive so guest sessions don't drop. */
+            ddial_relay_maybe_keepalive(relay);
+            continue;
+        }
+
+        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            ddial_relay_disconnect(relay);
+            sleep(DDIAL_RECONNECT_BACKOFF_SEC);
+            continue;
+        }
+
+        if ((pfd.revents & POLLIN) == 0) {
+            continue;
+        }
+
+        char temp[DDIAL_RECV_CHUNK_SIZE];
         ssize_t n = recv(relay->upstream_fd, temp, sizeof(temp), 0);
         if (n <= 0) {
             ddial_relay_disconnect(relay);
-            sleep(3);
+            sleep(DDIAL_RECONNECT_BACKOFF_SEC);
             continue;
         }
 
         bool force_flush = ddial_buffer_contains_prompt(temp, (size_t)n);
 
+        /* Filter telnet IAC sequences before buffering. */
+        char filtered[DDIAL_RECV_CHUNK_SIZE];
+        size_t filtered_len = ddial_filter_telnet_iac(
+            relay, temp, (size_t)n, filtered, sizeof(filtered));
+
         ttak_mutex_lock(&relay->lock);
         size_t space = sizeof(relay->recv_buffer) - relay->recv_buf_len;
-        size_t to_copy = (size_t)n;
+        size_t to_copy = filtered_len;
 
-        // Bridge.py style: if the buffer is full, drop the oldest half
-        // to make room for new data.
+        /* Bridge.py style: if the buffer is full, drop the oldest half
+         * to make room for new data. */
         if (to_copy > space) {
             const size_t buf_cap = sizeof(relay->recv_buffer);
             if (relay->recv_buf_len > buf_cap / 2) {
@@ -302,7 +542,8 @@ static void *ddial_relay_thread(void *arg)
         }
 
         if (to_copy > 0) {
-            memcpy(relay->recv_buffer + relay->recv_buf_len, temp, to_copy);
+            memcpy(relay->recv_buffer + relay->recv_buf_len, filtered,
+                   to_copy);
             relay->recv_buf_len += to_copy;
         }
         ddial_relay_process_buffer(host, relay, force_flush);
@@ -326,6 +567,8 @@ static void host_ddial_relay_init(host_t *host)
     relay->connected = false;
     relay->stop = true;
     relay->port = 0;
+    relay->last_send_time.tv_sec = 0;
+    relay->last_send_time.tv_nsec = 0;
 
     if (ttak_mutex_init(&relay->lock) == 0) {
         relay->lock_initialized = true;
@@ -334,6 +577,7 @@ static void host_ddial_relay_init(host_t *host)
     const char *host_env = getenv("CHATTER_DDIAL_HOST");
     const char *port_env = getenv("CHATTER_DDIAL_PORT");
     const char *key_env = getenv("CHATTER_DDIAL_KEY");
+    const char *handle_env = getenv("CHATTER_DDIAL_HANDLE");
 
     if (host_env != nullptr && host_env[0] != '\0' &&
         port_env != nullptr && port_env[0] != '\0') {
@@ -342,6 +586,9 @@ static void host_ddial_relay_init(host_t *host)
         if (key_env != nullptr) {
             snprintf(relay->login_key, sizeof(relay->login_key), "%s",
                      key_env);
+        }
+        if (handle_env != nullptr) {
+            snprintf(relay->handle, sizeof(relay->handle), "%s", handle_env);
         }
         relay->enabled = true;
     }
@@ -358,6 +605,7 @@ static void host_ddial_relay_start(host_t *host)
     }
 
     relay->stop = false;
+    ddial_relay_update_send_time(relay);
     if (pthread_create(&relay->thread, nullptr, ddial_relay_thread, host) ==
         0) {
         relay->thread_initialized = true;
@@ -397,6 +645,7 @@ static void host_ddial_relay_send(host_t *host, const char *handle,
     ttak_mutex_lock(&relay->lock);
     if (relay->connected && relay->upstream_fd >= 0) {
         (void)ddial_send_all(relay->upstream_fd, line, strlen(line));
+        ddial_relay_update_send_time(relay);
     }
     ttak_mutex_unlock(&relay->lock);
 }
@@ -419,6 +668,7 @@ static bool host_ddial_relay_configure(host_t *host, const char *host_str,
     } else {
         relay->login_key[0] = '\0';
     }
+    relay->handle[0] = '\0';
     relay->enabled = true;
 
     host_ddial_relay_start(host);

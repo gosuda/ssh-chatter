@@ -148,7 +148,10 @@ static void host_ban_state_load(host_t *host)
     }
 
     ttak_mutex_lock(&host->lock);
-    memset(host->bans, 0, sizeof(host->bans));
+    host_bans_ensure(host);
+    host_protected_ips_ensure(host);
+    memset(host->bans, 0,
+           SSH_CHATTER_MAX_BANS * sizeof(host_ban_entry_t));
     host->ban_count = 0U;
     for (uint32_t idx = 0U; idx < entry_count; ++idx) {
         if (host->ban_count >= SSH_CHATTER_MAX_BANS) {
@@ -246,7 +249,8 @@ static void host_reply_state_load(host_t *host)
     }
 
     ttak_mutex_lock(&host->lock);
-    memset(host->replies, 0, sizeof(host->replies));
+    host_replies_ensure(host);
+    memset(host->replies, 0, SSH_CHATTER_MAX_REPLIES * sizeof(chat_reply_entry_t));
     host->reply_count = 0U;
     host->next_reply_id =
         header.next_reply_id != 0U ? header.next_reply_id : 1U;
@@ -488,7 +492,9 @@ static void host_eliza_memory_load(host_t *host)
     }
 
     ttak_mutex_lock(&host->lock);
-    memset(host->eliza_memory, 0, sizeof(host->eliza_memory));
+    host_eliza_memory_ensure(host);
+    memset(host->eliza_memory, 0,
+           SSH_CHATTER_ELIZA_MEMORY_MAX * sizeof(eliza_memory_entry_t));
     host->eliza_memory_count = 0U;
     host->eliza_memory_next_id = header.next_id != 0U ? header.next_id : 1U;
 

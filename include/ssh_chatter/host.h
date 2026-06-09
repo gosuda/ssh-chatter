@@ -1007,6 +1007,15 @@ typedef struct bbs_draft {
     time_t created_at;
 } bbs_draft_t;
 
+typedef struct host_ban_entry {
+    char username[SSH_CHATTER_USERNAME_LEN];
+    char ip[SSH_CHATTER_IP_LEN];
+} host_ban_entry_t;
+
+typedef struct host_operator_grant {
+    char ip[SSH_CHATTER_IP_LEN];
+} host_operator_grant_t;
+
 typedef struct host {
     sshc_memory_context_t *memory_context;
     chat_room_t room;
@@ -1046,11 +1055,9 @@ typedef struct host {
     char default_system_fg_name[SSH_CHATTER_COLOR_NAME_LEN];
     char default_system_bg_name[SSH_CHATTER_COLOR_NAME_LEN];
     char default_system_highlight_name[SSH_CHATTER_COLOR_NAME_LEN];
-    struct {
-        char username[SSH_CHATTER_USERNAME_LEN];
-        char ip[SSH_CHATTER_IP_LEN];
-    } bans[SSH_CHATTER_MAX_BANS];
+    host_ban_entry_t *bans;
     size_t ban_count;
+    size_t ban_capacity;
     char version[64];
     char motd[4096];
     char motd_base[4096];
@@ -1071,11 +1078,13 @@ typedef struct host {
     chat_history_entry_t *history_override;
     size_t history_override_count;
     uint64_t next_message_id;
-    chat_reply_entry_t replies[SSH_CHATTER_MAX_REPLIES];
+    chat_reply_entry_t *replies;
     size_t reply_count;
+    size_t reply_capacity;
     uint64_t next_reply_id;
-    user_preference_t preferences[SSH_CHATTER_MAX_PREFERENCES];
+    user_preference_t *preferences;
     size_t preference_count;
+    size_t preference_capacity;
     ttak_mutex_t lock;
     char state_file_path[PATH_MAX];
     char sync_state_file_path[PATH_MAX];
@@ -1107,8 +1116,9 @@ typedef struct host {
     _Atomic bool bbs_watchdog_thread_stop;
     struct timespec bbs_watchdog_last_run;
     poll_state_t poll;
-    named_poll_state_t named_polls[SSH_CHATTER_MAX_NAMED_POLLS];
+    named_poll_state_t *named_polls;
     size_t named_poll_count;
+    size_t named_poll_capacity;
     bbs_post_t *bbs_posts;
     size_t bbs_post_count;
     size_t bbs_post_capacity;
@@ -1123,11 +1133,12 @@ typedef struct host {
     bbs_draft_t *bbs_drafts;
     size_t bbs_draft_count;
     size_t bbs_draft_capacity;
-    ascii_pixel_t wall[SSH_CHATTER_WALL_HEIGHT][SSH_CHATTER_WALL_WIDTH];
-    rss_feed_t rss_feeds[SSH_CHATTER_RSS_MAX_FEEDS];
+    ascii_pixel_t *wall;
+    rss_feed_t *rss_feeds;
     size_t rss_feed_count;
+    size_t rss_feed_capacity;
     uint8_t rss_current_window_id;
-    othello_multiplayer_slot_t othello_games[SSH_CHATTER_OTHELLO_MAX_SLOTS];
+    othello_multiplayer_slot_t *othello_games;
     size_t cpu_slot_side_n;
     size_t cpu_slot_limit;
     size_t cpu_slot_in_use;
@@ -1141,7 +1152,7 @@ typedef struct host {
     size_t othello_wait_queue_head;
     size_t othello_wait_queue_tail;
     size_t othello_wait_queue_count;
-    gonu_multiplayer_slot_t gonu_games[SSH_CHATTER_GONU_MAX_SLOTS];
+    gonu_multiplayer_slot_t *gonu_games;
     bool random_seeded;
     client_manager_t *clients;
     webssh_client_t *web_client;
@@ -1159,26 +1170,29 @@ typedef struct host {
     bool ai_chat_use_gemini;
     char ai_chat_model[64];
     struct timespec ai_chat_last_reply;
-    ai_chat_memory_entry_t ai_chat_memory[SSH_CHATTER_AI_MEMORY_MAX];
+    ai_chat_memory_entry_t *ai_chat_memory;
     size_t ai_chat_memory_count;
+    size_t ai_chat_memory_capacity;
     char ai_persona_a_name[64];
     char ai_persona_a_alias[64];
     char ai_persona_b_name[64];
     char ai_persona_b_alias[64];
-    door_game_entry_t door_games[SSH_CHATTER_DOOR_GAME_LIMIT];
+    door_game_entry_t *door_games;
     size_t door_game_count;
+    size_t door_game_capacity;
     size_t active_door_sessions;
     size_t max_door_sessions;
     char rss_state_file_path[PATH_MAX];
-    eliza_memory_entry_t eliza_memory[SSH_CHATTER_ELIZA_MEMORY_MAX];
+    eliza_memory_entry_t *eliza_memory;
     size_t eliza_memory_count;
+    size_t eliza_memory_capacity;
     uint64_t eliza_memory_next_id;
-    struct {
-        char ip[SSH_CHATTER_IP_LEN];
-    } operator_grants[SSH_CHATTER_MAX_GRANTS];
+    host_operator_grant_t *operator_grants;
     size_t operator_grant_count;
-    char protected_ips[SSH_CHATTER_MAX_PROTECTED_IPS][SSH_CHATTER_IP_LEN];
+    size_t operator_grant_capacity;
+    char (*protected_ips)[SSH_CHATTER_IP_LEN];
     size_t protected_ip_count;
+    size_t protected_ip_capacity;
     version_ip_ban_rule_t *version_ip_ban_rules;
     size_t version_ip_ban_rule_count;
     size_t version_ip_ban_rule_capacity;
@@ -1293,4 +1307,101 @@ void host_session_process_line_for_testing(session_ctx_t *ctx,
 void session_handle_retro(session_ctx_t *ctx, const char *arguments);
 void session_handle_hybrid(session_ctx_t *ctx, const char *arguments);
 void session_handle_iyagi(session_ctx_t *ctx, const char *arguments);
+
+static inline void host_bans_ensure(host_t *host)
+{
+    if (host != nullptr && host->bans == nullptr) {
+        host->bans = (host_ban_entry_t *)sshc_gc_calloc(
+            SSH_CHATTER_MAX_BANS, sizeof(host_ban_entry_t));
+        host->ban_capacity = SSH_CHATTER_MAX_BANS;
+    }
+}
+
+static inline void host_replies_ensure(host_t *host)
+{
+    if (host != nullptr && host->replies == nullptr) {
+        host->replies = (chat_reply_entry_t *)sshc_gc_calloc(
+            SSH_CHATTER_MAX_REPLIES, sizeof(chat_reply_entry_t));
+        host->reply_capacity = SSH_CHATTER_MAX_REPLIES;
+    }
+}
+
+static inline void host_preferences_ensure(host_t *host)
+{
+    if (host != nullptr && host->preferences == nullptr) {
+        host->preferences = (user_preference_t *)sshc_gc_calloc(
+            SSH_CHATTER_MAX_PREFERENCES, sizeof(user_preference_t));
+        host->preference_capacity = SSH_CHATTER_MAX_PREFERENCES;
+    }
+}
+
+static inline void host_rss_feeds_ensure(host_t *host)
+{
+    if (host != nullptr && host->rss_feeds == nullptr) {
+        host->rss_feeds = (rss_feed_t *)sshc_gc_calloc(
+            SSH_CHATTER_RSS_MAX_FEEDS, sizeof(rss_feed_t));
+        host->rss_feed_capacity = SSH_CHATTER_RSS_MAX_FEEDS;
+    }
+}
+
+static inline void host_eliza_memory_ensure(host_t *host)
+{
+    if (host != nullptr && host->eliza_memory == nullptr) {
+        host->eliza_memory = (eliza_memory_entry_t *)sshc_gc_calloc(
+            SSH_CHATTER_ELIZA_MEMORY_MAX, sizeof(eliza_memory_entry_t));
+        host->eliza_memory_capacity = SSH_CHATTER_ELIZA_MEMORY_MAX;
+    }
+}
+
+static inline void host_ai_chat_memory_ensure(host_t *host)
+{
+    if (host != nullptr && host->ai_chat_memory == nullptr) {
+        host->ai_chat_memory = (ai_chat_memory_entry_t *)sshc_gc_calloc(
+            SSH_CHATTER_AI_MEMORY_MAX, sizeof(ai_chat_memory_entry_t));
+        host->ai_chat_memory_capacity = SSH_CHATTER_AI_MEMORY_MAX;
+    }
+}
+
+static inline void host_gonu_games_ensure(host_t *host)
+{
+    if (host != nullptr && host->gonu_games == nullptr) {
+        host->gonu_games = (gonu_multiplayer_slot_t *)sshc_gc_calloc(
+            SSH_CHATTER_GONU_MAX_SLOTS, sizeof(gonu_multiplayer_slot_t));
+    }
+}
+
+static inline void host_named_polls_ensure(host_t *host)
+{
+    if (host != nullptr && host->named_polls == nullptr) {
+        host->named_polls = (named_poll_state_t *)sshc_gc_calloc(
+            SSH_CHATTER_MAX_NAMED_POLLS, sizeof(named_poll_state_t));
+        host->named_poll_capacity = SSH_CHATTER_MAX_NAMED_POLLS;
+    }
+}
+
+static inline void host_othello_games_ensure(host_t *host)
+{
+    if (host != nullptr && host->othello_games == nullptr) {
+        host->othello_games = (othello_multiplayer_slot_t *)sshc_gc_calloc(
+            SSH_CHATTER_OTHELLO_MAX_SLOTS, sizeof(othello_multiplayer_slot_t));
+    }
+}
+
+static inline void host_operator_grants_ensure(host_t *host)
+{
+    if (host != nullptr && host->operator_grants == nullptr) {
+        host->operator_grants = (host_operator_grant_t *)sshc_gc_calloc(
+            SSH_CHATTER_MAX_GRANTS, sizeof(host_operator_grant_t));
+        host->operator_grant_capacity = SSH_CHATTER_MAX_GRANTS;
+    }
+}
+
+static inline void host_protected_ips_ensure(host_t *host)
+{
+    if (host != nullptr && host->protected_ips == nullptr) {
+        host->protected_ips = (char (*)[SSH_CHATTER_IP_LEN])sshc_gc_calloc(
+            SSH_CHATTER_MAX_PROTECTED_IPS, SSH_CHATTER_IP_LEN);
+        host->protected_ip_capacity = SSH_CHATTER_MAX_PROTECTED_IPS;
+    }
+}
 #endif

@@ -35,12 +35,19 @@ static void host_wall_reset_locked(host_t *host)
         return;
     }
 
+    if (host->wall == nullptr) {
+        host->wall = (ascii_pixel_t *)sshc_gc_calloc(
+            SSH_CHATTER_WALL_HEIGHT * SSH_CHATTER_WALL_WIDTH,
+            sizeof(ascii_pixel_t));
+    }
+
     for (size_t y = 0U; y < SSH_CHATTER_WALL_HEIGHT; ++y) {
         for (size_t x = 0U; x < SSH_CHATTER_WALL_WIDTH; ++x) {
-            host->wall[y][x].ch = ' ';
-            snprintf(host->wall[y][x].color_name,
-                     sizeof(host->wall[y][x].color_name), "%s", "default");
-            host->wall[y][x].updated_at_ns = 0;
+            ascii_pixel_t *pixel = &host->wall[y * SSH_CHATTER_WALL_WIDTH + x];
+            pixel->ch = ' ';
+            snprintf(pixel->color_name, sizeof(pixel->color_name), "%s",
+                     "default");
+            pixel->updated_at_ns = 0;
         }
     }
 }
@@ -188,6 +195,8 @@ static void host_wall_state_load(host_t *host)
     }
 
     ttak_mutex_lock(&host->lock);
-    memcpy(host->wall, loaded, sizeof(host->wall));
+    memcpy(host->wall, loaded,
+           SSH_CHATTER_WALL_HEIGHT * SSH_CHATTER_WALL_WIDTH *
+               sizeof(ascii_pixel_t));
     ttak_mutex_unlock(&host->lock);
 }

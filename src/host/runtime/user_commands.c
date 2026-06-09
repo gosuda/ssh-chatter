@@ -546,6 +546,7 @@ static bool host_is_ip_banned(host_t *host, const char *ip)
         ttak_mutex_unlock(&host->lock);
         return false;
     }
+    host_bans_ensure(host);
     for (size_t idx = 0; idx < host->ban_count; ++idx) {
         const char *ban_ip = host->bans[idx].ip;
         if (ban_ip[0] == '\0') {
@@ -582,6 +583,7 @@ static bool host_is_username_banned(host_t *host, const char *username)
 
     bool banned = false;
     ttak_mutex_lock(&host->lock);
+    host_bans_ensure(host);
     for (size_t idx = 0; idx < host->ban_count; ++idx) {
         if (strncmp(host->bans[idx].username, username,
                     SSH_CHATTER_USERNAME_LEN) == 0) {
@@ -603,6 +605,8 @@ static bool host_add_ban_entry(host_t *host, const char *username,
 
     bool added = false;
     ttak_mutex_lock(&host->lock);
+    host_bans_ensure(host);
+    host_protected_ips_ensure(host);
     if (host->ban_count >= SSH_CHATTER_MAX_BANS) {
         ttak_mutex_unlock(&host->lock);
         return false;
@@ -661,6 +665,7 @@ static bool host_remove_ban_entry(host_t *host, const char *token)
 
     bool removed = false;
     ttak_mutex_lock(&host->lock);
+    host_bans_ensure(host);
     for (size_t idx = 0; idx < host->ban_count; ++idx) {
         if (strncmp(host->bans[idx].username, token,
                     SSH_CHATTER_USERNAME_LEN) == 0 ||

@@ -17,7 +17,9 @@ static void host_door_games_load_from_env(host_t *host)
     host->door_game_count = 0U;
     host->active_door_sessions = 0U;
     host->max_door_sessions = 0U;
-    memset(host->door_games, 0, sizeof(host->door_games));
+    host->door_games = (door_game_entry_t *)sshc_gc_calloc(
+        SSH_CHATTER_DOOR_GAME_LIMIT, sizeof(door_game_entry_t));
+    host->door_game_capacity = SSH_CHATTER_DOOR_GAME_LIMIT;
 
     const char *max_sessions_env = getenv("CHATTER_DOOR_MAX_SESSIONS");
     if (max_sessions_env != nullptr && max_sessions_env[0] != '\0') {
@@ -248,12 +250,15 @@ void host_init(host_t *host, auth_profile_t *auth)
                  sizeof(host->default_system_highlight_name), "%s", "yellow");
     }
     host->ban_count = 0U;
-    memset(host->bans, 0, sizeof(host->bans));
-    memset(host->replies, 0, sizeof(host->replies));
+    host->ban_capacity = 0U;
+    host->bans = nullptr;
+    host->replies = nullptr;
     host->reply_count = 0U;
+    host->reply_capacity = 0U;
     host->next_reply_id = 1U;
-    memset(host->eliza_memory, 0, sizeof(host->eliza_memory));
+    host->eliza_memory = nullptr;
     host->eliza_memory_count = 0U;
+    host->eliza_memory_capacity = 0U;
     host->eliza_memory_next_id = 1U;
     host->version_ip_ban_rules = nullptr;
     host->version_ip_ban_rule_count = 0U;
@@ -287,8 +292,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->history_capacity = 0U;
     host->history_cache_loaded = false;
     host->next_message_id = 1U;
-    memset(host->preferences, 0, sizeof(host->preferences));
+    host->preferences = nullptr;
     host->preference_count = 0U;
+    host->preference_capacity = 0U;
     host->state_file_path[0] = '\0';
     host_state_resolve_path(host);
     host->sync_state_file_path[0] = '\0';
@@ -362,26 +368,34 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->archive_last_run.tv_nsec = 0L;
     host_security_configure(host);
     host_version_ip_rules_init(host);
-    memset(host->protected_ips, 0, sizeof(host->protected_ips));
+    host->protected_ips = nullptr;
+    host->protected_ip_count = 0U;
+    host->protected_ip_capacity = 0U;
     host->protected_ip_count = 0U;
     ttak_mutex_init(&host->lock);
     host_wall_reset_locked(host);
     host_protected_ips_bootstrap(host);
     poll_state_reset(&host->poll);
+    host->named_polls = (named_poll_state_t *)sshc_gc_calloc(
+        SSH_CHATTER_MAX_NAMED_POLLS, sizeof(named_poll_state_t));
     for (size_t idx = 0U; idx < SSH_CHATTER_MAX_NAMED_POLLS; ++idx) {
         named_poll_reset(&host->named_polls[idx]);
     }
     host->named_poll_count = 0U;
+    host->named_poll_capacity = SSH_CHATTER_MAX_NAMED_POLLS;
     host->bbs_cache_loaded = false;
     if (!host_bbs_acquire_storage(host)) {
         host->bbs_post_capacity = 0U;
     }
     host->bbs_post_count = 0U;
     host->next_bbs_id = 1U;
+    host->rss_feeds = (rss_feed_t *)sshc_gc_calloc(
+        SSH_CHATTER_RSS_MAX_FEEDS, sizeof(rss_feed_t));
     for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
         host_clear_rss_feed(&host->rss_feeds[idx]);
     }
     host->rss_feed_count = 0U;
+    host->rss_feed_capacity = SSH_CHATTER_RSS_MAX_FEEDS;
     long cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
     if (cpu_count < 1L) {
         cpu_count = 2L;
@@ -420,6 +434,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->othello_wait_queue_head = 0U;
     host->othello_wait_queue_tail = 0U;
     host->othello_wait_queue_count = 0U;
+    host->othello_games = (othello_multiplayer_slot_t *)sshc_gc_calloc(
+        SSH_CHATTER_OTHELLO_MAX_SLOTS, sizeof(othello_multiplayer_slot_t));
     for (size_t idx = 0U; idx < SSH_CHATTER_OTHELLO_MAX_SLOTS; ++idx) {
         othello_multiplayer_slot_t *slot = &host->othello_games[idx];
         slot->in_use = false;
@@ -433,8 +449,10 @@ void host_init(host_t *host, auth_profile_t *auth)
         slot->state.slot_index = -1;
     }
     host->random_seeded = false;
-    memset(host->operator_grants, 0, sizeof(host->operator_grants));
+    host->operator_grants = nullptr;
     host->operator_grant_count = 0U;
+    host->operator_grant_capacity = 0U;
+    host->gonu_games = nullptr;
     host->reserved_nicknames = nullptr;
     host->reserved_nicknames_len = 0U;
     host->reserved_nicknames_capacity = 0U;
@@ -481,7 +499,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->ai_chat_last_reply.tv_sec = 0;
     host->ai_chat_last_reply.tv_nsec = 0L;
     host->ai_chat_model[0] = '\0';
-    memset(host->ai_chat_memory, 0, sizeof(host->ai_chat_memory));
+    host->ai_chat_memory = nullptr;
+    host->ai_chat_memory_count = 0U;
+    host->ai_chat_memory_capacity = 0U;
     host->ai_chat_memory_count = 0U;
     (void)host_try_load_motd_from_path(host, "/etc/ssh-chatter/motd");
 

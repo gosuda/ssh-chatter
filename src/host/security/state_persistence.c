@@ -460,7 +460,9 @@ static bool host_state_load_preferences(FILE *fp, host_t *host,
         return false;
     }
 
-    memset(host->preferences, 0, sizeof(host->preferences));
+    host_preferences_ensure(host);
+    memset(host->preferences, 0,
+           SSH_CHATTER_MAX_PREFERENCES * sizeof(user_preference_t));
     host->preference_count = 0U;
 
     for (uint32_t idx = 0; idx < preference_count; ++idx) {
@@ -516,7 +518,9 @@ static void host_state_reset_loaded_data(host_t *host)
     }
     host->history_count = 0U;
     host->preference_count = 0U;
-    memset(host->preferences, 0, sizeof(host->preferences));
+    host_preferences_ensure(host);
+    memset(host->preferences, 0,
+           SSH_CHATTER_MAX_PREFERENCES * sizeof(user_preference_t));
 }
 
 static uint64_t host_state_normalize_next_message_id(uint64_t requested,

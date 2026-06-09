@@ -23,7 +23,9 @@ static void session_wall_copy_snapshot(host_t *host,
     }
 
     ttak_mutex_lock(&host->lock);
-    memcpy(snapshot, host->wall, sizeof(host->wall));
+    memcpy(snapshot, host->wall,
+           SSH_CHATTER_WALL_HEIGHT * SSH_CHATTER_WALL_WIDTH *
+               sizeof(ascii_pixel_t));
     ttak_mutex_unlock(&host->lock);
 }
 
@@ -170,8 +172,9 @@ static void session_wall_draw_current(session_ctx_t *ctx, char ch)
     const int64_t updated_at_ns = session_wall_now_ns();
 
     ttak_mutex_lock(&ctx->owner->lock);
-    ascii_pixel_t *pixel =
-        &ctx->owner->wall[ctx->wall_cursor_y][ctx->wall_cursor_x];
+    ascii_pixel_t *pixel = &ctx->owner->wall[ctx->wall_cursor_y *
+                                                     SSH_CHATTER_WALL_WIDTH +
+                                                 ctx->wall_cursor_x];
     if (updated_at_ns >= pixel->updated_at_ns) {
         pixel->ch = ch;
         if (ch == ' ') {

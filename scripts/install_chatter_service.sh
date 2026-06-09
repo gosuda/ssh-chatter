@@ -65,6 +65,10 @@ if [[ ! -f "$CONFIG_DIR/chatter.env" ]]; then
 # CHATTER_HOST_KEY_DIR=$STATE_DIR
 # CHATTER_WELCOME_BANNER=$CONFIG_DIR/logo.ans
 # CHATTER_EXTRA_ARGS=
+# DDial native relay settings (modelled after jace-ddial bridge.py)
+# CHATTER_DDIAL_HOST=magviz.ca
+# CHATTER_DDIAL_PORT=23
+# CHATTER_DDIAL_KEY=
 ENV
 fi
 
@@ -97,6 +101,9 @@ Environment=CHATTER_MOTD_FILE=$CONFIG_DIR/motd
 Environment=CHATTER_HOST_KEY_DIR=$STATE_DIR
 Environment=CHATTER_STATE_DIR=$STATE_DIR
 Environment=CHATTER_EXTRA_ARGS=
+Environment=CHATTER_DDIAL_HOST=
+Environment=CHATTER_DDIAL_PORT=
+Environment=CHATTER_DDIAL_KEY=
 EnvironmentFile=-$CONFIG_DIR/chatter.env
 Restart=on-failure
 RestartSec=2s

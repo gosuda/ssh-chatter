@@ -1,6 +1,3 @@
-    session_send_system_line(ctx, "Usage: /set-lf <auto|lf|crlf>");
-}
-
 static void session_dispatch_command(session_ctx_t *ctx, const char *line)
 {
     if (ctx == nullptr || line == nullptr) {
@@ -155,6 +152,11 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         } else {
             session_send_system_line(ctx, "Usage: /nick <name>");
         }
+        return;
+    }
+
+    else if (session_parse_command_any(ctx, "/ddial", effective_line, &args)) {
+        session_handle_ddial(ctx, args);
         return;
     }
 

@@ -248,6 +248,15 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "ddial <connect|disconnect|status>",
+        .description =
+            {
+                "Manage DDial upstream relay (native bridge mode).",
+                "DDial 업스트림 릴레이를 관리합니다.",
+            },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "reply <message-id|r<reply-id>> <text>",
         .description =
             {

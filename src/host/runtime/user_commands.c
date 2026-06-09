@@ -777,3 +777,102 @@ static void session_handle_set_lf(session_ctx_t *ctx, const char *arguments)
         session_send_system_line(ctx, "Line ending mode set to CRLF.");
         return;
     }
+}
+
+static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+
+    ddial_relay_t *relay = &ctx->owner->ddial_relay;
+
+    if (arguments == nullptr || arguments[0] == '\0') {
+        char status[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(status, sizeof(status),
+                 "DDial relay: %s | Host: %s:%d",
+                 relay->enabled && relay->connected ? "\033[1;32mconnected\033[0m"
+                 : relay->enabled ? "\033[1;33mconnecting\033[0m"
+                 : "\033[1;31moffline\033[0m",
+                 relay->host[0] != '\0' ? relay->host : "(none)",
+                 relay->port);
+        session_send_system_line(ctx, status);
+        session_send_system_line(
+            ctx, "Usage: /ddial <connect <host> <port> [key]|disconnect|status>");
+        return;
+    }
+
+    char action[32];
+    const char *rest = session_consume_token(arguments, action, sizeof(action));
+
+    if (strcasecmp(action, "status") == 0) {
+        char status[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(status, sizeof(status),
+                 "DDial relay: %s | Host: %s:%d",
+                 relay->enabled && relay->connected
+                     ? "\033[1;32mconnected\033[0m"
+                     : relay->enabled ? "\033[1;33mconnecting\033[0m"
+                                      : "\033[1;31moffline\033[0m",
+                 relay->host[0] != '\0' ? relay->host : "(none)",
+                 relay->port);
+        session_send_system_line(ctx, status);
+        return;
+    }
+
+    if (strcasecmp(action, "disconnect") == 0) {
+        host_ddial_relay_disable(ctx->owner);
+        session_send_system_line(ctx, "DDial relay disconnected.");
+        return;
+    }
+
+    if (strcasecmp(action, "connect") == 0) {
+        if (rest == nullptr || rest[0] == '\0') {
+            session_send_system_line(
+                ctx, "Usage: /ddial connect <host> <port> [key]");
+            return;
+        }
+
+        char host_str[256];
+        char port_str[16];
+        const char *remaining =
+            session_consume_token(rest, host_str, sizeof(host_str));
+        remaining =
+            session_consume_token(remaining, port_str, sizeof(port_str));
+
+        if (host_str[0] == '\0' || port_str[0] == '\0') {
+            session_send_system_line(
+                ctx, "Usage: /ddial connect <host> <port> [key]");
+            return;
+        }
+
+        char *endptr;
+        long port_long = strtol(port_str, &endptr, 10);
+        if (*endptr != '\0' || port_long <= 0 || port_long > 65535) {
+            session_send_system_line(
+                ctx, "Invalid port number. Port must be between 1 and 65535.");
+            return;
+        }
+
+        const char *key = nullptr;
+        if (remaining != nullptr && remaining[0] != '\0') {
+            key = remaining;
+            while (*key == ' ' || *key == '\t') {
+                ++key;
+            }
+        }
+
+        if (host_ddial_relay_configure(ctx->owner, host_str, (int)port_long,
+                                       key)) {
+            session_send_system_line(
+                ctx, "DDial relay configured and connecting...");
+        } else {
+            session_send_system_line(
+                ctx, "Failed to configure DDial relay.");
+        }
+        return;
+    }
+
+    session_send_system_line(ctx, "Unknown /ddial subcommand.");
+    session_send_system_line(
+        ctx, "Usage: /ddial <connect <host> <port> [key]|disconnect|status>");
+}

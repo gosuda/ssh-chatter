@@ -193,7 +193,9 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->json_api.last_error_time.tv_nsec = 0L;
     host->json_api.bind_address[0] = '\0';
     host->json_api.port[0] = '\0';
-    
+
+    host_ddial_relay_init(host);
+
     const char *env_secret = getenv("JWT_SECRET");
     if (env_secret && env_secret[0] != '\0') {
         snprintf(host->jwt_secret, sizeof(host->jwt_secret), "%s", env_secret);
@@ -545,6 +547,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_bbs_start_watchdog(host);
     host_rss_start_backend(host);
     host_archive_start_backend(host);
+    host_ddial_relay_start(host);
     sshc_memory_context_pop(memory_scope);
 }
 

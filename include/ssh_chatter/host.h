@@ -1016,6 +1016,24 @@ typedef struct host_operator_grant {
     char ip[SSH_CHATTER_IP_LEN];
 } host_operator_grant_t;
 
+typedef struct ddial_relay {
+    bool enabled;
+    int upstream_fd;
+    pthread_t thread;
+    bool thread_initialized;
+    _Atomic bool running;
+    _Atomic bool stop;
+    ttak_mutex_t lock;
+    bool lock_initialized;
+    bool connected;
+    bool auth_sent;
+    char host[256];
+    int port;
+    char login_key[64];
+    char recv_buffer[SSH_CHATTER_MESSAGE_LIMIT * 4];
+    size_t recv_buf_len;
+} ddial_relay_t;
+
 typedef struct host {
     sshc_memory_context_t *memory_context;
     chat_room_t room;
@@ -1243,6 +1261,7 @@ typedef struct host {
     ttak_object_pool_t *nickname_claim_pool;
     nickname_claim_t *nickname_claims[SSH_CHATTER_MAX_NICKNAME_CLAIMS];
     size_t nickname_claim_count;
+    ddial_relay_t ddial_relay;
     volatile sig_atomic_t *shutdown_flag;
 } host_t;
 

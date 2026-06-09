@@ -926,15 +926,6 @@ void session_channel_write(session_ctx_t *ctx, const void *data, size_t length)
         }
     }
 
-    printf("[encoding-debug] phase=write_dispatch transport_kind=%d "
-           "prefer_utf16_output=%d prefer_cp437_output=%d "
-           "use_retro_output=%d output_kind=%d active_codepage=%d "
-           "length=%zu nul_count=%zu\n",
-           (int)ctx->transport_kind, (int)ctx->prefer_utf16_output,
-           (int)ctx->prefer_cp437_output, (int)use_retro_output,
-           (int)ctx->output_kind, (int)ctx->active_codepage, write_length,
-           nul_count);
-
     unsigned char *sanitized = nullptr;
     if (!ctx->prefer_utf16_output && nul_count > 0U) {
         sanitized = (unsigned char *)sshc_gc_malloc(write_length);

@@ -115,7 +115,7 @@ COMMON_LDFLAGS = \
     -Wl,--no-undefined \
     -Wl,--warn-execstack -Wl,-z,noexecstack \
     -Wl,-z,separate-code \
-    -Wl,-z,stack-size=524288 \
+    -Wl,-z,stack-size=8388608 \
     -Wl,-z,combreloc \
     -Wl,--build-id=none
 

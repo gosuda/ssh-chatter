@@ -251,6 +251,12 @@ static void adapter_set_buffering(doorgame_session_t *s, bool enabled)
     ctx->output_buffering_enabled = enabled;
 }
 
+static bool adapter_get_buffering(doorgame_session_t *s)
+{
+    session_ctx_t *ctx = (session_ctx_t *)s;
+    return ctx->output_buffering_enabled;
+}
+
 static const char *adapter_localized(doorgame_session_t *s, int msg_id)
 {
     session_ctx_t *ctx = (session_ctx_t *)s;
@@ -323,6 +329,7 @@ static doorgame_session_ops_t g_door_session_ops = {
     .write_all = adapter_write_all,
     .send_system_line = adapter_send_system_line,
     .set_buffering = adapter_set_buffering,
+    .get_buffering = adapter_get_buffering,
     .localized = adapter_localized,
     .is_operator = adapter_is_operator,
     .is_lan_operator = adapter_is_lan_operator,

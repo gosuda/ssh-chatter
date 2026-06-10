@@ -66,6 +66,8 @@ struct sshc_memory_context {
     tt_owner_t *owner;
     /** EpochGC: generational epoch-based garbage collector. */
     ttak_epoch_gc_t epoch_gc;
+    /** Per-context lifetime hint for allocations (ticks). */
+    uint64_t max_lifetime_ticks;
 };
 
 #define SSH_CHATTER_DEFAULT_LIFETIME TT_HOUR(24)
@@ -287,7 +289,8 @@ void sshc_memory_runtime_shutdown(void)
     pthread_mutex_unlock(&sshc_registry_mutex);
 }
 
-sshc_memory_context_t *sshc_memory_context_create(const char *label)
+sshc_memory_context_t *sshc_memory_context_create(const char *label,
+                                                      uint64_t max_lifetime_ticks)
 {
     sshc_memory_runtime_init();
     sshc_memory_context_t *ctx =
@@ -299,6 +302,7 @@ sshc_memory_context_t *sshc_memory_context_create(const char *label)
         return nullptr;
     }
     sshc_memory_context_init(ctx, label);
+    ctx->max_lifetime_ticks = max_lifetime_ticks;
 
     /* Session context: relaxed intervals to batch cleanups under churn.
      * Pressure threshold raised to 4 KiB so tiny allocations don't force
@@ -463,19 +467,21 @@ void *sshc_gc_malloc(size_t size)
     /* ttak_fastalloc: allocates + registers in the per-context epoch GC tree
      * in a single call, replacing the former two-step ttak_mem_alloc +
      * ttak_epoch_gc_register pattern. */
-    void *ptr = ttak_fastalloc(&ctx->epoch_gc, size,
-                               SSH_CHATTER_DEFAULT_LIFETIME,
+    uint64_t lifetime = ctx->max_lifetime_ticks > 0
+                            ? ctx->max_lifetime_ticks
+                            : SSH_CHATTER_DEFAULT_LIFETIME;
+    void *ptr = ttak_fastalloc(&ctx->epoch_gc, size, lifetime,
                                ttak_get_tick_count());
     if (ptr == nullptr) return nullptr;
 
     sshc_memory_allocation_t *allocation =
-        (sshc_memory_allocation_t *)ttak_mem_alloc(
-            sizeof(*allocation), SSH_CHATTER_DEFAULT_LIFETIME,
+        (sshc_memory_allocation_t *)ttak_fastalloc(
+            &ctx->epoch_gc, sizeof(*allocation), lifetime,
             ttak_get_tick_count());
     if (allocation == nullptr) {
-        /* Release the GC node so the background thread reclaims ptr. */
+        /* Release the GC node so the rotate thread reclaims ptr. */
         ttak_mem_node_t *node = ttak_mem_tree_find_node(&ctx->epoch_gc.tree, ptr);
-        if (node) ttak_mem_node_release(node); else ttak_mem_free(ptr);
+        if (node) ttak_mem_node_release(node);
         return nullptr;
     }
 
@@ -534,9 +540,11 @@ void *sshc_gc_realloc(void *ptr, size_t size)
         old_allocation != nullptr ? old_allocation->context : ctx;
     size_t old_size = old_allocation != nullptr ? old_allocation->size : 0;
 
+    uint64_t lifetime = allocation_ctx->max_lifetime_ticks > 0
+                            ? allocation_ctx->max_lifetime_ticks
+                            : SSH_CHATTER_DEFAULT_LIFETIME;
     void *new_ptr = ttak_fastalloc(&allocation_ctx->epoch_gc, size,
-                                   SSH_CHATTER_DEFAULT_LIFETIME,
-                                   ttak_get_tick_count());
+                                   lifetime, ttak_get_tick_count());
     if (new_ptr == nullptr) {
         if (old_allocation) sshc_memory_registry_add(old_allocation);
         return nullptr;
@@ -553,33 +561,27 @@ void *sshc_gc_realloc(void *ptr, size_t size)
 #endif
         sshc_memory_context_remove_allocation(old_allocation->context, ptr);
 
-        /* Deterministic immediate free of the old block. */
+        /* Lazy free: release the old GC node so the per-context rotate
+         * cleans it up. Do NOT detach from the tree or free immediately. */
         ttak_mem_node_t *old_node =
             ttak_mem_tree_find_node(&old_allocation->context->epoch_gc.tree, ptr);
         if (old_node) {
-            ttak_mem_tree_remove(&old_allocation->context->epoch_gc.tree, old_node);
+            ttak_mem_node_release(old_node);
         }
-        ttak_mem_free(ptr);
     }
 
     sshc_memory_allocation_t *allocation = old_allocation;
     if (allocation == nullptr) {
-        allocation = (sshc_memory_allocation_t *)ttak_mem_alloc(
-            sizeof(*allocation), SSH_CHATTER_DEFAULT_LIFETIME,
+        allocation = (sshc_memory_allocation_t *)ttak_fastalloc(
+            &allocation_ctx->epoch_gc, sizeof(*allocation), lifetime,
             ttak_get_tick_count());
         if (allocation == nullptr) {
-            /* Both old-alloc-reuse and new tracking-node alloc failed.
-             * Release the already-registered new_ptr node so the epoch GC
-             * background thread can reclaim it, then return nullptr to signal
-             * failure.  Returning new_ptr untracked would create an entry in
-             * the GC tree with no matching map entry, causing a double-free
-             * when sshc_gc_free is later called on the same pointer. */
+            /* Release the already-registered new_ptr node so the epoch GC
+             * rotate can reclaim it, then return nullptr. */
             ttak_mem_node_t *orphan_node =
                 ttak_mem_tree_find_node(&ctx->epoch_gc.tree, new_ptr);
             if (orphan_node) {
                 ttak_mem_node_release(orphan_node);
-            } else {
-                ttak_mem_free(new_ptr);
             }
             return nullptr;
         }
@@ -662,16 +664,19 @@ void sshc_gc_free(void *ptr)
                         (char *)allocation->ptr + allocation->size);
 #endif
         sshc_secure_zero(allocation->ptr, allocation->size);
-        /* Deterministic immediate free: remove the block from the epoch GC
-         * tree and release the underlying memory right now instead of
-         * deferring reclamation to the background rotate thread. */
+        /* Lazy free: release the GC node so the per-context rotate cleans
+         * it up. Do NOT detach from the tree or free immediately. */
         ttak_mem_node_t *node =
             ttak_mem_tree_find_node(&allocation->context->epoch_gc.tree, ptr);
         if (node) {
-            ttak_mem_tree_remove(&allocation->context->epoch_gc.tree, node);
+            ttak_mem_node_release(node);
         }
-        ttak_mem_free(ptr);
-        ttak_mem_free(allocation);
+        ttak_mem_node_t *meta_node =
+            ttak_mem_tree_find_node(&allocation->context->epoch_gc.tree,
+                                    allocation);
+        if (meta_node) {
+            ttak_mem_node_release(meta_node);
+        }
     } else {
         /* Not tracked – direct free. */
         ttak_mem_free(ptr);
@@ -694,19 +699,23 @@ void sshc_memory_context_reset(sshc_memory_context_t *ctx)
         GC_remove_roots(allocation->ptr,
                         (char *)allocation->ptr + allocation->size);
 #endif
-        /* Deterministic immediate free: detach from the epoch GC tree and
-         * reclaim the user block synchronously. */
+        /* Lazy free: release all GC nodes so the per-context rotate cleans
+         * them up in one pass. Do NOT detach from the tree or free now. */
         ttak_mem_node_t *node = ttak_mem_tree_find_node(
             &ctx->epoch_gc.tree, allocation->ptr);
         if (node) {
-            ttak_mem_tree_remove(&ctx->epoch_gc.tree, node);
+            ttak_mem_node_release(node);
         }
-        ttak_mem_free(allocation->ptr);
-        ttak_mem_free(allocation);
+        ttak_mem_node_t *meta_node = ttak_mem_tree_find_node(
+            &ctx->epoch_gc.tree, allocation);
+        if (meta_node) {
+            ttak_mem_node_release(meta_node);
+        }
         allocation = next;
     }
 
-    /* Flush any remaining internal epoch GC state. */
+    /* Per-user GC rotate: single-pass cleanup of every unreferenced block
+     * belonging to this session. */
     ttak_epoch_gc_rotate(&ctx->epoch_gc);
 }
 

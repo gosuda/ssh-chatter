@@ -890,7 +890,8 @@ bool doorgame_run(doorgame_session_t *s, doorgame_host_t *h,
         .detected_encoding = DOOR_ENC_UNKNOWN,
     };
 
-    bool was_buffering = true;
+    bool was_buffering =
+        sops->get_buffering != nullptr ? sops->get_buffering(s) : true;
     sops->set_buffering(s, false);
 
     if (hops != nullptr && hops->inc_active != nullptr) {

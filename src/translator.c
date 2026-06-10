@@ -136,7 +136,7 @@ static translator_memory_scope_t translator_memory_scope_enter(void)
     ttak_mutex_lock(&g_memory_mutex);
     if (g_translator_memory_context == nullptr) {
         g_translator_memory_context =
-            sshc_memory_context_create("translator");
+            sshc_memory_context_create("translator", TT_HOUR(24));
     }
     sshc_memory_context_t *context = g_translator_memory_context;
     ttak_mutex_unlock(&g_memory_mutex);

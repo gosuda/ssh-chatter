@@ -165,6 +165,8 @@ static bool door_relay_session_loop(doorgame_session_t *s,
     char buffer[DOOR_RELAY_BUFFER_SIZE];
     bool running = true;
     time_t started_at = time(nullptr);
+    bool was_buffering =
+        sops->get_buffering != nullptr ? sops->get_buffering(s) : true;
 
     sops->set_buffering(s, false);
 
@@ -255,7 +257,7 @@ static bool door_relay_session_loop(doorgame_session_t *s,
         }
     }
 
-    sops->set_buffering(s, true);
+    sops->set_buffering(s, was_buffering);
     return true;
 }
 

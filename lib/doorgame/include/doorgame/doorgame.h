@@ -65,6 +65,7 @@ typedef struct {
     bool (*write_all)(doorgame_session_t *s, const void *data, size_t len);
     void (*send_system_line)(doorgame_session_t *s, const char *msg);
     void (*set_buffering)(doorgame_session_t *s, bool enabled);
+    bool (*get_buffering)(doorgame_session_t *s);
     const char *(*localized)(doorgame_session_t *s, int msg_id);
     bool (*is_operator)(doorgame_session_t *s);
     bool (*is_lan_operator)(doorgame_session_t *s);

@@ -73,7 +73,8 @@ typedef struct sshc_memory_context sshc_memory_context_t;
 void sshc_memory_runtime_init(void);
 void sshc_memory_runtime_shutdown(void);
 
-sshc_memory_context_t *sshc_memory_context_create(const char *label);
+sshc_memory_context_t *sshc_memory_context_create(const char *label,
+                                                    uint64_t max_lifetime_ticks);
 void sshc_memory_context_destroy(sshc_memory_context_t *ctx);
 sshc_memory_context_t *sshc_memory_context_push(sshc_memory_context_t *ctx);
 void sshc_memory_context_pop(sshc_memory_context_t *previous);

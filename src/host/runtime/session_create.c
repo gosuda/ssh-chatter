@@ -81,7 +81,9 @@ static session_ctx_t *session_create(void)
 
     if (ctx != nullptr) {
         // Create a dedicated memory context for this session
-        ctx->memory_context = sshc_memory_context_create("session");
+        /* Session max lifetime ≈ 64 units × 300 s + 1200 s idle = 20400 s */
+        ctx->memory_context = sshc_memory_context_create("session",
+                                                           TT_SECOND(20400));
         if (ctx->memory_context == nullptr) {
             sshc_gc_free(ctx);
             return nullptr;

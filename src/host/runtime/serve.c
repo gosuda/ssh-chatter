@@ -563,6 +563,9 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
             ttak_mutex_lock(&host->lock);
             ++host->connection_count;
+            if (host->connection_count == 1) {
+                sshc_memory_context_set_gc_aggressive(host->memory_context);
+            }
             ctx->user.is_operator = false;
             ctx->user.is_lan_operator = false;
             ttak_mutex_unlock(&host->lock);

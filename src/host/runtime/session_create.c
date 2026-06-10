@@ -86,6 +86,7 @@ static session_ctx_t *session_create(void)
             sshc_gc_free(ctx);
             return nullptr;
         }
+        sshc_memory_context_set_gc_aggressive(ctx->memory_context);
 
         // Initialize session-specific owner for strict isolation
         ctx->session_owner = ttak_owner_create(TTAK_OWNER_STRICT_ISOLATION);

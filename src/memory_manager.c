@@ -716,6 +716,24 @@ void sshc_memory_context_epoch_gc_rotate(sshc_memory_context_t *ctx)
     ttak_epoch_gc_rotate(&ctx->epoch_gc);
 }
 
+void sshc_memory_context_set_gc_aggressive(sshc_memory_context_t *ctx)
+{
+    if (ctx == nullptr) return;
+    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
+                                         TT_MILLI_SECOND(100),
+                                         TT_MILLI_SECOND(400));
+    ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 4096);
+}
+
+void sshc_memory_context_set_gc_relaxed(sshc_memory_context_t *ctx)
+{
+    if (ctx == nullptr) return;
+    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
+                                         TT_MILLI_SECOND(2000),
+                                         TT_MILLI_SECOND(10000));
+    ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 65536);
+}
+
 void sshc_gc_init(void) 
 { 
     sshc_memory_runtime_init(); 

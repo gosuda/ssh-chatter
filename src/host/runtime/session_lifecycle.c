@@ -128,6 +128,9 @@ static void session_detach_external_state(session_ctx_t *ctx)
         if (host->connection_count > 0U) {
             --host->connection_count;
         }
+        if (host->connection_count == 0U) {
+            sshc_memory_context_set_gc_relaxed(host->memory_context);
+        }
         ttak_mutex_unlock(&host->lock);
 
         for (size_t idx = 0U; idx < SSH_CHATTER_OTHELLO_MAX_SLOTS; ++idx) {

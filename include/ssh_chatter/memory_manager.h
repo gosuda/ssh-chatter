@@ -99,6 +99,22 @@ tt_owner_t *sshc_memory_context_get_owner(sshc_memory_context_t *ctx);
  */
 void sshc_memory_context_epoch_gc_rotate(sshc_memory_context_t *ctx);
 
+/**
+ * @brief Set aggressive GC cadence for active load (users connected).
+ *
+ * Short cleaning intervals and low pressure threshold so memory
+ * is reclaimed quickly under churn.
+ */
+void sshc_memory_context_set_gc_aggressive(sshc_memory_context_t *ctx);
+
+/**
+ * @brief Set relaxed GC cadence for idle load (no users).
+ *
+ * Long cleaning intervals and high pressure threshold to reduce
+ * CPU / power consumption when the server is quiet.
+ */
+void sshc_memory_context_set_gc_relaxed(sshc_memory_context_t *ctx);
+
 void sshc_memory_defer_gc_registration_begin(void);
 void sshc_memory_defer_gc_registration_flush(void);
 void sshc_memory_defer_gc_registration_end(void);

@@ -554,7 +554,7 @@ int main(int argc, char **argv)
             continue;
         }
 
-        host->memory_context = sshc_memory_context_create("host", TT_HOUR(24));
+        host->memory_context = sshc_memory_context_create("host", 0);
 
         if (host->memory_context == nullptr) {
             ++restart_attempts;

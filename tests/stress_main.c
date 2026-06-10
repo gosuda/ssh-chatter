@@ -76,7 +76,7 @@ int main(int argc, char **argv)
     }
     volatile sig_atomic_t shutdown_flag = 0;
     host->shutdown_flag = &shutdown_flag;
-    host->memory_context = sshc_memory_context_create("stress-host");
+    host->memory_context = sshc_memory_context_create("stress-host", 0);
     if (host->memory_context == nullptr) {
         fprintf(stderr, "failed to create host memory context\n");
         free(host);

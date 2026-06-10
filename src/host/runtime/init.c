@@ -164,6 +164,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     }
 
     chat_room_init(&host->room);
+    host->room.owner = host;
     atomic_init(&host->next_session_id, 1U);
     host->idle_state_pending = false;
     host->last_room_empty_time = session_now_monotonic();

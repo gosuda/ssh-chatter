@@ -195,6 +195,7 @@ typedef struct chat_room {
     struct session_ctx **members;
     size_t member_count;
     size_t member_capacity;
+    struct host *owner;
 } chat_room_t;
 
 typedef struct host_moderation_task host_moderation_task_t;
@@ -1325,6 +1326,7 @@ bool host_ddial_listener_start(host_t *host, const char *bind_addr,
 void host_ddial_listener_stop(host_t *host);
 void host_ddial_inject_message(host_t *host, const char *username,
                                const char *message);
+void host_ddial_broadcast_system(host_t *host, const char *message);
 void host_ddial_init(host_t *host);
 void host_ddial_shutdown(host_t *host);
 bool host_ddial_client_configure(host_t *host, const char *host_str, int port,

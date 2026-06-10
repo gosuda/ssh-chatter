@@ -666,6 +666,10 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
     if (targets != stack_targets) {
         sshc_gc_free(targets);
     }
+
+    if (room->owner != nullptr) {
+        host_ddial_broadcast_system(room->owner, message);
+    }
 }
 
 /**
@@ -946,6 +950,11 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     }
     if (sink_targets != stack_sink_targets) {
         sshc_gc_free(sink_targets);
+    }
+
+    if (room->owner != nullptr && entry->is_user_message &&
+        entry->username[0] != '\0' && entry->message[0] != '\0') {
+        host_ddial_inject_message(room->owner, entry->username, entry->message);
     }
 }
 
@@ -1898,10 +1907,6 @@ static void host_notify_external_clients(host_t *host,
         return;
     }
     client_manager_notify_history(host->clients, entry);
-    if (entry->is_user_message && entry->username[0] != '\0' &&
-        entry->message[0] != '\0') {
-        host_ddial_inject_message(host, entry->username, entry->message);
-    }
 }
 
 static bool host_history_record_user(host_t *host, const session_ctx_t *from,

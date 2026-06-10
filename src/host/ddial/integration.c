@@ -77,3 +77,41 @@ void host_ddial_broadcast_to_sessions(host_t *host, const char *message)
     pthread_mutex_unlock(&g_ddial_registry_lock);
     (void)host;
 }
+
+void host_ddial_broadcast_system(host_t *host, const char *message)
+{
+    if (host == nullptr || message == nullptr || message[0] == '\0') {
+        return;
+    }
+    char clean[SSH_CHATTER_MESSAGE_LIMIT];
+    ddial_strip_ansi(message, strlen(message), clean, sizeof(clean));
+    if (clean[0] == '\0') {
+        return;
+    }
+    char formatted[SSH_CHATTER_MESSAGE_LIMIT + 16];
+    int n = snprintf(formatted, sizeof(formatted), "* %s\r\n", clean);
+    if (n > 0 && (size_t)n < sizeof(formatted)) {
+        host_ddial_broadcast_to_sessions(host, formatted);
+    }
+}
+
+/* Forward reference defined in server.c (same translation unit). */
+extern void ddial_session_write_line(struct ddial_session *sess,
+                                     const char *text);
+
+void host_ddial_write_who(ddial_session_t *target)
+{
+    if (target == nullptr) {
+        return;
+    }
+    pthread_mutex_lock(&g_ddial_registry_lock);
+    ddial_session_registry_node_t *cur = g_ddial_sessions;
+    while (cur != nullptr) {
+        if (cur->session != nullptr && cur->session != target &&
+            cur->session->handle[0] != '\0') {
+            ddial_session_write_line(target, cur->session->handle);
+        }
+        cur = cur->next;
+    }
+    pthread_mutex_unlock(&g_ddial_registry_lock);
+}

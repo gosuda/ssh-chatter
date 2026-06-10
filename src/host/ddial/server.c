@@ -23,6 +23,9 @@
 #define DDIAL_SESSION_INPUT_BUF 4096
 #define DDIAL_SESSION_POLL_MS 100
 
+/* Defined in integration.c (same translation unit). */
+extern void host_ddial_write_who(struct ddial_session *target);
+
 static void host_ddial_format_sockaddr(const struct sockaddr *addr,
                                        socklen_t len, char *buffer, size_t size)
 {
@@ -185,10 +188,12 @@ static void ddial_session_do_who(ddial_session_t *sess)
         }
         ddial_session_write_line(sess, entry);
     }
+    ttak_mutex_unlock(&room->lock);
+    /* Append DDial-native users so the list is fully unified. */
+    host_ddial_write_who(sess);
     if (room->member_count == 0U) {
         ddial_session_write_line(sess, "No users online.");
     }
-    ttak_mutex_unlock(&room->lock);
 }
 
 static void ddial_session_do_help(ddial_session_t *sess)

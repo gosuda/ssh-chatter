@@ -315,7 +315,7 @@ static void adapter_save_locks(doorgame_host_t *h)
 }
 
 /* ------------------------------------------------------------------------- */
-/* Ops tables                                                                */
+/* Session ops table (read-only, safe to share across threads)               */
 /* ------------------------------------------------------------------------- */
 static doorgame_session_ops_t g_door_session_ops = {
     .read_poll = adapter_read_poll,
@@ -331,13 +331,6 @@ static doorgame_session_ops_t g_door_session_ops = {
     .gc_realloc = adapter_gc_realloc,
 };
 
-static doorgame_host_ops_t g_door_host_ops = {
-    .inc_active = adapter_inc_active,
-    .dec_active = adapter_dec_active,
-    .is_shutting_down = adapter_is_shutting_down,
-    .save_locks = adapter_save_locks,
-};
-
 /* ------------------------------------------------------------------------- */
 /* Adapter entry points (called from bbs_handler.c)                          */
 /* ------------------------------------------------------------------------- */
@@ -348,14 +341,20 @@ void session_bbs_door_run(session_ctx_t *ctx, const char *name)
     }
     host_t *host = ctx->owner;
 
-    g_door_host_ops.entries = (doorgame_entry_t *)host->door_games;
-    g_door_host_ops.entry_count = host->door_game_count;
-    g_door_host_ops.max_sessions = host->max_door_sessions;
-    g_door_host_ops.active_sessions = host->active_door_sessions;
+    doorgame_host_ops_t hops = {
+        .entries = (doorgame_entry_t *)host->door_games,
+        .entry_count = host->door_game_count,
+        .max_sessions = host->max_door_sessions,
+        .active_sessions = host->active_door_sessions,
+        .inc_active = adapter_inc_active,
+        .dec_active = adapter_dec_active,
+        .is_shutting_down = adapter_is_shutting_down,
+        .save_locks = adapter_save_locks,
+    };
 
     if (name == nullptr || name[0] == '\0') {
         doorgame_list((doorgame_session_t *)ctx, (doorgame_host_t *)host,
-                      &g_door_session_ops, &g_door_host_ops);
+                      &g_door_session_ops, &hops);
         return;
     }
 
@@ -379,7 +378,7 @@ void session_bbs_door_run(session_ctx_t *ctx, const char *name)
 
     doorgame_run((doorgame_session_t *)ctx, (doorgame_host_t *)host,
                  (const doorgame_entry_t *)entry,
-                 &g_door_session_ops, &g_door_host_ops);
+                 &g_door_session_ops, &hops);
 }
 
 void session_bbs_setgamelock(session_ctx_t *ctx, const char *arguments)
@@ -391,12 +390,18 @@ void session_bbs_setgamelock(session_ctx_t *ctx, const char *arguments)
 
     bool is_op = ctx->user.is_operator || ctx->user.is_lan_operator;
 
-    g_door_host_ops.entries = (doorgame_entry_t *)host->door_games;
-    g_door_host_ops.entry_count = host->door_game_count;
-    g_door_host_ops.max_sessions = host->max_door_sessions;
-    g_door_host_ops.active_sessions = host->active_door_sessions;
+    doorgame_host_ops_t hops = {
+        .entries = (doorgame_entry_t *)host->door_games,
+        .entry_count = host->door_game_count,
+        .max_sessions = host->max_door_sessions,
+        .active_sessions = host->active_door_sessions,
+        .inc_active = adapter_inc_active,
+        .dec_active = adapter_dec_active,
+        .is_shutting_down = adapter_is_shutting_down,
+        .save_locks = adapter_save_locks,
+    };
 
     doorgame_toggle_lock((doorgame_session_t *)ctx, (doorgame_host_t *)host,
                          arguments, is_op,
-                         &g_door_session_ops, &g_door_host_ops);
+                         &g_door_session_ops, &hops);
 }

@@ -1898,6 +1898,10 @@ static void host_notify_external_clients(host_t *host,
         return;
     }
     client_manager_notify_history(host->clients, entry);
+    if (entry->is_user_message && entry->username[0] != '\0' &&
+        entry->message[0] != '\0') {
+        host_ddial_inject_message(host, entry->username, entry->message);
+    }
 }
 
 static bool host_history_record_user(host_t *host, const session_ctx_t *from,

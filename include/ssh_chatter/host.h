@@ -570,6 +570,7 @@ typedef struct gonu_multiplayer_slot {
 typedef enum session_transport_kind {
     SESSION_TRANSPORT_SSH = 0,
     SESSION_TRANSPORT_TELNET,
+    SESSION_TRANSPORT_DDIAL,
 } session_transport_kind_t;
 
 typedef enum session_ui_mode {
@@ -685,6 +686,10 @@ typedef struct session_ctx {
     int telnet_pending_char;
     bool telnet_consume_next_lf;
     bool telnet_terminal_type_requested;
+    int ddial_fd;
+    uint8_t ddial_channel;
+    bool ddial_logged_in;
+    bool ddial_should_exit;
     chat_user_t user;
     bool lan_operator_credentials_valid;
     auth_profile_t auth;
@@ -1264,6 +1269,20 @@ typedef struct host {
     nickname_claim_t *nickname_claims[SSH_CHATTER_MAX_NICKNAME_CLAIMS];
     size_t nickname_claim_count;
     ddial_relay_t ddial_relay;
+    struct {
+        bool enabled;
+        int fd;
+        pthread_t thread;
+        bool thread_initialized;
+        _Atomic bool running;
+        _Atomic bool stop;
+        unsigned int restart_attempts;
+        struct timespec last_error_time;
+        char bind_address[64];
+        char port[16];
+        char requested_port[16];
+        bool port_auto_adjusted;
+    } ddial_listener;
     volatile sig_atomic_t *shutdown_flag;
 } host_t;
 
@@ -1298,7 +1317,24 @@ void host_set_welcome_banner(host_t *host, const char *banner, bool is_ans);
 int host_serve(host_t *host, const char *bind_addr, const char *port,
                const char *key_directory, const char *telnet_bind_addr,
                const char *telnet_port, const char *json_bind_addr,
-               const char *json_port);
+               const char *json_port, const char *ddial_bind_addr,
+               const char *ddial_port);
+
+bool host_ddial_listener_start(host_t *host, const char *bind_addr,
+                               const char *port);
+void host_ddial_listener_stop(host_t *host);
+void host_ddial_inject_message(host_t *host, const char *username,
+                               const char *message);
+void host_ddial_init(host_t *host);
+void host_ddial_shutdown(host_t *host);
+bool host_ddial_client_configure(host_t *host, const char *host_str, int port,
+                                 const char *key);
+void host_ddial_client_disconnect(host_t *host);
+void host_ddial_client_start(host_t *host);
+void host_ddial_client_send(host_t *host, const char *handle,
+                            const char *message);
+void host_ddial_notify_admin_if_port_adjusted(host_t *host, session_ctx_t *ctx);
+uint64_t host_allocate_session_id(host_t *host);
 void host_archive_start_backend(host_t *host);
 bool host_post_client_message(host_t *host, const char *username,
                               const char *message, const char *color_name,

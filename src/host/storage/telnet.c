@@ -1467,7 +1467,7 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
     }
     chat_room_broadcast_entry(&ctx->owner->room, &entry, ctx);
     host_notify_external_clients(ctx->owner, &entry);
-    host_ddial_relay_send(ctx->owner, ctx->user.name, trimmed);
+    host_ddial_inject_message(ctx->owner, ctx->user.name, trimmed);
     session_clear_pending_sink(ctx);
 
     (void)host_eliza_intervene(ctx, trimmed, nullptr, false);

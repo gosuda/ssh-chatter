@@ -64,7 +64,7 @@ static void session_log_encoding_state(const char *phase,
            (int)ctx->output_kind);
 }
 
-static uint64_t host_allocate_session_id(host_t *host)
+uint64_t host_allocate_session_id(host_t *host)
 {
     if (host == nullptr) {
         return 0U;

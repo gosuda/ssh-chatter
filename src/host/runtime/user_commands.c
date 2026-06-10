@@ -820,7 +820,7 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
     }
 
     if (strcasecmp(action, "disconnect") == 0) {
-        host_ddial_relay_disable(ctx->owner);
+        host_ddial_client_disconnect(ctx->owner);
         session_send_system_line(ctx, "DDial relay disconnected.");
         return;
     }
@@ -861,8 +861,8 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
             }
         }
 
-        if (host_ddial_relay_configure(ctx->owner, host_str, (int)port_long,
-                                       key)) {
+        if (host_ddial_client_configure(ctx->owner, host_str, (int)port_long,
+                                        key)) {
             session_send_system_line(
                 ctx, "DDial relay configured and connecting...");
         } else {

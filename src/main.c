@@ -55,7 +55,7 @@ static void print_usage(const char *prog_name)
     fprintf(stderr,
 
             "Usage: %s [-a address] [-p port] [-m motd_file] [-k host_key_dir] "
-            "[-T telnet_port|off] [-J json_port|off]\n",
+            "[-T telnet_port|off] [-J json_port|off] [-D ddial_bind:port|off]\n",
 
             prog_name);
 }
@@ -161,6 +161,7 @@ int main(int argc, char **argv)
 
     bool telnet_enabled = true;
     bool json_enabled = true;
+    bool ddial_enabled = false;
 
     char telnet_bind_storage[64];
 
@@ -178,12 +179,19 @@ int main(int argc, char **argv)
     char json_port_storage[16];
     json_port_storage[0] = '\0';
 
+    bool ddial_bind_overridden = false;
+    char ddial_bind_storage[64];
+    ddial_bind_storage[0] = '\0';
+    char ddial_port_storage[16];
+    ddial_port_storage[0] = '\0';
+    const char *ddial_port = nullptr;
+
     int opt = 0;
 
     bool show_usage = false;
     bool show_version = false;
 
-    while ((opt = getopt(argc, argv, "a:p:m:k:T:J:hV")) != -1) {
+    while ((opt = getopt(argc, argv, "a:p:m:k:T:J:D:hV")) != -1) {
         switch (opt) {
         case 'a':
 
@@ -391,6 +399,68 @@ int main(int argc, char **argv)
             }
 
             break;
+        case 'D':
+
+            if (optarg != nullptr &&
+                (strcmp(optarg, "off") == 0 || strcmp(optarg, "disable") == 0 ||
+                 strcmp(optarg, "none") == 0)) {
+                ddial_enabled = false;
+                ddial_port = nullptr;
+                ddial_bind_overridden = false;
+            } else if (optarg != nullptr) {
+                const char *value = optarg;
+                const char *colon = strchr(value, ':');
+                if (colon != nullptr) {
+                    size_t host_len = (size_t)(colon - value);
+                    if (host_len >= sizeof(ddial_bind_storage)) {
+                        fprintf(stderr,
+                                "ddial bind address is too long; ignoring "
+                                "override\n");
+                        ddial_bind_storage[0] = '\0';
+                        ddial_bind_overridden = false;
+                    } else if (host_len > 0U) {
+                        memcpy(ddial_bind_storage, value, host_len);
+                        ddial_bind_storage[host_len] = '\0';
+                        ddial_bind_overridden = true;
+                    } else {
+                        ddial_bind_overridden = false;
+                    }
+                    const char *port_part = colon + 1;
+                    if (port_part[0] == '\0') {
+                        ddial_port = "2525";
+                    } else {
+                        size_t port_len = strlen(port_part);
+                        if (port_len >= sizeof(ddial_port_storage)) {
+                            fprintf(stderr,
+                                    "ddial port is too long; using default "
+                                    "port 2525\n");
+                            ddial_port = "2525";
+                        } else {
+                            memcpy(ddial_port_storage, port_part,
+                                   port_len + 1);
+                            ddial_port = ddial_port_storage;
+                        }
+                    }
+                } else {
+                    ddial_bind_overridden = false;
+                    if (value[0] == '\0') {
+                        ddial_port = "2525";
+                    } else {
+                        size_t port_len = strlen(value);
+                        if (port_len >= sizeof(ddial_port_storage)) {
+                            fprintf(stderr,
+                                    "ddial port is too long; using default "
+                                    "port 2525\n");
+                            ddial_port = "2525";
+                        } else {
+                            memcpy(ddial_port_storage, value, port_len + 1);
+                            ddial_port = ddial_port_storage;
+                        }
+                    }
+                }
+                ddial_enabled = true;
+            }
+            break;
 
         case 'h':
             show_usage = true;
@@ -445,6 +515,16 @@ int main(int argc, char **argv)
 
     const char *json_bind_address =
         json_bind_overridden ? json_bind_storage : nullptr;
+
+    if (!ddial_enabled) {
+        ddial_port = nullptr;
+        ddial_bind_overridden = false;
+    } else if (ddial_port != nullptr && ddial_port[0] == '\0') {
+        ddial_port = "2525";
+    }
+
+    const char *ddial_bind_address =
+        ddial_bind_overridden ? ddial_bind_storage : nullptr;
 
     auth_profile_t default_profile = {0};
 
@@ -563,7 +643,7 @@ int main(int argc, char **argv)
         const int serve_result =
             host_serve(host, bind_address, bind_port, host_key_dir,
                        telnet_bind_address, telnet_port, json_bind_address,
-                       json_port);
+                       json_port, ddial_bind_address, ddial_port);
         const bool force_restart_requested = host->force_restart_requested;
 
         const int serve_errno = errno;

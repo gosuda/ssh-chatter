@@ -765,6 +765,8 @@ static void *session_thread(void *arg)
         ctx->has_joined_room = true;
         printf("[join] %s\n", ctx->user.name);
 
+        host_ddial_notify_admin_if_port_adjusted(ctx->owner, ctx);
+
         session_ask_ui_mode(ctx);
 
         ctx->history_scroll_position = 0U;

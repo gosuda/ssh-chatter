@@ -1,7 +1,8 @@
 int host_serve(host_t *host, const char *bind_addr, const char *port,
                const char *key_directory, const char *telnet_bind_addr,
                const char *telnet_port, const char *json_bind_addr,
-               const char *json_port)
+               const char *json_port, const char *ddial_bind_addr,
+               const char *ddial_port)
 {
     if (host == nullptr) {
         return -1;
@@ -48,9 +49,29 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
     } else {
         host_json_api_listener_stop(host);
     }
+    const char *ddial_bind = nullptr;
+    if (ddial_bind_addr != nullptr) {
+        ddial_bind = ddial_bind_addr;
+    } else if (bind_addr != nullptr && bind_addr[0] != '\0') {
+        ddial_bind = bind_addr;
+    } else {
+        ddial_bind = address;
+    }
+    if (ddial_port != nullptr && ddial_port[0] != '\0') {
+        if (!host_ddial_listener_start(host, ddial_bind, ddial_port)) {
+            const char *display_addr =
+                (ddial_bind != nullptr && ddial_bind[0] != '\0') ? ddial_bind
+                                                                  : "*";
+            printf("[ddial] ddial listener unavailable on %s:%s\n",
+                   display_addr, ddial_port);
+        }
+    } else {
+        host_ddial_listener_stop(host);
+    }
     host_register_protected_bind_address(host, address);
     host_register_protected_bind_address(host, telnet_bind);
     host_register_protected_bind_address(host, json_bind);
+    host_register_protected_bind_address(host, ddial_bind);
     const bool key_dir_specified =
         key_directory != nullptr && key_directory[0] != '\0';
     const host_key_definition_t host_key_definitions[] = {

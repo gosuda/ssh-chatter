@@ -277,17 +277,17 @@ static bool adapter_is_lan_operator(doorgame_session_t *s)
 
 static void *adapter_gc_malloc(size_t sz)
 {
-    return malloc(sz);
+    return sshc_gc_malloc(sz);
 }
 
 static void adapter_gc_free(void *p)
 {
-    free(p);
+    sshc_gc_free(p);
 }
 
 static void *adapter_gc_realloc(void *p, size_t sz)
 {
-    return realloc(p, sz);
+    return sshc_gc_realloc(p, sz);
 }
 
 /* ------------------------------------------------------------------------- */

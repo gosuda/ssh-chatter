@@ -194,6 +194,19 @@ void host_init(host_t *host, auth_profile_t *auth)
     host->json_api.bind_address[0] = '\0';
     host->json_api.port[0] = '\0';
 
+    host->ddial_listener.enabled = false;
+    host->ddial_listener.fd = -1;
+    host->ddial_listener.thread_initialized = false;
+    atomic_store(&host->ddial_listener.running, false);
+    atomic_store(&host->ddial_listener.stop, false);
+    host->ddial_listener.restart_attempts = 0U;
+    host->ddial_listener.last_error_time.tv_sec = 0;
+    host->ddial_listener.last_error_time.tv_nsec = 0L;
+    host->ddial_listener.bind_address[0] = '\0';
+    host->ddial_listener.port[0] = '\0';
+    host->ddial_listener.requested_port[0] = '\0';
+    host->ddial_listener.port_auto_adjusted = false;
+
     host_ddial_init(host);
 
     const char *env_secret = getenv("JWT_SECRET");

@@ -13,6 +13,8 @@ static int session_game_random_range(session_ctx_t *ctx, int max);
 static session_ctx_t *chat_room_find_user(chat_room_t *room,
                                           const char *username);
 static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments);
+extern void session_bbs_door_run(session_ctx_t *ctx, const char *name);
+extern void session_bbs_setgamelock(session_ctx_t *ctx, const char *arguments);
 
 // Handle the /bbs command entry point.
 static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)

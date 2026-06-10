@@ -21,6 +21,7 @@ INCLUDE_DIR := include
 BUILD_DIR := build
 TTAK_DIR := lib/libttak
 INIH_DIR := lib/inih
+DOORGAME_DIR := lib/doorgame
 HAVE_GLOBAL_TTAK := $(shell test -f /usr/local/lib/libttak.a && echo 1 || echo 0)
 ifeq ($(HAVE_GLOBAL_TTAK),1)
 TTAK_LIB := /usr/local/lib/libttak.a
@@ -60,7 +61,7 @@ CFLAGS = -std=c2x -Ofast \
               -Wno-error=deprecated-declarations -DSSH_CHATTER_USE_GC=$(ENABLE_GC) \
               $(if $(filter 1,$(HAVE_UCHARDET)),-DSSH_CHATTER_HAVE_UCHARDET $(CFLAGS_UCHARDET)) \
               $(if $(filter 1,$(HAVE_ICU)),-DSSH_CHATTER_HAVE_ICU $(CFLAGS_ICU)) \
-              -I $(INCLUDE_DIR) -I $(INIH_DIR) $(CFLAGS_TTAK) $(CFLAGS_LIBSSH) $(CFLAGS_LIBCURL) -I /usr/local/include -I/usr/include \
+              -I $(INCLUDE_DIR) -I $(INIH_DIR) -I $(DOORGAME_DIR)/include $(CFLAGS_TTAK) $(CFLAGS_LIBSSH) $(CFLAGS_LIBCURL) -I /usr/local/include -I/usr/include \
               -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700 \
               -Wall -Wextra -Wshadow -Wformat=2 -Wundef -Wconversion -Wdouble-promotion \
               -fstack-protector-strong -fno-common \
@@ -102,6 +103,7 @@ CFLAGS = -std=c2x -Ofast \
 # ==============================================================================
 COMMON_LDFLAGS = \
     -L/usr/local/lib \
+    $(DOORGAME_DIR)/libdoorgame.a \
     -lpthread -ldl -lm -lcrypto -llz4 $(LDFLAGS_TTAK) $(LDFLAGS_LIBCURL) -lutil -lc \
     $(LDFLAGS_UCHARDET) $(LDFLAGS_ICU) \
     -Wl,-Ofast \
@@ -154,8 +156,11 @@ DISPLAY_TEST_OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(DISPLAY_TEST_SRC))
 # Default goal: Build the executable and shared library
 all: $(TARGET) $(SHARED_TARGET)
 
+$(DOORGAME_DIR)/libdoorgame.a:
+	$(MAKE) -C $(DOORGAME_DIR) all
+
 # Final linking for the executable
-$(TARGET): $(OBJ) $(TTAK_LIB)
+$(TARGET): $(OBJ) $(TTAK_LIB) $(DOORGAME_DIR)/libdoorgame.a
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Final linking for the shared library
@@ -182,6 +187,7 @@ run: $(TARGET)
 clean:
 # Cleanup only for LTO/standard build files
 	rm -rf $(BUILD_DIR) $(TARGET) $(SHARED_TARGET) $(DEP) $(STRESS_OBJ) $(STRESS_TARGET) $(DISPLAY_TEST_TARGET)
+	$(MAKE) -C $(DOORGAME_DIR) clean
 
 # Include dependency files
 -include $(DEP)

@@ -4,3 +4,6 @@
 [submodule "lib/inih"]
 	path = lib/inih
 	url = https://github.com/benhoyt/inih.git
+[submodule "lib/doorgame"]
+	path = lib/doorgame
+	url = https://github.com/example/doorgame.git

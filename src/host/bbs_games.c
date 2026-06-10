@@ -4,11 +4,10 @@
  */
 
 #include "games/display.c"
-#include "games/bbs_door.c"
-#include "games/door_relay.c"
 #include "games/bbs_handler.c"
 #include "games/tetris.c"
 #include "games/misc.c"
 #include "games/othello.c"
 #include "games/alpha.c"
 #include "games/gonu.c"
+#include "games/door_adapter.c"

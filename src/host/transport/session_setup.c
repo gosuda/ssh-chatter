@@ -669,6 +669,12 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
 
     if (room->owner != nullptr) {
         host_ddial_broadcast_system(room->owner, message);
+        if (room->owner->clients != nullptr) {
+            chat_history_entry_t entry = {0};
+            snprintf(entry.message, sizeof(entry.message), "%s", message);
+            entry.is_user_message = false;
+            client_manager_notify_history(room->owner->clients, &entry);
+        }
     }
 }
 
@@ -952,9 +958,15 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         sshc_gc_free(sink_targets);
     }
 
-    if (room->owner != nullptr && entry->is_user_message &&
-        entry->username[0] != '\0' && entry->message[0] != '\0') {
-        host_ddial_inject_message(room->owner, entry->username, entry->message);
+    if (room->owner != nullptr) {
+        if (entry->is_user_message && entry->username[0] != '\0' &&
+            entry->message[0] != '\0') {
+            host_ddial_inject_message(room->owner, entry->username,
+                                      entry->message);
+        }
+        if (room->owner->clients != nullptr) {
+            client_manager_notify_history(room->owner->clients, entry);
+        }
     }
 }
 
@@ -1897,18 +1909,6 @@ static bool host_replies_commit_entry(host_t *host, chat_reply_entry_t *entry,
     return committed;
 }
 
-static void host_notify_external_clients(host_t *host,
-                                         const chat_history_entry_t *entry)
-{
-    if (host == nullptr || entry == nullptr) {
-        return;
-    }
-    if (host->clients == nullptr) {
-        return;
-    }
-    client_manager_notify_history(host->clients, entry);
-}
-
 static bool host_history_record_user(host_t *host, const session_ctx_t *from,
                                      const char *message,
                                      bool preserve_whitespace,
@@ -1947,13 +1947,6 @@ static bool host_history_record_system(host_t *host, const char *message,
         return false;
     }
 
-    chat_history_entry_t notification_entry;
-    if (stored_entry != nullptr) {
-        notification_entry = *stored_entry;
-    } else {
-        notification_entry = entry;
-    }
-    host_notify_external_clients(host, &notification_entry);
     return true;
 }
 

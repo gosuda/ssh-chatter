@@ -394,7 +394,6 @@ static void session_asciiart_commit(session_ctx_t *ctx)
 
     session_send_history_entry(ctx, &entry);
     chat_room_broadcast_entry(&ctx->owner->room, &entry, ctx);
-    host_notify_external_clients(ctx->owner, &entry);
 
     ctx->last_message_time = now;
     ctx->has_last_message_time = true;

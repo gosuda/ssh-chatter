@@ -1331,8 +1331,7 @@ static bool host_history_record_user(host_t *host, const session_ctx_t *from,
                                      chat_history_entry_t *stored_entry);
 static bool host_history_commit_entry(host_t *host, chat_history_entry_t *entry,
                                       chat_history_entry_t *stored_entry);
-static void host_notify_external_clients(host_t *host,
-                                         const chat_history_entry_t *entry);
+
 static bool host_history_append_locked(host_t *host,
                                        const chat_history_entry_t *entry);
 static bool host_history_reserve_locked(host_t *host, size_t min_capacity);

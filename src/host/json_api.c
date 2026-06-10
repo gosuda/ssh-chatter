@@ -61,8 +61,7 @@ static bool host_prepare_chat_entry(host_t *host, const char *username,
                                     chat_history_entry_t *entry);
 static bool host_history_commit_entry(host_t *host, chat_history_entry_t *entry,
                                       chat_history_entry_t *stored_entry);
-static void host_notify_external_clients(host_t *host,
-                                         const chat_history_entry_t *entry);
+
 static void chat_room_broadcast_entry(chat_room_t *room,
                                       const chat_history_entry_t *entry,
                                       const session_ctx_t *exclude);
@@ -973,7 +972,6 @@ static bool json_api_post_attachment(host_t *host, const char *username,
     }
 
     chat_room_broadcast_entry(&host->room, &stored, nullptr);
-    host_notify_external_clients(host, &stored);
     return true;
 }
 
@@ -1032,7 +1030,6 @@ static bool json_api_post_asciiart(host_t *host, const char *username,
 
     host_asciiart_register_post(host, ip, &now);
     chat_room_broadcast_entry(&host->room, &stored, nullptr);
-    host_notify_external_clients(host, &stored);
     return true;
 }
 

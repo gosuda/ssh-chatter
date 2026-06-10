@@ -1592,7 +1592,6 @@ bool host_post_client_message(host_t *host, const char *username,
     }
 
     chat_room_broadcast_entry(&host->room, &stored, nullptr);
-    host_notify_external_clients(host, &stored);
     success = true;
     if (success) {
         host_ai_chat_consider_reply(host, &stored);
@@ -1621,7 +1620,6 @@ bool host_post_ephemeral_message(host_t *host, const char *username,
     }
 
     chat_room_broadcast_entry(&host->room, &entry, nullptr);
-    host_notify_external_clients(host, &entry);
     success = true;
 
 exit_host_post_client_message:

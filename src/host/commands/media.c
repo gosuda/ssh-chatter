@@ -392,7 +392,6 @@ static void session_handle_image(session_ctx_t *ctx, const char *arguments)
 
     session_send_history_entry(ctx, &stored);
     chat_room_broadcast_entry(&ctx->owner->room, &stored, ctx);
-    host_notify_external_clients(ctx->owner, &stored);
 }
 
 static void session_handle_video(session_ctx_t *ctx, const char *arguments)
@@ -462,7 +461,6 @@ static void session_handle_video(session_ctx_t *ctx, const char *arguments)
 
     session_send_history_entry(ctx, &stored);
     chat_room_broadcast_entry(&ctx->owner->room, &stored, ctx);
-    host_notify_external_clients(ctx->owner, &stored);
 }
 
 static void session_handle_audio(session_ctx_t *ctx, const char *arguments)
@@ -532,7 +530,6 @@ static void session_handle_audio(session_ctx_t *ctx, const char *arguments)
 
     session_send_history_entry(ctx, &stored);
     chat_room_broadcast_entry(&ctx->owner->room, &stored, ctx);
-    host_notify_external_clients(ctx->owner, &stored);
 }
 
 static void session_handle_files(session_ctx_t *ctx, const char *arguments)
@@ -602,5 +599,4 @@ static void session_handle_files(session_ctx_t *ctx, const char *arguments)
 
     session_send_history_entry(ctx, &stored);
     chat_room_broadcast_entry(&ctx->owner->room, &stored, ctx);
-    host_notify_external_clients(ctx->owner, &stored);
 }

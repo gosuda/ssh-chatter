@@ -237,6 +237,5 @@ static void session_handle_reaction(session_ctx_t *ctx, size_t reaction_index,
              descriptor->icon, descriptor->label, label);
     session_send_system_line(ctx, confirmation);
     chat_room_broadcast_reaction_update(ctx->owner, &updated);
-    host_notify_external_clients(ctx->owner, &updated);
 }
 

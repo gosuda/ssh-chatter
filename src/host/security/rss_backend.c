@@ -595,6 +595,12 @@ static void host_rss_state_load(host_t *host)
         return;
     }
 
+    if (header.feed_count > SSH_CHATTER_RSS_MAX_FEEDS) {
+        humanized_log_error("host", "rss state feed count is invalid", EINVAL);
+        fclose(fp);
+        return;
+    }
+
     ttak_mutex_lock(&host->lock);
 
     for (size_t idx = 0U; idx < SSH_CHATTER_RSS_MAX_FEEDS; ++idx) {
@@ -638,6 +644,9 @@ static void host_rss_state_load(host_t *host)
         rss_trim_whitespace(record->tag);
         rss_trim_whitespace(record->url);
         rss_trim_whitespace(record->last_item_key);
+        record->tag[sizeof(record->tag) - 1U] = '\0';
+        record->url[sizeof(record->url) - 1U] = '\0';
+        record->last_item_key[sizeof(record->last_item_key) - 1U] = '\0';
 
         if (!rss_tag_is_valid(record->tag) || record->url[0] == '\0') {
             ttak_mem_free(record);
@@ -674,6 +683,13 @@ static void host_rss_state_load(host_t *host)
         if (items_to_copy > 0U) {
             memcpy(slot->stored_items, record->items,
                    items_to_copy * sizeof(rss_session_item_t));
+            for (size_t item_idx = 0U; item_idx < items_to_copy; ++item_idx) {
+                rss_session_item_t *item = &slot->stored_items[item_idx];
+                item->id[sizeof(item->id) - 1U] = '\0';
+                item->title[sizeof(item->title) - 1U] = '\0';
+                item->link[sizeof(item->link) - 1U] = '\0';
+                item->summary[sizeof(item->summary) - 1U] = '\0';
+            }
         }
         ttak_mem_free(record);
     }

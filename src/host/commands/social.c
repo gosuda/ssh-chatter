@@ -889,9 +889,10 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
         target_ip = target_session->client_ip;
     } else {
         // If offline, try to find their last known IP from user data
-        char last_ip[SSH_CHATTER_IP_LEN];
+        char last_ip[SSH_CHATTER_IP_LEN] = {0};
         if (host_lookup_last_ip(ctx->owner, target_nickname, last_ip,
                                 sizeof(last_ip))) {
+            last_ip[sizeof(last_ip) - 1U] = '\0';
             target_ip = last_ip;
         }
     }

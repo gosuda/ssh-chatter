@@ -674,6 +674,7 @@ bool host_ddial_listener_start(host_t *host, const char *bind_addr,
     if (pthread_create(&host->ddial_listener.thread, nullptr,
                        host_ddial_listener_thread, host) != 0) {
         humanized_log_error("ddial", "failed to start ddial listener", errno);
+        memset(&host->ddial_listener.thread, 0, sizeof(pthread_t));
         host->ddial_listener.enabled = false;
         return false;
     }
@@ -710,12 +711,16 @@ void host_ddial_listener_stop(host_t *host)
         shutdown(host->ddial_listener.fd, SHUT_RDWR);
     }
 
-    int join_result = pthread_join(host->ddial_listener.thread, nullptr);
-    if (join_result != 0) {
-        humanized_log_error("ddial", "failed to join ddial listener",
-                            join_result);
+    pthread_t zero_thread = {0};
+    if (memcmp(&host->ddial_listener.thread, &zero_thread,
+               sizeof(pthread_t)) != 0) {
+        int join_result = pthread_join(host->ddial_listener.thread, nullptr);
+        if (join_result != 0) {
+            humanized_log_error("ddial", "failed to join ddial listener",
+                                join_result);
+        }
     }
-
+    memset(&host->ddial_listener.thread, 0, sizeof(pthread_t));
     host->ddial_listener.thread_initialized = false;
     host->ddial_listener.enabled = false;
     atomic_store(&host->ddial_listener.running, false);

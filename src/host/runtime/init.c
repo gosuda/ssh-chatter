@@ -196,6 +196,7 @@ void host_init(host_t *host, auth_profile_t *auth)
 
     host->ddial_listener.enabled = false;
     host->ddial_listener.fd = -1;
+    memset(&host->ddial_listener.thread, 0, sizeof(pthread_t));
     host->ddial_listener.thread_initialized = false;
     atomic_store(&host->ddial_listener.running, false);
     atomic_store(&host->ddial_listener.stop, false);
@@ -1736,6 +1737,7 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     host_moderation_shutdown(host);
 
     host_telnet_listener_stop(host);
+    host_ddial_listener_stop(host);
     host_json_api_listener_stop(host);
 
     if (host->rss_thread_initialized) {

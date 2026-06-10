@@ -1429,6 +1429,15 @@ static void session_refresh_input_line(session_ctx_t *ctx)
     bool locked = session_output_lock(ctx);
     session_render_prompt_internal(ctx, false, true);
 
+    // In normal chat/command mode, re-print the current input buffer so the
+    // user can see what they were typing after an interleaving broadcast.
+    if (ctx->input_mode == SESSION_INPUT_MODE_CHAT ||
+        ctx->input_mode == SESSION_INPUT_MODE_COMMAND) {
+        if (ctx->input_length > 0U) {
+            session_channel_write(ctx, ctx->input_buffer, ctx->input_length);
+        }
+    }
+
     // For telnet, ensure the prompt is immediately visible by flushing the socket
     if (ctx->transport_kind == SESSION_TRANSPORT_TELNET) {
         session_channel_flush(ctx);

@@ -202,6 +202,10 @@ bool ddial_format_chat(char *dst, size_t dst_cap, uint16_t slot,
         return false;
     }
 
+    char clean_handle[DDIAL_MAX_HANDLE_LEN];
+    ddial_strip_ansi(handle, strlen(handle), clean_handle,
+                     sizeof(clean_handle));
+
     const char *bo = ddial_tier_bracket_open(tier);
     const char *bc = ddial_tier_bracket_close(tier);
     const char *sym = ddial_tier_symbol(tier);
@@ -215,7 +219,7 @@ bool ddial_format_chat(char *dst, size_t dst_cap, uint16_t slot,
 
     int written = snprintf(dst, dst_cap, "#%u%sCH%u:%s%s%s %s\r\n",
                            (unsigned int)slot, bo, (unsigned int)channel,
-                           handle, sym, bc, message);
+                           clean_handle, sym, bc, message);
     return written > 0 && (size_t)written < dst_cap;
 }
 
@@ -226,9 +230,12 @@ bool ddial_format_private(char *dst, size_t dst_cap, uint16_t from_slot,
         message == nullptr) {
         return false;
     }
+    char clean_handle[DDIAL_MAX_HANDLE_LEN];
+    ddial_strip_ansi(from_handle, strlen(from_handle), clean_handle,
+                     sizeof(clean_handle));
     int written =
         snprintf(dst, dst_cap, "IM from #%u[%s]: %s\r\n",
-                 (unsigned int)from_slot, from_handle, message);
+                 (unsigned int)from_slot, clean_handle, message);
     return written > 0 && (size_t)written < dst_cap;
 }
 
@@ -239,14 +246,17 @@ bool ddial_format_who_entry(char *dst, size_t dst_cap, uint16_t slot,
     if (dst == nullptr || dst_cap == 0U || handle == nullptr) {
         return false;
     }
+    char clean_handle[DDIAL_MAX_HANDLE_LEN];
+    ddial_strip_ansi(handle, strlen(handle), clean_handle,
+                     sizeof(clean_handle));
     const char *bo = ddial_tier_bracket_open(tier);
     const char *bc = ddial_tier_bracket_close(tier);
     const char *sym = ddial_tier_symbol(tier);
 
     int written =
         snprintf(dst, dst_cap, "#%u%sCH%u:%s%s) #%03u\r\n",
-                 (unsigned int)slot, bo, (unsigned int)channel, handle, sym,
-                 (unsigned int)account);
+                 (unsigned int)slot, bo, (unsigned int)channel, clean_handle,
+                 sym, (unsigned int)account);
     (void)bc;
     return written > 0 && (size_t)written < dst_cap;
 }

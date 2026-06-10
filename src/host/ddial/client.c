@@ -681,8 +681,12 @@ void host_ddial_client_send(host_t *host, const char *handle,
         return;
     }
 
+    char clean_handle[DDIAL_MAX_HANDLE_LEN];
+    ddial_strip_ansi(handle, strlen(handle), clean_handle,
+                     sizeof(clean_handle));
+
     char line[SSH_CHATTER_MESSAGE_LIMIT * 2];
-    snprintf(line, sizeof(line), "#1(CH1:%s) %s\r\n", handle, message);
+    snprintf(line, sizeof(line), "#1(CH1:%s) %s\r\n", clean_handle, message);
 
     ttak_mutex_lock(&client->lock);
     if (client->connected && client->upstream_fd >= 0) {

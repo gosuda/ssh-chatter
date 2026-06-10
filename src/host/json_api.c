@@ -2141,6 +2141,7 @@ static void *json_api_thread(void *arg)
     }
 
     sshc_epoch_thread_enter();
+    pthread_detach(pthread_self());
     atomic_store(&host->json_api.running, true);
 
     while (!atomic_load(&host->json_api.stop)) {
@@ -2294,12 +2295,8 @@ void host_json_api_listener_stop(host_t *host)
         shutdown(host->json_api.fd, SHUT_RDWR);
     }
 
-    int join_result = pthread_join(host->json_api.thread, nullptr);
-    if (join_result != 0) {
-        humanized_log_error("json-api", "failed to join JSON API listener",
-                            join_result);
-    }
-
+    /* No pthread_join — joining a detached thread is UB.
+     * Epoch GC reclaims host memory after the thread exits. */
     host->json_api.thread_initialized = false;
     host->json_api.enabled = false;
     atomic_store(&host->json_api.running, false);

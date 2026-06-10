@@ -220,6 +220,12 @@ typedef struct bbs_listing {
     int32_t downvotes;
 } bbs_listing_t;
 
+typedef struct bbs_topic_group {
+    char name[SSH_CHATTER_BBS_TAG_LEN];
+    size_t indexes[SSH_CHATTER_BBS_MAX_POSTS];
+    size_t count;
+} bbs_topic_group_t;
+
 static bool session_bbs_ensure_live_storage(host_t *host)
 {
     if (host == nullptr) {
@@ -812,9 +818,12 @@ static void session_bbs_show_dashboard(session_ctx_t *ctx)
     session_bbs_prepare_canvas(ctx);
     session_render_separator(ctx, "BBS Dashboard");
     session_send_system_line(
-        ctx, "Commands: list, read <id>, topic read <tag>, post <title> "
-             "[tags...], comment <id>|<text>, regen <id>, delete <id>, "
-             "door [name], setgamelock <name>, exit");
+        ctx, "Commands: list [all|hot|top|new], read <id>, topic read <tag>, "
+             "post <title> [tags...], edit <id>, comment <id>|<text>, "
+             "upvote <id>, downvote <id>, cmtvote <id> <idx> up|down, "
+             "regen <id>, delete <id>, search <keyword>, board <id>, "
+             "boards, profile, set-profile, draft <save|list|load|delete>, "
+             "setavatar <name>, door [name], setgamelock <name>, exit");
     session_bbs_list(ctx, nullptr);
 }
 
@@ -828,12 +837,20 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
     enum { SESSION_BBS_TOPIC_NAME_PREC = SSH_CHATTER_BBS_TAG_LEN - 1 };
 
     bool previous_override = session_translation_push_scope_override(ctx);
-    bbs_listing_t listings[SSH_CHATTER_BBS_MAX_POSTS];
+    bbs_listing_t *listings =
+        (bbs_listing_t *)sshc_gc_calloc(SSH_CHATTER_BBS_MAX_POSTS,
+                                          sizeof(bbs_listing_t));
+    if (listings == nullptr) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
     size_t count = 0U;
 
     host_t *host = ctx->owner;
     if (!session_bbs_collect_listings(host, listings, &count)) {
         session_send_system_line(ctx, "BBS storage is unavailable.");
+        sshc_gc_free(listings);
         session_translation_pop_scope_override(ctx, previous_override);
         return;
     }
@@ -887,6 +904,7 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
             "write something. Finish drafts with %s.",
             session_bbs_terminator(ctx));
         session_send_system_line(ctx, empty_hint);
+        sshc_gc_free(listings);
         session_translation_pop_scope_override(ctx, previous_override);
         return;
     }
@@ -936,15 +954,15 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
     ctx->bbs_view_active = false;
     ctx->bbs_view_post_id = 0U;
 
-    typedef struct bbs_topic_group {
-        char name[SSH_CHATTER_BBS_TAG_LEN];
-        size_t indexes[SSH_CHATTER_BBS_MAX_POSTS];
-        size_t count;
-    } bbs_topic_group_t;
-
-    bbs_topic_group_t topics[SSH_CHATTER_BBS_MAX_POSTS];
+    bbs_topic_group_t *topics =
+        (bbs_topic_group_t *)sshc_gc_calloc(SSH_CHATTER_BBS_MAX_POSTS,
+                                            sizeof(bbs_topic_group_t));
+    if (topics == nullptr) {
+        sshc_gc_free(listings);
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
     size_t topic_count = 0U;
-    memset(topics, 0, sizeof(topics));
 
     for (size_t idx = 0U; idx < count; ++idx) {
         const char *topic_name = (listings[idx].tag_count > 0U)
@@ -1065,6 +1083,8 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, " - Write a post:  Type '\033[1;32mpost <title>\033[0m'");
     session_send_system_line(ctx, " - Read a post:   Type '\033[1;32mread <id>\033[0m'");
     session_send_system_line(ctx, "--------------------------------------------------");
+    sshc_gc_free(topics);
+    sshc_gc_free(listings);
     session_translation_pop_scope_override(ctx, previous_override);
 }
 
@@ -1089,18 +1109,27 @@ static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
 
     bool previous_override = session_translation_push_scope_override(ctx);
 
-    bbs_listing_t listings[SSH_CHATTER_BBS_MAX_POSTS];
+    bbs_listing_t *listings =
+        (bbs_listing_t *)sshc_gc_calloc(SSH_CHATTER_BBS_MAX_POSTS,
+                                          sizeof(bbs_listing_t));
+    if (listings == nullptr) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
     size_t count = 0U;
 
     host_t *host = ctx->owner;
     if (!session_bbs_collect_listings(host, listings, &count)) {
         session_send_system_line(ctx, "BBS storage is unavailable.");
+        sshc_gc_free(listings);
         session_translation_pop_scope_override(ctx, previous_override);
         return;
     }
 
     if (count == 0U) {
         session_send_system_line(ctx, "The bulletin board is empty.");
+        sshc_gc_free(listings);
         session_translation_pop_scope_override(ctx, previous_override);
         return;
     }
@@ -1188,6 +1217,7 @@ static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
     }
 
     session_render_separator(ctx, "End");
+    sshc_gc_free(listings);
     session_translation_pop_scope_override(ctx, previous_override);
 }
 
@@ -1211,17 +1241,32 @@ static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments)
     }
 
     bool previous_override = session_translation_push_scope_override(ctx);
-    bbs_listing_t listings[SSH_CHATTER_BBS_MAX_POSTS];
+    bbs_listing_t *listings =
+        (bbs_listing_t *)sshc_gc_calloc(SSH_CHATTER_BBS_MAX_POSTS,
+                                          sizeof(bbs_listing_t));
+    if (listings == nullptr) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
     size_t count = 0U;
 
     host_t *host = ctx->owner;
     if (!session_bbs_collect_listings(host, listings, &count)) {
         session_send_system_line(ctx, "BBS storage is unavailable.");
+        sshc_gc_free(listings);
         session_translation_pop_scope_override(ctx, previous_override);
         return;
     }
 
-    bbs_listing_t results[SSH_CHATTER_BBS_MAX_POSTS];
+    bbs_listing_t *results =
+        (bbs_listing_t *)sshc_gc_calloc(SSH_CHATTER_BBS_MAX_POSTS,
+                                          sizeof(bbs_listing_t));
+    if (results == nullptr) {
+        sshc_gc_free(listings);
+        session_translation_pop_scope_override(ctx, previous_override);
+        return;
+    }
     size_t result_count = 0U;
 
     for (size_t idx = 0U; idx < count; ++idx) {
@@ -1306,6 +1351,8 @@ static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments)
     }
 
     session_render_separator(ctx, "End");
+    sshc_gc_free(results);
+    sshc_gc_free(listings);
     session_translation_pop_scope_override(ctx, previous_override);
 }
 
@@ -2326,13 +2373,34 @@ void session_bbs_cmtvote(session_ctx_t *ctx, const char *arguments)
         }
         return;
     }
-    uint64_t post_id;
-    int comment_idx;
-    char vote_dir[8];
-    if (sscanf(arguments, "%" SCNu64 " %d %7s", &post_id, &comment_idx, vote_dir) != 3) {
+    uint64_t post_id = 0;
+    int comment_idx = 0;
+    char vote_dir[8] = {0};
+
+    char *endptr = nullptr;
+    errno = 0;
+    post_id = strtoull(arguments, &endptr, 10);
+    if (errno != 0 || endptr == nullptr || endptr == arguments || *endptr != ' ') {
         session_send_system_line(ctx, "Usage: /bbs cmtvote <post_id> <comment_idx> [up|down]");
         return;
     }
+
+    errno = 0;
+    long comment_idx_long = strtol(endptr, &endptr, 10);
+    if (errno != 0 || endptr == nullptr || *endptr != ' ' ||
+        comment_idx_long < 0 || comment_idx_long > INT_MAX) {
+        session_send_system_line(ctx, "Usage: /bbs cmtvote <post_id> <comment_idx> [up|down]");
+        return;
+    }
+    comment_idx = (int)comment_idx_long;
+
+    while (*endptr == ' ') ++endptr;
+    if (endptr[0] == '\0' ||
+        (strncasecmp(endptr, "up", 2) != 0 && strncasecmp(endptr, "down", 4) != 0)) {
+        session_send_system_line(ctx, "Usage: /bbs cmtvote <post_id> <comment_idx> [up|down]");
+        return;
+    }
+    snprintf(vote_dir, sizeof(vote_dir), "%s", endptr);
     int vote_type = (strcasecmp(vote_dir, "up") == 0) ? 1 : -1;
     host_t *host = ctx->owner;
     if (!session_bbs_ensure_live_storage(host)) {

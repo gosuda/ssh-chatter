@@ -427,6 +427,8 @@ static void host_bbs_boards_load(host_t *host)
     for (size_t i = 0; i < count; ++i) {
         bbs_state_board_entry_t entry;
         if (fread(&entry, sizeof(entry), 1, fp) != 1) break;
+        entry.name[sizeof(entry.name) - 1] = '\0';
+        entry.description[sizeof(entry.description) - 1] = '\0';
         if (host->bbs_board_count >= cap) break;
         bbs_board_t *b = &host->bbs_boards[host->bbs_board_count++];
         b->board_id = entry.board_id;
@@ -514,6 +516,7 @@ static void host_bbs_votes_load(host_t *host)
     for (size_t i = 0; i < count; ++i) {
         bbs_state_vote_entry_t entry;
         if (fread(&entry, sizeof(entry), 1, fp) != 1) break;
+        entry.voter_username[sizeof(entry.voter_username) - 1] = '\0';
         if (host->bbs_vote_count >= cap) break;
         bbs_vote_t *v = &host->bbs_votes[host->bbs_vote_count++];
         v->target_post_id = entry.target_post_id;
@@ -607,6 +610,12 @@ static void host_bbs_drafts_load(host_t *host)
     for (size_t i = 0; i < count; ++i) {
         bbs_state_draft_entry_t entry;
         if (fread(&entry, sizeof(entry), 1, fp) != 1) break;
+        entry.author[sizeof(entry.author) - 1] = '\0';
+        entry.title[sizeof(entry.title) - 1] = '\0';
+        entry.body[sizeof(entry.body) - 1] = '\0';
+        for (size_t t = 0; t < SSH_CHATTER_BBS_MAX_TAGS; ++t) {
+            entry.tags[t][sizeof(entry.tags[t]) - 1] = '\0';
+        }
         if (host->bbs_draft_count >= cap) break;
         bbs_draft_t *d = &host->bbs_drafts[host->bbs_draft_count++];
         d->in_use = true;
@@ -1093,6 +1102,7 @@ static void *host_bbs_watchdog_thread(void *arg)
     }
 
     sshc_epoch_thread_enter();
+    pthread_detach(pthread_self());
     sshc_memory_context_t *memory_scope =
         sshc_memory_context_push(host->memory_context);
 

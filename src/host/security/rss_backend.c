@@ -1352,6 +1352,7 @@ static void *host_rss_manual_refresh_worker(void *arg)
     }
 
     sshc_epoch_thread_enter();
+    pthread_detach(pthread_self());
     host_rss_refresh_now(host);
     sshc_epoch_thread_exit();
 
@@ -1405,6 +1406,8 @@ static void *host_rss_backend(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
+    pthread_detach(pthread_self());
     atomic_store(&host->rss_thread_running, true);
     printf("[rss] backend thread started (interval: %u seconds)\n",
            (unsigned int)SSH_CHATTER_RSS_REFRESH_SECONDS);
@@ -1434,6 +1437,7 @@ static void *host_rss_backend(void *arg)
 
     atomic_store(&host->rss_thread_running, false);
     printf("[rss] backend thread stopped\n");
+    sshc_epoch_thread_exit();
     return nullptr;
 }
 
@@ -1655,6 +1659,7 @@ static void *host_archive_backend(void *arg)
     }
 
     sshc_epoch_thread_enter();
+    pthread_detach(pthread_self());
     atomic_store(&host->archive_thread_running, true);
 
     while (!atomic_load(&host->archive_thread_stop)) {

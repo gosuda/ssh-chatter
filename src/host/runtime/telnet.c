@@ -166,6 +166,7 @@ static void *host_telnet_thread(void *arg)
     }
 
     sshc_epoch_thread_enter();
+    pthread_detach(pthread_self());
     atomic_store(&host->telnet.running, true);
     struct timespec last_idle_check = session_now_monotonic();
 
@@ -527,12 +528,8 @@ static void host_telnet_listener_stop(host_t *host)
         shutdown(host->telnet.fd, SHUT_RDWR);
     }
 
-    int join_result = pthread_join(host->telnet.thread, nullptr);
-    if (join_result != 0) {
-        humanized_log_error("telnet", "failed to join telnet listener",
-                            join_result);
-    }
-
+    /* No pthread_join — joining a detached thread is UB.
+     * Epoch GC reclaims host memory after the thread exits. */
     host->telnet.thread_initialized = false;
     host->telnet.enabled = false;
     atomic_store(&host->telnet.running, false);

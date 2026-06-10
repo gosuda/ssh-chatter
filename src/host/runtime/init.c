@@ -1740,7 +1740,7 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
 
     if (host->rss_thread_initialized) {
         atomic_store(&host->rss_thread_stop, true);
-        pthread_join(host->rss_thread, nullptr);
+        /* No pthread_join — thread is detached; epoch GC reclaims after exit. */
         host->rss_thread_initialized = false;
         atomic_store(&host->rss_thread_running, false);
     }
@@ -1755,7 +1755,7 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
 
     if (host->archive_thread_initialized) {
         atomic_store(&host->archive_thread_stop, true);
-        pthread_join(host->archive_thread, nullptr);
+        /* No pthread_join — thread is detached; epoch GC reclaims after exit. */
         host->archive_thread_initialized = false;
         atomic_store(&host->archive_thread_running, false);
     }
@@ -1763,7 +1763,7 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
 
     if (host->bbs_watchdog_thread_initialized) {
         atomic_store(&host->bbs_watchdog_thread_stop, true);
-        pthread_join(host->bbs_watchdog_thread, nullptr);
+        /* No pthread_join — thread is detached; epoch GC reclaims after exit. */
         host->bbs_watchdog_thread_initialized = false;
         atomic_store(&host->bbs_watchdog_thread_running, false);
     }

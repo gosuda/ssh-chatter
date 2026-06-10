@@ -360,7 +360,7 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "bbs [list|read|post|comment|regen|delete]",
+        .label = "bbs [list|read|post|comment|regen|delete|search|edit|upvote|downvote]",
         .description =
             {
                 "Open the bulletin board system (finish %s to post).",
@@ -372,13 +372,13 @@ static const session_help_entry_t kSessionHelpEssential[] = {
         .label_translations =
             {
                 [SESSION_UI_LANGUAGE_KO] =
-                    "게시판 [목록|읽기|게시|댓글|갱신|삭제]",
+                    "게시판 [목록|읽기|게시|댓글|갱신|삭제|검색|수정|추천|반대]",
                 [SESSION_UI_LANGUAGE_JP] =
-                    "掲示板 [一覧|閲覧|投稿|コメント|再掲|削除]",
+                    "掲示板 [一覧|閲覧|投稿|コメント|再掲|削除|検索|編集|賛成|反対]",
                 [SESSION_UI_LANGUAGE_ZH] =
-                    "公告板 [列表|阅读|发布|评论|置顶|删除]",
+                    "公告板 [列表|阅读|发布|评论|置顶|删除|搜索|编辑|赞|踩]",
                 [SESSION_UI_LANGUAGE_RU] =
-                    "доска [список|читать|пост|коммент|поднять|удалить]",
+                    "доска [список|читать|пост|коммент|поднять|удалить|поиск|редакт|за|против]",
             },
         .description_arg_count = 1,
         .description_args = {SESSION_HELP_TEMPLATE_ARG_BBS_TERMINATOR},

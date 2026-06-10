@@ -429,6 +429,7 @@ static void *session_thread(void *arg)
     }
 
     sshc_epoch_thread_enter();
+    pthread_detach(pthread_self());
 
     sshc_memory_context_t *memory_scope = session_memory_scope_push(ctx);
     sshc_memory_defer_gc_registration_begin();

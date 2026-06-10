@@ -521,6 +521,8 @@ static void *host_ddial_listener_thread(void *arg)
         return nullptr;
     }
 
+    sshc_epoch_thread_enter();
+    pthread_detach(pthread_self());
     atomic_store(&host->ddial_listener.running, true);
     while (!atomic_load(&host->ddial_listener.stop) &&
            (host->shutdown_flag == nullptr || *host->shutdown_flag == 0)) {
@@ -618,6 +620,7 @@ static void *host_ddial_listener_thread(void *arg)
         close(listener_fd);
     }
     atomic_store(&host->ddial_listener.running, false);
+    sshc_epoch_thread_exit();
     return nullptr;
 }
 
@@ -671,10 +674,10 @@ bool host_ddial_listener_start(host_t *host, const char *bind_addr,
     host->ddial_listener.last_error_time.tv_nsec = 0L;
     atomic_store(&host->ddial_listener.stop, false);
 
-    if (pthread_create(&host->ddial_listener.thread, nullptr,
+    pthread_t thread;
+    if (pthread_create(&thread, nullptr,
                        host_ddial_listener_thread, host) != 0) {
         humanized_log_error("ddial", "failed to start ddial listener", errno);
-        memset(&host->ddial_listener.thread, 0, sizeof(pthread_t));
         host->ddial_listener.enabled = false;
         return false;
     }
@@ -711,16 +714,10 @@ void host_ddial_listener_stop(host_t *host)
         shutdown(host->ddial_listener.fd, SHUT_RDWR);
     }
 
-    pthread_t zero_thread = {0};
-    if (memcmp(&host->ddial_listener.thread, &zero_thread,
-               sizeof(pthread_t)) != 0) {
-        int join_result = pthread_join(host->ddial_listener.thread, nullptr);
-        if (join_result != 0) {
-            humanized_log_error("ddial", "failed to join ddial listener",
-                                join_result);
-        }
-    }
-    memset(&host->ddial_listener.thread, 0, sizeof(pthread_t));
+    /* The listener thread is detached and epoch-registered.  It exits
+     * on its own when it sees the stop flag or fd closure.  GC rotation
+     * will reclaim host memory only after the thread has exited the epoch.
+     * No pthread_join — joining a detached thread is undefined behaviour. */
     host->ddial_listener.thread_initialized = false;
     host->ddial_listener.enabled = false;
     atomic_store(&host->ddial_listener.running, false);

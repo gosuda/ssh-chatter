@@ -196,7 +196,6 @@ void host_init(host_t *host, auth_profile_t *auth)
 
     host->ddial_listener.enabled = false;
     host->ddial_listener.fd = -1;
-    memset(&host->ddial_listener.thread, 0, sizeof(pthread_t));
     host->ddial_listener.thread_initialized = false;
     atomic_store(&host->ddial_listener.running, false);
     atomic_store(&host->ddial_listener.stop, false);

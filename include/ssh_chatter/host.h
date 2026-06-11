@@ -1022,6 +1022,16 @@ typedef struct host_operator_grant {
     char ip[SSH_CHATTER_IP_LEN];
 } host_operator_grant_t;
 
+typedef enum ddial_auth_state {
+    DDIAL_AUTH_NONE = 0,
+    DDIAL_AUTH_PENDING,
+    DDIAL_AUTH_APPROVED,
+    DDIAL_AUTH_REJECTED,
+    DDIAL_AUTH_TIMEOUT,
+} ddial_auth_state_t;
+
+#define DDIAL_RELAY_SENT_HISTORY 8
+
 typedef struct ddial_relay {
     bool enabled;
     int upstream_fd;
@@ -1033,6 +1043,9 @@ typedef struct ddial_relay {
     bool lock_initialized;
     bool connected;
     bool auth_sent;
+    ddial_auth_state_t auth_state;
+    struct timespec auth_deadline;
+    bool locally_registered;
     char host[256];
     int port;
     char login_key[64];
@@ -1040,6 +1053,12 @@ typedef struct ddial_relay {
     char recv_buffer[SSH_CHATTER_MESSAGE_LIMIT * 4];
     size_t recv_buf_len;
     struct timespec last_send_time;
+    struct {
+        char handle[SSH_CHATTER_USERNAME_LEN];
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        struct timespec sent_at;
+    } recent_sent[DDIAL_RELAY_SENT_HISTORY];
+    size_t recent_sent_index;
 } ddial_relay_t;
 
 typedef struct host {

@@ -1465,8 +1465,9 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
             ctx->input_buffer[0] = '\0';
         }
     }
+    /* chat_room_broadcast_entry() also relays user messages to any connected
+     * DDial upstream and local -DT sessions, so we must not inject again. */
     chat_room_broadcast_entry(&ctx->owner->room, &entry, ctx);
-    host_ddial_inject_message(ctx->owner, ctx->user.name, trimmed);
     session_clear_pending_sink(ctx);
 
     (void)host_eliza_intervene(ctx, trimmed, nullptr, false);

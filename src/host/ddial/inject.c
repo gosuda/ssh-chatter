@@ -30,16 +30,33 @@ void host_ddial_inject_message(host_t *host, const char *username,
     }
     g_ddial_injecting = true;
 
+    /* DDial is a line-oriented protocol: only the first line that contains
+     * the user's sentence should be relayed.  Cut at the first '\n'. */
+    size_t msg_len = strlen(message);
+    const char *newline = memchr(message, '\n', msg_len);
+    size_t line_len =
+        newline != nullptr ? (size_t)(newline - message) : msg_len;
+    while (line_len > 0U && message[line_len - 1U] == '\r') {
+        --line_len;
+    }
+    if (line_len == 0U || line_len >= SSH_CHATTER_MESSAGE_LIMIT) {
+        g_ddial_injecting = false;
+        return;
+    }
+    char single_line[SSH_CHATTER_MESSAGE_LIMIT];
+    memcpy(single_line, message, line_len);
+    single_line[line_len] = '\0';
+
     char formatted[SSH_CHATTER_MESSAGE_LIMIT];
     if (!ddial_format_chat(formatted, sizeof(formatted), 1U,
                            DDIAL_DEFAULT_CHANNEL, DDIAL_TIER_GUEST, username,
-                           message)) {
+                           single_line)) {
         g_ddial_injecting = false;
         return;
     }
 
     /* Upstream relay. */
-    host_ddial_client_send(host, username, message);
+    host_ddial_client_send(host, username, single_line);
 
     /* Local -DT clients. */
     host_ddial_broadcast_to_sessions(host, formatted);

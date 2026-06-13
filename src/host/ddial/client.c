@@ -1184,19 +1184,16 @@ void host_ddial_client_send(host_t *host, const char *handle,
     }
 
     char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 4];
-    snprintf(wire_line, sizeof(wire_line), "%s\r\n", upstream_msg);
-
-    // Apply High ASCII conversion (set bit 7 for Apple II / Diversi-Dial compatibility)
-    size_t wire_len = strlen(wire_line);
-    for (size_t i = 0; i < wire_len; ++i) {
-        unsigned char uc = (unsigned char)wire_line[i];
-        wire_line[i] = (char)(uc | 0x80);
+    int wire_len = snprintf(wire_line, sizeof(wire_line), "%s\r\n",
+                            upstream_msg);
+    if (wire_len <= 0 || (size_t)wire_len >= sizeof(wire_line)) {
+        return;
     }
 
     ttak_mutex_lock(&client->lock);
     if (client->connected && client->upstream_fd >= 0) {
         (void)ddial_client_send_all(client->upstream_fd, wire_line,
-                                    wire_len);
+                                    (size_t)wire_len);
         ddial_client_update_send_time(client);
     }
     ttak_mutex_unlock(&client->lock);

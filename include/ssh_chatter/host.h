@@ -1053,11 +1053,15 @@ typedef struct ddial_relay {
     char recv_buffer[SSH_CHATTER_MESSAGE_LIMIT * 4];
     size_t recv_buf_len;
     struct timespec last_send_time;
+    uint16_t slot;
+    bool slot_known;
     struct {
         char raw_line[SSH_CHATTER_MESSAGE_LIMIT];
         struct timespec sent_at;
     } recent_sent[DDIAL_RELAY_SENT_HISTORY];
     size_t recent_sent_index;
+    unsigned int reconnect_attempts;
+    struct timespec last_disconnect_time;
 } ddial_relay_t;
 
 typedef struct host {
@@ -1350,6 +1354,7 @@ void host_ddial_shutdown(host_t *host);
 bool host_ddial_client_configure(host_t *host, const char *host_str, int port,
                                  const char *key);
 void host_ddial_client_disconnect(host_t *host);
+void host_ddial_client_reconnect(host_t *host);
 void host_ddial_client_start(host_t *host);
 void host_ddial_client_send(host_t *host, const char *handle,
                             const char *message);

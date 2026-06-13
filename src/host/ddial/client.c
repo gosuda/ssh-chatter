@@ -2,20 +2,35 @@
  * @file ddial_client.c
  * @desc Upstream Diversi Dial client relay for SSH-Chatter.
  *
- * Connects to a configured upstream DDial node (e.g. magviz.ca),
- * authenticates with key/handle, and bridges messages between the
- * Chatter chat room and the upstream node using the DDial protocol.
+ * Connects to a configured upstream DDial node and bridges messages between
+ * the Chatter chat room and the upstream node.  Protocol reversed from
+ * live traffic to hdcbbs.com:2300 (Retro-Dial).
+ *
+ * Wire summary observed from hdcbbs.com:2300:
+ *   - Telnet option negotiation on connect (echo, suppress-go-ahead,
+ *     terminal-type).  We answer DO echo, DO SGA, WILL terminal-type and
+ *     reply to the terminal-type subnegotiation with "ANSI".
+ *   - Server sends "Enter Password or [RETURN]: ".
+ *   - Client sends the configured key or a bare CR/LF.
+ *   - Server sends welcome banner and a "-->" prompt, plus a status line
+ *     such as " #1(T1:?)" where the leading number is our assigned slot.
+ *   - Client sets the handle with "/H<handle>\r\n".
+ *   - Server echoes public chat as "#slot(Tchannel:handle) message".
+ *   - Other traffic (remote chat, system messages, status) arrives as raw
+ *     lines and is forwarded to the Chatter room with a "[ddial] " prefix.
  */
 
 #include "ssh_chatter/ddial_protocol.h"
 #include "ssh_chatter/host.h"
 
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <errno.h>
 #include <netdb.h>
 #include <poll.h>
 #include <pthread.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <time.h>
@@ -25,7 +40,9 @@
 #define DDIAL_CLIENT_POLL_TIMEOUT_MS 5000
 #define DDIAL_CLIENT_RECONNECT_BACKOFF_SEC 5
 #define DDIAL_CLIENT_RECV_CHUNK_SIZE 4096
-#define DDIAL_CLIENT_AUTH_TIMEOUT_SEC 10
+#define DDIAL_CLIENT_AUTH_TIMEOUT_SEC 15
+#define DDIAL_CLIENT_LOGIN_PROMPT_TIMEOUT_SEC 8
+
 typedef struct ddial_client {
     bool enabled;
     int upstream_fd;
@@ -47,11 +64,15 @@ typedef struct ddial_client {
     char recv_buffer[SSH_CHATTER_MESSAGE_LIMIT * 4];
     size_t recv_buf_len;
     struct timespec last_send_time;
+    uint16_t slot;
+    bool slot_known;
     struct {
         char raw_line[SSH_CHATTER_MESSAGE_LIMIT];
         struct timespec sent_at;
     } recent_sent[DDIAL_RELAY_SENT_HISTORY];
     size_t recent_sent_index;
+    unsigned int reconnect_attempts;
+    struct timespec last_disconnect_time;
 } ddial_client_t;
 
 static ssize_t ddial_client_send_all(int fd, const char *buf, size_t len)
@@ -107,73 +128,74 @@ static void ddial_client_maybe_keepalive(ddial_client_t *client)
     }
 }
 
-static bool ddial_client_prompt_like(const char *buf, size_t len)
+
+
+static void ddial_client_disconnect(ddial_client_t *client)
 {
-    if (buf == nullptr || len == 0U) {
+    if (client == nullptr) {
+        return;
+    }
+    ttak_mutex_lock(&client->lock);
+    if (client->upstream_fd >= 0) {
+        close(client->upstream_fd);
+        client->upstream_fd = -1;
+    }
+    client->connected = false;
+    client->auth_sent = false;
+    client->auth_state = DDIAL_AUTH_NONE;
+    client->auth_deadline.tv_sec = 0;
+    client->auth_deadline.tv_nsec = 0;
+    client->recv_buf_len = 0U;
+    client->last_send_time.tv_sec = 0;
+    client->last_send_time.tv_nsec = 0;
+    client->slot = 0U;
+    client->slot_known = false;
+    client->recent_sent_index = 0;
+    for (size_t i = 0U; i < DDIAL_RELAY_SENT_HISTORY; ++i) {
+        client->recent_sent[i].sent_at.tv_sec = 0;
+        client->recent_sent[i].sent_at.tv_nsec = 0;
+        client->recent_sent[i].raw_line[0] = '\0';
+    }
+    if (client->reconnect_attempts < 100000U) {
+        client->reconnect_attempts++;
+    }
+    clock_gettime(CLOCK_MONOTONIC, &client->last_disconnect_time);
+    ttak_mutex_unlock(&client->lock);
+}
+
+static unsigned int ddial_client_backoff_sec(ddial_client_t *client)
+{
+    if (client == nullptr) {
+        return DDIAL_CLIENT_RECONNECT_BACKOFF_SEC;
+    }
+    unsigned int base = 1U << (client->reconnect_attempts > 5U
+                                   ? 5U
+                                   : client->reconnect_attempts);
+    if (base > 30U) {
+        base = 30U;
+    }
+    if (base < DDIAL_CLIENT_RECONNECT_BACKOFF_SEC) {
+        base = DDIAL_CLIENT_RECONNECT_BACKOFF_SEC;
+    }
+    return base;
+}
+
+static bool ddial_client_line_looks_like_kick(const char *line)
+{
+    if (line == nullptr || line[0] == '\0') {
         return false;
     }
-    static const char *needles[] = {"-->", "assword", "Remote", "login:"};
+    static const char *needles[] = {
+        "kicked",    "disconnected", "timeout",   "timed out",
+        "bye",       "goodbye",      "see ya",    "link down",
+        "booted",    "removed",      "offline",   "hangup",
+        "no carrier"};
     for (size_t i = 0U; i < sizeof(needles) / sizeof(needles[0]); ++i) {
-        if (memmem(buf, len, needles[i], strlen(needles[i])) != nullptr) {
+        if (strcasestr(line, needles[i]) != nullptr) {
             return true;
         }
     }
     return false;
-}
-
-static ddial_auth_state_t ddial_client_classify_auth(const char *line)
-{
-    if (line == nullptr || line[0] == '\0') {
-        return DDIAL_AUTH_NONE;
-    }
-    /* A live DDial-formatted public chat line means we are already in. */
-    if (line[0] == '#' || line[0] == '[') {
-        return DDIAL_AUTH_APPROVED;
-    }
-    /* Case-insensitive substring scan for common upstream responses. */
-    static const char *approval[] = {
-        "welcome",  "approved", "accepted", "logged in", "online",
-        "main menu", "channels", "enter command", "ready",
-    };
-    static const char *rejection[] = {
-        "denied",   "rejected", "invalid",  "wrong",     "failed",
-        "bad",      "no access", "unauthorized", "disconnect",
-        "kicked",   "banned",   "sorry",
-    };
-    /* Rejection overrides approval so messages like "[System] Invalid key" are
-     * not mistaken for an approved chat line. */
-    for (size_t i = 0U; i < sizeof(rejection) / sizeof(rejection[0]); ++i) {
-        if (strcasestr(line, rejection[i]) != nullptr) {
-            return DDIAL_AUTH_REJECTED;
-        }
-    }
-    for (size_t i = 0U; i < sizeof(approval) / sizeof(approval[0]); ++i) {
-        if (strcasestr(line, approval[i]) != nullptr) {
-            return DDIAL_AUTH_APPROVED;
-        }
-    }
-    return DDIAL_AUTH_NONE;
-}
-
-static bool ddial_client_register_local(host_t *host, ddial_client_t *client)
-{
-    if (host == nullptr || client == nullptr || client->handle[0] == '\0' ||
-        client->locally_registered) {
-        return client != nullptr && client->locally_registered;
-    }
-    user_data_record_t record = {0};
-    bool ok = host_user_data_load_existing(host, client->handle, "ddial_upstream",
-                                           &record, true);
-    if (ok) {
-        client->locally_registered = true;
-        printf("[ddial] upstream approval timed out; registered '%s' locally\n",
-               client->handle);
-    } else {
-        printf("[ddial] upstream approval timed out; local registration of '%s' "
-               "failed (user_data not ready?)\n",
-               client->handle);
-    }
-    return ok;
 }
 
 static bool ddial_client_connect_socket(ddial_client_t *client)
@@ -190,8 +212,7 @@ static bool ddial_client_connect_socket(ddial_client_t *client)
     hints.ai_socktype = SOCK_STREAM;
 
     struct addrinfo *res = nullptr;
-    if (getaddrinfo(client->host, port_str, &hints, &res) != 0 ||
-        res == nullptr) {
+    if (getaddrinfo(client->host, port_str, &hints, &res) != 0 || res == nullptr) {
         return false;
     }
 
@@ -213,44 +234,216 @@ static bool ddial_client_connect_socket(ddial_client_t *client)
         return false;
     }
 
+    int enable = 1;
+    (void)setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enable, sizeof(enable));
+
     client->upstream_fd = fd;
     client->connected = true;
     client->auth_sent = false;
+    client->auth_state = DDIAL_AUTH_NONE;
     client->recv_buf_len = 0U;
+    client->slot = 0U;
+    client->slot_known = false;
+    client->reconnect_attempts = 0U;
+    client->last_disconnect_time.tv_sec = 0;
+    client->last_disconnect_time.tv_nsec = 0;
     ddial_client_update_send_time(client);
     return true;
 }
 
-static void ddial_client_disconnect(ddial_client_t *client)
+/* Send the initial Telnet "we are a dumb ANSI terminal" negotiation. */
+static void ddial_client_send_initial_telnet(ddial_client_t *client)
 {
-    if (client == nullptr) {
+    if (client == nullptr || client->upstream_fd < 0) {
         return;
     }
-    ttak_mutex_lock(&client->lock);
-    if (client->upstream_fd >= 0) {
-        close(client->upstream_fd);
-        client->upstream_fd = -1;
+    /* DO echo(1), DO suppress-go-ahead(3), WILL terminal-type(24). */
+    const unsigned char init[] = {0xFF, 0xFD, 0x01, 0xFF, 0xFD, 0x03,
+                                  0xFF, 0xFB, 0x18};
+    (void)ddial_client_send_all(client->upstream_fd, (const char *)init,
+                                sizeof(init));
+    ddial_client_update_send_time(client);
+}
+
+/* Process incoming telnet bytes, append the resulting text to
+ * client->recv_buffer, and send any required IAC replies.  Returns the number
+ * of source bytes consumed; incomplete trailing IAC sequences are left in the
+ * kernel buffer for the next read. */
+static size_t ddial_client_process_telnet(ddial_client_t *client,
+                                          const unsigned char *src, size_t src_len)
+{
+    if (client == nullptr || src == nullptr || src_len == 0U) {
+        return 0U;
     }
-    client->connected = false;
-    client->auth_sent = false;
-    client->auth_state = DDIAL_AUTH_NONE;
-    client->auth_deadline.tv_sec = 0;
-    client->auth_deadline.tv_nsec = 0;
-    client->recv_buf_len = 0U;
-    client->last_send_time.tv_sec = 0;
-    client->last_send_time.tv_nsec = 0;
-    client->recent_sent_index = 0;
-    for (size_t i = 0U; i < DDIAL_RELAY_SENT_HISTORY; ++i) {
-        client->recent_sent[i].sent_at.tv_sec = 0;
-        client->recent_sent[i].sent_at.tv_nsec = 0;
+
+    unsigned char iac_buf[64];
+    size_t iac_len = 0U;
+    size_t i = 0U;
+
+    while (i < src_len) {
+        if (src[i] != 0xFF) {
+            /* Copy plain byte into recv_buffer if space remains. */
+            if (client->recv_buf_len < sizeof(client->recv_buffer)) {
+                client->recv_buffer[client->recv_buf_len++] = (char)src[i];
+            }
+            ++i;
+            continue;
+        }
+        if (i + 1U >= src_len) {
+            break; /* IAC at end of chunk: wait for next read. */
+        }
+        unsigned char cmd = src[i + 1U];
+        if (cmd == 0xFF) {
+            if (client->recv_buf_len < sizeof(client->recv_buffer)) {
+                client->recv_buffer[client->recv_buf_len++] = '\xFF';
+            }
+            i += 2U;
+            continue;
+        }
+
+        /* Single-byte commands. */
+        if (cmd >= 0xF0 && cmd <= 0xF9) {
+            i += 2U;
+            continue;
+        }
+
+        /* Two-byte commands WILL/WONT/DO/DONT. */
+        if ((cmd >= 0xFB && cmd <= 0xFE) && i + 2U < src_len) {
+            unsigned char opt = src[i + 2U];
+            unsigned char reply_cmd = 0;
+            switch (cmd) {
+            case 0xFB: /* WILL */
+                if (opt == 0x01 || opt == 0x03) {
+                    reply_cmd = 0xFD; /* DO */
+                } else {
+                    reply_cmd = 0xFC; /* DON'T */
+                }
+                break;
+            case 0xFC: /* WONT */
+                reply_cmd = 0xFE; /* DON'T */
+                break;
+            case 0xFD: /* DO */
+                if (opt == 0x18) { /* terminal-type */
+                    reply_cmd = 0xFB; /* WILL */
+                } else if (opt == 0x03) { /* suppress-go-ahead */
+                    reply_cmd = 0xFB; /* WILL */
+                } else {
+                    reply_cmd = 0xFC; /* WONT */
+                }
+                break;
+            case 0xFE: /* DONT */
+                reply_cmd = 0xFC; /* WONT */
+                break;
+            }
+            if (reply_cmd != 0 && iac_len + 3U <= sizeof(iac_buf)) {
+                iac_buf[iac_len++] = 0xFF;
+                iac_buf[iac_len++] = reply_cmd;
+                iac_buf[iac_len++] = opt;
+            }
+            i += 3U;
+            continue;
+        }
+
+        /* Subnegotiation: IAC SB ... IAC SE. */
+        if (cmd == 0xFA && i + 2U < src_len) {
+            unsigned char opt = src[i + 2U];
+            size_t j = i + 3U;
+            while (j + 1U < src_len) {
+                if (src[j] == 0xFF && src[j + 1U] == 0xF0) {
+                    break;
+                }
+                ++j;
+            }
+            if (j + 1U >= src_len) {
+                break; /* incomplete subnegotiation */
+            }
+
+            if (opt == 0x18 && i + 3U < j && src[i + 3U] == 0x01) {
+                /* Server asked for terminal type.  Reply with ANSI. */
+                if (iac_len + 10U <= sizeof(iac_buf)) {
+                    iac_buf[iac_len++] = 0xFF;
+                    iac_buf[iac_len++] = 0xFA;
+                    iac_buf[iac_len++] = 0x18;
+                    iac_buf[iac_len++] = 0x00;
+                    iac_buf[iac_len++] = 'A';
+                    iac_buf[iac_len++] = 'N';
+                    iac_buf[iac_len++] = 'S';
+                    iac_buf[iac_len++] = 'I';
+                    iac_buf[iac_len++] = 0xFF;
+                    iac_buf[iac_len++] = 0xF0;
+                }
+            }
+            i = j + 2U;
+            continue;
+        }
+
+        /* Unknown two-byte command: skip it. */
+        i += 2U;
     }
-    ttak_mutex_unlock(&client->lock);
+
+    if (iac_len > 0U && client->upstream_fd >= 0) {
+        (void)ddial_client_send_all(client->upstream_fd, (const char *)iac_buf,
+                                    iac_len);
+    }
+
+    return i;
+}
+
+/* Try to learn our assigned slot from status lines such as " #1(T1:?)". */
+static void ddial_client_learn_slot(ddial_client_t *client, const char *line)
+{
+    if (client == nullptr || line == nullptr) {
+        return;
+    }
+    const char *p = line;
+    while (*p != '\0' && isspace((unsigned char)*p)) {
+        ++p;
+    }
+    if (*p != '#') {
+        return;
+    }
+    ++p;
+    if (!isdigit((unsigned char)*p)) {
+        return;
+    }
+    unsigned long slot = strtoul(p, nullptr, 10);
+    if (slot == 0U || slot > 9999U) {
+        return;
+    }
+    /* Make sure it looks like a status/chat line, not a random '#'. */
+    const char *after_num = p;
+    while (isdigit((unsigned char)*after_num)) {
+        ++after_num;
+    }
+    if (*after_num != '(' && *after_num != '[') {
+        return;
+    }
+    client->slot = (uint16_t)slot;
+    client->slot_known = true;
+}
+
+/* Record a sent upstream message for echo suppression.  Caller must hold
+ * client->lock. */
+static void ddial_client_record_sent(ddial_client_t *client,
+                                     const char *upstream_msg)
+{
+    if (client == nullptr || upstream_msg == nullptr || upstream_msg[0] == '\0') {
+        return;
+    }
+    size_t idx = client->recent_sent_index % DDIAL_RELAY_SENT_HISTORY;
+    char stripped[SSH_CHATTER_MESSAGE_LIMIT];
+    ddial_strip_ansi(upstream_msg, strlen(upstream_msg), stripped,
+                     sizeof(stripped));
+    snprintf(client->recent_sent[idx].raw_line,
+             sizeof(client->recent_sent[idx].raw_line), "%s", stripped);
+    clock_gettime(CLOCK_MONOTONIC, &client->recent_sent[idx].sent_at);
+    client->recent_sent_index++;
 }
 
 static bool ddial_recent_sent_contains(ddial_client_t *client,
-                                         const char *raw_line)
+                                       const char *message)
 {
-    if (client == nullptr || raw_line == nullptr || raw_line[0] == '\0') {
+    if (client == nullptr || message == nullptr || message[0] == '\0') {
         return false;
     }
     struct timespec now;
@@ -265,11 +458,78 @@ static bool ddial_recent_sent_contains(ddial_client_t *client,
         if (delta < 0 || delta > 5) {
             continue;
         }
-        if (strcmp(raw_line, client->recent_sent[i].raw_line) == 0) {
+        if (strcmp(message, client->recent_sent[i].raw_line) == 0) {
             return true;
         }
     }
     return false;
+}
+
+/* Check whether a received line is the server's echo of a message we sent.
+ * The echo format observed from hdcbbs.com is:
+ *   #slot(Tchannel:handle) message
+ * We match against our configured handle and the recently-sent message text.
+ */
+static bool ddial_client_is_own_echo(ddial_client_t *client, const char *line)
+{
+    if (client == nullptr || line == nullptr || client->handle[0] == '\0') {
+        return false;
+    }
+
+    const char *p = line;
+    while (*p != '\0' && isspace((unsigned char)*p)) {
+        ++p;
+    }
+
+    /* Must start with '#'. */
+    if (*p != '#') {
+        return false;
+    }
+    ++p;
+
+    /* Skip slot number. */
+    if (!isdigit((unsigned char)*p)) {
+        return false;
+    }
+    while (isdigit((unsigned char)*p)) {
+        ++p;
+    }
+
+    /* Expect '(' for our own echo (remote status/chat uses '['). */
+    if (*p != '(') {
+        return false;
+    }
+    ++p;
+
+    /* Skip channel e.g. "T1:". */
+    if (p[0] != 'T' && p[0] != 't' && p[0] != 'C' && p[0] != 'c') {
+        return false;
+    }
+    ++p;
+    while (isdigit((unsigned char)*p)) {
+        ++p;
+    }
+    if (*p != ':') {
+        return false;
+    }
+    ++p;
+
+    /* Compare handle. */
+    size_t hlen = strlen(client->handle);
+    if (strncmp(p, client->handle, hlen) != 0) {
+        return false;
+    }
+    p += hlen;
+    if (*p != ')') {
+        return false;
+    }
+    ++p;
+    if (*p != ' ') {
+        return false;
+    }
+    ++p;
+
+    return ddial_recent_sent_contains(client, p);
 }
 
 static void ddial_client_broadcast_line(host_t *host, const char *line)
@@ -278,21 +538,43 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
         return;
     }
 
+    ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
+
+    /* Drop our own upstream echo so ssh-chatter->ddial->ssh-chatter loops
+     * do not appear in the room.  The server may echo the raw text we sent
+     * (telnet local echo) and also the formatted DDial line; catch both. */
+    if (ddial_client_is_own_echo(client, line)) {
+        return;
+    }
+    char stripped[SSH_CHATTER_MESSAGE_LIMIT];
+    ddial_strip_ansi(line, strlen(line), stripped, sizeof(stripped));
+    if (ddial_recent_sent_contains(client, stripped)) {
+        return;
+    }
+
+    /* Reading path is intentionally raw: just prefix [ddial] and emit. */
     char clean[SSH_CHATTER_MESSAGE_LIMIT];
     ddial_strip_ansi(line, strlen(line), clean, sizeof(clean));
     if (clean[0] == '\0') {
         return;
     }
 
-    ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
-
-    /* Drop our own upstream echo so ssh-chatter->ddial->ssh-chatter loops
-     * do not appear in the room. */
-    if (ddial_recent_sent_contains(client, clean)) {
-        return;
+    /* If the server tells us we are being kicked/timed out, close the socket
+     * so the main loop reconnects immediately. */
+    if (ddial_client_line_looks_like_kick(clean)) {
+        ttak_mutex_lock(&client->lock);
+        if (client->upstream_fd >= 0) {
+            close(client->upstream_fd);
+            client->upstream_fd = -1;
+        }
+        client->connected = false;
+        if (client->reconnect_attempts < 100000U) {
+            client->reconnect_attempts++;
+        }
+        clock_gettime(CLOCK_MONOTONIC, &client->last_disconnect_time);
+        ttak_mutex_unlock(&client->lock);
     }
 
-    /* Reading path is intentionally raw: just prefix [ddial] and emit. */
     char prefixed[SSH_CHATTER_MESSAGE_LIMIT];
     int n = snprintf(prefixed, sizeof(prefixed), "[ddial] %s", clean);
     if (n > 0 && (size_t)n < sizeof(prefixed)) {
@@ -354,20 +636,7 @@ static void ddial_client_process_buffer(host_t *host, ddial_client_t *client,
             line[line_len - 1U] = '\0';
         }
         if (line[0] != '\0') {
-            if (client->auth_state == DDIAL_AUTH_PENDING) {
-                ddial_auth_state_t cls = ddial_client_classify_auth(line);
-                if (cls == DDIAL_AUTH_APPROVED) {
-                    client->auth_state = DDIAL_AUTH_APPROVED;
-                    printf("[ddial] upstream approved handle '%s'\n",
-                           client->handle[0] != '\0' ? client->handle
-                                                       : "(unknown)");
-                } else if (cls == DDIAL_AUTH_REJECTED) {
-                    client->auth_state = DDIAL_AUTH_REJECTED;
-                    printf("[ddial] upstream rejected handle '%s'\n",
-                           client->handle[0] != '\0' ? client->handle
-                                                       : "(unknown)");
-                }
-            }
+            ddial_client_learn_slot(client, line);
             ddial_client_broadcast_line(host, line);
         }
 
@@ -388,12 +657,196 @@ static void ddial_client_process_buffer(host_t *host, ddial_client_t *client,
             line[line_len - 1U] = '\0';
         }
         if (line[0] != '\0') {
+            ddial_client_learn_slot(client, line);
             ddial_client_broadcast_line(host, line);
         }
         len = 0U;
     }
 
     client->recv_buf_len = len;
+}
+
+static bool ddial_client_read_chunk(ddial_client_t *client, host_t *host)
+{
+    if (client == nullptr || host == nullptr) {
+        return false;
+    }
+
+    unsigned char temp[DDIAL_CLIENT_RECV_CHUNK_SIZE];
+    ssize_t n = recv(client->upstream_fd, temp, sizeof(temp), 0);
+    if (n <= 0) {
+        return false;
+    }
+
+    ttak_mutex_lock(&client->lock);
+    size_t before = client->recv_buf_len;
+    size_t consumed = ddial_client_process_telnet(client, temp, (size_t)n);
+
+    /* If the buffer is nearly full, drop the oldest half to make room. */
+    if (client->recv_buf_len > sizeof(client->recv_buffer) - DDIAL_CLIENT_RECV_CHUNK_SIZE) {
+        size_t drop = client->recv_buf_len / 2U;
+        memmove(client->recv_buffer, client->recv_buffer + drop,
+                client->recv_buf_len - drop);
+        client->recv_buf_len -= drop;
+    }
+
+    ddial_client_process_buffer(host, client, false);
+    (void)consumed;
+    (void)before;
+    ttak_mutex_unlock(&client->lock);
+
+    return true;
+}
+
+/* Read raw bytes from the server, process Telnet options, and append the
+ * resulting text to a local scratch buffer.  Returns true once *needle* is
+ * found in the accumulated text.  Used only during login so banners are not
+ * broadcast prematurely. */
+static bool ddial_client_wait_for_line(ddial_client_t *client,
+                                       const char *needle, int timeout_sec)
+{
+    if (client == nullptr || needle == nullptr) {
+        return false;
+    }
+
+    char scratch[SSH_CHATTER_MESSAGE_LIMIT * 4];
+    size_t scratch_len = 0U;
+
+    struct timespec deadline;
+    clock_gettime(CLOCK_MONOTONIC, &deadline);
+    deadline.tv_sec += timeout_sec;
+
+    while (!atomic_load(&client->stop)) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if (now.tv_sec > deadline.tv_sec ||
+            (now.tv_sec == deadline.tv_sec &&
+             now.tv_nsec >= deadline.tv_nsec)) {
+            return false;
+        }
+
+        int remaining_ms = (int)(deadline.tv_sec - now.tv_sec) * 1000;
+        remaining_ms += (int)((deadline.tv_nsec - now.tv_nsec) / 1000000L);
+        if (remaining_ms <= 0) {
+            return false;
+        }
+        if (remaining_ms > 1000) {
+            remaining_ms = 1000;
+        }
+
+        struct pollfd pfd;
+        pfd.fd = client->upstream_fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+
+        int rc = poll(&pfd, 1, remaining_ms);
+        if (rc < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return false;
+        }
+        if (rc == 0) {
+            continue;
+        }
+        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            return false;
+        }
+
+        unsigned char temp[DDIAL_CLIENT_RECV_CHUNK_SIZE];
+        ssize_t n = recv(client->upstream_fd, temp, sizeof(temp), 0);
+        if (n <= 0) {
+            return false;
+        }
+
+        size_t before = client->recv_buf_len;
+        (void)ddial_client_process_telnet(client, temp, (size_t)n);
+
+        /* Copy any newly appended text into our scratch buffer. */
+        size_t produced = client->recv_buf_len - before;
+        if (produced > 0U) {
+            size_t space = sizeof(scratch) - scratch_len;
+            if (produced > space) {
+                produced = space;
+            }
+            memcpy(scratch + scratch_len, client->recv_buffer + before, produced);
+            scratch_len += produced;
+            if (scratch_len >= sizeof(scratch)) {
+                scratch_len = sizeof(scratch) - 1U;
+            }
+            scratch[scratch_len] = '\0';
+        }
+
+        if (strstr(scratch, needle) != nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
+{
+    if (client == nullptr || host == nullptr) {
+        return false;
+    }
+
+    ddial_client_send_initial_telnet(client);
+
+    /* Wait for "Enter Password or [RETURN]:" prompt. */
+    if (!ddial_client_wait_for_line(client, "Password or [RETURN]",
+                                    DDIAL_CLIENT_LOGIN_PROMPT_TIMEOUT_SEC)) {
+        printf("[ddial] login prompt not received from %s:%d\n", client->host,
+               client->port);
+        return false;
+    }
+
+    /* Send password or a bare newline. */
+    char line[128];
+    if (client->login_key[0] != '\0') {
+        snprintf(line, sizeof(line), "%s\r\n", client->login_key);
+    } else {
+        snprintf(line, sizeof(line), "\r\n");
+    }
+    ttak_mutex_lock(&client->lock);
+    if (client->connected && client->upstream_fd >= 0) {
+        (void)ddial_client_send_all(client->upstream_fd, line, strlen(line));
+        ddial_client_update_send_time(client);
+    }
+    ttak_mutex_unlock(&client->lock);
+
+    /* Wait for the "-->" prompt and status line. */
+    if (!ddial_client_wait_for_line(client, "-->",
+                                    DDIAL_CLIENT_AUTH_TIMEOUT_SEC)) {
+        printf("[ddial] command prompt not received from %s:%d\n", client->host,
+               client->port);
+        return false;
+    }
+
+    /* Set handle. */
+    if (client->handle[0] != '\0') {
+        char handle_cmd[SSH_CHATTER_USERNAME_LEN + 8];
+        snprintf(handle_cmd, sizeof(handle_cmd), "/H%s\r\n", client->handle);
+        ttak_mutex_lock(&client->lock);
+        if (client->connected && client->upstream_fd >= 0) {
+            (void)ddial_client_send_all(client->upstream_fd, handle_cmd,
+                                        strlen(handle_cmd));
+            ddial_client_update_send_time(client);
+        }
+        ttak_mutex_unlock(&client->lock);
+
+        if (!ddial_client_wait_for_line(client, "Done",
+                                        DDIAL_CLIENT_AUTH_TIMEOUT_SEC)) {
+            printf("[ddial] handle set not acknowledged by %s:%d\n",
+                   client->host, client->port);
+            return false;
+        }
+    }
+
+    client->auth_state = DDIAL_AUTH_APPROVED;
+    printf("[ddial] upstream %s:%d ready (handle '%s')\n", client->host,
+           client->port,
+           client->handle[0] != '\0' ? client->handle : "(none)");
+    return true;
 }
 
 static void *ddial_client_thread(void *arg)
@@ -407,52 +860,20 @@ static void *ddial_client_thread(void *arg)
 
     while (!atomic_load(&client->stop)) {
         if (!client->connected) {
+            unsigned int backoff = ddial_client_backoff_sec(client);
             if (!ddial_client_connect_socket(client)) {
-                sleep(DDIAL_CLIENT_RECONNECT_BACKOFF_SEC);
+                sleep(backoff);
                 continue;
             }
-            usleep(300000);
-            if (client->login_key[0] != '\0') {
-                char key_line[128];
-                snprintf(key_line, sizeof(key_line), "%s\r\n",
-                         client->login_key);
-                ttak_mutex_lock(&client->lock);
-                if (client->connected && client->upstream_fd >= 0) {
-                    (void)ddial_client_send_all(client->upstream_fd, key_line,
-                                                strlen(key_line));
-                    client->auth_sent = true;
-                    ddial_client_update_send_time(client);
-                }
-                ttak_mutex_unlock(&client->lock);
+            if (!ddial_client_do_login(client, host)) {
+                ddial_client_disconnect(client);
+                sleep(backoff);
+                continue;
             }
-            if (client->handle[0] != '\0') {
-                char handle_line[SSH_CHATTER_USERNAME_LEN + 4];
-                snprintf(handle_line, sizeof(handle_line), "%s\r\n",
-                         client->handle);
-                ttak_mutex_lock(&client->lock);
-                if (client->connected && client->upstream_fd >= 0) {
-                    (void)ddial_client_send_all(client->upstream_fd,
-                                                handle_line,
-                                                strlen(handle_line));
-                    ddial_client_update_send_time(client);
-                }
-                ttak_mutex_unlock(&client->lock);
-            }
-            if (client->login_key[0] != '\0') {
-                /* Approval-based DDial: wait up to 10 s for the upstream to
-                 * accept the key/handle. */
-                client->auth_state = DDIAL_AUTH_PENDING;
-                clock_gettime(CLOCK_MONOTONIC, &client->auth_deadline);
-                client->auth_deadline.tv_sec += DDIAL_CLIENT_AUTH_TIMEOUT_SEC;
-            } else {
-                client->auth_state = DDIAL_AUTH_APPROVED;
-            }
-        }
-
-        if (client->auth_state == DDIAL_AUTH_REJECTED) {
-            ddial_client_disconnect(client);
-            sleep(DDIAL_CLIENT_RECONNECT_BACKOFF_SEC);
-            continue;
+            /* Flush any banners/prompts accumulated during login. */
+            ttak_mutex_lock(&client->lock);
+            ddial_client_process_buffer(host, client, false);
+            ttak_mutex_unlock(&client->lock);
         }
 
         struct pollfd pfd;
@@ -466,66 +887,27 @@ static void *ddial_client_thread(void *arg)
                 continue;
             }
             ddial_client_disconnect(client);
-            sleep(DDIAL_CLIENT_RECONNECT_BACKOFF_SEC);
+            sleep(ddial_client_backoff_sec(client));
             continue;
         }
         if (poll_rc == 0) {
-            if (client->auth_state == DDIAL_AUTH_PENDING) {
-                struct timespec now;
-                if (clock_gettime(CLOCK_MONOTONIC, &now) == 0 &&
-                    now.tv_sec > client->auth_deadline.tv_sec) {
-                    client->auth_state = DDIAL_AUTH_TIMEOUT;
-                    (void)ddial_client_register_local(host, client);
-                }
-            }
             ddial_client_maybe_keepalive(client);
             continue;
         }
         if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
             ddial_client_disconnect(client);
-            sleep(DDIAL_CLIENT_RECONNECT_BACKOFF_SEC);
+            sleep(ddial_client_backoff_sec(client));
             continue;
         }
         if ((pfd.revents & POLLIN) == 0) {
             continue;
         }
 
-        char temp[DDIAL_CLIENT_RECV_CHUNK_SIZE];
-        ssize_t n = recv(client->upstream_fd, temp, sizeof(temp), 0);
-        if (n <= 0) {
+        if (!ddial_client_read_chunk(client, host)) {
             ddial_client_disconnect(client);
-            sleep(DDIAL_CLIENT_RECONNECT_BACKOFF_SEC);
+            sleep(ddial_client_backoff_sec(client));
             continue;
         }
-
-        bool force_flush = ddial_client_prompt_like(temp, (size_t)n);
-        char filtered[DDIAL_CLIENT_RECV_CHUNK_SIZE];
-        size_t filtered_len = ddial_filter_telnet_iac(
-            temp, (size_t)n, filtered, sizeof(filtered));
-
-        ttak_mutex_lock(&client->lock);
-        size_t space = sizeof(client->recv_buffer) - client->recv_buf_len;
-        size_t to_copy = filtered_len;
-        if (to_copy > space) {
-            const size_t buf_cap = sizeof(client->recv_buffer);
-            if (client->recv_buf_len > buf_cap / 2U) {
-                size_t drop = client->recv_buf_len / 2U;
-                memmove(client->recv_buffer, client->recv_buffer + drop,
-                        client->recv_buf_len - drop);
-                client->recv_buf_len -= drop;
-                space = buf_cap - client->recv_buf_len;
-            }
-            if (to_copy > space) {
-                to_copy = space;
-            }
-        }
-        if (to_copy > 0U) {
-            memcpy(client->recv_buffer + client->recv_buf_len, filtered,
-                   to_copy);
-            client->recv_buf_len += to_copy;
-        }
-        ddial_client_process_buffer(host, client, force_flush);
-        ttak_mutex_unlock(&client->lock);
     }
 
     ddial_client_disconnect(client);
@@ -543,6 +925,8 @@ void host_ddial_init(host_t *host)
     client->enabled = false;
     client->stop = true;
     client->port = 0;
+    client->slot = 0U;
+    client->slot_known = false;
     client->last_send_time.tv_sec = 0;
     client->last_send_time.tv_nsec = 0;
     if (ttak_mutex_init(&client->lock) == 0) {
@@ -559,8 +943,7 @@ void host_ddial_init(host_t *host)
         snprintf(client->host, sizeof(client->host), "%s", host_env);
         client->port = (int)strtol(port_env, nullptr, 10);
         if (key_env != nullptr) {
-            snprintf(client->login_key, sizeof(client->login_key), "%s",
-                     key_env);
+            snprintf(client->login_key, sizeof(client->login_key), "%s", key_env);
         }
         if (handle_env != nullptr) {
             char clean[DDIAL_MAX_HANDLE_LEN];
@@ -588,8 +971,7 @@ void host_ddial_client_start(host_t *host)
     }
     client->stop = false;
     ddial_client_update_send_time(client);
-    if (pthread_create(&client->thread, nullptr, ddial_client_thread, host) ==
-        0) {
+    if (pthread_create(&client->thread, nullptr, ddial_client_thread, host) == 0) {
         client->thread_initialized = true;
         atomic_store(&client->running, true);
     }
@@ -645,6 +1027,22 @@ void host_ddial_client_disconnect(host_t *host)
     client->port = 0;
 }
 
+void host_ddial_client_reconnect(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+    ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
+    if (!client->enabled || client->host[0] == '\0' || client->port <= 0) {
+        return;
+    }
+    /* Stop the current thread, reset backoff, and start fresh. */
+    host_ddial_client_stop(host);
+    client->reconnect_attempts = 0U;
+    client->enabled = true;
+    host_ddial_client_start(host);
+}
+
 void host_ddial_shutdown(host_t *host)
 {
     if (host == nullptr) {
@@ -666,39 +1064,36 @@ void host_ddial_client_send(host_t *host, const char *handle,
         return;
     }
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
-    if (!client->enabled || !client->connected || client->upstream_fd < 0) {
+    if (!client->enabled || !client->connected || client->upstream_fd < 0 ||
+        client->auth_state != DDIAL_AUTH_APPROVED ||
+        client->handle[0] == '\0') {
         return;
     }
 
     char clean_handle[DDIAL_MAX_HANDLE_LEN];
     ddial_strip_ansi(handle, strlen(handle), clean_handle,
                      sizeof(clean_handle));
-
-    char wire_line[SSH_CHATTER_MESSAGE_LIMIT * 2];
-    snprintf(wire_line, sizeof(wire_line), "#1(CH1:%s) %s\r\n", clean_handle,
-             message);
-
-    /* Record the exact stripped line we are about to send so we can drop the
-     * upstream echo when it comes back. */
-    char raw_for_match[SSH_CHATTER_MESSAGE_LIMIT];
-    ddial_strip_ansi(wire_line, strlen(wire_line), raw_for_match,
-                     sizeof(raw_for_match));
-    /* Remove the trailing CRLF from the matching copy. */
-    size_t raw_len = strlen(raw_for_match);
-    while (raw_len > 0U &&
-           (raw_for_match[raw_len - 1U] == '\r' ||
-            raw_for_match[raw_len - 1U] == '\n')) {
-        raw_for_match[--raw_len] = '\0';
+    if (clean_handle[0] == '\0') {
+        return;
     }
 
-    ttak_mutex_lock(&client->lock);
-    if (client->connected && client->upstream_fd >= 0) {
-        size_t idx = client->recent_sent_index % DDIAL_RELAY_SENT_HISTORY;
-        snprintf(client->recent_sent[idx].raw_line,
-                 sizeof(client->recent_sent[idx].raw_line), "%s", raw_for_match);
-        clock_gettime(CLOCK_MONOTONIC, &client->recent_sent[idx].sent_at);
-        client->recent_sent_index++;
+    /* Build the raw line that goes out on the DDial wire.  If the Chatter
+     * user's name is the same as our bridge handle, send the message as-is;
+     * otherwise annotate it so upstream users can see who is speaking. */
+    char upstream_msg[SSH_CHATTER_MESSAGE_LIMIT];
+    if (strcmp(clean_handle, client->handle) == 0) {
+        snprintf(upstream_msg, sizeof(upstream_msg), "%s", message);
+    } else {
+        snprintf(upstream_msg, sizeof(upstream_msg), "[%s] %s", clean_handle,
+                 message);
+    }
 
+    char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 4];
+    snprintf(wire_line, sizeof(wire_line), "%s\r\n", upstream_msg);
+
+    ttak_mutex_lock(&client->lock);
+    ddial_client_record_sent(client, upstream_msg);
+    if (client->connected && client->upstream_fd >= 0) {
         (void)ddial_client_send_all(client->upstream_fd, wire_line,
                                     strlen(wire_line));
         ddial_client_update_send_time(client);

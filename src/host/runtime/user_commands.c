@@ -798,7 +798,7 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
                  relay->port);
         session_send_system_line(ctx, status);
         session_send_system_line(
-            ctx, "Usage: /ddial <connect <host> <port> [key]|disconnect|status>");
+            ctx, "Usage: /ddial <connect <host> <port> [key]|reconnect|disconnect|status>");
         return;
     }
 
@@ -822,6 +822,12 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
     if (strcasecmp(action, "disconnect") == 0) {
         host_ddial_client_disconnect(ctx->owner);
         session_send_system_line(ctx, "DDial relay disconnected.");
+        return;
+    }
+
+    if (strcasecmp(action, "reconnect") == 0) {
+        host_ddial_client_reconnect(ctx->owner);
+        session_send_system_line(ctx, "DDial relay reconnecting...");
         return;
     }
 
@@ -874,5 +880,5 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
 
     session_send_system_line(ctx, "Unknown /ddial subcommand.");
     session_send_system_line(
-        ctx, "Usage: /ddial <connect <host> <port> [key]|disconnect|status>");
+        ctx, "Usage: /ddial <connect <host> <port> [key]|reconnect|disconnect|status>");
 }

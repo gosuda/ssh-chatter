@@ -162,38 +162,8 @@ static void ddial_session_do_who(ddial_session_t *sess)
     if (sess == nullptr || sess->owner == nullptr) {
         return;
     }
-    chat_room_t *room = &sess->owner->room;
-    ttak_mutex_lock(&room->lock);
     ddial_session_write_line(sess, "Current users:");
-    for (size_t i = 0U; i < room->member_count; ++i) {
-        session_ctx_t *member = room->members[i];
-        if (member == nullptr || member->user.name[0] == '\0') {
-            continue;
-        }
-        char entry[256];
-        ddial_user_tier_t tier = DDIAL_TIER_GUEST;
-        if (member->user.is_operator || member->user.is_lan_operator) {
-            tier = DDIAL_TIER_MASTER;
-        }
-        uint16_t slot = (uint16_t)(member->session_id & 0xFFFFU);
-        if (slot == 0U) {
-            slot = (uint16_t)(i + 1U);
-        }
-        ddial_format_who_entry(entry, sizeof(entry), slot, DDIAL_DEFAULT_CHANNEL,
-                               tier, member->user.name, 0U);
-        /* Strip trailing CRLF since write_line adds it. */
-        size_t el = strlen(entry);
-        while (el > 0U && (entry[el - 1U] == '\r' || entry[el - 1U] == '\n')) {
-            entry[--el] = '\0';
-        }
-        ddial_session_write_line(sess, entry);
-    }
-    ttak_mutex_unlock(&room->lock);
-    /* Append DDial-native users so the list is fully unified. */
     host_ddial_write_who(sess);
-    if (room->member_count == 0U) {
-        ddial_session_write_line(sess, "No users online.");
-    }
 }
 
 static void ddial_session_do_help(ddial_session_t *sess)
@@ -240,11 +210,11 @@ static void ddial_session_process_line(ddial_session_t *sess, const char *line)
     case DDIAL_CMD_PRIVATE:
     case DDIAL_CMD_UNKNOWN:
         if (line[0] != '\0' && sess->owner != nullptr) {
-            char tagged[SSH_CHATTER_MESSAGE_LIMIT];
-            int n = snprintf(tagged, sizeof(tagged), "[ddial] %s", line);
-            if (n > 0 && (size_t)n < sizeof(tagged)) {
-                host_post_client_message(sess->owner, sess->handle, tagged,
-                                         nullptr, nullptr, false);
+            char formatted[SSH_CHATTER_MESSAGE_LIMIT];
+            if (ddial_format_chat(formatted, sizeof(formatted), 1U,
+                                  sess->channel, DDIAL_TIER_GUEST,
+                                  sess->handle, line)) {
+                host_ddial_broadcast_to_sessions(sess->owner, formatted);
             }
         }
         break;

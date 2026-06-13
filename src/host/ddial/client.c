@@ -72,11 +72,6 @@ typedef struct ddial_client {
     struct timespec last_send_time;
     uint16_t slot;
     bool slot_known;
-    struct {
-        char raw_line[SSH_CHATTER_MESSAGE_LIMIT];
-        struct timespec sent_at;
-    } recent_sent[DDIAL_RELAY_SENT_HISTORY];
-    size_t recent_sent_index;
     unsigned int reconnect_attempts;
     struct timespec last_disconnect_time;
 } ddial_client_t;
@@ -156,12 +151,6 @@ static void ddial_client_disconnect(ddial_client_t *client)
     client->last_send_time.tv_nsec = 0;
     client->slot = 0U;
     client->slot_known = false;
-    client->recent_sent_index = 0;
-    for (size_t i = 0U; i < DDIAL_RELAY_SENT_HISTORY; ++i) {
-        client->recent_sent[i].sent_at.tv_sec = 0;
-        client->recent_sent[i].sent_at.tv_nsec = 0;
-        client->recent_sent[i].raw_line[0] = '\0';
-    }
     if (client->reconnect_attempts < 100000U) {
         client->reconnect_attempts++;
     }
@@ -428,116 +417,6 @@ static void ddial_client_learn_slot(ddial_client_t *client, const char *line)
     client->slot_known = true;
 }
 
-/* Record a sent upstream message for echo suppression.  Caller must hold
- * client->lock. */
-static void ddial_client_record_sent(ddial_client_t *client,
-                                     const char *upstream_msg)
-{
-    if (client == nullptr || upstream_msg == nullptr || upstream_msg[0] == '\0') {
-        return;
-    }
-    size_t idx = client->recent_sent_index % DDIAL_RELAY_SENT_HISTORY;
-    char stripped[SSH_CHATTER_MESSAGE_LIMIT];
-    ddial_strip_ansi(upstream_msg, strlen(upstream_msg), stripped,
-                     sizeof(stripped));
-    snprintf(client->recent_sent[idx].raw_line,
-             sizeof(client->recent_sent[idx].raw_line), "%s", stripped);
-    clock_gettime(CLOCK_MONOTONIC, &client->recent_sent[idx].sent_at);
-    client->recent_sent_index++;
-}
-
-static bool ddial_recent_sent_contains(ddial_client_t *client,
-                                       const char *message)
-{
-    if (client == nullptr || message == nullptr || message[0] == '\0') {
-        return false;
-    }
-    struct timespec now;
-    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
-        return false;
-    }
-    for (size_t i = 0U; i < DDIAL_RELAY_SENT_HISTORY; ++i) {
-        if (client->recent_sent[i].sent_at.tv_sec == 0) {
-            continue;
-        }
-        time_t delta = now.tv_sec - client->recent_sent[i].sent_at.tv_sec;
-        if (delta < 0 || delta > 5) {
-            continue;
-        }
-        if (strcmp(message, client->recent_sent[i].raw_line) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/* Check whether a received line is the server's echo of a message we sent.
- * The echo format observed from hdcbbs.com is:
- *   #slot(Tchannel:handle) message
- * We match against our configured handle and the recently-sent message text.
- */
-static bool ddial_client_is_own_echo(ddial_client_t *client, const char *line)
-{
-    if (client == nullptr || line == nullptr || client->handle[0] == '\0') {
-        return false;
-    }
-
-    const char *p = line;
-    while (*p != '\0' && isspace((unsigned char)*p)) {
-        ++p;
-    }
-
-    /* Must start with '#'. */
-    if (*p != '#') {
-        return false;
-    }
-    ++p;
-
-    /* Skip slot number. */
-    if (!isdigit((unsigned char)*p)) {
-        return false;
-    }
-    while (isdigit((unsigned char)*p)) {
-        ++p;
-    }
-
-    /* Expect '(' for our own echo (remote status/chat uses '['). */
-    if (*p != '(') {
-        return false;
-    }
-    ++p;
-
-    /* Skip channel e.g. "T1:". */
-    if (p[0] != 'T' && p[0] != 't' && p[0] != 'C' && p[0] != 'c') {
-        return false;
-    }
-    ++p;
-    while (isdigit((unsigned char)*p)) {
-        ++p;
-    }
-    if (*p != ':') {
-        return false;
-    }
-    ++p;
-
-    /* Compare handle. */
-    size_t hlen = strlen(client->handle);
-    if (strncmp(p, client->handle, hlen) != 0) {
-        return false;
-    }
-    p += hlen;
-    if (*p != ')') {
-        return false;
-    }
-    ++p;
-    if (*p != ' ') {
-        return false;
-    }
-    ++p;
-
-    return ddial_recent_sent_contains(client, p);
-}
-
 /* Remove terminal escape sequences and control characters that could reset,
  * clear, or otherwise disturb the local terminal when rendered through the
  * Chatter history path.  Keeps tab, CR and LF intact so plain text still
@@ -684,18 +563,6 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
     }
 
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
-
-    /* Drop our own upstream echo so ssh-chatter->ddial->ssh-chatter loops
-     * do not appear in the room.  The server may echo the raw text we sent
-     * (telnet local echo) and also the formatted DDial line; catch both. */
-    if (ddial_client_is_own_echo(client, line)) {
-        return;
-    }
-    char stripped[SSH_CHATTER_MESSAGE_LIMIT];
-    ddial_strip_ansi(line, strlen(line), stripped, sizeof(stripped));
-    if (ddial_recent_sent_contains(client, stripped)) {
-        return;
-    }
 
     char normalized[SSH_CHATTER_MESSAGE_LIMIT];
     ddial_client_normalize_line(line, normalized, sizeof(normalized));
@@ -1203,6 +1070,31 @@ void host_ddial_shutdown(host_t *host)
     }
 }
 
+/* Normalize outbound text to raw 7-bit ASCII.  DDial/Retro-Dial upstreams
+ * expect plain ASCII, so strip anything that is not a printable ASCII
+ * character, tab, CR, or LF.  Returns the length of the written string. */
+static size_t ddial_client_normalize_outbound_text(const char *src,
+                                                    size_t src_len,
+                                                    char *dst,
+                                                    size_t dst_cap)
+{
+    if (src == nullptr || dst == nullptr || dst_cap == 0U) {
+        return 0U;
+    }
+    size_t i = 0U;
+    size_t j = 0U;
+    while (i < src_len && j + 1U < dst_cap) {
+        unsigned char c = (unsigned char)src[i];
+        if ((c >= 0x20U && c <= 0x7EU) || c == '\t' || c == '\n' ||
+            c == '\r') {
+            dst[j++] = (char)c;
+        }
+        ++i;
+    }
+    dst[j] = '\0';
+    return j;
+}
+
 void host_ddial_client_send(host_t *host, const char *handle,
                             const char *message)
 {
@@ -1223,22 +1115,31 @@ void host_ddial_client_send(host_t *host, const char *handle,
         return;
     }
 
+    /* Normalize to raw ASCII so unsupported encodings do not leak onto the
+     * DDial wire. */
+    char normalized_message[SSH_CHATTER_MESSAGE_LIMIT];
+    ddial_client_normalize_outbound_text(message, strlen(message),
+                                         normalized_message,
+                                         sizeof(normalized_message));
+    if (normalized_message[0] == '\0') {
+        return;
+    }
+
     /* Build the raw line that goes out on the DDial wire.  If the Chatter
      * user's name is the same as our bridge handle, send the message as-is;
      * otherwise annotate it so upstream users can see who is speaking. */
     char upstream_msg[SSH_CHATTER_MESSAGE_LIMIT];
     if (strcmp(clean_handle, client->handle) == 0) {
-        snprintf(upstream_msg, sizeof(upstream_msg), "%s", message);
+        snprintf(upstream_msg, sizeof(upstream_msg), "%s", normalized_message);
     } else {
         snprintf(upstream_msg, sizeof(upstream_msg), "[%s] %s", clean_handle,
-                 message);
+                 normalized_message);
     }
 
     char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 4];
     snprintf(wire_line, sizeof(wire_line), "%s\r\n", upstream_msg);
 
     ttak_mutex_lock(&client->lock);
-    ddial_client_record_sent(client, upstream_msg);
     if (client->connected && client->upstream_fd >= 0) {
         (void)ddial_client_send_all(client->upstream_fd, wire_line,
                                     strlen(wire_line));

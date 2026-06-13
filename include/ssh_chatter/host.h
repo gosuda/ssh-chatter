@@ -1030,8 +1030,6 @@ typedef enum ddial_auth_state {
     DDIAL_AUTH_TIMEOUT,
 } ddial_auth_state_t;
 
-#define DDIAL_RELAY_SENT_HISTORY 8
-
 typedef struct ddial_relay {
     bool enabled;
     int upstream_fd;
@@ -1055,11 +1053,6 @@ typedef struct ddial_relay {
     struct timespec last_send_time;
     uint16_t slot;
     bool slot_known;
-    struct {
-        char raw_line[SSH_CHATTER_MESSAGE_LIMIT];
-        struct timespec sent_at;
-    } recent_sent[DDIAL_RELAY_SENT_HISTORY];
-    size_t recent_sent_index;
     unsigned int reconnect_attempts;
     struct timespec last_disconnect_time;
 } ddial_relay_t;

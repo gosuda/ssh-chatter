@@ -972,6 +972,9 @@ void host_ddial_init(host_t *host)
                              sizeof(clean));
             snprintf(client->handle, sizeof(client->handle), "%s", clean);
         }
+        if (client->handle[0] == '\0') {
+            snprintf(client->handle, sizeof(client->handle), "%s", "chatter");
+        }
         client->enabled = true;
     }
 
@@ -1081,42 +1084,6 @@ void host_ddial_shutdown(host_t *host)
 /* Normalize outbound text to raw 7-bit ASCII.  DDial/Retro-Dial upstreams
  * expect plain ASCII, so strip anything that is not a printable ASCII
  * character, tab, CR, or LF.  Returns the length of the written string. */
-#define MAX_CACHED_HANDLES 256
-typedef struct {
-    char chatter_name[SSH_CHATTER_USERNAME_LEN];
-    char ddial_id[16];
-} ddial_id_map_t;
-
-static ddial_id_map_t g_ddial_id_maps[MAX_CACHED_HANDLES];
-static int g_ddial_id_map_count = 0;
-static pthread_mutex_t g_ddial_id_map_lock = PTHREAD_MUTEX_INITIALIZER;
-
-static const char *get_or_create_ddial_id(const char *chatter_name)
-{
-    pthread_mutex_lock(&g_ddial_id_map_lock);
-    for (int i = 0; i < g_ddial_id_map_count; ++i) {
-        if (strcmp(g_ddial_id_maps[i].chatter_name, chatter_name) == 0) {
-            pthread_mutex_unlock(&g_ddial_id_map_lock);
-            return g_ddial_id_maps[i].ddial_id;
-        }
-    }
-    if (g_ddial_id_map_count < MAX_CACHED_HANDLES) {
-        int idx = g_ddial_id_map_count++;
-        snprintf(g_ddial_id_maps[idx].chatter_name, sizeof(g_ddial_id_maps[idx].chatter_name), "%s", chatter_name);
-        snprintf(g_ddial_id_maps[idx].ddial_id, sizeof(g_ddial_id_maps[idx].ddial_id), "U%04d", idx + 1);
-        pthread_mutex_unlock(&g_ddial_id_map_lock);
-        return g_ddial_id_maps[idx].ddial_id;
-    }
-    pthread_mutex_unlock(&g_ddial_id_map_lock);
-    static _Thread_local char fallback_id[16];
-    unsigned int hash = 0;
-    for (const char *p = chatter_name; *p; p++) {
-        hash = hash * 31 + (unsigned int)(unsigned char)*p;
-    }
-    snprintf(fallback_id, sizeof(fallback_id), "U%04u", (hash % 1000) + 1);
-    return fallback_id;
-}
-
 static size_t ddial_client_normalize_outbound_text(const char *src,
                                                     size_t src_len,
                                                     char *dst,
@@ -1142,20 +1109,13 @@ static size_t ddial_client_normalize_outbound_text(const char *src,
 void host_ddial_client_send(host_t *host, const char *handle,
                             const char *message)
 {
-    if (host == nullptr || handle == nullptr || message == nullptr) {
+    (void)handle;
+    if (host == nullptr || message == nullptr) {
         return;
     }
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
     if (!client->enabled || !client->connected || client->upstream_fd < 0 ||
-        client->auth_state != DDIAL_AUTH_APPROVED ||
-        client->handle[0] == '\0') {
-        return;
-    }
-
-    char clean_handle[DDIAL_MAX_HANDLE_LEN];
-    ddial_strip_ansi(handle, strlen(handle), clean_handle,
-                     sizeof(clean_handle));
-    if (clean_handle[0] == '\0') {
+        client->auth_state != DDIAL_AUTH_APPROVED) {
         return;
     }
 
@@ -1167,25 +1127,9 @@ void host_ddial_client_send(host_t *host, const char *handle,
         return;
     }
 
-    const char *display_handle = clean_handle;
-    if (strlen(clean_handle) > 8) {
-        display_handle = get_or_create_ddial_id(clean_handle);
-    }
-
-    /* Build the raw line that goes out on the DDial wire.  If the Chatter
-     * user's name is the same as our bridge handle, send the message as-is;
-     * otherwise annotate it so upstream users can see who is speaking. */
-    char upstream_msg[SSH_CHATTER_MESSAGE_LIMIT];
-    if (strcmp(clean_handle, client->handle) == 0) {
-        snprintf(upstream_msg, sizeof(upstream_msg), "%s", normalized_message);
-    } else {
-        snprintf(upstream_msg, sizeof(upstream_msg), "[%s|CHATTER] %s", display_handle,
-                 normalized_message);
-    }
-
     char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 4];
     int wire_len = snprintf(wire_line, sizeof(wire_line), "%s\r\n",
-                            upstream_msg);
+                            normalized_message);
     if (wire_len <= 0 || (size_t)wire_len >= sizeof(wire_line)) {
         return;
     }

@@ -961,6 +961,11 @@ static void chat_room_broadcast_entry(chat_room_t *room,
     if (room->owner != nullptr) {
         if (entry->is_user_message && entry->username[0] != '\0' &&
             entry->message[0] != '\0') {
+            /* Write the already-stored chatter text directly to the upstream
+             * DDial server as raw normalized telnet data. */
+            host_ddial_client_send(room->owner, entry->username,
+                                   entry->message);
+            /* Local -DT clients still get the formatted DDial chat line. */
             host_ddial_inject_message(room->owner, entry->username,
                                       entry->message);
         }

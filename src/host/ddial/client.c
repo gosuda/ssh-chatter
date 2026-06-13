@@ -649,8 +649,12 @@ static void ddial_client_process_buffer(host_t *host, ddial_client_t *client,
             line[line_len - 1U] = '\0';
         }
         if (line[0] != '\0') {
-            ddial_client_learn_slot(client, line);
-            ddial_client_broadcast_line(host, line);
+            char normalized_line[SSH_CHATTER_MESSAGE_LIMIT];
+            ddial_client_normalize_line(line, normalized_line, sizeof(normalized_line));
+            if (normalized_line[0] != '\0') {
+                ddial_client_learn_slot(client, normalized_line);
+                ddial_client_broadcast_line(host, normalized_line);
+            }
         }
 
         size_t consumed = line_len + eol_len;
@@ -670,8 +674,12 @@ static void ddial_client_process_buffer(host_t *host, ddial_client_t *client,
             line[line_len - 1U] = '\0';
         }
         if (line[0] != '\0') {
-            ddial_client_learn_slot(client, line);
-            ddial_client_broadcast_line(host, line);
+            char normalized_line[SSH_CHATTER_MESSAGE_LIMIT];
+            ddial_client_normalize_line(line, normalized_line, sizeof(normalized_line));
+            if (normalized_line[0] != '\0') {
+                ddial_client_learn_slot(client, normalized_line);
+                ddial_client_broadcast_line(host, normalized_line);
+            }
         }
         len = 0U;
     }
@@ -1073,6 +1081,42 @@ void host_ddial_shutdown(host_t *host)
 /* Normalize outbound text to raw 7-bit ASCII.  DDial/Retro-Dial upstreams
  * expect plain ASCII, so strip anything that is not a printable ASCII
  * character, tab, CR, or LF.  Returns the length of the written string. */
+#define MAX_CACHED_HANDLES 256
+typedef struct {
+    char chatter_name[SSH_CHATTER_USERNAME_LEN];
+    char ddial_id[16];
+} ddial_id_map_t;
+
+static ddial_id_map_t g_ddial_id_maps[MAX_CACHED_HANDLES];
+static int g_ddial_id_map_count = 0;
+static pthread_mutex_t g_ddial_id_map_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static const char *get_or_create_ddial_id(const char *chatter_name)
+{
+    pthread_mutex_lock(&g_ddial_id_map_lock);
+    for (int i = 0; i < g_ddial_id_map_count; ++i) {
+        if (strcmp(g_ddial_id_maps[i].chatter_name, chatter_name) == 0) {
+            pthread_mutex_unlock(&g_ddial_id_map_lock);
+            return g_ddial_id_maps[i].ddial_id;
+        }
+    }
+    if (g_ddial_id_map_count < MAX_CACHED_HANDLES) {
+        int idx = g_ddial_id_map_count++;
+        snprintf(g_ddial_id_maps[idx].chatter_name, sizeof(g_ddial_id_maps[idx].chatter_name), "%s", chatter_name);
+        snprintf(g_ddial_id_maps[idx].ddial_id, sizeof(g_ddial_id_maps[idx].ddial_id), "U%04d", idx + 1);
+        pthread_mutex_unlock(&g_ddial_id_map_lock);
+        return g_ddial_id_maps[idx].ddial_id;
+    }
+    pthread_mutex_unlock(&g_ddial_id_map_lock);
+    static _Thread_local char fallback_id[16];
+    unsigned int hash = 0;
+    for (const char *p = chatter_name; *p; p++) {
+        hash = hash * 31 + (unsigned int)(unsigned char)*p;
+    }
+    snprintf(fallback_id, sizeof(fallback_id), "U%04u", (hash % 1000) + 1);
+    return fallback_id;
+}
+
 static size_t ddial_client_normalize_outbound_text(const char *src,
                                                     size_t src_len,
                                                     char *dst,
@@ -1115,14 +1159,17 @@ void host_ddial_client_send(host_t *host, const char *handle,
         return;
     }
 
-    /* Normalize to raw ASCII so unsupported encodings do not leak onto the
-     * DDial wire. */
     char normalized_message[SSH_CHATTER_MESSAGE_LIMIT];
     ddial_client_normalize_outbound_text(message, strlen(message),
                                          normalized_message,
                                          sizeof(normalized_message));
     if (normalized_message[0] == '\0') {
         return;
+    }
+
+    const char *display_handle = clean_handle;
+    if (strlen(clean_handle) > 8) {
+        display_handle = get_or_create_ddial_id(clean_handle);
     }
 
     /* Build the raw line that goes out on the DDial wire.  If the Chatter
@@ -1132,17 +1179,24 @@ void host_ddial_client_send(host_t *host, const char *handle,
     if (strcmp(clean_handle, client->handle) == 0) {
         snprintf(upstream_msg, sizeof(upstream_msg), "%s", normalized_message);
     } else {
-        snprintf(upstream_msg, sizeof(upstream_msg), "[%s] %s", clean_handle,
+        snprintf(upstream_msg, sizeof(upstream_msg), "[%s|CHATTER] %s", display_handle,
                  normalized_message);
     }
 
     char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 4];
     snprintf(wire_line, sizeof(wire_line), "%s\r\n", upstream_msg);
 
+    // Apply High ASCII conversion (set bit 7 for Apple II / Diversi-Dial compatibility)
+    size_t wire_len = strlen(wire_line);
+    for (size_t i = 0; i < wire_len; ++i) {
+        unsigned char uc = (unsigned char)wire_line[i];
+        wire_line[i] = (char)(uc | 0x80);
+    }
+
     ttak_mutex_lock(&client->lock);
     if (client->connected && client->upstream_fd >= 0) {
         (void)ddial_client_send_all(client->upstream_fd, wire_line,
-                                    strlen(wire_line));
+                                    wire_len);
         ddial_client_update_send_time(client);
     }
     ttak_mutex_unlock(&client->lock);

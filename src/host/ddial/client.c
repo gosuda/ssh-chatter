@@ -48,8 +48,7 @@ typedef struct ddial_client {
     size_t recv_buf_len;
     struct timespec last_send_time;
     struct {
-        char handle[SSH_CHATTER_USERNAME_LEN];
-        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        char raw_line[SSH_CHATTER_MESSAGE_LIMIT];
         struct timespec sent_at;
     } recent_sent[DDIAL_RELAY_SENT_HISTORY];
     size_t recent_sent_index;
@@ -249,10 +248,9 @@ static void ddial_client_disconnect(ddial_client_t *client)
 }
 
 static bool ddial_recent_sent_contains(ddial_client_t *client,
-                                         const char *handle,
-                                         const char *message)
+                                         const char *raw_line)
 {
-    if (client == nullptr || handle == nullptr || message == nullptr) {
+    if (client == nullptr || raw_line == nullptr || raw_line[0] == '\0') {
         return false;
     }
     struct timespec now;
@@ -267,8 +265,7 @@ static bool ddial_recent_sent_contains(ddial_client_t *client,
         if (delta < 0 || delta > 5) {
             continue;
         }
-        if (strcasecmp(handle, client->recent_sent[i].handle) == 0 &&
-            strcmp(message, client->recent_sent[i].message) == 0) {
+        if (strcmp(raw_line, client->recent_sent[i].raw_line) == 0) {
             return true;
         }
     }
@@ -289,131 +286,18 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
 
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
 
-    const char *p = clean;
-    while (*p != '\0' && isspace((unsigned char)*p)) {
-        ++p;
+    /* Drop our own upstream echo so ssh-chatter->ddial->ssh-chatter loops
+     * do not appear in the room. */
+    if (ddial_recent_sent_contains(client, clean)) {
+        return;
     }
 
-    /* Try Retro-Dial format: #number(channel:handle tier) message */
-    if (*p == '#') {
-        ++p;
-        while (*p >= '0' && *p <= '9') {
-            ++p;
-        }
-        if (*p == '(' || *p == '[' || *p == '<') {
-            const char *paren_end = strchr(p, ')');
-            if (paren_end == nullptr) {
-                paren_end = strchr(p, ']');
-            }
-            if (paren_end == nullptr) {
-                paren_end = strchr(p, '>');
-            }
-            if (paren_end != nullptr && paren_end[1] == ' ') {
-                size_t inner_len = (size_t)(paren_end - p - 1);
-                if (inner_len > 0 && inner_len < SSH_CHATTER_MESSAGE_LIMIT) {
-                    char inner[SSH_CHATTER_MESSAGE_LIMIT];
-                    memcpy(inner, p + 1, inner_len);
-                    inner[inner_len] = '\0';
-
-                    /* Strip any residual ANSI from inner content. */
-                    char stripped[SSH_CHATTER_MESSAGE_LIMIT];
-                    ddial_strip_ansi(inner, strlen(inner), stripped,
-                                     sizeof(stripped));
-
-                    /* Skip CHn: or Tn: channel/type prefix. */
-                    const char *handle_start = stripped;
-                    if ((handle_start[0] == 'C' || handle_start[0] == 'c') &&
-                        (handle_start[1] == 'H' || handle_start[1] == 'h')) {
-                        const char *cursor = handle_start + 2;
-                        while (*cursor >= '0' && *cursor <= '9') {
-                            ++cursor;
-                        }
-                        if (*cursor == ':') {
-                            handle_start = cursor + 1;
-                        }
-                    } else if (handle_start[0] == 'T' ||
-                               handle_start[0] == 't') {
-                        const char *cursor = handle_start + 1;
-                        while (*cursor >= '0' && *cursor <= '9') {
-                            ++cursor;
-                        }
-                        if (*cursor == ':') {
-                            handle_start = cursor + 1;
-                        }
-                    }
-                    while (*handle_start != '\0' &&
-                           isspace((unsigned char)*handle_start)) {
-                        ++handle_start;
-                    }
-
-                    /* Strip trailing tier/status symbols and whitespace. */
-                    size_t hlen = strlen(handle_start);
-                    while (hlen > 0 &&
-                           (isspace((unsigned char)handle_start[hlen - 1]) ||
-                            handle_start[hlen - 1] == '*' ||
-                            handle_start[hlen - 1] == '$')) {
-                        --hlen;
-                    }
-                    if (hlen >= SSH_CHATTER_USERNAME_LEN) {
-                        hlen = SSH_CHATTER_USERNAME_LEN - 1;
-                    }
-                    char handle[SSH_CHATTER_USERNAME_LEN];
-                    memcpy(handle, handle_start, hlen);
-                    handle[hlen] = '\0';
-
-                    if (handle[0] != '\0') {
-                        const char *message = paren_end + 2;
-                        if (message[0] != '\0') {
-                            /* Skip our own upstream echo to prevent loops. */
-                            if (ddial_recent_sent_contains(client, handle,
-                                                           message)) {
-                                return;
-                            }
-                            host_post_client_message(host, handle, message,
-                                                     nullptr, nullptr, false);
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /* Try generic [handle] message format */
-    if (clean[0] == '[') {
-        const char *end = strchr(clean + 1, ']');
-        if (end != nullptr && end[1] == ' ') {
-            size_t handle_len = (size_t)(end - clean - 1);
-            if (handle_len > 0 && handle_len < SSH_CHATTER_USERNAME_LEN) {
-                char handle[SSH_CHATTER_USERNAME_LEN];
-                memcpy(handle, clean + 1, handle_len);
-                handle[handle_len] = '\0';
-
-                /* Strip any ANSI from handle. */
-                char stripped[SSH_CHATTER_USERNAME_LEN];
-                ddial_strip_ansi(handle, strlen(handle), stripped,
-                                 sizeof(stripped));
-                if (stripped[0] != '\0') {
-                    const char *message = end + 2;
-                    if (message[0] != '\0') {
-                        /* Skip our own upstream echo. */
-                        if (ddial_recent_sent_contains(client, stripped,
-                                                       message)) {
-                            return;
-                        }
-                        host_post_client_message(host, stripped, message,
-                                                 nullptr, nullptr, false);
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    /* Fallback: broadcast as raw DDial line */
+    /* Reading path is intentionally raw: just prefix [ddial] and emit. */
     char prefixed[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(prefixed, sizeof(prefixed), "\033[1;33m[DDial]\033[0m %s", clean);
-    chat_room_broadcast(&host->room, prefixed, nullptr);
+    int n = snprintf(prefixed, sizeof(prefixed), "[ddial] %s", clean);
+    if (n > 0 && (size_t)n < sizeof(prefixed)) {
+        chat_room_broadcast(&host->room, prefixed, nullptr);
+    }
 }
 
 static void ddial_client_process_buffer(host_t *host, ddial_client_t *client,
@@ -790,21 +674,33 @@ void host_ddial_client_send(host_t *host, const char *handle,
     ddial_strip_ansi(handle, strlen(handle), clean_handle,
                      sizeof(clean_handle));
 
-    char line[SSH_CHATTER_MESSAGE_LIMIT * 2];
-    snprintf(line, sizeof(line), "#1(CH1:%s) %s\r\n", clean_handle, message);
+    char wire_line[SSH_CHATTER_MESSAGE_LIMIT * 2];
+    snprintf(wire_line, sizeof(wire_line), "#1(CH1:%s) %s\r\n", clean_handle,
+             message);
+
+    /* Record the exact stripped line we are about to send so we can drop the
+     * upstream echo when it comes back. */
+    char raw_for_match[SSH_CHATTER_MESSAGE_LIMIT];
+    ddial_strip_ansi(wire_line, strlen(wire_line), raw_for_match,
+                     sizeof(raw_for_match));
+    /* Remove the trailing CRLF from the matching copy. */
+    size_t raw_len = strlen(raw_for_match);
+    while (raw_len > 0U &&
+           (raw_for_match[raw_len - 1U] == '\r' ||
+            raw_for_match[raw_len - 1U] == '\n')) {
+        raw_for_match[--raw_len] = '\0';
+    }
 
     ttak_mutex_lock(&client->lock);
     if (client->connected && client->upstream_fd >= 0) {
-        /* Record in recent-sent ring buffer for echo suppression. */
         size_t idx = client->recent_sent_index % DDIAL_RELAY_SENT_HISTORY;
-        snprintf(client->recent_sent[idx].handle,
-                 sizeof(client->recent_sent[idx].handle), "%s", clean_handle);
-        snprintf(client->recent_sent[idx].message,
-                 sizeof(client->recent_sent[idx].message), "%s", message);
+        snprintf(client->recent_sent[idx].raw_line,
+                 sizeof(client->recent_sent[idx].raw_line), "%s", raw_for_match);
         clock_gettime(CLOCK_MONOTONIC, &client->recent_sent[idx].sent_at);
         client->recent_sent_index++;
 
-        (void)ddial_client_send_all(client->upstream_fd, line, strlen(line));
+        (void)ddial_client_send_all(client->upstream_fd, wire_line,
+                                    strlen(wire_line));
         ddial_client_update_send_time(client);
     }
     ttak_mutex_unlock(&client->lock);

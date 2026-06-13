@@ -237,19 +237,15 @@ static void ddial_session_process_line(ddial_session_t *sess, const char *line)
 
     switch (cmd) {
     case DDIAL_CMD_CHAT:
-        if (msg.body[0] != '\0' && sess->owner != nullptr) {
-            host_post_client_message(sess->owner, sess->handle, msg.body,
-                                     nullptr, nullptr, false);
-        }
-        break;
     case DDIAL_CMD_PRIVATE:
-        if (msg.handle[0] != '\0' && msg.body[0] != '\0' &&
-            sess->owner != nullptr) {
-            char pm[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(pm, sizeof(pm), "/pm %s %s", msg.handle, msg.body);
-            /* Deliver via internal ephemeral message for now. */
-            host_post_ephemeral_message(sess->owner, sess->handle, pm, nullptr,
-                                        nullptr, false);
+    case DDIAL_CMD_UNKNOWN:
+        if (line[0] != '\0' && sess->owner != nullptr) {
+            char tagged[SSH_CHATTER_MESSAGE_LIMIT];
+            int n = snprintf(tagged, sizeof(tagged), "[ddial] %s", line);
+            if (n > 0 && (size_t)n < sizeof(tagged)) {
+                host_post_client_message(sess->owner, sess->handle, tagged,
+                                         nullptr, nullptr, false);
+            }
         }
         break;
     case DDIAL_CMD_JOIN:

@@ -1054,8 +1054,7 @@ typedef struct ddial_relay {
     size_t recv_buf_len;
     struct timespec last_send_time;
     struct {
-        char handle[SSH_CHATTER_USERNAME_LEN];
-        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        char raw_line[SSH_CHATTER_MESSAGE_LIMIT];
         struct timespec sent_at;
     } recent_sent[DDIAL_RELAY_SENT_HISTORY];
     size_t recent_sent_index;

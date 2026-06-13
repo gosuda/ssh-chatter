@@ -16,8 +16,14 @@
  *     such as " #1(T1:?)" where the leading number is our assigned slot.
  *   - Client sets the handle with "/H<handle>\r\n".
  *   - Server echoes public chat as "#slot(Tchannel:handle) message".
- *   - Other traffic (remote chat, system messages, status) arrives as raw
- *     lines and is forwarded to the Chatter room with a "[ddial] " prefix.
+ *   - Other traffic (remote chat, system messages, /SP station lists, linked
+ *     station names, node lists) arrives as raw lines.
+ *
+ * Inbound lines are sanitized to remove terminal escape sequences, normalized
+ * to a clean ddial.dat-style form, committed to the Chatter history buffer,
+ * and then rendered through the normal history broadcast path.  This prevents
+ * raw upstream noise from resetting the local terminal and keeps DDial traffic
+ * visible in scrollback.
  */
 
 #include "ssh_chatter/ddial_protocol.h"
@@ -532,6 +538,145 @@ static bool ddial_client_is_own_echo(ddial_client_t *client, const char *line)
     return ddial_recent_sent_contains(client, p);
 }
 
+/* Remove terminal escape sequences and control characters that could reset,
+ * clear, or otherwise disturb the local terminal when rendered through the
+ * Chatter history path.  Keeps tab, CR and LF intact so plain text still
+ * flows; everything else below 0x20 (including BEL, BS and FF) is dropped. */
+static size_t ddial_client_sanitize_line(const char *src, size_t src_len,
+                                         char *dst, size_t dst_cap)
+{
+    if (src == nullptr || dst == nullptr || dst_cap == 0U) {
+        return 0U;
+    }
+
+    size_t i = 0U;
+    size_t j = 0U;
+    while (i < src_len && j + 1U < dst_cap) {
+        unsigned char c = (unsigned char)src[i];
+
+        if (c == 0x1B) {
+            if (i + 1U >= src_len) {
+                ++i;
+                continue;
+            }
+            unsigned char next = (unsigned char)src[i + 1U];
+
+            /* CSI: ESC [ ... final byte @-~ */
+            if (next == '[') {
+                i += 2U;
+                while (i < src_len) {
+                    unsigned char p = (unsigned char)src[i];
+                    ++i;
+                    if (p >= 0x40U && p <= 0x7EU) {
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            /* OSC: ESC ] ... BEL or ST (ESC \) */
+            if (next == ']') {
+                i += 2U;
+                while (i < src_len) {
+                    unsigned char p = (unsigned char)src[i];
+                    ++i;
+                    if (p == '\a') {
+                        break;
+                    }
+                    if (p == 0x1B && i < src_len && src[i] == '\\') {
+                        ++i;
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            /* DCS / APC / PM: ESC P/_/^ ... ST */
+            if (next == 'P' || next == '_' || next == '^') {
+                i += 2U;
+                while (i + 1U < src_len) {
+                    if (src[i] == 0x1B && src[i + 1U] == '\\') {
+                        i += 2U;
+                        break;
+                    }
+                    ++i;
+                }
+                continue;
+            }
+
+            /* Single-byte ESC sequences (ESC c terminal reset, charset
+             * shifts, etc.) -- swallow the whole two-byte sequence. */
+            i += 2U;
+            continue;
+        }
+
+        if (c == 0x7F) {
+            ++i;
+            continue;
+        }
+
+        if (c < 0x20U && c != '\t' && c != '\r' && c != '\n') {
+            ++i;
+            continue;
+        }
+
+        dst[j++] = (char)c;
+        ++i;
+    }
+
+    dst[j] = '\0';
+    return j;
+}
+
+/* Normalize a raw DDial wire line to a clean ddial.dat-style entry before
+ * stuffing it into Chatter history.  Terminal noise is stripped, whitespace
+ * is trimmed, and the common hdcbbs.com variants (chat, station list, linked
+ * station, node list) are preserved in canonical form. */
+static void ddial_client_normalize_line(const char *src, char *dst,
+                                        size_t dst_cap)
+{
+    if (src == nullptr || dst == nullptr || dst_cap == 0U) {
+        return;
+    }
+    dst[0] = '\0';
+
+    char sanitized[SSH_CHATTER_MESSAGE_LIMIT];
+    ddial_client_sanitize_line(src, strlen(src), sanitized,
+                               sizeof(sanitized));
+
+    char *start = sanitized;
+    while (*start != '\0' && isspace((unsigned char)*start)) {
+        ++start;
+    }
+    size_t len = strlen(start);
+    while (len > 0U && isspace((unsigned char)start[len - 1U])) {
+        start[--len] = '\0';
+    }
+    if (len == 0U) {
+        return;
+    }
+
+    /* Node list lines such as "7762-.LateNight.Detroit313" are normalized
+     * to "#7762-.LateNight.Detroit313" so they look like other DDial rows. */
+    const char *dash_dot = strstr(start, "-.");
+    if (dash_dot != nullptr && dash_dot > start &&
+        isdigit((unsigned char)start[0])) {
+        bool all_digits = true;
+        for (const char *q = start; q < dash_dot; ++q) {
+            if (!isdigit((unsigned char)*q)) {
+                all_digits = false;
+                break;
+            }
+        }
+        if (all_digits) {
+            snprintf(dst, dst_cap, "#%s", start);
+            return;
+        }
+    }
+
+    snprintf(dst, dst_cap, "%s", start);
+}
+
 static void ddial_client_broadcast_line(host_t *host, const char *line)
 {
     if (host == nullptr || line == nullptr || line[0] == '\0') {
@@ -552,16 +697,15 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
         return;
     }
 
-    /* Reading path is intentionally raw: just prefix [ddial] and emit. */
-    char clean[SSH_CHATTER_MESSAGE_LIMIT];
-    ddial_strip_ansi(line, strlen(line), clean, sizeof(clean));
-    if (clean[0] == '\0') {
+    char normalized[SSH_CHATTER_MESSAGE_LIMIT];
+    ddial_client_normalize_line(line, normalized, sizeof(normalized));
+    if (normalized[0] == '\0') {
         return;
     }
 
     /* If the server tells us we are being kicked/timed out, close the socket
      * so the main loop reconnects immediately. */
-    if (ddial_client_line_looks_like_kick(clean)) {
+    if (ddial_client_line_looks_like_kick(normalized)) {
         ttak_mutex_lock(&client->lock);
         if (client->upstream_fd >= 0) {
             close(client->upstream_fd);
@@ -575,10 +719,12 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
         ttak_mutex_unlock(&client->lock);
     }
 
-    char prefixed[SSH_CHATTER_MESSAGE_LIMIT];
-    int n = snprintf(prefixed, sizeof(prefixed), "[ddial] %s", clean);
-    if (n > 0 && (size_t)n < sizeof(prefixed)) {
-        chat_room_broadcast(&host->room, prefixed, nullptr);
+    /* Commit the normalized DDial line to Chatter history and render it
+     * through the normal history path instead of emitting a raw system
+     * broadcast that can reset the terminal. */
+    chat_history_entry_t stored = {0};
+    if (host_history_record_system(host, normalized, &stored)) {
+        chat_room_broadcast_entry(&host->room, &stored, nullptr);
     }
 }
 

@@ -60,7 +60,7 @@ typedef struct ddial_client {
     bool lock_initialized;
     bool connected;
     bool auth_sent;
-    ddial_auth_state_t auth_state;
+    _Atomic ddial_auth_state_t auth_state;
     struct timespec auth_deadline;
     bool locally_registered;
     char host[256];
@@ -143,7 +143,7 @@ static void ddial_client_disconnect(ddial_client_t *client)
     }
     client->connected = false;
     client->auth_sent = false;
-    client->auth_state = DDIAL_AUTH_NONE;
+    atomic_store(&client->auth_state, DDIAL_AUTH_NONE);
     client->auth_deadline.tv_sec = 0;
     client->auth_deadline.tv_nsec = 0;
     client->recv_buf_len = 0U;
@@ -235,7 +235,7 @@ static bool ddial_client_connect_socket(ddial_client_t *client)
     client->upstream_fd = fd;
     client->connected = true;
     client->auth_sent = false;
-    client->auth_state = DDIAL_AUTH_NONE;
+    atomic_store(&client->auth_state, DDIAL_AUTH_NONE);
     client->recv_buf_len = 0U;
     client->slot = 0U;
     client->slot_known = false;
@@ -720,13 +720,15 @@ static bool ddial_client_read_chunk(ddial_client_t *client, host_t *host)
 }
 
 /* Read raw bytes from the server, process Telnet options, and append the
- * resulting text to a local scratch buffer.  Returns true once *needle* is
- * found in the accumulated text.  Used only during login so banners are not
- * broadcast prematurely. */
-static bool ddial_client_wait_for_line(ddial_client_t *client,
-                                       const char *needle, int timeout_sec)
+ * resulting text to a local scratch buffer.  Returns true once any of the
+ * provided needles is found in the accumulated text.  Used only during login
+ * so banners are not broadcast prematurely. */
+static bool ddial_client_wait_for_any_line(ddial_client_t *client,
+                                           const char *const *needles,
+                                           size_t needle_count,
+                                           int timeout_sec)
 {
-    if (client == nullptr || needle == nullptr) {
+    if (client == nullptr || needles == nullptr || needle_count == 0U) {
         return false;
     }
 
@@ -798,11 +800,23 @@ static bool ddial_client_wait_for_line(ddial_client_t *client,
             scratch[scratch_len] = '\0';
         }
 
-        if (strstr(scratch, needle) != nullptr) {
-            return true;
+        for (size_t i = 0U; i < needle_count; ++i) {
+            if (needles[i] != nullptr &&
+                strstr(scratch, needles[i]) != nullptr) {
+                return true;
+            }
         }
     }
     return false;
+}
+
+static bool ddial_client_wait_for_line(ddial_client_t *client,
+                                       const char *needle, int timeout_sec)
+{
+    if (client == nullptr || needle == nullptr) {
+        return false;
+    }
+    return ddial_client_wait_for_any_line(client, &needle, 1U, timeout_sec);
 }
 
 static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
@@ -855,15 +869,21 @@ static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
         }
         ttak_mutex_unlock(&client->lock);
 
-        if (!ddial_client_wait_for_line(client, "Done",
-                                        DDIAL_CLIENT_AUTH_TIMEOUT_SEC)) {
+        /* Some upstreams echo "Done" after /H, others simply return the
+         * command prompt.  Accept either as confirmation that the handle
+         * has been applied. */
+        static const char *handle_ack_needles[] = {"Done", "-->"};
+        if (!ddial_client_wait_for_any_line(
+                client, handle_ack_needles,
+                sizeof(handle_ack_needles) / sizeof(handle_ack_needles[0]),
+                DDIAL_CLIENT_AUTH_TIMEOUT_SEC)) {
             printf("[ddial] handle set not acknowledged by %s:%d\n",
                    client->host, client->port);
             return false;
         }
     }
 
-    client->auth_state = DDIAL_AUTH_APPROVED;
+    atomic_store(&client->auth_state, DDIAL_AUTH_APPROVED);
     printf("[ddial] upstream %s:%d ready (handle '%s')\n", client->host,
            client->port,
            client->handle[0] != '\0' ? client->handle : "(none)");
@@ -1114,8 +1134,11 @@ void host_ddial_client_send(host_t *host, const char *handle,
         return;
     }
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
+
+    ttak_mutex_lock(&client->lock);
     if (!client->enabled || !client->connected || client->upstream_fd < 0 ||
-        client->auth_state != DDIAL_AUTH_APPROVED) {
+        atomic_load(&client->auth_state) != DDIAL_AUTH_APPROVED) {
+        ttak_mutex_unlock(&client->lock);
         return;
     }
 
@@ -1124,6 +1147,7 @@ void host_ddial_client_send(host_t *host, const char *handle,
                                          normalized_message,
                                          sizeof(normalized_message));
     if (normalized_message[0] == '\0') {
+        ttak_mutex_unlock(&client->lock);
         return;
     }
 
@@ -1131,14 +1155,12 @@ void host_ddial_client_send(host_t *host, const char *handle,
     int wire_len = snprintf(wire_line, sizeof(wire_line), "%s\r\n",
                             normalized_message);
     if (wire_len <= 0 || (size_t)wire_len >= sizeof(wire_line)) {
+        ttak_mutex_unlock(&client->lock);
         return;
     }
 
-    ttak_mutex_lock(&client->lock);
-    if (client->connected && client->upstream_fd >= 0) {
-        (void)ddial_client_send_all(client->upstream_fd, wire_line,
-                                    (size_t)wire_len);
-        ddial_client_update_send_time(client);
-    }
+    (void)ddial_client_send_all(client->upstream_fd, wire_line,
+                                (size_t)wire_len);
+    ddial_client_update_send_time(client);
     ttak_mutex_unlock(&client->lock);
 }

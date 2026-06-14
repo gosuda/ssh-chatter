@@ -1041,7 +1041,7 @@ typedef struct ddial_relay {
     bool lock_initialized;
     bool connected;
     bool auth_sent;
-    ddial_auth_state_t auth_state;
+    _Atomic ddial_auth_state_t auth_state;
     struct timespec auth_deadline;
     bool locally_registered;
     char host[256];

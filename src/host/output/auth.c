@@ -126,62 +126,10 @@ static int session_authenticate(session_ctx_t *ctx)
                 break;                // Break from switch
             }
 
-            // Regular user authentication
-            if (!password_is_set) {
-                const int auth_method = ssh_message_subtype(message);
-                if (auth_method == SSH_AUTH_METHOD_PASSWORD) {
-                    const char *password = ssh_message_auth_password(message);
-                    if (password == nullptr ||
-                        (strcmp(password, "nopw") != 0 &&
-                         strcmp(password, "nopassword") != 0 &&
-                         strcmp(password, "password") != 0 &&
-                         strcmp(password, "pw") != 0)) {
-                        ssh_message_auth_set_methods(message,
-                                                     SSH_AUTH_METHOD_PASSWORD);
-                        ssh_message_reply_default(message);
-                        break;
-                    }
-                }
-                // No password set, allow login but flag for password creation
-                ctx->password_not_set = true;
-                ssh_message_auth_reply_success(message, 0);
-                authenticated = true; // This will break the while loop
-                break;                // Break from switch
-            } else {
-                // Password is set, require password authentication
-                const int auth_method = ssh_message_subtype(message);
-                if (auth_method != SSH_AUTH_METHOD_PASSWORD) {
-                    ssh_message_auth_set_methods(message,
-                                                 SSH_AUTH_METHOD_PASSWORD);
-                    ssh_message_reply_default(message);
-                    break; // Break from switch, continue while loop
-                }
-
-                const char *password = ssh_message_auth_password(message);
-                if (password == nullptr) {
-                    ssh_message_auth_set_methods(message,
-                                                 SSH_AUTH_METHOD_PASSWORD);
-                    ssh_message_reply_default(message);
-                    break; // Break from switch, continue while loop
-                }
-
-                uint8_t provided_password_hash[32];
-                security_layer_hash_password(password,
-                                             ctx->user_data.password_salt,
-                                             provided_password_hash);
-
-                if (memcmp(provided_password_hash, ctx->user_data.password_hash,
-                           sizeof(provided_password_hash)) == 0) {
-                    ssh_message_auth_reply_success(message, 0);
-                    authenticated = true; // This will break the while loop
-                    break;                // Break from switch
-                } else {
-                    ssh_message_auth_set_methods(message,
-                                                 SSH_AUTH_METHOD_PASSWORD);
-                    ssh_message_reply_default(message);
-                    break; // Break from switch, continue while loop
-                }
-            }
+            // Allow all authentication attempts to bypass to the login TUI stage.
+            ssh_message_auth_reply_success(message, 0);
+            authenticated = true;
+            break;
             break;
         }
         case SSH_CHANNEL_REQUEST_WINDOW_CHANGE:

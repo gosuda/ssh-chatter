@@ -421,6 +421,227 @@ static void session_ask_ui_mode(session_ctx_t *ctx)
     }
 }
 
+typedef struct {
+    const char *welcome;
+    const char *prompt;
+    const char *modes;
+    const char *err_already_registered;
+    const char *err_not_registered;
+    const char *err_incorrect_pw;
+    const char *msg_login_success;
+    const char *msg_signup_success;
+    const char *err_invalid_cmd;
+} login_locale_t;
+
+static const login_locale_t kLoginLocales[] = {
+    [SESSION_UI_LANGUAGE_EN] = {
+        .welcome = "=== Welcome %s to SSH-Chatter ===",
+        .prompt = "To enter the chat room, please enter a command:",
+        .modes = "  /guest             - Enter in guest mode (no password)\n"
+                 "  /login <password>  - Log in with your password (if registered)\n"
+                 "  /signup <password> - Register a new password and log in\n"
+                 "  /exit              - Disconnect",
+        .err_already_registered = "[auth] This nickname is already registered. Please use '/login <password>'.",
+        .err_not_registered = "[auth] This nickname is not registered. Please use '/signup <password>' to register.",
+        .err_incorrect_pw = "[auth] Incorrect password.",
+        .msg_login_success = "[auth] Login successful.",
+        .msg_signup_success = "[auth] Sign up successful.",
+        .err_invalid_cmd = "[auth] Invalid command. Available commands: /guest, /login, /signup, /exit"
+    },
+    [SESSION_UI_LANGUAGE_KO] = {
+        .welcome = "=== %s님, SSH-Chatter에 오신 것을 환영합니다 ===",
+        .prompt = "채팅방에 입장하려면 명령어를 입력하세요:",
+        .modes = "  /guest             - 게스트 모드로 입장 (비밀번호 없음)\n"
+                 "  /login <비밀번호>  - 등록된 비밀번호로 로그인 (가입된 경우)\n"
+                 "  /signup <비밀번호> - 새 비밀번호를 등록하고 로그인\n"
+                 "  /exit              - 연결 종료",
+        .err_already_registered = "[인증] 이 닉네임은 이미 가입되어 있습니다. '/login <비밀번호>'를 사용하세요.",
+        .err_not_registered = "[인증] 이 닉네임은 가입되어 있지 않습니다. '/signup <비밀번호>'로 가입하세요.",
+        .err_incorrect_pw = "[인증] 비밀번호가 올바르지 않습니다.",
+        .msg_login_success = "[인증] 로그인에 성공했습니다.",
+        .msg_signup_success = "[인증] 가입 및 로그인에 성공했습니다.",
+        .err_invalid_cmd = "[인증] 올바르지 않은 명령어입니다. 사용 가능 명령어: /guest, /login, /signup, /exit"
+    }
+};
+
+static bool session_read_line(session_ctx_t *ctx, char *buf, size_t max_len, bool mask_input)
+{
+    if (ctx == nullptr || buf == nullptr || max_len == 0) {
+        return false;
+    }
+
+    size_t length = 0U;
+    while (length + 1U < max_len) {
+        char ch = '\0';
+        const int read_result = session_transport_read(ctx, &ch, 1, -1);
+        if (read_result <= 0) {
+            return false;
+        }
+
+        if (ch == '\r' || ch == '\n') {
+            session_send_raw_text(ctx, "\r\n");
+            break;
+        }
+
+        if (ch == '\b' || (unsigned char)ch == 0x7fU) {
+            if (length > 0U) {
+                --length;
+                session_send_raw_text(ctx, "\b \b");
+            }
+            continue;
+        }
+
+        if ((unsigned char)ch < 0x20U) {
+            continue;
+        }
+
+        buf[length++] = ch;
+        if (mask_input) {
+            session_send_raw_text(ctx, "*");
+        } else {
+            char echo_str[2] = {ch, '\0'};
+            session_send_raw_text(ctx, echo_str);
+        }
+    }
+    buf[length] = '\0';
+    trim_whitespace_inplace(buf);
+    return true;
+}
+
+static bool session_run_login_tui(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return false;
+    }
+
+    session_ui_language_t lang = ctx->ui_language;
+    if (lang < 0 || lang >= SESSION_UI_LANGUAGE_COUNT) {
+        lang = SESSION_UI_LANGUAGE_EN;
+    }
+    const login_locale_t *loc = &kLoginLocales[SESSION_UI_LANGUAGE_EN];
+    if (lang == SESSION_UI_LANGUAGE_KO) {
+        loc = &kLoginLocales[SESSION_UI_LANGUAGE_KO];
+    } else {
+        // Safe fallback for other languages (JP, ZH, etc.) to EN since we only define EN and KO
+        loc = &kLoginLocales[SESSION_UI_LANGUAGE_EN];
+    }
+
+    char welcome_line[256];
+    snprintf(welcome_line, sizeof(welcome_line), loc->welcome, ctx->user.name);
+    session_send_system_line(ctx, welcome_line);
+
+    while (!ctx->should_exit) {
+        session_send_system_line(ctx, loc->prompt);
+        
+        char modes_buf[512];
+        snprintf(modes_buf, sizeof(modes_buf), "%s", loc->modes);
+        char *saveptr;
+        char *line = strtok_r(modes_buf, "\n", &saveptr);
+        while (line != nullptr) {
+            session_send_system_line(ctx, line);
+            line = strtok_r(nullptr, "\n", &saveptr);
+        }
+
+        session_channel_write(ctx, "> ", 2U);
+
+        char input_line[256];
+        if (!session_read_line(ctx, input_line, sizeof(input_line), false)) {
+            return false;
+        }
+
+        if (input_line[0] == '\0') {
+            continue;
+        }
+
+        char command[32];
+        const char *cursor = session_consume_token(input_line, command, sizeof(command));
+
+        if (strcasecmp(command, "/exit") == 0) {
+            ctx->should_exit = true;
+            return false;
+        }
+
+        bool password_is_set = false;
+        ttak_mutex_lock(&ctx->owner->user_data_lock);
+        (void)user_data_load(ctx->owner->user_data_root, ctx->user.name, NULL, &ctx->user_data);
+        password_is_set = !security_layer_is_zero_hash(
+            ctx->user_data.password_hash, sizeof(ctx->user_data.password_hash));
+        ttak_mutex_unlock(&ctx->owner->user_data_lock);
+
+        if (strcasecmp(command, "/guest") == 0) {
+            if (password_is_set) {
+                session_send_system_line(ctx, loc->err_already_registered);
+                continue;
+            }
+            ctx->password_not_set = true;
+            session_send_system_line(ctx, loc->msg_login_success);
+            return true;
+        }
+
+        if (strcasecmp(command, "/login") == 0) {
+            if (!password_is_set) {
+                session_send_system_line(ctx, loc->err_not_registered);
+                continue;
+            }
+            if (cursor == nullptr || cursor[0] == '\0') {
+                session_send_system_line(ctx, "[auth] Usage: /login <password>");
+                continue;
+            }
+
+            uint8_t provided_password_hash[32];
+            security_layer_hash_password(cursor, ctx->user_data.password_salt, provided_password_hash);
+
+            if (memcmp(provided_password_hash, ctx->user_data.password_hash, sizeof(provided_password_hash)) == 0) {
+                session_send_system_line(ctx, loc->msg_login_success);
+                ctx->password_not_set = false;
+                return true;
+            } else {
+                session_send_system_line(ctx, loc->err_incorrect_pw);
+                continue;
+            }
+        }
+
+        if (strcasecmp(command, "/signup") == 0) {
+            if (password_is_set) {
+                session_send_system_line(ctx, loc->err_already_registered);
+                continue;
+            }
+            if (cursor == nullptr || cursor[0] == '\0') {
+                session_send_system_line(ctx, "[auth] Usage: /signup <password>");
+                continue;
+            }
+
+            ttak_mutex_lock(&ctx->owner->user_data_lock);
+            user_data_ensure_exists(ctx->owner->user_data_root, ctx->user.name, ctx->client_ip, &ctx->user_data);
+
+            for (size_t i = 0; i < 16; ++i) {
+                ctx->user_data.password_salt[i] = (uint8_t)(rand() % 256);
+            }
+            security_layer_hash_password(cursor, ctx->user_data.password_salt, ctx->user_data.password_hash);
+            
+            bool success = user_data_save(ctx->owner->user_data_root, &ctx->user_data, ctx->client_ip);
+            ttak_mutex_unlock(&ctx->owner->user_data_lock);
+
+            if (success) {
+                session_send_system_line(ctx, loc->msg_signup_success);
+                session_send_system_line(ctx, "==================== DISCLAIMER ====================");
+                session_send_system_line(ctx, "By signing up, you agree that your nickname and password hash");
+                session_send_system_line(ctx, "will be stored on this server for authentication purposes.");
+                session_send_system_line(ctx, "No other personal information is collected.");
+                session_send_system_line(ctx, "====================================================");
+                ctx->password_not_set = false;
+                return true;
+            } else {
+                session_send_system_line(ctx, "[auth] Failed to save credentials.");
+                continue;
+            }
+        }
+
+        session_send_system_line(ctx, loc->err_invalid_cmd);
+    }
+    return false;
+}
+
 static void *session_thread(void *arg)
 {
     session_ctx_t *ctx = (session_ctx_t *)arg;
@@ -639,6 +860,11 @@ static void *session_thread(void *arg)
 
     if (host_is_ip_banned(ctx->owner, ctx->client_ip)) {
         session_send_system_line(ctx, "You are banned from this server.");
+        SESSION_THREAD_ERROR_EXIT();
+    }
+
+    // Run login TUI before room entry
+    if (!session_run_login_tui(ctx)) {
         SESSION_THREAD_ERROR_EXIT();
     }
 

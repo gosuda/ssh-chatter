@@ -1118,40 +1118,6 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
             continue;
         }
 
-        char provided_password[128];
-        provided_password[0] = '\0';
-
-        user_data_record_t user_data;
-        memset(&user_data, 0, sizeof(user_data));
-        const char *ip_for_lookup =
-            (ctx->client_ip[0] != '\0') ? ctx->client_ip : nullptr;
-        bool user_data_loaded = false;
-        bool user_data_has_password = false;
-
-        if (host_user_data_load_existing(ctx->owner, id_buffer, ip_for_lookup,
-                                         &user_data, false)) {
-            user_data_loaded = true;
-            user_data_has_password = !security_layer_is_zero_hash(
-                user_data.password_hash, sizeof(user_data.password_hash));
-        }
-
-        if (!user_data_has_password) {
-            user_data_record_t fallback_data;
-            if (host_user_data_load_existing(ctx->owner, id_buffer, nullptr,
-                                             &fallback_data, false)) {
-                bool fallback_has_password = !security_layer_is_zero_hash(
-                    fallback_data.password_hash,
-                    sizeof(fallback_data.password_hash));
-                if (!user_data_loaded || fallback_has_password) {
-                    user_data = fallback_data;
-                    user_data_loaded = true;
-                }
-                if (fallback_has_password) {
-                    user_data_has_password = true;
-                }
-            }
-        }
-
         lan_operator_credential_t *lan_credential = nullptr;
         if (ctx->owner != nullptr) {
             lan_credential =
@@ -1162,14 +1128,6 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
                     ctx, "That nickname is reserved for LAN operators.");
                 continue;
             }
-        }
-
-        bool pw_auth_available =
-            session_telnet_pw_auth_exists(ctx->owner, id_buffer);
-        bool requires_password = user_data_has_password || pw_auth_available;
-
-        if (lan_credential != nullptr) {
-            requires_password = true;
         }
 
         char confirmation_prompt[SSH_CHATTER_MESSAGE_LIMIT];
@@ -1202,87 +1160,9 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
             continue;
         }
 
-        const char *password_to_check = nullptr;
-        if (provided_password[0] != '\0') {
-            password_to_check = provided_password;
-        }
-
-        if (!requires_password) {
-            snprintf(ctx->user.name, sizeof(ctx->user.name), "%s", id_buffer);
-            ctx->user.is_authenticated = true;
-            session_send_system_line(ctx, "Login successful.");
-            return true;
-        }
-
-        if (password_to_check == nullptr) {
-            session_send_system_line(ctx, "Password required. Enter password:");
-            session_channel_write(ctx, "> ", 2U);
-
-            char password_buffer[128];
-            if (!session_telnet_collect_line(ctx, password_buffer,
-                                             sizeof(password_buffer), true)) {
-                return false;
-            }
-            if (password_buffer[0] == '\0') {
-                session_send_system_line(ctx, "Password required.");
-                continue;
-            }
-            // Copy into provided_password for later comparisons and make that
-            // the canonical pointer for verification. The local
-            // password_buffer will go out of scope after this block, so
-            // retaining its address would leave password_to_check referencing
-            // invalid stack memory.
-            snprintf(provided_password, sizeof(provided_password), "%s",
-                     password_buffer);
-            password_to_check = provided_password;
-        }
-
-        if (lan_credential != nullptr) {
-            if (lan_credential->password[0] != '\0' &&
-                strcmp(lan_credential->password, password_to_check) == 0) {
-                snprintf(ctx->user.name, sizeof(ctx->user.name), "%s",
-                         lan_credential->nickname);
-                ctx->lan_operator_credentials_valid = true;
-                ctx->user.is_lan_operator = true;
-                ctx->user.is_authenticated = true;
-                (void)host_user_data_load_existing(ctx->owner, ctx->user.name,
-                                                   ctx->client_ip, &user_data,
-                                                   true);
-                session_send_system_line(ctx, "Login successful.");
-                return true;
-            }
-
-            session_send_system_line(ctx, "Invalid password.");
-            continue;
-        }
-
-        bool authenticated = false;
-        if (user_data_loaded && user_data_has_password) {
-            uint8_t hashed_password[SECURITY_LAYER_HASH_LEN];
-            security_layer_hash_password(
-                password_to_check, user_data.password_salt, hashed_password);
-            authenticated = memcmp(hashed_password, user_data.password_hash,
-                                   sizeof(hashed_password)) == 0;
-        }
-
-        if (!authenticated && pw_auth_available) {
-            authenticated = session_telnet_pw_auth_verify(ctx->owner, id_buffer,
-                                                          password_to_check);
-
-            if (authenticated) {
-                (void)host_user_data_load_existing(
-                    ctx->owner, id_buffer, ctx->client_ip, &user_data, true);
-            }
-        }
-
-        if (authenticated) {
-            snprintf(ctx->user.name, sizeof(ctx->user.name), "%s", id_buffer);
-            ctx->user.is_authenticated = true;
-            session_send_system_line(ctx, "Login successful.");
-            return true;
-        }
-
-        session_send_system_line(ctx, "Invalid password.");
+        snprintf(ctx->user.name, sizeof(ctx->user.name), "%s", id_buffer);
+        ctx->user.is_authenticated = true;
+        return true;
     }
 
     return false;

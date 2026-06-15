@@ -74,47 +74,54 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
+    char target_token[SSH_CHATTER_USERNAME_LEN + SSH_CHATTER_IP_LEN];
+    const char *msg_cursor = nullptr;
+
     if (strcasecmp(command, "send") == 0) {
-        char target_token[SSH_CHATTER_USERNAME_LEN + SSH_CHATTER_IP_LEN];
-        cursor =
-            session_consume_token(cursor, target_token, sizeof(target_token));
-        if (target_token[0] == '\0' || cursor == nullptr || cursor[0] == '\0') {
-            session_send_system_line(ctx,
-                                     "Usage: /mail send <user[@ip]> <message>");
-            return;
-        }
+        cursor = session_consume_token(cursor, target_token, sizeof(target_token));
+        msg_cursor = cursor;
+    } else {
+        snprintf(target_token, sizeof(target_token), "%s", command);
+        msg_cursor = cursor;
+    }
 
-        char target[SSH_CHATTER_USERNAME_LEN];
-        char target_ip[SSH_CHATTER_IP_LEN];
-        target_ip[0] = '\0';
-        const char *at = strchr(target_token, '@');
-        if (at != nullptr) {
-            size_t name_len = (size_t)(at - target_token);
-            if (name_len == 0U || name_len >= sizeof(target)) {
-                session_send_system_line(ctx, "Invalid mailbox recipient.");
-                return;
-            }
-            memcpy(target, target_token, name_len);
-            target[name_len] = '\0';
-            const char *ip_part = at + 1;
-            if (ip_part[0] != '\0') {
-                if (strlen(ip_part) >= sizeof(target_ip)) {
-                    session_send_system_line(ctx, "Recipient IP is too long.");
-                    return;
-                }
-                snprintf(target_ip, sizeof(target_ip), "%s", ip_part);
-            }
-        } else {
-            snprintf(target, sizeof(target), "%s", target_token);
-        }
+    if (target_token[0] == '\0' || msg_cursor == nullptr || msg_cursor[0] == '\0') {
+        session_send_system_line(ctx,
+                                 "Usage: /mail [send] <user[@ip]> <message>");
+        return;
+    }
 
-        if (target[0] == '\0') {
+    char target[SSH_CHATTER_USERNAME_LEN];
+    char target_ip[SSH_CHATTER_IP_LEN];
+    target_ip[0] = '\0';
+    const char *at = strchr(target_token, '@');
+    if (at != nullptr) {
+        size_t name_len = (size_t)(at - target_token);
+        if (name_len == 0U || name_len >= sizeof(target)) {
             session_send_system_line(ctx, "Invalid mailbox recipient.");
             return;
         }
+        memcpy(target, target_token, name_len);
+        target[name_len] = '\0';
+        const char *ip_part = at + 1;
+        if (ip_part[0] != '\0') {
+            if (strlen(ip_part) >= sizeof(target_ip)) {
+                session_send_system_line(ctx, "Recipient IP is too long.");
+                return;
+            }
+            snprintf(target_ip, sizeof(target_ip), "%s", ip_part);
+        }
+    } else {
+        snprintf(target, sizeof(target), "%s", target_token);
+    }
 
-        char message[USER_DATA_MAILBOX_MESSAGE_LEN];
-        snprintf(message, sizeof(message), "%s", cursor);
+    if (target[0] == '\0') {
+        session_send_system_line(ctx, "Invalid mailbox recipient.");
+        return;
+    }
+
+    char message[USER_DATA_MAILBOX_MESSAGE_LEN];
+    snprintf(message, sizeof(message), "%s", msg_cursor);
         trim_whitespace_inplace(message);
         if (message[0] == '\0') {
             session_send_system_line(ctx, "Mailbox message cannot be empty.");
@@ -143,7 +150,6 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
                  "Delivered mailbox message to %s.", target);
         session_send_system_line(ctx, confirmation);
         return;
-    }
 
     if (strcasecmp(command, "clear") == 0) {
         if (!session_user_data_load(ctx)) {

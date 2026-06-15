@@ -339,6 +339,16 @@ size_t ddial_filter_telnet_iac(const char *src, size_t src_len, char *dst,
         if (cmd == 0xFF) {
             dst[j++] = '\xFF';
             ++i;
+        } else if (cmd == 0xFA) {
+            /* Skip until IAC SE (0xFF 0xF0) */
+            i += 2U;
+            while (i < src_len) {
+                if ((unsigned char)src[i] == 0xFF && i + 1U < src_len && (unsigned char)src[i + 1U] == 0xF0) {
+                    ++i; /* Point to 0xF0 so the loop increment moves past it */
+                    break;
+                }
+                ++i;
+            }
         } else if (cmd >= 0xF0 && cmd <= 0xF9) {
             ++i;
         } else if ((cmd >= 0xFB && cmd <= 0xFE) && i + 2U < src_len) {

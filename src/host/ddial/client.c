@@ -375,7 +375,7 @@ static void ddial_client_process_telnet(ddial_client_t *client,
                     client->recv_buffer[client->recv_buf_len++] = '\xFF';
                 }
                 client->telnet_state = DDIAL_TELNET_DATA;
-            } else if (byte >= 0xF0 && byte <= 0xF9) {
+            } else if (byte >= 0xF0 && byte <= 0xFA) {
                 if (byte == 0xFA) {
                     client->telnet_sb_len = 0U;
                     client->telnet_sb_opt = 0U;

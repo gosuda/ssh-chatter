@@ -438,6 +438,7 @@ static const login_locale_t kLoginLocales[] = {
         .welcome = "=== Welcome %s to SSH-Chatter ===",
         .prompt = "To enter the chat room, please enter a command:",
         .modes = "  /guest             - Enter in guest mode (no password)\n"
+                 "  (Or press Enter twice to enter as guest)\n"
                  "  /login <password>  - Log in with your password (if registered)\n"
                  "  /signup <password> - Register a new password and log in\n"
                  "  /exit              - Disconnect",
@@ -452,6 +453,7 @@ static const login_locale_t kLoginLocales[] = {
         .welcome = "=== %s님, SSH-Chatter에 오신 것을 환영합니다 ===",
         .prompt = "채팅방에 입장하려면 명령어를 입력하세요:",
         .modes = "  /guest             - 게스트 모드로 입장 (비밀번호 없음)\n"
+                 "  (또는 엔터를 두 번 입력하여 게스트로 입장)\n"
                  "  /login <비밀번호>  - 등록된 비밀번호로 로그인 (가입된 경우)\n"
                  "  /signup <비밀번호> - 새 비밀번호를 등록하고 로그인\n"
                  "  /exit              - 연결 종료",
@@ -530,6 +532,7 @@ static bool session_run_login_tui(session_ctx_t *ctx)
     snprintf(welcome_line, sizeof(welcome_line), loc->welcome, ctx->user.name);
     session_send_system_line(ctx, welcome_line);
 
+    int empty_enter_count = 0;
     while (!ctx->should_exit) {
         session_send_system_line(ctx, loc->prompt);
         
@@ -550,9 +553,28 @@ static bool session_run_login_tui(session_ctx_t *ctx)
         }
 
         if (input_line[0] == '\0') {
+            empty_enter_count++;
+            if (empty_enter_count >= 2) {
+                bool password_is_set = false;
+                ttak_mutex_lock(&ctx->owner->user_data_lock);
+                (void)user_data_load(ctx->owner->user_data_root, ctx->user.name, NULL, &ctx->user_data);
+                password_is_set = !security_layer_is_zero_hash(
+                    ctx->user_data.password_hash, sizeof(ctx->user_data.password_hash));
+                ttak_mutex_unlock(&ctx->owner->user_data_lock);
+
+                if (password_is_set) {
+                    session_send_system_line(ctx, loc->err_already_registered);
+                    empty_enter_count = 0;
+                    continue;
+                }
+                ctx->password_not_set = true;
+                session_send_system_line(ctx, loc->msg_login_success);
+                return true;
+            }
             continue;
         }
 
+        empty_enter_count = 0;
         char command[32];
         const char *cursor = session_consume_token(input_line, command, sizeof(command));
 

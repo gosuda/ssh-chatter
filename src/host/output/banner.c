@@ -197,7 +197,7 @@ static void session_realtime_refresh(session_ctx_t *ctx)
     }
 
     ctx->capture_realtime_output = previous_capture;
-    ctx->realtime_line_count = ctx->realtime_recent_count;
+    ctx->realtime_line_count = 0U;
 
     if (ctx->history_scroll_position == 0U && !ctx->bracket_paste_active) {
         session_refresh_input_line(ctx);

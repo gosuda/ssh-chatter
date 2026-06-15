@@ -845,6 +845,7 @@ typedef struct session_ctx {
     bool user_data_loaded;
     user_data_record_t user_data;
     bool password_not_set; // Flag to indicate if user needs to set a password
+    bool authenticated_via_ssh_password;
     bool wall_active;
     bool wall_command_mode;
     uint8_t wall_cursor_x;

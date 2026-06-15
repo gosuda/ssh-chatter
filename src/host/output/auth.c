@@ -31,6 +31,7 @@ static int session_authenticate(session_ctx_t *ctx)
     bool authenticated = false;
     if (ctx != nullptr) {
         ctx->lan_operator_credentials_valid = false;
+        ctx->authenticated_via_ssh_password = false;
     }
 
     // Declare credential here to ensure it's in scope for all uses
@@ -126,10 +127,28 @@ static int session_authenticate(session_ctx_t *ctx)
                 break;                // Break from switch
             }
 
-            // Allow all authentication attempts to bypass to the login TUI stage.
+            const int auth_method = ssh_message_subtype(message);
+            if (auth_method == SSH_AUTH_METHOD_PASSWORD && password_is_set) {
+                const char *password = ssh_message_auth_password(message);
+                if (password != nullptr) {
+                    uint8_t provided_password_hash[32];
+                    security_layer_hash_password(password, ctx->user_data.password_salt, provided_password_hash);
+                    if (memcmp(provided_password_hash, ctx->user_data.password_hash, sizeof(provided_password_hash)) == 0) {
+                        ctx->authenticated_via_ssh_password = true;
+                        ssh_message_auth_reply_success(message, 0);
+                        authenticated = true;
+                        break;
+                    }
+                }
+                // Password was incorrect
+                ssh_message_auth_set_methods(message, SSH_AUTH_METHOD_PASSWORD);
+                ssh_message_reply_default(message);
+                break;
+            }
+
+            // Allow other authentication attempts to bypass to the login TUI stage.
             ssh_message_auth_reply_success(message, 0);
             authenticated = true;
-            break;
             break;
         }
         case SSH_CHANNEL_REQUEST_WINDOW_CHANGE:

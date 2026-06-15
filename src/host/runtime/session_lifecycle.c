@@ -481,14 +481,16 @@ static bool session_read_line(session_ctx_t *ctx, char *buf, size_t max_len, boo
         }
 
         if (ch == '\r' || ch == '\n') {
-            session_send_raw_text(ctx, "\r\n");
+            session_channel_write(ctx, "\r\n", 2U);
+            session_channel_flush(ctx);
             break;
         }
 
         if (ch == '\b' || (unsigned char)ch == 0x7fU) {
             if (length > 0U) {
                 --length;
-                session_send_raw_text(ctx, "\b \b");
+                session_channel_write(ctx, "\b \b", 3U);
+                session_channel_flush(ctx);
             }
             continue;
         }
@@ -499,11 +501,11 @@ static bool session_read_line(session_ctx_t *ctx, char *buf, size_t max_len, boo
 
         buf[length++] = ch;
         if (mask_input) {
-            session_send_raw_text(ctx, "*");
+            session_channel_write(ctx, "*", 1U);
         } else {
-            char echo_str[2] = {ch, '\0'};
-            session_send_raw_text(ctx, echo_str);
+            session_channel_write(ctx, &ch, 1U);
         }
+        session_channel_flush(ctx);
     }
     buf[length] = '\0';
     trim_whitespace_inplace(buf);
@@ -514,6 +516,10 @@ static bool session_run_login_tui(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
         return false;
+    }
+
+    if (ctx->authenticated_via_ssh_password || ctx->user.is_operator || ctx->user.is_lan_operator) {
+        return true;
     }
 
     session_ui_language_t lang = ctx->ui_language;

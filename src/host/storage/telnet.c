@@ -639,6 +639,13 @@ static int session_telnet_read_byte(session_ctx_t *ctx, unsigned char *out,
                         if (height > 0U) {
                             ctx->terminal_height = height;
                         }
+
+                        // Trigger redraw on Telnet resize
+                        if (ctx->history_scroll_position > 0U || ctx->no_update) {
+                            session_scrollback_navigate(ctx, 0, 0U);
+                        } else {
+                            ctx->pending_should_sink = true;
+                        }
                     }
                 } else {
                     unsigned char prev = 0U;

@@ -263,7 +263,11 @@ static int session_on_window_change(ssh_session session, ssh_channel channel,
     }
 
     // Trigger a clean screen redraw with the new dimensions.
-    ctx->pending_should_sink = true;
+    if (ctx->history_scroll_position > 0U || ctx->no_update) {
+        session_scrollback_navigate(ctx, 0, 0U);
+    } else {
+        ctx->pending_should_sink = true;
+    }
 
     return 0;
 }

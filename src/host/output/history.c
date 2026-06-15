@@ -117,11 +117,12 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
                                  size_t step)
 {
     if (ctx == nullptr || ctx->owner == nullptr ||
-        !session_transport_active(ctx) || direction == 0) {
+        !session_transport_active(ctx)) {
         return;
     }
-    if ((direction < 0 && ctx->history_latest_notified) ||
-        (direction > 0 && ctx->history_oldest_notified)) {
+    if (direction != 0 &&
+        ((direction < 0 && ctx->history_latest_notified) ||
+         (direction > 0 && ctx->history_oldest_notified))) {
         return;
     }
 
@@ -210,35 +211,25 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
     bool at_boundary = (new_position == position);
     ctx->history_scroll_position = new_position;
 
-    bool at_latest = (ctx->history_scroll_position == 0U);
     bool at_oldest = (ctx->history_scroll_position == max_position);
 
-    // Set no_update flag when scrolling away from latest messages
-    if (!at_latest) {
-        ctx->no_update = true;
-        ctx->history_latest_notified = false;
-        // Synchronize the display model: switch to manual scroll with a
-        // stable anchor based on the oldest visible message so that new
-        // incoming messages do not jump the view back to the tail.
-        if (ctx->display_model_initialized) {
-            const size_t nv = total - 1U - new_position;
-            size_t cs = scroll_step;
-            if (cs > nv + 1U) cs = nv + 1U;
-            if (cs == 0U) cs = 1U;
-            const size_t ov = (nv + 1U > cs) ? (nv + 1U - cs) : 0U;
-            chat_history_entry_t anchor_buf;
-            if (host_history_copy_range(ctx->owner, ov, &anchor_buf, 1U) == 1U &&
-                anchor_buf.message_id > 0U) {
-                ctx->display_model.view.mode = VIEW_MANUAL_SCROLL;
-                ctx->display_model.view.anchor.message_id = anchor_buf.message_id;
-                ctx->display_model.view.anchor.subline_index = 0U;
-            }
-        }
-    } else {
-        // Clear no_update flag when back at latest
-        ctx->no_update = false;
-        if (ctx->display_model_initialized) {
-            display_model_follow_tail(&ctx->display_model);
+    ctx->no_update = true;
+    ctx->history_latest_notified = false;
+    // Synchronize the display model: switch to manual scroll with a
+    // stable anchor based on the oldest visible message so that new
+    // incoming messages do not jump the view back to the tail.
+    if (ctx->display_model_initialized) {
+        const size_t nv = total - 1U - new_position;
+        size_t cs = scroll_step;
+        if (cs > nv + 1U) cs = nv + 1U;
+        if (cs == 0U) cs = 1U;
+        const size_t ov = (nv + 1U > cs) ? (nv + 1U - cs) : 0U;
+        chat_history_entry_t anchor_buf;
+        if (host_history_copy_range(ctx->owner, ov, &anchor_buf, 1U) == 1U &&
+            anchor_buf.message_id > 0U) {
+            ctx->display_model.view.mode = VIEW_MANUAL_SCROLL;
+            ctx->display_model.view.anchor.message_id = anchor_buf.message_id;
+            ctx->display_model.view.anchor.subline_index = 0U;
         }
     }
 
@@ -247,12 +238,7 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
     }
 
     if (direction < 0 && at_boundary && new_position == 0U) {
-        if (!ctx->history_latest_notified) {
-            ctx->history_latest_notified = true;
-        }
-        session_render_prompt(ctx, false);
-        session_process_pending_sink(ctx);
-        ctx->scrollback_rendered_lines = 0U;
+        session_scrollback_reset_position(ctx);
         goto cleanup;
     }
 
@@ -261,7 +247,10 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
     const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
     session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
 
-    const size_t newest_visible = total - 1U - new_position;
+    size_t newest_visible = 0U;
+    if (total > 0U && new_position < total) {
+        newest_visible = total - 1U - new_position;
+    }
     size_t chunk = scroll_step;
     if (chunk > newest_visible + 1U) {
         chunk = newest_visible + 1U;
@@ -397,34 +386,24 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     bool at_boundary = (new_position == position);
     ctx->history_scroll_position = new_position;
 
-    bool at_latest = (ctx->history_scroll_position == 0U);
     bool at_oldest = (ctx->history_scroll_position == max_position);
 
-    // Set no_update flag when scrolling away from latest messages
-    if (!at_latest) {
-        ctx->no_update = true;
-        ctx->history_latest_notified = false;
-        // Keep display model in manual scroll so new messages don't jump
-        // the view to tail while the user is reading back-history.
-        if (ctx->display_model_initialized) {
-            const size_t nv = total - 1U - new_position;
-            size_t cs = visible_lines;
-            if (cs > nv + 1U) cs = nv + 1U;
-            if (cs == 0U) cs = 1U;
-            const size_t ov = (nv + 1U > cs) ? (nv + 1U - cs) : 0U;
-            chat_history_entry_t anchor_buf;
-            if (host_history_copy_range(ctx->owner, ov, &anchor_buf, 1U) == 1U &&
-                anchor_buf.message_id > 0U) {
-                ctx->display_model.view.mode = VIEW_MANUAL_SCROLL;
-                ctx->display_model.view.anchor.message_id = anchor_buf.message_id;
-                ctx->display_model.view.anchor.subline_index = 0U;
-            }
-        }
-    } else {
-        // Clear no_update flag when back at latest
-        ctx->no_update = false;
-        if (ctx->display_model_initialized) {
-            display_model_follow_tail(&ctx->display_model);
+    ctx->no_update = true;
+    ctx->history_latest_notified = false;
+    // Keep display model in manual scroll so new messages don't jump
+    // the view to tail while the user is reading back-history.
+    if (ctx->display_model_initialized) {
+        const size_t nv = total - 1U - new_position;
+        size_t cs = visible_lines;
+        if (cs > nv + 1U) cs = nv + 1U;
+        if (cs == 0U) cs = 1U;
+        const size_t ov = (nv + 1U > cs) ? (nv + 1U - cs) : 0U;
+        chat_history_entry_t anchor_buf;
+        if (host_history_copy_range(ctx->owner, ov, &anchor_buf, 1U) == 1U &&
+            anchor_buf.message_id > 0U) {
+            ctx->display_model.view.mode = VIEW_MANUAL_SCROLL;
+            ctx->display_model.view.anchor.message_id = anchor_buf.message_id;
+            ctx->display_model.view.anchor.subline_index = 0U;
         }
     }
 
@@ -433,12 +412,7 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     }
 
     if (direction < 0 && at_boundary && new_position == 0U) {
-        if (!ctx->history_latest_notified) {
-            ctx->history_latest_notified = true;
-        }
-        session_render_prompt(ctx, false);
-        session_process_pending_sink(ctx);
-        ctx->scrollback_rendered_lines = 0U;
+        session_scrollback_reset_position(ctx);
         goto cleanup;
     }
 
@@ -448,7 +422,10 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
 
     // Calculate sliding window - always show the configured message chunk
-    size_t newest_visible = total - 1U - new_position;
+    size_t newest_visible = 0U;
+    if (total > 0U && new_position < total) {
+        newest_visible = total - 1U - new_position;
+    }
     size_t chunk = visible_lines;
     if (chunk > newest_visible + 1U) {
         chunk = newest_visible + 1U;

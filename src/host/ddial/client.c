@@ -1301,7 +1301,7 @@ void host_ddial_client_send(host_t *host, const char *handle,
     if (handle != nullptr && handle[0] != '\0') {
         char clean_handle[DDIAL_MAX_HANDLE_LEN];
         ddial_strip_ansi(handle, strlen(handle), clean_handle, sizeof(clean_handle));
-        snprintf(prefixed_message, sizeof(prefixed_message), "%s|ChatterBridge) %s", clean_handle, message);
+        snprintf(prefixed_message, sizeof(prefixed_message), "%s) %s", clean_handle, message);
     } else {
         snprintf(prefixed_message, sizeof(prefixed_message), "%s", message);
     }

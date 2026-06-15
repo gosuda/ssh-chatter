@@ -564,14 +564,8 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
                 if (from != nullptr && member == from) {
                     continue;
                 }
-                // Skip users who have the no_update flag set (scrolled back in history)
-                if (member->no_update &&
-                    member->history_scroll_position == 0U) {
-                    // If the user has already returned to the newest message,
-                    // clear the freeze flag so chat output resumes.
-                    member->no_update = false;
-                }
-                if (member->no_update) {
+                // Skip users who are scrolled back in history
+                if (member->no_update || member->history_scroll_position > 0U) {
                     continue;
                 }
                 if (atomic_load(&member->room_snapshot_retired)) {
@@ -706,14 +700,8 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
                 if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
-                // Skip users who have the no_update flag set (scrolled back in history)
-                if (member->no_update &&
-                    member->history_scroll_position == 0U) {
-                    // If the user has already returned to the newest message,
-                    // clear the freeze flag so chat output resumes.
-                    member->no_update = false;
-                }
-                if (member->no_update) {
+                // Skip users who are scrolled back in history
+                if (member->no_update || member->history_scroll_position > 0U) {
                     continue;
                 }
                 if (atomic_load(&member->room_snapshot_retired)) {
@@ -815,14 +803,8 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                 if (from != nullptr && member == from) {
                     continue;
                 }
-                // Skip users who have the no_update flag set (scrolled back in history)
-                if (member->no_update &&
-                    member->history_scroll_position == 0U) {
-                    // If the user has already returned to the newest message,
-                    // clear the freeze flag so chat output resumes.
-                    member->no_update = false;
-                }
-                if (member->no_update) {
+                // Skip users who are scrolled back in history
+                if (member->no_update || member->history_scroll_position > 0U) {
                     if (sink_targets != nullptr) {
                         if (atomic_load(&member->room_snapshot_retired)) {
                             continue;
@@ -900,6 +882,12 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         }
 
         // --- SSH path (no display model) ---
+        if (member->history_scroll_position > 0U || member->no_update) {
+            session_flag_should_sink(member);
+            atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+            continue;
+        }
+
         session_output_buffer_flush(member);
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;

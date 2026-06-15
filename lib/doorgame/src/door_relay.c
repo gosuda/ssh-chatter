@@ -456,7 +456,76 @@ static bool door_relay_spawn_zmodem(int client_fd, char *const argv[],
     return true;
 }
 
-static char *create_adjusted_dosbox_conf(const char *orig_conf, const char *actual_port)
+static bool door_relay_parse_port_value(const char *value, int *port_out)
+{
+    if (value == nullptr || port_out == nullptr) {
+        return false;
+    }
+
+    const char *bare = value;
+    while (*bare == ' ' || *bare == '\t') {
+        ++bare;
+    }
+    if (*bare >= '0' && *bare <= '9') {
+        char *endptr = nullptr;
+        long port = strtol(bare, &endptr, 10);
+        while (*endptr == ' ' || *endptr == '\t') {
+            ++endptr;
+        }
+        if (*endptr == '\0' && port > 0 && port <= 65535) {
+            *port_out = (int)port;
+            return true;
+        }
+    }
+
+    const char *port_ptr = strcasestr(value, "port:");
+    while (port_ptr != nullptr) {
+        const bool token_start =
+            port_ptr == value || port_ptr[-1] == ' ' || port_ptr[-1] == '\t';
+        if (token_start) {
+            const char *digits = port_ptr + 5;
+            char *endptr = nullptr;
+            long port = strtol(digits, &endptr, 10);
+            if (endptr != digits && port > 0 && port <= 65535) {
+                *port_out = (int)port;
+                return true;
+            }
+        }
+        port_ptr = strcasestr(port_ptr + 5, "port:");
+    }
+
+    const char *endpoint_ptr = strcasestr(value, "client:");
+    if (endpoint_ptr == nullptr) {
+        endpoint_ptr = strcasestr(value, "server:");
+    }
+    if (endpoint_ptr != nullptr &&
+        (endpoint_ptr == value || endpoint_ptr[-1] == ' ' ||
+         endpoint_ptr[-1] == '\t')) {
+        const char *endpoint_end = endpoint_ptr;
+        while (*endpoint_end != '\0' && *endpoint_end != ' ' &&
+               *endpoint_end != '\t') {
+            ++endpoint_end;
+        }
+
+        const char *last_colon = endpoint_end;
+        while (last_colon > endpoint_ptr && last_colon[-1] != ':') {
+            --last_colon;
+        }
+        if (last_colon > endpoint_ptr && last_colon < endpoint_end) {
+            char *endptr = nullptr;
+            long port = strtol(last_colon, &endptr, 10);
+            if (endptr != last_colon && endptr <= endpoint_end && port > 0 &&
+                port <= 65535) {
+                *port_out = (int)port;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static char *create_adjusted_dosbox_conf(const char *orig_conf, const char *actual_port, bool is_server)
 {
     if (orig_conf == nullptr || orig_conf[0] == '\0' || actual_port == nullptr || actual_port[0] == '\0') {
         return nullptr;
@@ -477,6 +546,7 @@ static char *create_adjusted_dosbox_conf(const char *orig_conf, const char *actu
     FILE *out = fdopen(fd, "w");
     if (out == nullptr) {
         close(fd);
+        unlink(temp_path);
         fclose(in);
         return nullptr;
     }
@@ -484,19 +554,50 @@ static char *create_adjusted_dosbox_conf(const char *orig_conf, const char *actu
     char line[1024];
     while (fgets(line, sizeof(line), in) != nullptr) {
         char *serial_ptr = strcasestr(line, "serial1");
-        char *nullmodem_ptr = strcasestr(line, "nullmodem");
-        if (serial_ptr != nullptr && nullmodem_ptr != nullptr && serial_ptr < nullmodem_ptr) {
-            char *port_ptr = strcasestr(line, "port:");
-            if (port_ptr != nullptr) {
-                size_t prefix_len = (size_t)(port_ptr - line) + 5;
-                fwrite(line, 1, prefix_len, out);
-                fprintf(out, "%s", actual_port);
-                char *after_port = port_ptr + 5;
-                while (*after_port >= '0' && *after_port <= '9') {
-                    after_port++;
+        if (serial_ptr != nullptr) {
+            char *eq = strchr(line, '=');
+            if (eq != nullptr && eq > serial_ptr) {
+                if (strcasestr(line, "nullmodem") != nullptr) {
+                    char rxdelay[64] = {0};
+                    char txdelay[64] = {0};
+                    bool telnet_opt = false;
+                    bool transparent_opt = false;
+
+                    if (strcasestr(line, "telnet") != nullptr) {
+                        telnet_opt = true;
+                    }
+                    if (strcasestr(line, "transparent") != nullptr) {
+                        transparent_opt = true;
+                    }
+                    char *rx_ptr = strcasestr(line, "rxdelay:");
+                    if (rx_ptr != nullptr) {
+                        sscanf(rx_ptr, "rxdelay:%63s", rxdelay);
+                    }
+                    char *tx_ptr = strcasestr(line, "txdelay:");
+                    if (tx_ptr != nullptr) {
+                        sscanf(tx_ptr, "txdelay:%63s", txdelay);
+                    }
+
+                    fprintf(out, "serial1 = nullmodem");
+                    if (!is_server) {
+                        fprintf(out, " server:127.0.0.1");
+                    }
+                    fprintf(out, " port:%s", actual_port);
+                    if (rxdelay[0] != '\0') {
+                        fprintf(out, " rxdelay:%s", rxdelay);
+                    }
+                    if (txdelay[0] != '\0') {
+                        fprintf(out, " txdelay:%s", txdelay);
+                    }
+                    if (telnet_opt) {
+                        fprintf(out, " telnet");
+                    }
+                    if (transparent_opt) {
+                        fprintf(out, " transparent");
+                    }
+                    fprintf(out, "\n");
+                    continue;
                 }
-                fprintf(out, "%s", after_port);
-                continue;
             }
         }
         fputs(line, out);
@@ -519,19 +620,19 @@ static int door_relay_ini_handler(void* user, const char* section,
 {
     serial_parse_ctx_t *ctx = (serial_parse_ctx_t*)user;
     if (strcasecmp(section, "serial") == 0 && strcasecmp(name, "serial1") == 0) {
-        const char *last_colon = strrchr(value, ':');
-        if (last_colon != nullptr) {
-            int port = atoi(last_colon + 1);
-            if (port > 0 && port <= 65535) {
-                ctx->port = port;
-                ctx->found = true;
-                // If "server:" is present, DOSBox acts as a client, so ssh-chatter should be a server.
-                // Otherwise, DOSBox acts as a server, so ssh-chatter should connect as a client.
-                if (strcasestr(value, "server:") != nullptr) {
-                    ctx->is_server = false;
-                } else {
-                    ctx->is_server = true;
-                }
+        if (strcasestr(value, "nullmodem") != nullptr) {
+            ctx->found = true;
+            ctx->port = 23;
+            ctx->is_server = true;
+
+            if (strcasestr(value, "server:") != nullptr ||
+                strcasestr(value, "client:") != nullptr) {
+                ctx->is_server = false;
+            }
+
+            int parsed_port = 0;
+            if (door_relay_parse_port_value(value, &parsed_port)) {
+                ctx->port = parsed_port;
             }
         }
     }
@@ -653,8 +754,14 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
     // Dynamic port adjustment to override hardcoded port:23 with the actual ddial port
     char *adjusted_conf = nullptr;
     const char *actual_port = (hops != nullptr && hops->get_ddial_port != nullptr) ? hops->get_ddial_port(h) : nullptr;
-    if (actual_port != nullptr && actual_port[0] != '\0') {
-        adjusted_conf = create_adjusted_dosbox_conf(entry->dosbox_conf, actual_port);
+    if (actual_port != nullptr && actual_port[0] != '\0' && parse_ctx.port == 23) {
+        int adjusted_port = 0;
+        if (door_relay_parse_port_value(actual_port, &adjusted_port)) {
+            adjusted_conf = create_adjusted_dosbox_conf(entry->dosbox_conf, actual_port, parse_ctx.is_server);
+            if (adjusted_conf != nullptr) {
+                parse_ctx.port = adjusted_port;
+            }
+        }
     }
     const char *conf_to_use = (adjusted_conf != nullptr) ? adjusted_conf : entry->dosbox_conf;
 

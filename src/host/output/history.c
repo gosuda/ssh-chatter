@@ -811,6 +811,15 @@ static void session_send_private_message_line(session_ctx_t *ctx,
         return;
     }
 
+    if (ctx->editor_mode != SESSION_EDITOR_MODE_NONE || ctx->bbs_rendering_editor) {
+        if (color_source != ctx && session_transport_active((session_ctx_t *)color_source)) {
+            char busy_msg[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(busy_msg, sizeof(busy_msg), "User '%s' is currently editing and cannot receive private messages.", ctx->user.name);
+            session_send_system_line((session_ctx_t *)color_source, busy_msg);
+        }
+        return;
+    }
+
     const char *highlight = color_source->user_highlight_code[0] != '\0'
                                 ? color_source->user_highlight_code
                                 : "";

@@ -803,8 +803,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                 if (from != nullptr && member == from) {
                     continue;
                 }
-                // Skip users who are scrolled back in history
-                if (member->no_update || member->history_scroll_position > 0U) {
+                // Skip users who are scrolled back in history or in BBS Editor mode
+                if (member->no_update || member->history_scroll_position > 0U ||
+                    member->editor_mode != SESSION_EDITOR_MODE_NONE || member->bbs_rendering_editor) {
                     if (sink_targets != nullptr) {
                         if (atomic_load(&member->room_snapshot_retired)) {
                             continue;

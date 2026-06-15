@@ -250,6 +250,10 @@ void session_process_pending_sink(session_ctx_t *ctx)
         return;
     }
 
+    if (ctx->editor_mode != SESSION_EDITOR_MODE_NONE || ctx->bbs_rendering_editor) {
+        return;
+    }
+
     if (ctx->history_scroll_position > 0U ||
         (ctx->display_model_initialized && !display_model_is_following_tail(&ctx->display_model))) {
         // Do not force-render history when the user is scrolled back.

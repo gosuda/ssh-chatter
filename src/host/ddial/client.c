@@ -1299,7 +1299,9 @@ void host_ddial_client_send(host_t *host, const char *handle,
 
     char prefixed_message[SSH_CHATTER_MESSAGE_LIMIT];
     if (handle != nullptr && handle[0] != '\0') {
-        snprintf(prefixed_message, sizeof(prefixed_message), "%s|ChatterBridge) %s", handle, message);
+        char clean_handle[DDIAL_MAX_HANDLE_LEN];
+        ddial_strip_ansi(handle, strlen(handle), clean_handle, sizeof(clean_handle));
+        snprintf(prefixed_message, sizeof(prefixed_message), "%s|ChatterBridge) %s", clean_handle, message);
     } else {
         snprintf(prefixed_message, sizeof(prefixed_message), "%s", message);
     }

@@ -48,7 +48,7 @@
 #define DDIAL_CLIENT_RECV_CHUNK_SIZE 4096
 #define DDIAL_CLIENT_AUTH_TIMEOUT_SEC 15
 #define DDIAL_CLIENT_LOGIN_PROMPT_TIMEOUT_SEC 8
-#define DDIAL_CLIENT_PREAUTH_DRAIN_MS 1500
+#define DDIAL_CLIENT_PREAUTH_DRAIN_MS (DDIAL_CLIENT_LOGIN_PROMPT_TIMEOUT_SEC * 1000)
 #define DDIAL_CLIENT_POSTAUTH_DRAIN_MS 2000
 
 enum {
@@ -270,17 +270,14 @@ static bool ddial_client_connect_socket(ddial_client_t *client)
     return true;
 }
 
-/* Send the initial Telnet "we are a dumb ANSI terminal" negotiation. */
-static void ddial_client_send_initial_telnet(ddial_client_t *client)
+/* Retro-Dial starts Telnet negotiation itself.  Stay passive here and answer
+ * only the server's IAC requests from ddial_client_process_telnet(); sending
+ * unsolicited options before CONNECT can make hdcbbs.com drop the socket. */
+static void ddial_client_begin_telnet(ddial_client_t *client)
 {
     if (client == nullptr || client->upstream_fd < 0) {
         return;
     }
-    /* DO echo(1), DO suppress-go-ahead(3), WILL terminal-type(24). */
-    const unsigned char init[] = {0xFF, 0xFD, 0x01, 0xFF, 0xFD, 0x03,
-                                  0xFF, 0xFB, 0x18};
-    (void)ddial_client_send_all(client->upstream_fd, (const char *)init,
-                                sizeof(init));
     ddial_client_update_send_time(client);
 }
 
@@ -918,17 +915,105 @@ static bool ddial_client_drain_for(ddial_client_t *client, host_t *host,
     }
 }
 
+static bool ddial_client_buffer_contains_ci_locked(ddial_client_t *client,
+                                                   const char *needle)
+{
+    if (client == nullptr || needle == nullptr || needle[0] == '\0') {
+        return false;
+    }
+    size_t needle_len = strlen(needle);
+    if (needle_len == 0U || client->recv_buf_len < needle_len) {
+        return false;
+    }
+    for (size_t i = 0U; i + needle_len <= client->recv_buf_len; ++i) {
+        size_t j = 0U;
+        while (j < needle_len &&
+               tolower((unsigned char)client->recv_buffer[i + j]) ==
+                   tolower((unsigned char)needle[j])) {
+            ++j;
+        }
+        if (j == needle_len) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool ddial_client_login_prompt_seen(ddial_client_t *client)
+{
+    bool seen = false;
+    ttak_mutex_lock(&client->lock);
+    seen = ddial_client_buffer_contains_ci_locked(client, "password") ||
+           ddial_client_buffer_contains_ci_locked(client, "return");
+    ttak_mutex_unlock(&client->lock);
+    return seen;
+}
+
+static bool ddial_client_drain_until_login_prompt(ddial_client_t *client,
+                                                  host_t *host,
+                                                  int timeout_ms)
+{
+    if (client == nullptr || host == nullptr || client->upstream_fd < 0 ||
+        timeout_ms <= 0) {
+        return true;
+    }
+
+    struct timespec start;
+    if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) {
+        return true;
+    }
+
+    for (;;) {
+        if (ddial_client_login_prompt_seen(client)) {
+            return true;
+        }
+
+        struct timespec now;
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+            return true;
+        }
+        long elapsed_ms = (long)((now.tv_sec - start.tv_sec) * 1000L) +
+                          (long)((now.tv_nsec - start.tv_nsec) / 1000000L);
+        if (elapsed_ms >= timeout_ms) {
+            return true;
+        }
+
+        int remaining_ms = timeout_ms - (int)elapsed_ms;
+        int poll_ms = remaining_ms < 100 ? remaining_ms : 100;
+        struct pollfd pfd = {.fd = client->upstream_fd, .events = POLLIN};
+        int poll_rc = poll(&pfd, 1, poll_ms);
+        if (poll_rc < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return false;
+        }
+        if (poll_rc == 0) {
+            continue;
+        }
+        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            return false;
+        }
+        if ((pfd.revents & POLLIN) != 0 &&
+            !ddial_client_read_chunk(client, host)) {
+            return false;
+        }
+    }
+}
+
 static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
 {
     if (client == nullptr || host == nullptr) {
         return false;
     }
 
-    ddial_client_send_initial_telnet(client);
+    ddial_client_begin_telnet(client);
 
-    /* Give slow Telnet option negotiation a brief chance to complete, but do
-     * not require a prompt. Retro-Dial accepts a bare RETURN for guest login. */
-    if (!ddial_client_drain_for(client, host, DDIAL_CLIENT_PREAUTH_DRAIN_MS)) {
+    /* Wait for the password prompt when it arrives, then send a bare RETURN
+     * for guest login if no key is configured.  On old/slow links this avoids
+     * racing input ahead of Retro-Dial's CONNECT/password state. */
+    if (!ddial_client_drain_until_login_prompt(
+            client, host, DDIAL_CLIENT_PREAUTH_DRAIN_MS)) {
         return false;
     }
 

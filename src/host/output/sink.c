@@ -261,10 +261,7 @@ void session_process_pending_sink(session_ctx_t *ctx)
     size_t previous_count = 0U;
     const unsigned int viewport_height =
         (unsigned int)session_scrollback_line_capacity(ctx);
-    const bool try_incremental =
-        ctx->display_model_initialized &&
-        display_model_is_following_tail(&ctx->display_model) &&
-        (ctx->retro_client_marker[0] == '\0');
+    const bool try_incremental = false;
 
     if (try_incremental) {
         previous_count = session_capture_visible_display_lines(

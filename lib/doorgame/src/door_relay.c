@@ -456,6 +456,58 @@ static bool door_relay_spawn_zmodem(int client_fd, char *const argv[],
     return true;
 }
 
+static char *create_adjusted_dosbox_conf(const char *orig_conf, const char *actual_port)
+{
+    if (orig_conf == nullptr || orig_conf[0] == '\0' || actual_port == nullptr || actual_port[0] == '\0') {
+        return nullptr;
+    }
+
+    FILE *in = fopen(orig_conf, "r");
+    if (in == nullptr) {
+        return nullptr;
+    }
+
+    char temp_path[] = "/tmp/ssh_chatter_dosbox_XXXXXX";
+    int fd = mkstemp(temp_path);
+    if (fd < 0) {
+        fclose(in);
+        return nullptr;
+    }
+
+    FILE *out = fdopen(fd, "w");
+    if (out == nullptr) {
+        close(fd);
+        fclose(in);
+        return nullptr;
+    }
+
+    char line[1024];
+    while (fgets(line, sizeof(line), in) != nullptr) {
+        char *serial_ptr = strcasestr(line, "serial1");
+        char *nullmodem_ptr = strcasestr(line, "nullmodem");
+        if (serial_ptr != nullptr && nullmodem_ptr != nullptr && serial_ptr < nullmodem_ptr) {
+            char *port_ptr = strcasestr(line, "port:");
+            if (port_ptr != nullptr) {
+                size_t prefix_len = (size_t)(port_ptr - line) + 5;
+                fwrite(line, 1, prefix_len, out);
+                fprintf(out, "%s", actual_port);
+                char *after_port = port_ptr + 5;
+                while (*after_port >= '0' && *after_port <= '9') {
+                    after_port++;
+                }
+                fprintf(out, "%s", after_port);
+                continue;
+            }
+        }
+        fputs(line, out);
+    }
+
+    fclose(in);
+    fclose(out);
+
+    return strdup(temp_path);
+}
+
 typedef struct {
     int port;
     bool found;
@@ -513,6 +565,14 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
         return false;
     }
 
+    // Dynamic port adjustment to override hardcoded port:23 with the actual ddial port
+    char *adjusted_conf = nullptr;
+    const char *actual_port = (hops != nullptr && hops->get_ddial_port != nullptr) ? hops->get_ddial_port(h) : nullptr;
+    if (actual_port != nullptr && actual_port[0] != '\0') {
+        adjusted_conf = create_adjusted_dosbox_conf(entry->dosbox_conf, actual_port);
+    }
+    const char *conf_to_use = (adjusted_conf != nullptr) ? adjusted_conf : entry->dosbox_conf;
+
     int listen_fd = -1;
     int client_fd = -1;
 
@@ -521,14 +581,22 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
         if (listen_fd < 0) {
             sops->send_system_line(s,
                 "[door] failed to bind relay listener.");
+            if (adjusted_conf != nullptr) {
+                unlink(adjusted_conf);
+                free(adjusted_conf);
+            }
             return false;
         }
     }
 
-    pid_t child_pid = launch_dosbox(entry->dosbox_conf);
+    pid_t child_pid = launch_dosbox(conf_to_use);
     if (child_pid < 0) {
         if (listen_fd >= 0) {
             close(listen_fd);
+        }
+        if (adjusted_conf != nullptr) {
+            unlink(adjusted_conf);
+            free(adjusted_conf);
         }
         sops->send_system_line(s,
             sops->localized(s, DOORGAME_MSG_FAILED_LAUNCH));
@@ -584,6 +652,10 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
         if (listen_fd >= 0) {
             close(listen_fd);
         }
+        if (adjusted_conf != nullptr) {
+            unlink(adjusted_conf);
+            free(adjusted_conf);
+        }
         kill(child_pid, SIGTERM);
         for (int i = 0; i < 20; ++i) {
             if (waitpid(child_pid, nullptr, WNOHANG) == child_pid) {
@@ -629,6 +701,11 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
 
     if (hops != nullptr && hops->dec_active != nullptr) {
         hops->dec_active(h);
+    }
+
+    if (adjusted_conf != nullptr) {
+        unlink(adjusted_conf);
+        free(adjusted_conf);
     }
 
     sops->send_system_line(s, sops->localized(s, DOORGAME_MSG_SESSION_ENDED));

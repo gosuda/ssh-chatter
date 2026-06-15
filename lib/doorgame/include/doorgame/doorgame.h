@@ -84,6 +84,7 @@ typedef struct {
     void (*dec_active)(doorgame_host_t *h);
     bool (*is_shutting_down)(doorgame_host_t *h);
     void (*save_locks)(doorgame_host_t *h);
+    const char *(*get_ddial_port)(doorgame_host_t *h);
 } doorgame_host_ops_t;
 
 /* API --------------------------------------------------------------------- */

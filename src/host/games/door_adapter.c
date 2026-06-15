@@ -320,6 +320,12 @@ static void adapter_save_locks(doorgame_host_t *h)
     host_door_games_save_locked(host);
 }
 
+static const char *adapter_get_ddial_port(doorgame_host_t *h)
+{
+    host_t *host = (host_t *)h;
+    return host->ddial_listener.port;
+}
+
 /* ------------------------------------------------------------------------- */
 /* Session ops table (read-only, safe to share across threads)               */
 /* ------------------------------------------------------------------------- */
@@ -357,6 +363,7 @@ void session_bbs_door_run(session_ctx_t *ctx, const char *name)
         .dec_active = adapter_dec_active,
         .is_shutting_down = adapter_is_shutting_down,
         .save_locks = adapter_save_locks,
+        .get_ddial_port = adapter_get_ddial_port,
     };
 
     if (name == nullptr || name[0] == '\0') {
@@ -436,6 +443,7 @@ void session_bbs_setgamelock(session_ctx_t *ctx, const char *arguments)
         .dec_active = adapter_dec_active,
         .is_shutting_down = adapter_is_shutting_down,
         .save_locks = adapter_save_locks,
+        .get_ddial_port = adapter_get_ddial_port,
     };
 
     doorgame_toggle_lock((doorgame_session_t *)ctx, (doorgame_host_t *)host,

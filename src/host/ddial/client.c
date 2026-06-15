@@ -556,6 +556,74 @@ static void ddial_client_normalize_line(const char *src, char *dst,
     snprintf(dst, dst_cap, "%s", start);
 }
 
+static bool ddial_parse_incoming_chat(const char *line, char *out_handle, size_t handle_cap, const char **out_message)
+{
+    if (line == nullptr || line[0] != '#') {
+        return false;
+    }
+    const char *p = line + 1;
+    while (*p != '\0' && isdigit((unsigned char)*p)) {
+        p++;
+    }
+    if (*p != '(' && *p != '[' && *p != '<') {
+        return false;
+    }
+    p++;
+    if (*p != 'T' || !isdigit((unsigned char)*(p + 1)) || *(p + 2) != ':') {
+        return false;
+    }
+    p += 3;
+    const char *handle_start = p;
+    while (*p != '\0' && *p != ')' && *p != ']' && *p != '>') {
+        p++;
+    }
+    if (*p == '\0') {
+        return false;
+    }
+    const char *handle_end = p;
+    while (handle_end > handle_start && (*(handle_end - 1) == '*' || *(handle_end - 1) == '$')) {
+        handle_end--;
+    }
+    size_t len = (size_t)(handle_end - handle_start);
+    if (len >= handle_cap) {
+        len = handle_cap - 1;
+    }
+    memcpy(out_handle, handle_start, len);
+    out_handle[len] = '\0';
+
+    p++;
+    if (*p == ' ') {
+        p++;
+    }
+    if (out_message != nullptr) {
+        *out_message = p;
+    }
+    return true;
+}
+
+static void host_history_delete_matching_message(host_t *host, const char *message)
+{
+    ttak_mutex_lock(&host->lock);
+    if (host->history == nullptr || host->history_count == 0U) {
+        ttak_mutex_unlock(&host->lock);
+        return;
+    }
+    for (size_t i = host->history_count; i > 0U; --i) {
+        size_t idx = i - 1U;
+        chat_history_entry_t *entry = &host->history[idx];
+        if (entry->is_user_message &&
+            strcmp(entry->message, message) == 0) {
+            if (idx + 1U < host->history_count) {
+                memmove(host->history + idx, host->history + idx + 1U,
+                        (host->history_count - idx - 1U) * sizeof(chat_history_entry_t));
+            }
+            host->history_count--;
+            break;
+        }
+    }
+    ttak_mutex_unlock(&host->lock);
+}
+
 static void ddial_client_broadcast_line(host_t *host, const char *line)
 {
     if (host == nullptr || line == nullptr || line[0] == '\0') {
@@ -586,11 +654,39 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
         ttak_mutex_unlock(&client->lock);
     }
 
+    char parsed_handle[DDIAL_MAX_HANDLE_LEN];
+    const char *parsed_message = nullptr;
+    bool is_our_line = false;
+
+    if (ddial_parse_incoming_chat(normalized, parsed_handle, sizeof(parsed_handle), &parsed_message)) {
+        if (client->handle[0] != '\0' && strcasecmp(parsed_handle, client->handle) == 0) {
+            is_our_line = true;
+        }
+    }
+
+    char display_line[SSH_CHATTER_MESSAGE_LIMIT + 128];
+    if (is_our_line) {
+        host_history_delete_matching_message(host, parsed_message);
+
+        const char *color_start = "";
+        const char *color_end = "";
+        if (host->user_theme.userColor != nullptr && host->user_theme.userColor[0] != '\0') {
+            color_start = host->user_theme.userColor;
+            color_end = ANSI_RESET;
+        } else {
+            color_start = ANSI_GREEN;
+            color_end = ANSI_RESET;
+        }
+        snprintf(display_line, sizeof(display_line), "%s[SENT]%s %s", color_start, color_end, normalized);
+    } else {
+        snprintf(display_line, sizeof(display_line), "%s", normalized);
+    }
+
     /* Commit the normalized DDial line to Chatter history and render it
      * through the normal history path instead of emitting a raw system
      * broadcast that can reset the terminal. */
     chat_history_entry_t stored = {0};
-    if (host_history_record_system(host, normalized, &stored)) {
+    if (host_history_record_system(host, display_line, &stored)) {
         chat_room_broadcast_entry(&host->room, &stored, nullptr);
     }
 }
@@ -719,123 +815,16 @@ static bool ddial_client_read_chunk(ddial_client_t *client, host_t *host)
     return true;
 }
 
-/* Read raw bytes from the server, process Telnet options, and append the
- * resulting text to a local scratch buffer.  Returns true once any of the
- * provided needles is found in the accumulated text.  Used only during login
- * so banners are not broadcast prematurely. */
-static bool ddial_client_wait_for_any_line(ddial_client_t *client,
-                                           const char *const *needles,
-                                           size_t needle_count,
-                                           int timeout_sec)
-{
-    if (client == nullptr || needles == nullptr || needle_count == 0U) {
-        return false;
-    }
-
-    char scratch[SSH_CHATTER_MESSAGE_LIMIT * 4];
-    size_t scratch_len = 0U;
-
-    struct timespec deadline;
-    clock_gettime(CLOCK_MONOTONIC, &deadline);
-    deadline.tv_sec += timeout_sec;
-
-    while (!atomic_load(&client->stop)) {
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        if (now.tv_sec > deadline.tv_sec ||
-            (now.tv_sec == deadline.tv_sec &&
-             now.tv_nsec >= deadline.tv_nsec)) {
-            return false;
-        }
-
-        int remaining_ms = (int)(deadline.tv_sec - now.tv_sec) * 1000;
-        remaining_ms += (int)((deadline.tv_nsec - now.tv_nsec) / 1000000L);
-        if (remaining_ms <= 0) {
-            return false;
-        }
-        if (remaining_ms > 1000) {
-            remaining_ms = 1000;
-        }
-
-        struct pollfd pfd;
-        pfd.fd = client->upstream_fd;
-        pfd.events = POLLIN;
-        pfd.revents = 0;
-
-        int rc = poll(&pfd, 1, remaining_ms);
-        if (rc < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return false;
-        }
-        if (rc == 0) {
-            continue;
-        }
-        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-            return false;
-        }
-
-        unsigned char temp[DDIAL_CLIENT_RECV_CHUNK_SIZE];
-        ssize_t n = recv(client->upstream_fd, temp, sizeof(temp), 0);
-        if (n <= 0) {
-            return false;
-        }
-
-        size_t before = client->recv_buf_len;
-        (void)ddial_client_process_telnet(client, temp, (size_t)n);
-
-        /* Copy any newly appended text into our scratch buffer. */
-        size_t produced = client->recv_buf_len - before;
-        if (produced > 0U) {
-            size_t space = sizeof(scratch) - scratch_len;
-            if (produced > space) {
-                produced = space;
-            }
-            memcpy(scratch + scratch_len, client->recv_buffer + before, produced);
-            scratch_len += produced;
-            if (scratch_len >= sizeof(scratch)) {
-                scratch_len = sizeof(scratch) - 1U;
-            }
-            scratch[scratch_len] = '\0';
-        }
-
-        for (size_t i = 0U; i < needle_count; ++i) {
-            if (needles[i] != nullptr &&
-                strstr(scratch, needles[i]) != nullptr) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-static bool ddial_client_wait_for_line(ddial_client_t *client,
-                                       const char *needle, int timeout_sec)
-{
-    if (client == nullptr || needle == nullptr) {
-        return false;
-    }
-    return ddial_client_wait_for_any_line(client, &needle, 1U, timeout_sec);
-}
-
 static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
 {
-    if (client == nullptr || host == nullptr) {
+    (void)host;
+    if (client == nullptr) {
         return false;
     }
 
     ddial_client_send_initial_telnet(client);
 
-    /* Wait for "Enter Password or [RETURN]:" prompt. */
-    if (!ddial_client_wait_for_line(client, "Password or [RETURN]",
-                                    DDIAL_CLIENT_LOGIN_PROMPT_TIMEOUT_SEC)) {
-        printf("[ddial] login prompt not received from %s:%d\n", client->host,
-               client->port);
-        return false;
-    }
-
-    /* Send password or a bare newline. */
+    /* Send password or a bare newline immediately without parsing/waiting. */
     char line[128];
     if (client->login_key[0] != '\0') {
         snprintf(line, sizeof(line), "%s\r\n", client->login_key);
@@ -849,15 +838,7 @@ static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
     }
     ttak_mutex_unlock(&client->lock);
 
-    /* Wait for the "-->" prompt and status line. */
-    if (!ddial_client_wait_for_line(client, "-->",
-                                    DDIAL_CLIENT_AUTH_TIMEOUT_SEC)) {
-        printf("[ddial] command prompt not received from %s:%d\n", client->host,
-               client->port);
-        return false;
-    }
-
-    /* Set handle. */
+    /* Send handle command immediately without parsing/waiting. */
     if (client->handle[0] != '\0') {
         char handle_cmd[SSH_CHATTER_USERNAME_LEN + 8];
         snprintf(handle_cmd, sizeof(handle_cmd), "/H%s\r\n", client->handle);
@@ -868,19 +849,6 @@ static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
             ddial_client_update_send_time(client);
         }
         ttak_mutex_unlock(&client->lock);
-
-        /* Some upstreams echo "Done" after /H, others simply return the
-         * command prompt.  Accept either as confirmation that the handle
-         * has been applied. */
-        static const char *handle_ack_needles[] = {"Done", "-->"};
-        if (!ddial_client_wait_for_any_line(
-                client, handle_ack_needles,
-                sizeof(handle_ack_needles) / sizeof(handle_ack_needles[0]),
-                DDIAL_CLIENT_AUTH_TIMEOUT_SEC)) {
-            printf("[ddial] handle set not acknowledged by %s:%d\n",
-                   client->host, client->port);
-            return false;
-        }
     }
 
     atomic_store(&client->auth_state, DDIAL_AUTH_APPROVED);

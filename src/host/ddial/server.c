@@ -391,10 +391,29 @@ static int host_ddial_open_socket(host_t *host)
     }
 
     char *endptr = nullptr;
-    long base_port = strtol(host->ddial_listener.port, &endptr, 10);
+    const char *parsed_port_str = host->ddial_listener.port;
+
+    // Resolve environment variable if it starts with $ or contains letters
+    if (parsed_port_str[0] == '$' || parsed_port_str[0] == '\\') {
+        const char *var_name = parsed_port_str;
+        while (*var_name == '$' || *var_name == '\\') {
+            var_name++;
+        }
+        const char *env_val = getenv(var_name);
+        if (env_val != nullptr && env_val[0] != '\0') {
+            parsed_port_str = env_val;
+        }
+    } else if (parsed_port_str[0] >= 'a' && parsed_port_str[0] <= 'z') {
+        const char *env_val = getenv(parsed_port_str);
+        if (env_val != nullptr && env_val[0] != '\0') {
+            parsed_port_str = env_val;
+        }
+    }
+
+    long base_port = strtol(parsed_port_str, &endptr, 10);
     if (base_port <= 0 || base_port > 65535 || *endptr != '\0') {
-        printf("[ddial] invalid port '%s'\n", host->ddial_listener.port);
-        return -1;
+        printf("[ddial] invalid port '%s', falling back to default port 2323\n", host->ddial_listener.port);
+        base_port = 2323;
     }
 
     struct addrinfo hints;

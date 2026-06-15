@@ -220,8 +220,32 @@ static inline char *sshc_strdup(const char *text)
     return copy;
 }
 
+#include <setjmp.h>
+
+extern __thread sigjmp_buf g_sshc_safe_jmpbuf;
+extern __thread bool g_sshc_safe_active;
+
+#define SSHC_SAFE_BLOCK_BEGIN() \
+    do { \
+        g_sshc_safe_active = true; \
+        if (sigsetjmp(g_sshc_safe_jmpbuf, 1) == 0) {
+
+#define SSHC_SAFE_BLOCK_END(on_crash) \
+        } else { \
+            on_crash; \
+        } \
+        g_sshc_safe_active = false; \
+    } while (0)
+
+void sshc_crash_handler_init(void);
+void sshc_crash_handler_cleanup(void);
+bool sshc_memory_is_valid_gc_pointer(const void *ptr);
+bool sshc_safe_read(const void *src, void *dst, size_t size);
+bool sshc_pointer_check(const void *ptr, size_t size);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif
+

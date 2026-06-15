@@ -1,14 +1,11 @@
-/**
- * @file ddial_integration.c
- * @desc Integration between Chatter's internal broadcast pipeline and the
- *       Diversi Dial server sessions.
- */
-
 #include "ssh_chatter/ddial_protocol.h"
 #include "ssh_chatter/host.h"
+#include "ssh_chatter/memory_manager.h"
 
 #include <pthread.h>
 #include <string.h>
+#include <unistd.h>
+#include <stdio.h>
 
 typedef struct ddial_session_registry_node {
     struct ddial_session_registry_node *next;
@@ -67,12 +64,48 @@ void host_ddial_broadcast_to_sessions(host_t *host, const char *message)
     }
     size_t msg_len = strlen(message);
     pthread_mutex_lock(&g_ddial_registry_lock);
+    ddial_session_registry_node_t **prev = &g_ddial_sessions;
     ddial_session_registry_node_t *cur = g_ddial_sessions;
     while (cur != nullptr) {
-        if (cur->session != nullptr) {
-            ddial_session_write_raw(cur->session, message, msg_len);
+        bool valid = false;
+        struct ddial_session *sess = cur->session;
+        if (sess != nullptr) {
+            if (sshc_memory_is_valid_gc_pointer(sess) &&
+                sshc_pointer_check(sess, sizeof(*sess))) {
+                valid = true;
+            }
         }
-        cur = cur->next;
+        
+        bool write_failed = false;
+        if (valid) {
+            SSHC_SAFE_BLOCK_BEGIN() {
+                ddial_session_write_raw(sess, message, msg_len);
+            } SSHC_SAFE_BLOCK_END({
+                write_failed = true;
+            });
+        }
+        
+        if (!valid || write_failed) {
+            printf("[ddial] Detected invalid/crashed session, purging it.\n");
+            *prev = cur->next;
+            ddial_session_registry_node_t *to_free = cur;
+            cur = cur->next;
+            if (valid) {
+                SSHC_SAFE_BLOCK_BEGIN() {
+                    if (sess->fd >= 0) {
+                        close(sess->fd);
+                        sess->fd = -1;
+                    }
+                    sess->should_exit = true;
+                } SSHC_SAFE_BLOCK_END({
+                    // ignore secondary crashes during cleanup
+                });
+            }
+            sshc_gc_free(to_free);
+        } else {
+            prev = &cur->next;
+            cur = cur->next;
+        }
     }
     pthread_mutex_unlock(&g_ddial_registry_lock);
     (void)host;
@@ -105,13 +138,51 @@ void host_ddial_write_who(ddial_session_t *target)
         return;
     }
     pthread_mutex_lock(&g_ddial_registry_lock);
+    ddial_session_registry_node_t **prev = &g_ddial_sessions;
     ddial_session_registry_node_t *cur = g_ddial_sessions;
     while (cur != nullptr) {
-        if (cur->session != nullptr && cur->session != target &&
-            cur->session->handle[0] != '\0') {
-            ddial_session_write_line(target, cur->session->handle);
+        bool valid = false;
+        struct ddial_session *sess = cur->session;
+        if (sess != nullptr) {
+            if (sshc_memory_is_valid_gc_pointer(sess) &&
+                sshc_pointer_check(sess, sizeof(*sess))) {
+                valid = true;
+            }
         }
-        cur = cur->next;
+        
+        bool write_failed = false;
+        if (valid) {
+            if (sess != target && sess->handle[0] != '\0') {
+                SSHC_SAFE_BLOCK_BEGIN() {
+                    ddial_session_write_line(target, sess->handle);
+                } SSHC_SAFE_BLOCK_END({
+                    write_failed = true;
+                });
+            }
+        }
+        
+        if (!valid || write_failed) {
+            printf("[ddial] Detected invalid/crashed session during who, purging it.\n");
+            *prev = cur->next;
+            ddial_session_registry_node_t *to_free = cur;
+            cur = cur->next;
+            if (valid) {
+                SSHC_SAFE_BLOCK_BEGIN() {
+                    if (sess->fd >= 0) {
+                        close(sess->fd);
+                        sess->fd = -1;
+                    }
+                    sess->should_exit = true;
+                } SSHC_SAFE_BLOCK_END({
+                    // ignore secondary crashes during cleanup
+                });
+            }
+            sshc_gc_free(to_free);
+        } else {
+            prev = &cur->next;
+            cur = cur->next;
+        }
     }
     pthread_mutex_unlock(&g_ddial_registry_lock);
 }
+

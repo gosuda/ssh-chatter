@@ -8,6 +8,8 @@
 
 #include "ssh_chatter/ddial_protocol.h"
 #include "ssh_chatter/host.h"
+#include "ssh_chatter/memory_manager.h"
+
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -312,55 +314,60 @@ static void *ddial_session_thread(void *arg)
         return nullptr;
     }
 
-    ddial_session_send_welcome(sess);
-    ddial_session_send_prompt(sess);
+    SSHC_SAFE_BLOCK_BEGIN() {
+        ddial_session_send_welcome(sess);
+        ddial_session_send_prompt(sess);
 
-    while (!sess->should_exit) {
-        struct pollfd pfd;
-        pfd.fd = sess->fd;
-        pfd.events = POLLIN;
-        pfd.revents = 0;
+        while (!sess->should_exit) {
+            struct pollfd pfd;
+            pfd.fd = sess->fd;
+            pfd.events = POLLIN;
+            pfd.revents = 0;
 
-        int rc = poll(&pfd, 1, DDIAL_SESSION_POLL_MS);
-        if (rc < 0) {
-            if (errno == EINTR) {
+            int rc = poll(&pfd, 1, DDIAL_SESSION_POLL_MS);
+            if (rc < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                break;
+            }
+
+            ddial_session_flush(sess);
+
+            if (rc == 0) {
                 continue;
             }
-            break;
-        }
+            if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                break;
+            }
+            if ((pfd.revents & POLLIN) == 0) {
+                continue;
+            }
 
-        ddial_session_flush(sess);
+            char chunk[1024];
+            ssize_t n = recv(sess->fd, chunk, sizeof(chunk), 0);
+            if (n <= 0) {
+                break;
+            }
 
-        if (rc == 0) {
-            continue;
+            char filtered[1024];
+            size_t flen = ddial_filter_telnet_iac(chunk, (size_t)n, filtered,
+                                                  sizeof(filtered));
+            size_t space = sizeof(sess->input_buf) - sess->input_len;
+            if (flen > space) {
+                flen = space;
+            }
+            if (flen > 0U) {
+                memcpy(sess->input_buf + sess->input_len, filtered, flen);
+                sess->input_len += flen;
+            }
+            clock_gettime(CLOCK_MONOTONIC, &sess->last_activity);
+            ddial_session_process_input(sess);
         }
-        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-            break;
-        }
-        if ((pfd.revents & POLLIN) == 0) {
-            continue;
-        }
-
-        char chunk[1024];
-        ssize_t n = recv(sess->fd, chunk, sizeof(chunk), 0);
-        if (n <= 0) {
-            break;
-        }
-
-        char filtered[1024];
-        size_t flen = ddial_filter_telnet_iac(chunk, (size_t)n, filtered,
-                                              sizeof(filtered));
-        size_t space = sizeof(sess->input_buf) - sess->input_len;
-        if (flen > space) {
-            flen = space;
-        }
-        if (flen > 0U) {
-            memcpy(sess->input_buf + sess->input_len, filtered, flen);
-            sess->input_len += flen;
-        }
-        clock_gettime(CLOCK_MONOTONIC, &sess->last_activity);
-        ddial_session_process_input(sess);
-    }
+    } SSHC_SAFE_BLOCK_END({
+        printf("[ddial] SEGV/SIGBUS swallowed in ddial_session_thread for session_id=%lu\n",
+               (unsigned long)sess->session_id);
+    });
 
     sess->should_exit = true;
     if (sess->fd >= 0) {
@@ -375,6 +382,7 @@ static void *ddial_session_thread(void *arg)
     sshc_gc_free(sess);
     return nullptr;
 }
+
 
 static int host_ddial_open_socket(host_t *host)
 {
@@ -495,95 +503,100 @@ static void *host_ddial_listener_thread(void *arg)
     sshc_epoch_thread_enter();
     pthread_detach(pthread_self());
     atomic_store(&host->ddial_listener.running, true);
-    while (!atomic_load(&host->ddial_listener.stop) &&
-           (host->shutdown_flag == nullptr || *host->shutdown_flag == 0)) {
-        if (host->ddial_listener.fd < 0) {
-            int fd = host_ddial_open_socket(host);
-            if (fd < 0) {
-                struct timespec backoff = {.tv_sec = 1, .tv_nsec = 0};
+
+    SSHC_SAFE_BLOCK_BEGIN() {
+        while (!atomic_load(&host->ddial_listener.stop) &&
+               (host->shutdown_flag == nullptr || *host->shutdown_flag == 0)) {
+            if (host->ddial_listener.fd < 0) {
+                int fd = host_ddial_open_socket(host);
+                if (fd < 0) {
+                    struct timespec backoff = {.tv_sec = 1, .tv_nsec = 0};
+                    host_sleep_uninterruptible(&backoff);
+                    continue;
+                }
+                host->ddial_listener.fd = fd;
+                const char *display_addr =
+                    host->ddial_listener.bind_address[0] != '\0'
+                        ? host->ddial_listener.bind_address
+                        : "*";
+                printf("[ddial] listening on %s:%s\n", display_addr,
+                       host->ddial_listener.port);
+            }
+
+            struct sockaddr_storage addr;
+            socklen_t addr_len = sizeof(addr);
+            int client_fd =
+                accept(host->ddial_listener.fd, (struct sockaddr *)&addr, &addr_len);
+            if (client_fd < 0) {
+                int err = errno;
+                if (err == EINTR) {
+                    continue;
+                }
+                if (atomic_load(&host->ddial_listener.stop) ||
+                    (host->shutdown_flag != nullptr && *host->shutdown_flag != 0)) {
+                    break;
+                }
+                char msg[256];
+                snprintf(msg, sizeof(msg), "accept failed: %s", strerror(err));
+                humanized_log_error("ddial", msg, err);
+                struct timespec backoff = {.tv_sec = 0, .tv_nsec = 200000000L};
                 host_sleep_uninterruptible(&backoff);
                 continue;
             }
-            host->ddial_listener.fd = fd;
-            const char *display_addr =
-                host->ddial_listener.bind_address[0] != '\0'
-                    ? host->ddial_listener.bind_address
-                    : "*";
-            printf("[ddial] listening on %s:%s\n", display_addr,
-                   host->ddial_listener.port);
-        }
 
-        struct sockaddr_storage addr;
-        socklen_t addr_len = sizeof(addr);
-        int client_fd =
-            accept(host->ddial_listener.fd, (struct sockaddr *)&addr, &addr_len);
-        if (client_fd < 0) {
-            int err = errno;
-            if (err == EINTR) {
-                continue;
-            }
             if (atomic_load(&host->ddial_listener.stop) ||
                 (host->shutdown_flag != nullptr && *host->shutdown_flag != 0)) {
+                close(client_fd);
                 break;
             }
-            char msg[256];
-            snprintf(msg, sizeof(msg), "accept failed: %s", strerror(err));
-            humanized_log_error("ddial", msg, err);
-            struct timespec backoff = {.tv_sec = 0, .tv_nsec = 200000000L};
-            host_sleep_uninterruptible(&backoff);
-            continue;
-        }
 
-        if (atomic_load(&host->ddial_listener.stop) ||
-            (host->shutdown_flag != nullptr && *host->shutdown_flag != 0)) {
-            close(client_fd);
-            break;
-        }
+            host_ddial_configure_client_socket(client_fd);
 
-        host_ddial_configure_client_socket(client_fd);
+            char peer_address[NI_MAXHOST];
+            host_ddial_format_sockaddr((struct sockaddr *)&addr, addr_len,
+                                       peer_address, sizeof(peer_address));
+            if (peer_address[0] == '\0') {
+                snprintf(peer_address, sizeof(peer_address), "%s", "unknown");
+            }
+            printf("[ddial] accepted client from %s\n", peer_address);
 
-        char peer_address[NI_MAXHOST];
-        host_ddial_format_sockaddr((struct sockaddr *)&addr, addr_len,
-                                   peer_address, sizeof(peer_address));
-        if (peer_address[0] == '\0') {
-            snprintf(peer_address, sizeof(peer_address), "%s", "unknown");
-        }
-        printf("[ddial] accepted client from %s\n", peer_address);
+            ddial_session_t *sess =
+                (ddial_session_t *)sshc_gc_calloc(1U, sizeof(*sess));
+            if (sess == nullptr) {
+                humanized_log_error("ddial",
+                                    "failed to allocate ddial session context",
+                                    ENOMEM);
+                close(client_fd);
+                continue;
+            }
 
-        ddial_session_t *sess =
-            (ddial_session_t *)sshc_gc_calloc(1U, sizeof(*sess));
-        if (sess == nullptr) {
-            humanized_log_error("ddial",
-                                "failed to allocate ddial session context",
-                                ENOMEM);
-            close(client_fd);
-            continue;
-        }
+            sess->fd = client_fd;
+            sess->owner = host;
+            sess->session_id = host_allocate_session_id(host);
+            sess->channel = DDIAL_DEFAULT_CHANNEL;
+            snprintf(sess->client_ip, sizeof(sess->client_ip), "%s", peer_address);
+            if (ttak_mutex_init(&sess->out_lock) == 0) {
+                sess->out_lock_initialized = true;
+            }
+            clock_gettime(CLOCK_MONOTONIC, &sess->last_activity);
+            host_ddial_register_session(sess);
 
-        sess->fd = client_fd;
-        sess->owner = host;
-        sess->session_id = host_allocate_session_id(host);
-        sess->channel = DDIAL_DEFAULT_CHANNEL;
-        snprintf(sess->client_ip, sizeof(sess->client_ip), "%s", peer_address);
-        if (ttak_mutex_init(&sess->out_lock) == 0) {
-            sess->out_lock_initialized = true;
+            pthread_t thread_id;
+            if (pthread_create(&thread_id, nullptr, ddial_session_thread, sess) !=
+                0) {
+                humanized_log_error("ddial", "failed to spawn ddial session thread",
+                                    errno);
+                close(client_fd);
+                sshc_gc_free(sess);
+                continue;
+            }
+            sess->thread = thread_id;
+            sess->thread_initialized = true;
+            pthread_detach(thread_id);
         }
-        clock_gettime(CLOCK_MONOTONIC, &sess->last_activity);
-        host_ddial_register_session(sess);
-
-        pthread_t thread_id;
-        if (pthread_create(&thread_id, nullptr, ddial_session_thread, sess) !=
-            0) {
-            humanized_log_error("ddial", "failed to spawn ddial session thread",
-                                errno);
-            close(client_fd);
-            sshc_gc_free(sess);
-            continue;
-        }
-        sess->thread = thread_id;
-        sess->thread_initialized = true;
-        pthread_detach(thread_id);
-    }
+    } SSHC_SAFE_BLOCK_END({
+        printf("[ddial] SEGV/SIGBUS swallowed in host_ddial_listener_thread\n");
+    });
 
     int listener_fd = host->ddial_listener.fd;
     host->ddial_listener.fd = -1;
@@ -594,6 +607,7 @@ static void *host_ddial_listener_thread(void *arg)
     sshc_epoch_thread_exit();
     return nullptr;
 }
+
 
 bool host_ddial_listener_start(host_t *host, const char *bind_addr,
                                const char *port)

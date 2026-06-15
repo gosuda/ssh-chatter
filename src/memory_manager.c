@@ -44,6 +44,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <ttak/ht/map.h>
+#include <signal.h>
+
 
 typedef struct sshc_memory_allocation {
     void *ptr;
@@ -248,10 +250,12 @@ void sshc_memory_runtime_init(void)
         
         sshc_global_context.next = nullptr;
         sshc_contexts = sshc_memory_context_global();
+        sshc_crash_handler_init();
         sshc_runtime_initialised = true;
     }
     pthread_mutex_unlock(&sshc_registry_mutex);
 }
+
 
 static void sshc_memory_registry_remove_locked(sshc_memory_allocation_t *allocation)
 {
@@ -353,9 +357,11 @@ void sshc_memory_runtime_shutdown(void)
     }
 
     sshc_contexts = nullptr;
+    sshc_crash_handler_cleanup();
     sshc_runtime_initialised = false;
     pthread_mutex_unlock(&sshc_registry_mutex);
 }
+
 
 sshc_memory_context_t *sshc_memory_context_create(const char *label,
                                                       uint64_t max_lifetime_ticks)
@@ -840,3 +846,112 @@ tt_owner_t *sshc_memory_context_get_owner(sshc_memory_context_t *ctx)
     if (ctx == nullptr) return nullptr;
     return ctx->owner;
 }
+
+__thread sigjmp_buf g_sshc_safe_jmpbuf;
+__thread bool g_sshc_safe_active = false;
+
+static struct sigaction g_old_segv_action;
+static struct sigaction g_old_bus_action;
+
+static void sshc_crash_signal_handler(int sig, siginfo_t *info, void *context)
+{
+    if (g_sshc_safe_active) {
+        siglongjmp(g_sshc_safe_jmpbuf, 1);
+    }
+    struct sigaction *old_act = (sig == SIGSEGV) ? &g_old_segv_action : &g_old_bus_action;
+    if (old_act->sa_flags & SA_SIGINFO) {
+        if (old_act->sa_sigaction != nullptr) {
+            old_act->sa_sigaction(sig, info, context);
+            return;
+        }
+    } else {
+        if (old_act->sa_handler == SIG_DFL) {
+            signal(sig, SIG_DFL);
+            raise(sig);
+            return;
+        } else if (old_act->sa_handler != SIG_IGN && old_act->sa_handler != nullptr) {
+            old_act->sa_handler(sig);
+            return;
+        }
+    }
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+void sshc_crash_handler_init(void)
+{
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = sshc_crash_signal_handler;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGSEGV, &sa, &g_old_segv_action);
+    sigaction(SIGBUS, &sa, &g_old_bus_action);
+}
+
+void sshc_crash_handler_cleanup(void)
+{
+    sigaction(SIGSEGV, &g_old_segv_action, nullptr);
+    sigaction(SIGBUS, &g_old_bus_action, nullptr);
+}
+
+bool sshc_memory_is_valid_gc_pointer(const void *ptr)
+{
+    if (ptr == nullptr) {
+        return false;
+    }
+    pthread_mutex_lock(&sshc_registry_mutex);
+    bool found = false;
+    if (sshc_alloc_map != nullptr) {
+        size_t val = 0;
+        if (ttak_map_get_key(sshc_alloc_map, (uintptr_t)ptr, &val,
+                             ttak_get_tick_count())) {
+            found = true;
+        }
+    } else {
+        sshc_memory_allocation_t *curr = sshc_allocations;
+        while (curr != nullptr) {
+            if (curr->ptr == ptr) {
+                found = true;
+                break;
+            }
+            curr = curr->next_global;
+        }
+    }
+    pthread_mutex_unlock(&sshc_registry_mutex);
+    return found;
+}
+
+bool sshc_safe_read(const void *src, void *dst, size_t size)
+{
+    if (src == nullptr || dst == nullptr || size == 0) {
+        return false;
+    }
+    bool ok = false;
+    SSHC_SAFE_BLOCK_BEGIN() {
+        memcpy(dst, src, size);
+        ok = true;
+    } SSHC_SAFE_BLOCK_END({
+        ok = false;
+    });
+    return ok;
+}
+
+bool sshc_pointer_check(const void *ptr, size_t size)
+{
+    if (ptr == nullptr) {
+        return false;
+    }
+    char temp;
+    if (!sshc_safe_read(ptr, &temp, 1)) {
+        return false;
+    }
+    if (size > 1) {
+        const char *end_ptr = (const char *)ptr + size - 1;
+        if (!sshc_safe_read(end_ptr, &temp, 1)) {
+            return false;
+        }
+    }
+    return true;
+}
+

@@ -28,6 +28,8 @@
 
 #include "ssh_chatter/ddial_protocol.h"
 #include "ssh_chatter/host.h"
+#include "ssh_chatter/memory_manager.h"
+
 
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -1058,61 +1060,66 @@ static void *ddial_client_thread(void *arg)
 
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
 
-    while (!atomic_load(&client->stop)) {
-        if (!client->connected) {
-            unsigned int backoff = ddial_client_backoff_sec(client);
-            if (!ddial_client_connect_socket(client)) {
-                sleep(backoff);
-                continue;
+    SSHC_SAFE_BLOCK_BEGIN() {
+        while (!atomic_load(&client->stop)) {
+            if (!client->connected) {
+                unsigned int backoff = ddial_client_backoff_sec(client);
+                if (!ddial_client_connect_socket(client)) {
+                    sleep(backoff);
+                    continue;
+                }
+                if (!ddial_client_do_login(client, host)) {
+                    ddial_client_disconnect(client);
+                    sleep(backoff);
+                    continue;
+                }
+                /* Flush any banners/prompts accumulated during login. */
+                ttak_mutex_lock(&client->lock);
+                ddial_client_process_buffer(host, client, false);
+                ttak_mutex_unlock(&client->lock);
             }
-            if (!ddial_client_do_login(client, host)) {
+
+            struct pollfd pfd;
+            pfd.fd = client->upstream_fd;
+            pfd.events = POLLIN;
+            pfd.revents = 0;
+
+            int poll_rc = poll(&pfd, 1, DDIAL_CLIENT_POLL_TIMEOUT_MS);
+            if (poll_rc < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
                 ddial_client_disconnect(client);
-                sleep(backoff);
+                sleep(ddial_client_backoff_sec(client));
                 continue;
             }
-            /* Flush any banners/prompts accumulated during login. */
-            ttak_mutex_lock(&client->lock);
-            ddial_client_process_buffer(host, client, false);
-            ttak_mutex_unlock(&client->lock);
-        }
-
-        struct pollfd pfd;
-        pfd.fd = client->upstream_fd;
-        pfd.events = POLLIN;
-        pfd.revents = 0;
-
-        int poll_rc = poll(&pfd, 1, DDIAL_CLIENT_POLL_TIMEOUT_MS);
-        if (poll_rc < 0) {
-            if (errno == EINTR) {
+            if (poll_rc == 0) {
+                ddial_client_maybe_keepalive(client);
                 continue;
             }
-            ddial_client_disconnect(client);
-            sleep(ddial_client_backoff_sec(client));
-            continue;
-        }
-        if (poll_rc == 0) {
-            ddial_client_maybe_keepalive(client);
-            continue;
-        }
-        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-            ddial_client_disconnect(client);
-            sleep(ddial_client_backoff_sec(client));
-            continue;
-        }
-        if ((pfd.revents & POLLIN) == 0) {
-            continue;
-        }
+            if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                ddial_client_disconnect(client);
+                sleep(ddial_client_backoff_sec(client));
+                continue;
+            }
+            if ((pfd.revents & POLLIN) == 0) {
+                continue;
+            }
 
-        if (!ddial_client_read_chunk(client, host)) {
-            ddial_client_disconnect(client);
-            sleep(ddial_client_backoff_sec(client));
-            continue;
+            if (!ddial_client_read_chunk(client, host)) {
+                ddial_client_disconnect(client);
+                sleep(ddial_client_backoff_sec(client));
+                continue;
+            }
         }
-    }
+    } SSHC_SAFE_BLOCK_END({
+        printf("[ddial] SEGV/SIGBUS swallowed in ddial_client_thread\n");
+    });
 
     ddial_client_disconnect(client);
     return nullptr;
 }
+
 
 void host_ddial_init(host_t *host)
 {

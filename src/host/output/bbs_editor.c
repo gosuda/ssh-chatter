@@ -1176,6 +1176,13 @@ static void session_bbs_render_editor(session_ctx_t *ctx, const char *status)
     }
     session_send_plain_line(ctx, publish_hint);
 
+    if (!ascii_mode) {
+        session_send_plain_line(ctx, "Markup: **Bold** / *Italic* / [under]Underline[/under] / [blink]Blink[/blink] / [rev]Reverse[/rev]");
+        session_send_plain_line(ctx, "Color: [color_name]text[/color_name] or [fg=color_name]text[/fg] / [bg=color_name]text[/bg]");
+        session_send_plain_line(ctx, "Colors: black, red, green, yellow, blue, magenta, cyan, white (or bright_*)");
+        session_send_plain_line(ctx, "Layout: [center]text[/center] / [right]text[/right] / [hr] (horizontal line)");
+    }
+
     // Send status if any
     if (status != nullptr && status[0] != '\0') {
         char working[SSH_CHATTER_MESSAGE_LIMIT];
@@ -1631,5 +1638,478 @@ static void session_clear_input_without_prompt(session_ctx_t *ctx)
 {
     session_clear_input_base(ctx, false);
 }
+
+#include <ctype.h>
+
+typedef enum {
+    STYLE_BOLD,
+    STYLE_ITALIC,
+    STYLE_UNDERLINE,
+    STYLE_BLINK,
+    STYLE_REVERSE,
+    STYLE_FG_COLOR,
+    STYLE_BG_COLOR
+} style_type_t;
+
+typedef struct {
+    style_type_t type;
+    int color_code;
+} style_node_t;
+
+#define MAX_STACK_DEPTH 64
+typedef struct {
+    style_node_t nodes[MAX_STACK_DEPTH];
+    int top;
+} style_stack_t;
+
+static void append_char(char **buf, size_t *pos, size_t *cap, char c)
+{
+    if (*pos + 2 >= *cap) {
+        *cap = (*cap * 2) + 256;
+        *buf = realloc(*buf, *cap);
+    }
+    (*buf)[(*pos)++] = c;
+    (*buf)[*pos] = '\0';
+}
+
+static void append_str(char **buf, size_t *pos, size_t *cap, const char *str)
+{
+    if (str == nullptr) return;
+    size_t len = strlen(str);
+    while (*pos + len + 2 >= *cap) {
+        *cap = (*cap * 2) + len + 256;
+        *buf = realloc(*buf, *cap);
+    }
+    memcpy(*buf + *pos, str, len);
+    *pos += len;
+    (*buf)[*pos] = '\0';
+}
+
+static int parse_color_name(const char *name)
+{
+    if (name == nullptr) return -1;
+    
+    bool bright = false;
+    const char *color = name;
+    if (strncmp(name, "bright_", 7) == 0) {
+        bright = true;
+        color = name + 7;
+    }
+    
+    int base = -1;
+    if (strcmp(color, "black") == 0) base = 0;
+    else if (strcmp(color, "red") == 0) base = 1;
+    else if (strcmp(color, "green") == 0) base = 2;
+    else if (strcmp(color, "yellow") == 0) base = 3;
+    else if (strcmp(color, "blue") == 0) base = 4;
+    else if (strcmp(color, "magenta") == 0) base = 5;
+    else if (strcmp(color, "cyan") == 0) base = 6;
+    else if (strcmp(color, "white") == 0) base = 7;
+    
+    if (base == -1) return -1;
+    return bright ? (base + 8) : base;
+}
+
+static void emit_stack(const style_stack_t *stack, char **buf, size_t *pos, size_t *cap)
+{
+    append_str(buf, pos, cap, "\x1b[0m");
+    for (int i = 0; i < stack->top; ++i) {
+        char seq[64];
+        const style_node_t *node = &stack->nodes[i];
+        switch (node->type) {
+            case STYLE_BOLD:
+                strcpy(seq, "\x1b[1m");
+                break;
+            case STYLE_ITALIC:
+                strcpy(seq, "\x1b[3m");
+                break;
+            case STYLE_UNDERLINE:
+                strcpy(seq, "\x1b[4m");
+                break;
+            case STYLE_BLINK:
+                strcpy(seq, "\x1b[5m");
+                break;
+            case STYLE_REVERSE:
+                strcpy(seq, "\x1b[7m");
+                break;
+            case STYLE_FG_COLOR:
+                if (node->color_code >= 8) {
+                    snprintf(seq, sizeof(seq), "\x1b[%dm", 90 + (node->color_code - 8));
+                } else {
+                    snprintf(seq, sizeof(seq), "\x1b[%dm", 30 + node->color_code);
+                }
+                break;
+            case STYLE_BG_COLOR:
+                if (node->color_code >= 8) {
+                    snprintf(seq, sizeof(seq), "\x1b[%dm", 100 + (node->color_code - 8));
+                } else {
+                    snprintf(seq, sizeof(seq), "\x1b[%dm", 40 + node->color_code);
+                }
+                break;
+        }
+        append_str(buf, pos, cap, seq);
+    }
+}
+
+static bool pop_style(style_stack_t *stack, style_type_t type)
+{
+    for (int i = stack->top - 1; i >= 0; --i) {
+        if (stack->nodes[i].type == type) {
+            for (int j = i; j < stack->top - 1; ++j) {
+                stack->nodes[j] = stack->nodes[j + 1];
+            }
+            stack->top--;
+            return true;
+        }
+    }
+    return false;
+}
+
+static size_t calculate_visible_length(const char *str)
+{
+    if (str == nullptr) return 0;
+    size_t len = 0;
+    size_t idx = 0;
+    while (str[idx] != '\0') {
+        if (str[idx] == '\x1b') {
+            ++idx;
+            if (str[idx] == '[') {
+                ++idx;
+                while (str[idx] != '\0' && !isalpha((unsigned char)str[idx])) {
+                    ++idx;
+                }
+                if (str[idx] != '\0') {
+                    ++idx;
+                }
+            }
+        } else {
+            unsigned char c = (unsigned char)str[idx];
+            if (c < 0x80) {
+                len += 1;
+                idx += 1;
+            } else if ((c & 0xE0) == 0xC0) {
+                len += 1;
+                idx += 2;
+            } else if ((c & 0xF0) == 0xE0) {
+                if ((c >= 0xE3 && c <= 0xE9) || c == 0xEF) {
+                    len += 2;
+                } else {
+                    len += 1;
+                }
+                idx += 3;
+            } else if ((c & 0xF8) == 0xF0) {
+                len += 2;
+                idx += 4;
+            } else {
+                idx += 1;
+            }
+        }
+    }
+    return len;
+}
+
+static char* parse_styling_only(const char *input)
+{
+    size_t cap = 256;
+    char *buf = malloc(cap);
+    size_t pos = 0;
+    buf[0] = '\0';
+    
+    style_stack_t stack;
+    stack.top = 0;
+    
+    size_t idx = 0;
+    size_t len = strlen(input);
+    
+    while (idx < len) {
+        if (idx + 1 < len && (
+            (input[idx] == '*' && input[idx+1] == '*') ||
+            (input[idx] == '_' && input[idx+1] == '_'))) {
+            if (pop_style(&stack, STYLE_BOLD)) {
+            } else {
+                style_node_t node = { .type = STYLE_BOLD, .color_code = 0 };
+                if (stack.top < MAX_STACK_DEPTH) stack.nodes[stack.top++] = node;
+            }
+            emit_stack(&stack, &buf, &pos, &cap);
+            idx += 2;
+            continue;
+        }
+        
+        if (input[idx] == '*' || input[idx] == '_') {
+            if (pop_style(&stack, STYLE_ITALIC)) {
+            } else {
+                style_node_t node = { .type = STYLE_ITALIC, .color_code = 0 };
+                if (stack.top < MAX_STACK_DEPTH) stack.nodes[stack.top++] = node;
+            }
+            emit_stack(&stack, &buf, &pos, &cap);
+            idx += 1;
+            continue;
+        }
+
+        if (idx + 5 < len && input[idx] == '(' && input[idx+1] == '#' &&
+            (input[idx+2] == 'e' || input[idx+2] == 'E') &&
+            (input[idx+3] == 'n' || input[idx+3] == 'N') &&
+            (input[idx+4] == 'd' || input[idx+4] == 'D') &&
+            input[idx+5] == ')') {
+            stack.top = 0;
+            emit_stack(&stack, &buf, &pos, &cap);
+            idx += 6;
+            continue;
+        }
+
+        if (idx + 8 < len && input[idx] == '(' && input[idx+1] == '#' && input[idx+8] == ')') {
+            bool valid = true;
+            for (size_t hex_idx = 2U; hex_idx < 8U; ++hex_idx) {
+                if (!isxdigit((unsigned char)input[idx + hex_idx])) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (valid) {
+                unsigned int r = 0U, g = 0U, b = 0U;
+                if (sscanf(input + idx + 2, "%02x%02x%02x", &r, &g, &b) == 3) {
+                    char ansi_seq[64];
+                    snprintf(ansi_seq, sizeof(ansi_seq), "\033[107m\033[38;2;%u;%u;%um", r, g, b);
+                    append_str(&buf, &pos, &cap, ansi_seq);
+                    idx += 9;
+                    continue;
+                }
+            }
+        }
+        
+        if (input[idx] == '[') {
+            size_t tag_end = idx;
+            while (tag_end < len && input[tag_end] != ']') {
+                tag_end++;
+            }
+            if (tag_end < len && input[tag_end] == ']') {
+                size_t tag_len = tag_end - idx + 1;
+                char tag[128];
+                if (tag_len < sizeof(tag)) {
+                    memcpy(tag, input + idx, tag_len);
+                    tag[tag_len] = '\0';
+                    
+                    bool parsed_tag = false;
+                    if (strcmp(tag, "[under]") == 0) {
+                        style_node_t node = { .type = STYLE_UNDERLINE, .color_code = 0 };
+                        if (stack.top < MAX_STACK_DEPTH) stack.nodes[stack.top++] = node;
+                        emit_stack(&stack, &buf, &pos, &cap);
+                        parsed_tag = true;
+                    } else if (strcmp(tag, "[/under]") == 0) {
+                        pop_style(&stack, STYLE_UNDERLINE);
+                        emit_stack(&stack, &buf, &pos, &cap);
+                        parsed_tag = true;
+                    } else if (strcmp(tag, "[blink]") == 0) {
+                        style_node_t node = { .type = STYLE_BLINK, .color_code = 0 };
+                        if (stack.top < MAX_STACK_DEPTH) stack.nodes[stack.top++] = node;
+                        emit_stack(&stack, &buf, &pos, &cap);
+                        parsed_tag = true;
+                    } else if (strcmp(tag, "[/blink]") == 0) {
+                        pop_style(&stack, STYLE_BLINK);
+                        emit_stack(&stack, &buf, &pos, &cap);
+                        parsed_tag = true;
+                    } else if (strcmp(tag, "[rev]") == 0) {
+                        style_node_t node = { .type = STYLE_REVERSE, .color_code = 0 };
+                        if (stack.top < MAX_STACK_DEPTH) stack.nodes[stack.top++] = node;
+                        emit_stack(&stack, &buf, &pos, &cap);
+                        parsed_tag = true;
+                    } else if (strcmp(tag, "[/rev]") == 0) {
+                        pop_style(&stack, STYLE_REVERSE);
+                        emit_stack(&stack, &buf, &pos, &cap);
+                        parsed_tag = true;
+                    } else if (strncmp(tag, "[fg=", 4) == 0) {
+                        char color_name[64];
+                        size_t name_len = tag_len - 5;
+                        if (name_len < sizeof(color_name)) {
+                            memcpy(color_name, tag + 4, name_len);
+                            color_name[name_len] = '\0';
+                            int code = parse_color_name(color_name);
+                            if (code != -1) {
+                                style_node_t node = { .type = STYLE_FG_COLOR, .color_code = code };
+                                if (stack.top < MAX_STACK_DEPTH) stack.nodes[stack.top++] = node;
+                                emit_stack(&stack, &buf, &pos, &cap);
+                                parsed_tag = true;
+                            }
+                        }
+                    } else if (strcmp(tag, "[/fg]") == 0) {
+                        pop_style(&stack, STYLE_FG_COLOR);
+                        emit_stack(&stack, &buf, &pos, &cap);
+                        parsed_tag = true;
+                    } else if (strncmp(tag, "[bg=", 4) == 0) {
+                        char color_name[64];
+                        size_t name_len = tag_len - 5;
+                        if (name_len < sizeof(color_name)) {
+                            memcpy(color_name, tag + 4, name_len);
+                            color_name[name_len] = '\0';
+                            int code = parse_color_name(color_name);
+                            if (code != -1) {
+                                style_node_t node = { .type = STYLE_BG_COLOR, .color_code = code };
+                                if (stack.top < MAX_STACK_DEPTH) stack.nodes[stack.top++] = node;
+                                emit_stack(&stack, &buf, &pos, &cap);
+                                parsed_tag = true;
+                            }
+                        }
+                    } else if (strcmp(tag, "[/bg]") == 0) {
+                        pop_style(&stack, STYLE_BG_COLOR);
+                        emit_stack(&stack, &buf, &pos, &cap);
+                        parsed_tag = true;
+                    } else if (tag[1] == '/') {
+                        char color_name[64];
+                        size_t name_len = tag_len - 3;
+                        if (name_len < sizeof(color_name)) {
+                            memcpy(color_name, tag + 2, name_len);
+                            color_name[name_len] = '\0';
+                            int code = parse_color_name(color_name);
+                            if (code != -1) {
+                                pop_style(&stack, STYLE_FG_COLOR);
+                                emit_stack(&stack, &buf, &pos, &cap);
+                                parsed_tag = true;
+                            }
+                        }
+                    } else {
+                        char color_name[64];
+                        size_t name_len = tag_len - 2;
+                        if (name_len < sizeof(color_name)) {
+                            memcpy(color_name, tag + 1, name_len);
+                            color_name[name_len] = '\0';
+                            int code = parse_color_name(color_name);
+                            if (code != -1) {
+                                style_node_t node = { .type = STYLE_FG_COLOR, .color_code = code };
+                                if (stack.top < MAX_STACK_DEPTH) stack.nodes[stack.top++] = node;
+                                emit_stack(&stack, &buf, &pos, &cap);
+                                parsed_tag = true;
+                            }
+                        }
+                    }
+                    
+                    if (parsed_tag) {
+                        idx = tag_end + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        
+        append_char(&buf, &pos, &cap, input[idx]);
+        idx++;
+    }
+    
+    append_str(&buf, &pos, &cap, "\x1b[0m");
+    return buf;
+}
+
+static char* parse_line_markup(const char *input, int terminal_width)
+{
+    const char *center_start = strstr(input, "[center]");
+    const char *center_end = strstr(input, "[/center]");
+    if (center_start != nullptr && center_end != nullptr && center_end > center_start) {
+        size_t inner_len = (size_t)(center_end - (center_start + 8));
+        char *inner = malloc(inner_len + 1);
+        memcpy(inner, center_start + 8, inner_len);
+        inner[inner_len] = '\0';
+        
+        char *parsed_inner = parse_styling_only(inner);
+        free(inner);
+        
+        size_t visible_len = calculate_visible_length(parsed_inner);
+        int total_pad = terminal_width - (int)visible_len;
+        if (total_pad < 0) total_pad = 0;
+        int left_pad = total_pad / 2;
+        int right_pad = total_pad - left_pad;
+        
+        size_t cap = strlen(parsed_inner) + (size_t)total_pad + 64;
+        char *result = malloc(cap);
+        size_t pos = 0;
+        
+        for (int i = 0; i < left_pad; ++i) result[pos++] = ' ';
+        result[pos] = '\0';
+        strcat(result, parsed_inner);
+        pos += strlen(parsed_inner);
+        for (int i = 0; i < right_pad; ++i) result[pos++] = ' ';
+        result[pos] = '\0';
+        
+        free(parsed_inner);
+        return result;
+    }
+    
+    const char *right_start = strstr(input, "[right]");
+    const char *right_end = strstr(input, "[/right]");
+    if (right_start != nullptr && right_end != nullptr && right_end > right_start) {
+        size_t inner_len = (size_t)(right_end - (right_start + 7));
+        char *inner = malloc(inner_len + 1);
+        memcpy(inner, right_start + 7, inner_len);
+        inner[inner_len] = '\0';
+        
+        char *parsed_inner = parse_styling_only(inner);
+        free(inner);
+        
+        size_t visible_len = calculate_visible_length(parsed_inner);
+        int left_pad = terminal_width - (int)visible_len;
+        if (left_pad < 0) left_pad = 0;
+        
+        size_t cap = strlen(parsed_inner) + (size_t)left_pad + 64;
+        char *result = malloc(cap);
+        size_t pos = 0;
+        for (int i = 0; i < left_pad; ++i) result[pos++] = ' ';
+        result[pos] = '\0';
+        strcat(result, parsed_inner);
+        
+        free(parsed_inner);
+        return result;
+    }
+    
+    if (strstr(input, "[hr]") != nullptr) {
+        char *result = malloc((size_t)terminal_width + 1);
+        for (int i = 0; i < terminal_width; ++i) {
+            result[i] = '-';
+        }
+        result[terminal_width] = '\0';
+        return result;
+    }
+    
+    return parse_styling_only(input);
+}
+
+char* parse_bbs_markup(const char* input, int terminal_width)
+{
+    if (input == nullptr) {
+        return nullptr;
+    }
+    
+    size_t cap = strlen(input) + 256;
+    char *out_buf = malloc(cap);
+    size_t out_pos = 0;
+    out_buf[0] = '\0';
+    
+    const char *cursor = input;
+    while (*cursor != '\0') {
+        const char *newline = strchr(cursor, '\n');
+        char line[4096];
+        if (newline == nullptr) {
+            snprintf(line, sizeof(line), "%s", cursor);
+            char *parsed_line = parse_line_markup(line, terminal_width);
+            append_str(&out_buf, &out_pos, &cap, parsed_line);
+            free(parsed_line);
+            break;
+        }
+        
+        size_t length = (size_t)(newline - cursor);
+        if (length >= sizeof(line)) {
+            length = sizeof(line) - 1;
+        }
+        memcpy(line, cursor, length);
+        line[length] = '\0';
+        
+        char *parsed_line = parse_line_markup(line, terminal_width);
+        append_str(&out_buf, &out_pos, &cap, parsed_line);
+        append_str(&out_buf, &out_pos, &cap, "\n");
+        free(parsed_line);
+        
+        cursor = newline + 1;
+    }
+    
+    return out_buf;
+}
+
 
 // SLASH_COMPATIBLE: Helper function to check if a character is slash-compatible

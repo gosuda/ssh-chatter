@@ -950,75 +950,6 @@ void session_send_raw_text(session_ctx_t *ctx, const char *text)
     }
 }
 
-/* Expand BBS color markup: (#RRGGBB)text(#end)
- * Renders the enclosed text with a bright white background and a 24-bit
- * foreground color. Any other text is passed through unchanged.
- * out is NUL-terminated and will not exceed out_size bytes. */
-static void session_bbs_expand_color_markup(const char *text, char *out,
-                                             size_t out_size)
-{
-    if (text == nullptr || out == nullptr || out_size == 0U) {
-        if (out != nullptr && out_size > 0U) {
-            out[0] = '\0';
-        }
-        return;
-    }
-    out[0] = '\0';
-
-    size_t pos = 0U;
-    const char *cursor = text;
-
-    while (*cursor != '\0' && pos + 1U < out_size) {
-        /* Check for (#end) - case-insensitive, 6 chars */
-        if (cursor[0] == '(' && cursor[1] == '#' &&
-            (cursor[2] == 'e' || cursor[2] == 'E') &&
-            (cursor[3] == 'n' || cursor[3] == 'N') &&
-            (cursor[4] == 'd' || cursor[4] == 'D') &&
-            cursor[5] == ')') {
-            static const char kReset[] = "\033[0m";
-            const size_t seq_len = sizeof(kReset) - 1U;
-            if (pos + seq_len + 1U <= out_size) {
-                memcpy(out + pos, kReset, seq_len);
-                pos += seq_len;
-            }
-            cursor += 6;
-            continue;
-        }
-
-        /* Check for (#RRGGBB) - exactly 9 characters */
-        if (cursor[0] == '(' && cursor[1] == '#' && cursor[8] == ')') {
-            bool valid = true;
-            for (int hex_idx = 2; hex_idx < 8; ++hex_idx) {
-                if (!isxdigit((unsigned char)cursor[hex_idx])) {
-                    valid = false;
-                    break;
-                }
-            }
-            if (valid) {
-                unsigned int r = 0U, g = 0U, b = 0U;
-                if (sscanf(cursor + 2, "%02x%02x%02x", &r, &g, &b) == 3) {
-                    /* Bright white bg (\033[107m) + 24-bit fg */
-                    char ansi_seq[48];
-                    int written = snprintf(ansi_seq, sizeof(ansi_seq),
-                                           "\033[107m\033[38;2;%u;%u;%um",
-                                           r, g, b);
-                    if (written > 0 &&
-                        pos + (size_t)written + 1U <= out_size) {
-                        memcpy(out + pos, ansi_seq, (size_t)written);
-                        pos += (size_t)written;
-                    }
-                    cursor += 9;
-                    continue;
-                }
-            }
-        }
-
-        out[pos++] = *cursor++;
-    }
-
-    out[pos] = '\0';
-}
-
 /* Like session_send_raw_text but expands BBS color markup on each line. */
 static void session_send_bbs_body_text(session_ctx_t *ctx, const char *text)
 {
@@ -1026,35 +957,27 @@ static void session_send_bbs_body_text(session_ctx_t *ctx, const char *text)
         return;
     }
 
-    const char *cursor = text;
-    while (*cursor != '\0') {
-        const char *newline = strchr(cursor, '\n');
-        char line[SSH_CHATTER_MESSAGE_LIMIT];
-        char expanded[SSH_CHATTER_MESSAGE_LIMIT * 4U];
-        if (newline == nullptr) {
-            snprintf(line, sizeof(line), "%.*s",
-                     (int)(sizeof(line) - 1U), cursor);
-            session_bbs_expand_color_markup(line, expanded, sizeof(expanded));
-            session_send_plain_line(ctx, expanded);
-            break;
+    int width = (int)ctx->terminal_width > 0 ? (int)ctx->terminal_width : 80;
+    char *expanded = parse_bbs_markup(text, width);
+    if (expanded != nullptr) {
+        const char *cursor = expanded;
+        while (*cursor != '\0') {
+            const char *newline = strchr(cursor, '\n');
+            if (newline == nullptr) {
+                session_send_plain_line(ctx, cursor);
+                break;
+            }
+            size_t length = (size_t)(newline - cursor);
+            char line[4096];
+            if (length >= sizeof(line)) {
+                length = sizeof(line) - 1;
+            }
+            memcpy(line, cursor, length);
+            line[length] = '\0';
+            session_send_plain_line(ctx, line);
+            cursor = newline + 1;
         }
-
-        size_t length = (size_t)(newline - cursor);
-        if (length >= sizeof(line)) {
-            length = sizeof(line) - 1U;
-        }
-        memcpy(line, cursor, length);
-        line[length] = '\0';
-        session_bbs_expand_color_markup(line, expanded, sizeof(expanded));
-        session_send_plain_line(ctx, expanded);
-
-        cursor = newline + 1;
-        if (*cursor == '\r') {
-            ++cursor;
-        }
-        if (*cursor == '\0') {
-            session_send_plain_line(ctx, "");
-        }
+        free(expanded);
     }
 }
 

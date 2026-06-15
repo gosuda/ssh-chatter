@@ -1498,4 +1498,7 @@ typedef enum {
 extern const char * const kSessionAvatarArt[AVATAR_COUNT];
 extern const char * const kSessionAvatarNames[AVATAR_COUNT];
 
+char* parse_bbs_markup(const char* input, int terminal_width);
+
 #endif
+

@@ -1285,7 +1285,6 @@ static size_t ddial_client_normalize_outbound_text(const char *src,
 void host_ddial_client_send(host_t *host, const char *handle,
                             const char *message)
 {
-    (void)handle;
     if (host == nullptr || message == nullptr) {
         return;
     }
@@ -1298,8 +1297,15 @@ void host_ddial_client_send(host_t *host, const char *handle,
         return;
     }
 
+    char prefixed_message[SSH_CHATTER_MESSAGE_LIMIT];
+    if (handle != nullptr && handle[0] != '\0') {
+        snprintf(prefixed_message, sizeof(prefixed_message), "%s|ChatterBridge) %s", handle, message);
+    } else {
+        snprintf(prefixed_message, sizeof(prefixed_message), "%s", message);
+    }
+
     char normalized_message[SSH_CHATTER_MESSAGE_LIMIT];
-    ddial_client_normalize_outbound_text(message, strlen(message),
+    ddial_client_normalize_outbound_text(prefixed_message, strlen(prefixed_message),
                                          normalized_message,
                                          sizeof(normalized_message));
     if (normalized_message[0] == '\0') {

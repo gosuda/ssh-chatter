@@ -779,6 +779,153 @@ static void session_handle_set_lf(session_ctx_t *ctx, const char *arguments)
     }
 }
 
+static int session_ddial_hex_value(char ch)
+{
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return ch - 'a' + 10;
+    }
+    if (ch >= 'A' && ch <= 'F') {
+        return ch - 'A' + 10;
+    }
+    return -1;
+}
+
+static size_t session_ddial_decode_c_string(const char *src, char *dst,
+                                            size_t dst_cap)
+{
+    if (src == nullptr || dst == nullptr || dst_cap == 0U) {
+        return 0U;
+    }
+
+    size_t i = 0U;
+    size_t j = 0U;
+    while (src[i] != '\0' && j < dst_cap) {
+        if (src[i] != '\\') {
+            dst[j++] = src[i++];
+            continue;
+        }
+
+        ++i;
+        char esc = src[i];
+        if (esc == '\0') {
+            dst[j++] = '\\';
+            break;
+        }
+        ++i;
+
+        switch (esc) {
+        case 'a':
+            dst[j++] = '\a';
+            break;
+        case 'b':
+            dst[j++] = '\b';
+            break;
+        case 'f':
+            dst[j++] = '\f';
+            break;
+        case 'n':
+            dst[j++] = '\n';
+            break;
+        case 'r':
+            dst[j++] = '\r';
+            break;
+        case 't':
+            dst[j++] = '\t';
+            break;
+        case 'v':
+            dst[j++] = '\v';
+            break;
+        case '\\':
+        case '\'':
+        case '"':
+        case '?':
+            dst[j++] = esc;
+            break;
+        case 'e':
+        case 'E':
+            dst[j++] = '\x1B';
+            break;
+        case 'x': {
+            int value = 0;
+            size_t digits = 0U;
+            while (src[i] != '\0') {
+                int hex = session_ddial_hex_value(src[i]);
+                if (hex < 0) {
+                    break;
+                }
+                value = (value << 4) | hex;
+                ++i;
+                ++digits;
+            }
+            dst[j++] = digits > 0U ? (char)(unsigned char)value : 'x';
+            break;
+        }
+        default:
+            if (esc >= '0' && esc <= '7') {
+                int value = esc - '0';
+                size_t digits = 1U;
+                while (digits < 3U && src[i] >= '0' && src[i] <= '7') {
+                    value = (value << 3) | (src[i] - '0');
+                    ++i;
+                    ++digits;
+                }
+                dst[j++] = (char)(unsigned char)value;
+            } else {
+                dst[j++] = esc;
+            }
+            break;
+        }
+    }
+    return j;
+}
+
+static size_t session_ddial_build_telnet_raw(const char *data, size_t data_len,
+                                             char *dst, size_t dst_cap)
+{
+    if (data == nullptr || dst == nullptr || dst_cap == 0U) {
+        return 0U;
+    }
+
+    size_t start = 0U;
+    size_t out_len = 0U;
+
+    for (size_t i = 0U; i < data_len; ++i) {
+        if (data[i] != '\n' && data[i] != '\r') {
+            continue;
+        }
+        size_t segment_len = i - start;
+        if (segment_len > 0U) {
+            if (out_len + segment_len > dst_cap) {
+                return 0U;
+            }
+            memcpy(dst + out_len, data + start, segment_len);
+            out_len += segment_len;
+        }
+        if (out_len + 2U > dst_cap) {
+            return 0U;
+        }
+        dst[out_len++] = '\r';
+        dst[out_len++] = '\n';
+        if (data[i] == '\r' && i + 1U < data_len && data[i + 1U] == '\n') {
+            ++i;
+        }
+        start = i + 1U;
+    }
+
+    if (start < data_len) {
+        size_t segment_len = data_len - start;
+        if (out_len + segment_len > dst_cap) {
+            return 0U;
+        }
+        memcpy(dst + out_len, data + start, segment_len);
+        out_len += segment_len;
+    }
+    return out_len;
+}
+
 static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
@@ -798,7 +945,7 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
                  relay->port);
         session_send_system_line(ctx, status);
         session_send_system_line(
-            ctx, "Usage: /ddial <connect <host> <port> [key]|reconnect|disconnect|status>");
+            ctx, "Usage: /ddial <connect <host> <port> [key]|raw <c-string>|reconnect|disconnect|status>");
         return;
     }
 
@@ -828,6 +975,47 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
     if (strcasecmp(action, "reconnect") == 0) {
         host_ddial_client_reconnect(ctx->owner);
         session_send_system_line(ctx, "DDial relay reconnecting...");
+        return;
+    }
+
+    if (strcasecmp(action, "raw") == 0) {
+        if (rest == nullptr || rest[0] == '\0') {
+            session_send_system_line(ctx, "Usage: /ddial raw <c-string>");
+            session_send_system_line(
+                ctx, "Example: /ddial raw \\nid\\npw\\n");
+            return;
+        }
+
+        while (*rest == ' ' || *rest == '\t') {
+            ++rest;
+        }
+        if (*rest == '\0') {
+            session_send_system_line(ctx, "Usage: /ddial raw <c-string>");
+            return;
+        }
+
+        char decoded[SSH_CHATTER_MESSAGE_LIMIT * 2];
+        size_t decoded_len =
+            session_ddial_decode_c_string(rest, decoded, sizeof(decoded));
+        if (decoded_len == 0U) {
+            session_send_system_line(ctx, "No raw DDial bytes to send.");
+            return;
+        }
+
+        char wire[SSH_CHATTER_MESSAGE_LIMIT * 4];
+        size_t wire_len = session_ddial_build_telnet_raw(
+            decoded, decoded_len, wire, sizeof(wire));
+        if (wire_len == 0U) {
+            session_send_system_line(ctx, "Raw DDial payload is too long.");
+            return;
+        }
+
+        if (host_ddial_client_send_raw(ctx->owner, wire, wire_len)) {
+            session_send_system_line(ctx, "Raw DDial bytes sent.");
+        } else {
+            session_send_system_line(
+                ctx, "Failed to send raw DDial bytes; relay is not connected.");
+        }
         return;
     }
 
@@ -880,5 +1068,5 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
 
     session_send_system_line(ctx, "Unknown /ddial subcommand.");
     session_send_system_line(
-        ctx, "Usage: /ddial <connect <host> <port> [key]|reconnect|disconnect|status>");
+        ctx, "Usage: /ddial <connect <host> <port> [key]|raw <c-string>|reconnect|disconnect|status>");
 }

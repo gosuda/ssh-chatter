@@ -1132,3 +1132,26 @@ void host_ddial_client_send(host_t *host, const char *handle,
     ddial_client_update_send_time(client);
     ttak_mutex_unlock(&client->lock);
 }
+
+bool host_ddial_client_send_raw(host_t *host, const char *data,
+                                size_t data_len)
+{
+    if (host == nullptr || data == nullptr || data_len == 0U) {
+        return false;
+    }
+
+    ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
+    ttak_mutex_lock(&client->lock);
+    if (!client->enabled || !client->connected || client->upstream_fd < 0) {
+        ttak_mutex_unlock(&client->lock);
+        return false;
+    }
+
+    bool ok = ddial_client_send_all(client->upstream_fd, data, data_len) ==
+              (ssize_t)data_len;
+    if (ok) {
+        ddial_client_update_send_time(client);
+    }
+    ttak_mutex_unlock(&client->lock);
+    return ok;
+}

@@ -1351,6 +1351,8 @@ void host_ddial_client_reconnect(host_t *host);
 void host_ddial_client_start(host_t *host);
 void host_ddial_client_send(host_t *host, const char *handle,
                             const char *message);
+bool host_ddial_client_send_raw(host_t *host, const char *data,
+                                size_t data_len);
 void host_ddial_notify_admin_if_port_adjusted(host_t *host, session_ctx_t *ctx);
 uint64_t host_allocate_session_id(host_t *host);
 void host_archive_start_backend(host_t *host);

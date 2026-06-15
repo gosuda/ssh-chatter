@@ -95,16 +95,19 @@ static const session_ops_t telnet_session_ops = {
     "ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,"               \
     "diffie-hellman-group-exchange-sha256,"                                    \
     "diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,"             \
-    "diffie-hellman-group14-sha256,diffie-hellman-group14-sha1"
+    "diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,"               \
+    "diffie-hellman-group1-sha1"
 // Ciphers matching modern openssh-server defaults (strongest first)
 #define SSH_CHATTER_STRONG_CIPHERS                                             \
     "chacha20-poly1305@openssh.com,"                                           \
     "aes256-gcm@openssh.com,aes128-gcm@openssh.com,"                          \
-    "aes256-ctr,aes192-ctr,aes128-ctr"
+    "aes256-ctr,aes192-ctr,aes128-ctr,"                                        \
+    "aes128-cbc,aes256-cbc,3des-cbc"
 // MACs matching modern openssh-server defaults (ETM variants preferred)
 #define SSH_CHATTER_STRONG_MACS                                                \
     "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,"            \
-    "hmac-sha2-256,hmac-sha2-512"
+    "hmac-sha2-256,hmac-sha2-512,"                                             \
+    "hmac-sha1"
 #define SSH_CHATTER_SECURE_COMPRESSION "none"
 #define SSH_CHATTER_BIRTHDAY_WINDOW_SECONDS (7 * 24 * 60 * 60)
 

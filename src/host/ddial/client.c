@@ -549,7 +549,7 @@ static size_t ddial_client_sanitize_line(const char *src, size_t src_len,
             continue;
         }
 
-        if (c < 0x20U && c != '\t' && c != '\r' && c != '\n') {
+        if ((c < 0x20U && c != '\t' && c != '\r' && c != '\n') || c == 0xFF) {
             ++i;
             continue;
         }

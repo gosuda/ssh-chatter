@@ -1050,6 +1050,11 @@ typedef struct ddial_relay {
     char handle[SSH_CHATTER_USERNAME_LEN];
     char recv_buffer[SSH_CHATTER_MESSAGE_LIMIT * 4];
     size_t recv_buf_len;
+    int telnet_state;
+    unsigned char telnet_cmd;
+    unsigned char telnet_sb_opt;
+    unsigned char telnet_sb[64];
+    size_t telnet_sb_len;
     struct timespec last_send_time;
     uint16_t slot;
     bool slot_known;

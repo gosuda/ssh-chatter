@@ -48,6 +48,17 @@
 #define DDIAL_CLIENT_RECV_CHUNK_SIZE 4096
 #define DDIAL_CLIENT_AUTH_TIMEOUT_SEC 15
 #define DDIAL_CLIENT_LOGIN_PROMPT_TIMEOUT_SEC 8
+#define DDIAL_CLIENT_PREAUTH_DRAIN_MS 1500
+#define DDIAL_CLIENT_POSTAUTH_DRAIN_MS 2000
+
+enum {
+    DDIAL_TELNET_DATA = 0,
+    DDIAL_TELNET_IAC,
+    DDIAL_TELNET_OPT,
+    DDIAL_TELNET_SB_OPT,
+    DDIAL_TELNET_SB,
+    DDIAL_TELNET_SB_IAC,
+};
 
 typedef struct ddial_client {
     bool enabled;
@@ -69,6 +80,11 @@ typedef struct ddial_client {
     char handle[SSH_CHATTER_USERNAME_LEN];
     char recv_buffer[SSH_CHATTER_MESSAGE_LIMIT * 4];
     size_t recv_buf_len;
+    int telnet_state;
+    unsigned char telnet_cmd;
+    unsigned char telnet_sb_opt;
+    unsigned char telnet_sb[64];
+    size_t telnet_sb_len;
     struct timespec last_send_time;
     uint16_t slot;
     bool slot_known;
@@ -147,6 +163,10 @@ static void ddial_client_disconnect(ddial_client_t *client)
     client->auth_deadline.tv_sec = 0;
     client->auth_deadline.tv_nsec = 0;
     client->recv_buf_len = 0U;
+    client->telnet_state = DDIAL_TELNET_DATA;
+    client->telnet_cmd = 0U;
+    client->telnet_sb_opt = 0U;
+    client->telnet_sb_len = 0U;
     client->last_send_time.tv_sec = 0;
     client->last_send_time.tv_nsec = 0;
     client->slot = 0U;
@@ -237,6 +257,10 @@ static bool ddial_client_connect_socket(ddial_client_t *client)
     client->auth_sent = false;
     atomic_store(&client->auth_state, DDIAL_AUTH_NONE);
     client->recv_buf_len = 0U;
+    client->telnet_state = DDIAL_TELNET_DATA;
+    client->telnet_cmd = 0U;
+    client->telnet_sb_opt = 0U;
+    client->telnet_sb_len = 0U;
     client->slot = 0U;
     client->slot_known = false;
     client->reconnect_attempts = 0U;
@@ -260,128 +284,163 @@ static void ddial_client_send_initial_telnet(ddial_client_t *client)
     ddial_client_update_send_time(client);
 }
 
-/* Process incoming telnet bytes, append the resulting text to
- * client->recv_buffer, and send any required IAC replies.  Returns the number
- * of source bytes consumed; incomplete trailing IAC sequences are left in the
- * kernel buffer for the next read. */
-static size_t ddial_client_process_telnet(ddial_client_t *client,
-                                          const unsigned char *src, size_t src_len)
+static void ddial_client_append_telnet_reply(unsigned char *buf, size_t *len,
+                                             size_t cap, unsigned char cmd,
+                                             unsigned char opt)
+{
+    if (buf == nullptr || len == nullptr || *len + 3U > cap) {
+        return;
+    }
+    buf[(*len)++] = 0xFF;
+    buf[(*len)++] = cmd;
+    buf[(*len)++] = opt;
+}
+
+static void ddial_client_append_terminal_type_reply(unsigned char *buf,
+                                                    size_t *len, size_t cap)
+{
+    static const unsigned char reply[] = {0xFF, 0xFA, 0x18, 0x00,
+                                          'A',  'N',  'S',  'I',
+                                          0xFF, 0xF0};
+    if (buf == nullptr || len == nullptr || *len + sizeof(reply) > cap) {
+        return;
+    }
+    memcpy(buf + *len, reply, sizeof(reply));
+    *len += sizeof(reply);
+}
+
+static void ddial_client_process_telnet_option(ddial_client_t *client,
+                                               unsigned char *iac_buf,
+                                               size_t *iac_len,
+                                               size_t iac_cap,
+                                               unsigned char cmd,
+                                               unsigned char opt)
+{
+    (void)client;
+    unsigned char reply_cmd = 0;
+    switch (cmd) {
+    case 0xFB: /* WILL */
+        if (opt == 0x01 || opt == 0x03) {
+            reply_cmd = 0xFD; /* DO */
+        } else {
+            reply_cmd = 0xFC; /* DON'T */
+        }
+        break;
+    case 0xFC: /* WONT */
+        reply_cmd = 0xFE; /* DON'T */
+        break;
+    case 0xFD: /* DO */
+        if (opt == 0x18) { /* terminal-type */
+            reply_cmd = 0xFB; /* WILL */
+        } else if (opt == 0x03) { /* suppress-go-ahead */
+            reply_cmd = 0xFB; /* WILL */
+        } else {
+            reply_cmd = 0xFC; /* WONT */
+        }
+        break;
+    case 0xFE: /* DONT */
+        reply_cmd = 0xFC; /* WONT */
+        break;
+    }
+    if (reply_cmd != 0) {
+        ddial_client_append_telnet_reply(iac_buf, iac_len, iac_cap, reply_cmd,
+                                         opt);
+    }
+}
+
+/* Process incoming Telnet bytes and append resulting text to recv_buffer.
+ * Telnet control sequences may be split across arbitrarily small TCP reads,
+ * so parser state is stored on the client instead of assuming whole IAC
+ * commands arrive in one recv(). */
+static void ddial_client_process_telnet(ddial_client_t *client,
+                                        const unsigned char *src,
+                                        size_t src_len)
 {
     if (client == nullptr || src == nullptr || src_len == 0U) {
-        return 0U;
+        return;
     }
 
-    unsigned char iac_buf[64];
+    unsigned char iac_buf[128];
     size_t iac_len = 0U;
-    size_t i = 0U;
 
-    while (i < src_len) {
-        if (src[i] != 0xFF) {
-            /* Copy plain byte into recv_buffer if space remains. */
-            if (client->recv_buf_len < sizeof(client->recv_buffer)) {
-                client->recv_buffer[client->recv_buf_len++] = (char)src[i];
+    for (size_t i = 0U; i < src_len; ++i) {
+        unsigned char byte = src[i];
+        switch (client->telnet_state) {
+        case DDIAL_TELNET_DATA:
+            if (byte == 0xFF) {
+                client->telnet_state = DDIAL_TELNET_IAC;
+            } else if (client->recv_buf_len < sizeof(client->recv_buffer)) {
+                client->recv_buffer[client->recv_buf_len++] = (char)byte;
             }
-            ++i;
-            continue;
-        }
-        if (i + 1U >= src_len) {
-            break; /* IAC at end of chunk: wait for next read. */
-        }
-        unsigned char cmd = src[i + 1U];
-        if (cmd == 0xFF) {
-            if (client->recv_buf_len < sizeof(client->recv_buffer)) {
-                client->recv_buffer[client->recv_buf_len++] = '\xFF';
-            }
-            i += 2U;
-            continue;
-        }
-
-        /* Single-byte commands. */
-        if (cmd >= 0xF0 && cmd <= 0xF9) {
-            i += 2U;
-            continue;
-        }
-
-        /* Two-byte commands WILL/WONT/DO/DONT. */
-        if ((cmd >= 0xFB && cmd <= 0xFE) && i + 2U < src_len) {
-            unsigned char opt = src[i + 2U];
-            unsigned char reply_cmd = 0;
-            switch (cmd) {
-            case 0xFB: /* WILL */
-                if (opt == 0x01 || opt == 0x03) {
-                    reply_cmd = 0xFD; /* DO */
+            break;
+        case DDIAL_TELNET_IAC:
+            if (byte == 0xFF) {
+                if (client->recv_buf_len < sizeof(client->recv_buffer)) {
+                    client->recv_buffer[client->recv_buf_len++] = '\xFF';
+                }
+                client->telnet_state = DDIAL_TELNET_DATA;
+            } else if (byte >= 0xF0 && byte <= 0xF9) {
+                if (byte == 0xFA) {
+                    client->telnet_sb_len = 0U;
+                    client->telnet_sb_opt = 0U;
+                    client->telnet_state = DDIAL_TELNET_SB_OPT;
                 } else {
-                    reply_cmd = 0xFC; /* DON'T */
+                    client->telnet_state = DDIAL_TELNET_DATA;
                 }
-                break;
-            case 0xFC: /* WONT */
-                reply_cmd = 0xFE; /* DON'T */
-                break;
-            case 0xFD: /* DO */
-                if (opt == 0x18) { /* terminal-type */
-                    reply_cmd = 0xFB; /* WILL */
-                } else if (opt == 0x03) { /* suppress-go-ahead */
-                    reply_cmd = 0xFB; /* WILL */
-                } else {
-                    reply_cmd = 0xFC; /* WONT */
+            } else if (byte >= 0xFB && byte <= 0xFE) {
+                client->telnet_cmd = byte;
+                client->telnet_state = DDIAL_TELNET_OPT;
+            } else {
+                client->telnet_state = DDIAL_TELNET_DATA;
+            }
+            break;
+        case DDIAL_TELNET_OPT:
+            ddial_client_process_telnet_option(client, iac_buf, &iac_len,
+                                               sizeof(iac_buf),
+                                               client->telnet_cmd, byte);
+            client->telnet_state = DDIAL_TELNET_DATA;
+            break;
+        case DDIAL_TELNET_SB_OPT:
+            client->telnet_sb_opt = byte;
+            client->telnet_sb_len = 0U;
+            client->telnet_state = DDIAL_TELNET_SB;
+            break;
+        case DDIAL_TELNET_SB:
+            if (byte == 0xFF) {
+                client->telnet_state = DDIAL_TELNET_SB_IAC;
+            } else if (client->telnet_sb_len < sizeof(client->telnet_sb)) {
+                client->telnet_sb[client->telnet_sb_len++] = byte;
+            }
+            break;
+        case DDIAL_TELNET_SB_IAC:
+            if (byte == 0xF0) {
+                if (client->telnet_sb_opt == 0x18 &&
+                    client->telnet_sb_len > 0U &&
+                    client->telnet_sb[0] == 0x01) {
+                    ddial_client_append_terminal_type_reply(
+                        iac_buf, &iac_len, sizeof(iac_buf));
                 }
-                break;
-            case 0xFE: /* DONT */
-                reply_cmd = 0xFC; /* WONT */
-                break;
+                client->telnet_sb_len = 0U;
+                client->telnet_state = DDIAL_TELNET_DATA;
+            } else if (byte == 0xFF) {
+                if (client->telnet_sb_len < sizeof(client->telnet_sb)) {
+                    client->telnet_sb[client->telnet_sb_len++] = 0xFF;
+                }
+                client->telnet_state = DDIAL_TELNET_SB;
+            } else {
+                client->telnet_state = DDIAL_TELNET_DATA;
             }
-            if (reply_cmd != 0 && iac_len + 3U <= sizeof(iac_buf)) {
-                iac_buf[iac_len++] = 0xFF;
-                iac_buf[iac_len++] = reply_cmd;
-                iac_buf[iac_len++] = opt;
-            }
-            i += 3U;
-            continue;
+            break;
+        default:
+            client->telnet_state = DDIAL_TELNET_DATA;
+            break;
         }
-
-        /* Subnegotiation: IAC SB ... IAC SE. */
-        if (cmd == 0xFA && i + 2U < src_len) {
-            unsigned char opt = src[i + 2U];
-            size_t j = i + 3U;
-            while (j + 1U < src_len) {
-                if (src[j] == 0xFF && src[j + 1U] == 0xF0) {
-                    break;
-                }
-                ++j;
-            }
-            if (j + 1U >= src_len) {
-                break; /* incomplete subnegotiation */
-            }
-
-            if (opt == 0x18 && i + 3U < j && src[i + 3U] == 0x01) {
-                /* Server asked for terminal type.  Reply with ANSI. */
-                if (iac_len + 10U <= sizeof(iac_buf)) {
-                    iac_buf[iac_len++] = 0xFF;
-                    iac_buf[iac_len++] = 0xFA;
-                    iac_buf[iac_len++] = 0x18;
-                    iac_buf[iac_len++] = 0x00;
-                    iac_buf[iac_len++] = 'A';
-                    iac_buf[iac_len++] = 'N';
-                    iac_buf[iac_len++] = 'S';
-                    iac_buf[iac_len++] = 'I';
-                    iac_buf[iac_len++] = 0xFF;
-                    iac_buf[iac_len++] = 0xF0;
-                }
-            }
-            i = j + 2U;
-            continue;
-        }
-
-        /* Unknown two-byte command: skip it. */
-        i += 2U;
     }
 
     if (iac_len > 0U && client->upstream_fd >= 0) {
         (void)ddial_client_send_all(client->upstream_fd, (const char *)iac_buf,
                                     iac_len);
     }
-
-    return i;
 }
 
 /* Try to learn our assigned slot from status lines such as " #1(T1:?)". */
@@ -796,8 +855,7 @@ static bool ddial_client_read_chunk(ddial_client_t *client, host_t *host)
     }
 
     ttak_mutex_lock(&client->lock);
-    size_t before = client->recv_buf_len;
-    size_t consumed = ddial_client_process_telnet(client, temp, (size_t)n);
+    ddial_client_process_telnet(client, temp, (size_t)n);
 
     /* If the buffer is nearly full, drop the oldest half to make room. */
     if (client->recv_buf_len > sizeof(client->recv_buffer) - DDIAL_CLIENT_RECV_CHUNK_SIZE) {
@@ -808,23 +866,73 @@ static bool ddial_client_read_chunk(ddial_client_t *client, host_t *host)
     }
 
     ddial_client_process_buffer(host, client, false);
-    (void)consumed;
-    (void)before;
     ttak_mutex_unlock(&client->lock);
 
     return true;
 }
 
+static bool ddial_client_drain_for(ddial_client_t *client, host_t *host,
+                                   int timeout_ms)
+{
+    if (client == nullptr || host == nullptr || client->upstream_fd < 0 ||
+        timeout_ms <= 0) {
+        return true;
+    }
+
+    struct timespec start;
+    if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) {
+        return true;
+    }
+
+    for (;;) {
+        struct timespec now;
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+            return true;
+        }
+        long elapsed_ms = (long)((now.tv_sec - start.tv_sec) * 1000L) +
+                          (long)((now.tv_nsec - start.tv_nsec) / 1000000L);
+        if (elapsed_ms >= timeout_ms) {
+            return true;
+        }
+
+        int remaining_ms = timeout_ms - (int)elapsed_ms;
+        int poll_ms = remaining_ms < 100 ? remaining_ms : 100;
+        struct pollfd pfd = {.fd = client->upstream_fd, .events = POLLIN};
+        int poll_rc = poll(&pfd, 1, poll_ms);
+        if (poll_rc < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return false;
+        }
+        if (poll_rc == 0) {
+            continue;
+        }
+        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            return false;
+        }
+        if ((pfd.revents & POLLIN) != 0 &&
+            !ddial_client_read_chunk(client, host)) {
+            return false;
+        }
+    }
+}
+
 static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
 {
-    (void)host;
-    if (client == nullptr) {
+    if (client == nullptr || host == nullptr) {
         return false;
     }
 
     ddial_client_send_initial_telnet(client);
 
-    /* Send password or a bare newline immediately without parsing/waiting. */
+    /* Give slow Telnet option negotiation a brief chance to complete, but do
+     * not require a prompt. Retro-Dial accepts a bare RETURN for guest login. */
+    if (!ddial_client_drain_for(client, host, DDIAL_CLIENT_PREAUTH_DRAIN_MS)) {
+        return false;
+    }
+
+    /* Send password or a bare newline. */
     char line[128];
     if (client->login_key[0] != '\0') {
         snprintf(line, sizeof(line), "%s\r\n", client->login_key);
@@ -838,7 +946,11 @@ static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
     }
     ttak_mutex_unlock(&client->lock);
 
-    /* Send handle command immediately without parsing/waiting. */
+    if (!ddial_client_drain_for(client, host, DDIAL_CLIENT_POSTAUTH_DRAIN_MS)) {
+        return false;
+    }
+
+    /* Send handle after the guest login has had time to enter the chat loop. */
     if (client->handle[0] != '\0') {
         char handle_cmd[SSH_CHATTER_USERNAME_LEN + 8];
         snprintf(handle_cmd, sizeof(handle_cmd), "/H%s\r\n", client->handle);

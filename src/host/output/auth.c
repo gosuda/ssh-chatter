@@ -128,6 +128,20 @@ static int session_authenticate(session_ctx_t *ctx)
 
             // Regular user authentication
             if (!password_is_set) {
+                const int auth_method = ssh_message_subtype(message);
+                if (auth_method == SSH_AUTH_METHOD_PASSWORD) {
+                    const char *password = ssh_message_auth_password(message);
+                    if (password == nullptr ||
+                        (strcmp(password, "nopw") != 0 &&
+                         strcmp(password, "nopassword") != 0 &&
+                         strcmp(password, "password") != 0 &&
+                         strcmp(password, "pw") != 0)) {
+                        ssh_message_auth_set_methods(message,
+                                                     SSH_AUTH_METHOD_PASSWORD);
+                        ssh_message_reply_default(message);
+                        break;
+                    }
+                }
                 // No password set, allow login but flag for password creation
                 ctx->password_not_set = true;
                 ssh_message_auth_reply_success(message, 0);

@@ -11,7 +11,7 @@
  *     terminal-type).  We answer DO echo, DO SGA, WILL terminal-type and
  *     reply to the terminal-type subnegotiation with "ANSI".
  *   - Server sends "Enter Password or [RETURN]: ".
- *   - Client sends the configured key or a bare CR/LF.
+ *   - Client sends a bare CR/LF for guest login.
  *   - Server sends welcome banner and a "-->" prompt, plus a status line
  *     such as " #1(T1:?)" where the leading number is our assigned slot.
  *   - Client sets the handle with "/H<handle>\r\n".
@@ -76,7 +76,6 @@ typedef struct ddial_client {
     bool locally_registered;
     char host[256];
     int port;
-    char login_key[64];
     char handle[SSH_CHATTER_USERNAME_LEN];
     char recv_buffer[SSH_CHATTER_MESSAGE_LIMIT * 4];
     size_t recv_buf_len;
@@ -1017,13 +1016,8 @@ static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
         return false;
     }
 
-    /* Send password or a bare newline. */
-    char line[128];
-    if (client->login_key[0] != '\0') {
-        snprintf(line, sizeof(line), "%s\r\n", client->login_key);
-    } else {
-        snprintf(line, sizeof(line), "\r\n");
-    }
+    /* Send a bare RETURN for guest login. */
+    const char *line = "\r\n";
     ttak_mutex_lock(&client->lock);
     if (client->connected && client->upstream_fd >= 0) {
         (void)ddial_client_send_all(client->upstream_fd, line, strlen(line));
@@ -1141,16 +1135,12 @@ void host_ddial_init(host_t *host)
 
     const char *host_env = getenv("CHATTER_DDIAL_HOST");
     const char *port_env = getenv("CHATTER_DDIAL_PORT");
-    const char *key_env = getenv("CHATTER_DDIAL_KEY");
     const char *handle_env = getenv("CHATTER_DDIAL_HANDLE");
 
     if (host_env != nullptr && host_env[0] != '\0' && port_env != nullptr &&
         port_env[0] != '\0') {
         snprintf(client->host, sizeof(client->host), "%s", host_env);
         client->port = (int)strtol(port_env, nullptr, 10);
-        if (key_env != nullptr) {
-            snprintf(client->login_key, sizeof(client->login_key), "%s", key_env);
-        }
         if (handle_env != nullptr) {
             char clean[DDIAL_MAX_HANDLE_LEN];
             ddial_strip_ansi(handle_env, strlen(handle_env), clean,
@@ -1202,7 +1192,7 @@ static void host_ddial_client_stop(host_t *host)
 }
 
 bool host_ddial_client_configure(host_t *host, const char *host_str, int port,
-                                 const char *key)
+                                 const char *handle)
 {
     if (host == nullptr || host_str == nullptr || host_str[0] == '\0' ||
         port <= 0) {
@@ -1212,12 +1202,13 @@ bool host_ddial_client_configure(host_t *host, const char *host_str, int port,
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
     snprintf(client->host, sizeof(client->host), "%s", host_str);
     client->port = port;
-    if (key != nullptr) {
-        snprintf(client->login_key, sizeof(client->login_key), "%s", key);
+    if (handle != nullptr && handle[0] != '\0') {
+        char clean[DDIAL_MAX_HANDLE_LEN];
+        ddial_strip_ansi(handle, strlen(handle), clean, sizeof(clean));
+        snprintf(client->handle, sizeof(client->handle), "%s", clean);
     } else {
-        client->login_key[0] = '\0';
+        snprintf(client->handle, sizeof(client->handle), "%s", "chatter");
     }
-    client->handle[0] = '\0';
     client->enabled = true;
 
     host_ddial_client_start(host);

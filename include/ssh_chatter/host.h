@@ -1046,7 +1046,6 @@ typedef struct ddial_relay {
     bool locally_registered;
     char host[256];
     int port;
-    char login_key[64];
     char handle[SSH_CHATTER_USERNAME_LEN];
     char recv_buffer[SSH_CHATTER_MESSAGE_LIMIT * 4];
     size_t recv_buf_len;
@@ -1350,7 +1349,7 @@ void host_ddial_broadcast_system(host_t *host, const char *message);
 void host_ddial_init(host_t *host);
 void host_ddial_shutdown(host_t *host);
 bool host_ddial_client_configure(host_t *host, const char *host_str, int port,
-                                 const char *key);
+                                 const char *handle);
 void host_ddial_client_disconnect(host_t *host);
 void host_ddial_client_reconnect(host_t *host);
 void host_ddial_client_start(host_t *host);

@@ -945,7 +945,7 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
                  relay->port);
         session_send_system_line(ctx, status);
         session_send_system_line(
-            ctx, "Usage: /ddial <connect <host> <port> [key]|raw <c-string>|reconnect|disconnect|status>");
+            ctx, "Usage: /ddial <connect <host> <port> [handle]|raw <c-string>|reconnect|disconnect|status>");
         return;
     }
 
@@ -1022,7 +1022,7 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
     if (strcasecmp(action, "connect") == 0) {
         if (rest == nullptr || rest[0] == '\0') {
             session_send_system_line(
-                ctx, "Usage: /ddial connect <host> <port> [key]");
+                ctx, "Usage: /ddial connect <host> <port> [handle]");
             return;
         }
 
@@ -1035,7 +1035,7 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
 
         if (host_str[0] == '\0' || port_str[0] == '\0') {
             session_send_system_line(
-                ctx, "Usage: /ddial connect <host> <port> [key]");
+                ctx, "Usage: /ddial connect <host> <port> [handle]");
             return;
         }
 
@@ -1047,16 +1047,16 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
             return;
         }
 
-        const char *key = nullptr;
+        const char *handle = nullptr;
         if (remaining != nullptr && remaining[0] != '\0') {
-            key = remaining;
-            while (*key == ' ' || *key == '\t') {
-                ++key;
+            handle = remaining;
+            while (*handle == ' ' || *handle == '\t') {
+                ++handle;
             }
         }
 
         if (host_ddial_client_configure(ctx->owner, host_str, (int)port_long,
-                                        key)) {
+                                        handle)) {
             session_send_system_line(
                 ctx, "DDial relay configured and connecting...");
         } else {
@@ -1068,5 +1068,5 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
 
     session_send_system_line(ctx, "Unknown /ddial subcommand.");
     session_send_system_line(
-        ctx, "Usage: /ddial <connect <host> <port> [key]|raw <c-string>|reconnect|disconnect|status>");
+        ctx, "Usage: /ddial <connect <host> <port> [handle]|raw <c-string>|reconnect|disconnect|status>");
 }

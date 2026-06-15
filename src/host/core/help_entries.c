@@ -251,8 +251,8 @@ static const session_help_entry_t kSessionHelpEssential[] = {
         .label = "ddial <connect|disconnect|status>",
         .description =
             {
-                "Manage DDial upstream relay (native bridge mode).",
-                "DDial 업스트림 릴레이를 관리합니다.",
+                "Connect to Retro-Dial.",
+                "Retro-Dial에 연결합니다.",
             },
     },
     {

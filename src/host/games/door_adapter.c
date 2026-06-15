@@ -326,6 +326,12 @@ static const char *adapter_get_ddial_port(doorgame_host_t *h)
     return host->ddial_listener.port;
 }
 
+static const char *adapter_get_username(doorgame_session_t *s)
+{
+    session_ctx_t *ctx = (session_ctx_t *)s;
+    return ctx->user.name;
+}
+
 /* ------------------------------------------------------------------------- */
 /* Session ops table (read-only, safe to share across threads)               */
 /* ------------------------------------------------------------------------- */
@@ -339,6 +345,7 @@ static doorgame_session_ops_t g_door_session_ops = {
     .localized = adapter_localized,
     .is_operator = adapter_is_operator,
     .is_lan_operator = adapter_is_lan_operator,
+    .get_username = adapter_get_username,
     .gc_malloc = adapter_gc_malloc,
     .gc_free = adapter_gc_free,
     .gc_realloc = adapter_gc_realloc,

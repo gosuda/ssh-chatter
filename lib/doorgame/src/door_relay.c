@@ -538,6 +538,91 @@ static int door_relay_ini_handler(void* user, const char* section,
     return 1;
 }
 
+static void write_door_sys(const char *game_dir, const char *username)
+{
+    if (game_dir == nullptr || game_dir[0] == '\0' || username == nullptr) {
+        return;
+    }
+
+    char path_upper[PATH_MAX];
+    char path_lower[PATH_MAX];
+    snprintf(path_upper, sizeof(path_upper), "%s/DOOR.SYS", game_dir);
+    snprintf(path_lower, sizeof(path_lower), "%s/door.sys", game_dir);
+
+    FILE *f_upper = fopen(path_upper, "w");
+    FILE *f_lower = fopen(path_lower, "w");
+    FILE *files[2] = {f_upper, f_lower};
+
+    for (int i = 0; i < 2; ++i) {
+        FILE *f = files[i];
+        if (f == nullptr) {
+            continue;
+        }
+
+        fprintf(f, "COM1:\r\n");            // 1. COM Port
+        fprintf(f, "115200\r\n");           // 2. Baud rate
+        fprintf(f, "8\r\n");                // 3. Data bits
+        fprintf(f, "1\r\n");                // 4. Node number
+        fprintf(f, "3F8\r\n");              // 5. Port address
+        fprintf(f, "Y\r\n");                // 6. Screen display
+        fprintf(f, "Y\r\n");                // 7. Printer echo
+        fprintf(f, "Y\r\n");                // 8. Page bell
+        fprintf(f, "Y\r\n");                // 9. Caller alarm
+        fprintf(f, "%s\r\n", username);      // 10. User full name
+        fprintf(f, "Seoul, Korea\r\n");     // 11. Location
+        fprintf(f, "555-1234\r\n");         // 12. Work phone
+        fprintf(f, "555-5678\r\n");         // 13. Home phone
+        fprintf(f, "PASSWORD\r\n");         // 14. Password
+        fprintf(f, "100\r\n");              // 15. Security level
+        fprintf(f, "1\r\n");                // 16. Logins
+        fprintf(f, "06-15-26\r\n");         // 17. Last login date
+        fprintf(f, "3600\r\n");             // 18. Seconds remaining
+        fprintf(f, "60\r\n");               // 19. Minutes remaining
+        fprintf(f, "GR\r\n");               // 20. Graphics mode (ANSI)
+        fprintf(f, "24\r\n");               // 21. Page length
+        fprintf(f, "Y\r\n");                // 22. User mode
+        fprintf(f, "1\r\n");                // 23. Co-sysop command
+        fprintf(f, "Y\r\n");                // 24. Sysop status
+        fprintf(f, "1\r\n");                // 25. User number
+        fprintf(f, "Z\r\n");                // 26. Protocol
+        fprintf(f, "0\r\n");                // 27. Uploads
+        fprintf(f, "0\r\n");                // 28. Downloads
+        fprintf(f, "0\r\n");                // 29. Daily limit KB
+        fprintf(f, "01-01-70\r\n");         // 30. Date of birth
+        fprintf(f, "C:\\BBS\\DATA\r\n");    // 31. Database path
+        fprintf(f, "None\r\n");             // 32. Memo
+        fprintf(f, "Sysop\r\n");            // 33. Sysop name
+        fprintf(f, "%s\r\n", username);      // 34. Alias
+        fprintf(f, "00:00\r\n");            // 35. Event time
+        fprintf(f, "Y\r\n");                // 36. Error correcting
+        fprintf(f, "Y\r\n");                // 37. Session status
+        fprintf(f, "21:30\r\n");            // 38. Connect time
+        fprintf(f, "60\r\n");               // 39. Time remaining
+        fprintf(f, "ANSI\r\n");             // 40. Emulation
+        fprintf(f, "1\r\n");                // 41. Record number
+        fprintf(f, "60\r\n");               // 42. Time limit
+        fprintf(f, "0\r\n");                // 43. KB limit
+        fprintf(f, "1\r\n");                // 44. Node count
+        for (int line = 45; line <= 52; ++line) {
+            fprintf(f, "0\r\n");
+        }
+        fclose(f);
+    }
+}
+
+static void cleanup_door_sys(const char *game_dir)
+{
+    if (game_dir == nullptr || game_dir[0] == '\0') {
+        return;
+    }
+    char path_upper[PATH_MAX];
+    char path_lower[PATH_MAX];
+    snprintf(path_upper, sizeof(path_upper), "%s/DOOR.SYS", game_dir);
+    snprintf(path_lower, sizeof(path_lower), "%s/door.sys", game_dir);
+    unlink(path_upper);
+    unlink(path_lower);
+}
+
 bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
                         const doorgame_entry_t *entry,
                         const doorgame_session_ops_t *sops,
@@ -573,6 +658,21 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
     }
     const char *conf_to_use = (adjusted_conf != nullptr) ? adjusted_conf : entry->dosbox_conf;
 
+    // Generate dropfiles in the game directory so the game can read user info
+    char game_dir[PATH_MAX] = {0};
+    if (sops->get_username != nullptr) {
+        const char *username = sops->get_username(s);
+        if (username != nullptr && username[0] != '\0') {
+            char conf_dir_copy[PATH_MAX];
+            snprintf(conf_dir_copy, sizeof(conf_dir_copy), "%s", entry->dosbox_conf);
+            char *dir = dirname(conf_dir_copy);
+            if (dir != nullptr && dir[0] != '\0') {
+                snprintf(game_dir, sizeof(game_dir), "%s", dir);
+                write_door_sys(game_dir, username);
+            }
+        }
+    }
+
     int listen_fd = -1;
     int client_fd = -1;
 
@@ -584,6 +684,9 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
             if (adjusted_conf != nullptr) {
                 unlink(adjusted_conf);
                 free(adjusted_conf);
+            }
+            if (game_dir[0] != '\0') {
+                cleanup_door_sys(game_dir);
             }
             return false;
         }
@@ -597,6 +700,9 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
         if (adjusted_conf != nullptr) {
             unlink(adjusted_conf);
             free(adjusted_conf);
+        }
+        if (game_dir[0] != '\0') {
+            cleanup_door_sys(game_dir);
         }
         sops->send_system_line(s,
             sops->localized(s, DOORGAME_MSG_FAILED_LAUNCH));
@@ -668,6 +774,9 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
             nanosleep(&nap, nullptr);
         }
         (void)waitpid(child_pid, nullptr, 0);
+        if (game_dir[0] != '\0') {
+            cleanup_door_sys(game_dir);
+        }
         return false;
     }
 
@@ -706,6 +815,10 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
     if (adjusted_conf != nullptr) {
         unlink(adjusted_conf);
         free(adjusted_conf);
+    }
+
+    if (game_dir[0] != '\0') {
+        cleanup_door_sys(game_dir);
     }
 
     sops->send_system_line(s, sops->localized(s, DOORGAME_MSG_SESSION_ENDED));

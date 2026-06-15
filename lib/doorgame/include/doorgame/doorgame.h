@@ -69,6 +69,7 @@ typedef struct {
     const char *(*localized)(doorgame_session_t *s, int msg_id);
     bool (*is_operator)(doorgame_session_t *s);
     bool (*is_lan_operator)(doorgame_session_t *s);
+    const char *(*get_username)(doorgame_session_t *s);
     void *(*gc_malloc)(size_t);
     void  (*gc_free)(void *);
     void *(*gc_realloc)(void *, size_t);

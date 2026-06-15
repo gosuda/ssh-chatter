@@ -263,7 +263,8 @@ void session_process_pending_sink(session_ctx_t *ctx)
         (unsigned int)session_scrollback_line_capacity(ctx);
     const bool try_incremental =
         ctx->display_model_initialized &&
-        display_model_is_following_tail(&ctx->display_model);
+        display_model_is_following_tail(&ctx->display_model) &&
+        (ctx->retro_client_marker[0] == '\0');
 
     if (try_incremental) {
         previous_count = session_capture_visible_display_lines(

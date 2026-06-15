@@ -459,6 +459,7 @@ static bool door_relay_spawn_zmodem(int client_fd, char *const argv[],
 typedef struct {
     int port;
     bool found;
+    bool is_server;
 } serial_parse_ctx_t;
 
 static int door_relay_ini_handler(void* user, const char* section,
@@ -472,6 +473,13 @@ static int door_relay_ini_handler(void* user, const char* section,
             if (port > 0 && port <= 65535) {
                 ctx->port = port;
                 ctx->found = true;
+                // If "server:" is present, DOSBox acts as a client, so ssh-chatter should be a server.
+                // Otherwise, DOSBox acts as a server, so ssh-chatter should connect as a client.
+                if (strcasestr(value, "server:") != nullptr) {
+                    ctx->is_server = false;
+                } else {
+                    ctx->is_server = true;
+                }
             }
         }
     }
@@ -494,7 +502,7 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
         return false;
     }
 
-    serial_parse_ctx_t parse_ctx = { .port = 0, .found = false };
+    serial_parse_ctx_t parse_ctx = { .port = 0, .found = false, .is_server = false };
     if (ini_parse(entry->dosbox_conf, door_relay_ini_handler, &parse_ctx) < 0) {
         sops->send_system_line(s, "[door] failed to parse dosbox.conf.");
         return false;
@@ -505,16 +513,23 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
         return false;
     }
 
-    int listen_fd = setup_door_listener(parse_ctx.port);
-    if (listen_fd < 0) {
-        sops->send_system_line(s,
-            "[door] failed to bind relay listener.");
-        return false;
+    int listen_fd = -1;
+    int client_fd = -1;
+
+    if (!parse_ctx.is_server) {
+        listen_fd = setup_door_listener(parse_ctx.port);
+        if (listen_fd < 0) {
+            sops->send_system_line(s,
+                "[door] failed to bind relay listener.");
+            return false;
+        }
     }
 
     pid_t child_pid = launch_dosbox(entry->dosbox_conf);
     if (child_pid < 0) {
-        close(listen_fd);
+        if (listen_fd >= 0) {
+            close(listen_fd);
+        }
         sops->send_system_line(s,
             sops->localized(s, DOORGAME_MSG_FAILED_LAUNCH));
         return false;
@@ -526,11 +541,49 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
 
     sops->send_system_line(s, sops->localized(s, DOORGAME_MSG_WAITING));
 
-    int client_fd = door_relay_accept(listen_fd);
+    if (!parse_ctx.is_server) {
+        client_fd = door_relay_accept(listen_fd);
+    } else {
+        // Connect to DOSBox which is running as a nullmodem server
+        struct sockaddr_in addr = {
+            .sin_family = AF_INET,
+            .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+            .sin_port = htons((uint16_t)parse_ctx.port),
+        };
+
+        time_t start_time = time(nullptr);
+        // Retry connection up to 10 seconds, check if child still runs
+        while (time(nullptr) - start_time < 10) {
+            int status = 0;
+            if (waitpid(child_pid, &status, WNOHANG) == child_pid) {
+                break;
+            }
+
+            int sock = socket(AF_INET, SOCK_STREAM, 0);
+            if (sock >= 0) {
+                int nodelay = 1;
+                (void)setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+                if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+                    client_fd = sock;
+                    break;
+                }
+                close(sock);
+            }
+
+            struct timespec nap = {
+                .tv_sec = 0,
+                .tv_nsec = 100 * 1000 * 1000L, // 100ms
+            };
+            nanosleep(&nap, nullptr);
+        }
+    }
+
     if (client_fd < 0) {
         sops->send_system_line(s,
             sops->localized(s, DOORGAME_MSG_TIMEOUT));
-        close(listen_fd);
+        if (listen_fd >= 0) {
+            close(listen_fd);
+        }
         kill(child_pid, SIGTERM);
         for (int i = 0; i < 20; ++i) {
             if (waitpid(child_pid, nullptr, WNOHANG) == child_pid) {
@@ -550,8 +603,12 @@ bool doorgame_relay_run(doorgame_session_t *s, doorgame_host_t *h,
 
     (void)door_relay_session_loop(s, sops, hops, client_fd);
 
-    close(client_fd);
-    close(listen_fd);
+    if (client_fd >= 0) {
+        close(client_fd);
+    }
+    if (listen_fd >= 0) {
+        close(listen_fd);
+    }
 
     for (int i = 0; i < 50; ++i) {
         int status = 0;

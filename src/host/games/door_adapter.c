@@ -383,9 +383,39 @@ void session_bbs_door_run(session_ctx_t *ctx, const char *name)
         return;
     }
 
+    // Safeguard: Prevent multiple concurrent sessions of the same user from launching the same DOOR game
+    bool already_playing = false;
+    ttak_mutex_lock(&host->room.lock);
+    for (size_t i = 0U; i < host->room.member_count; ++i) {
+        session_ctx_t *member = host->room.members[i];
+        if (member != ctx &&
+            strcmp(member->user_data.username, ctx->user_data.username) == 0 &&
+            strcasecmp(member->active_door_name, name) == 0) {
+            already_playing = true;
+            break;
+        }
+    }
+    if (already_playing) {
+        ttak_mutex_unlock(&host->room.lock);
+        char message[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(message, sizeof(message),
+                 "[door] You are already playing '%s' in another session.",
+                 name);
+        session_send_system_line(ctx, message);
+        return;
+    }
+    // Set active door game
+    snprintf(ctx->active_door_name, sizeof(ctx->active_door_name), "%s", name);
+    ttak_mutex_unlock(&host->room.lock);
+
     doorgame_run((doorgame_session_t *)ctx, (doorgame_host_t *)host,
                  (const doorgame_entry_t *)entry,
                  &g_door_session_ops, &hops);
+
+    // Reset active door game
+    ttak_mutex_lock(&host->room.lock);
+    ctx->active_door_name[0] = '\0';
+    ttak_mutex_unlock(&host->room.lock);
 }
 
 void session_bbs_setgamelock(session_ctx_t *ctx, const char *arguments)

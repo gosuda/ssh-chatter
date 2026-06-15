@@ -889,6 +889,7 @@ typedef struct session_ctx {
     struct timespec lifetime_decay_reference;
     bool lifetime_has_activity;
     bool lifetime_decay_active;
+    char active_door_name[32];
 } session_ctx_t;
 
 typedef struct user_preference {

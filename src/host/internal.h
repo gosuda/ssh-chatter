@@ -237,6 +237,11 @@ void session_flag_should_sink(session_ctx_t *ctx);
 void session_mark_should_sink(session_ctx_t *ctx);
 void session_clear_pending_sink(session_ctx_t *ctx);
 void session_send_system_line(session_ctx_t *ctx, const char *message);
+void session_send_history_entry(session_ctx_t *ctx,
+                                const chat_history_entry_t *entry);
+void session_output_buffer_start(session_ctx_t *ctx);
+void session_output_buffer_stop(session_ctx_t *ctx);
+void session_handle_archive(session_ctx_t *ctx, const char *arguments);
 void session_handle_wall(session_ctx_t *ctx, const char *arguments);
 void session_wall_render(session_ctx_t *ctx, const char *status);
 void session_wall_exit(session_ctx_t *ctx, const char *status);

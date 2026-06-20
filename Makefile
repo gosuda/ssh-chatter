@@ -133,7 +133,8 @@ endif
 TARGET := ssh-chatter
 SHARED_TARGET := libssh_chatter_backend.so
 SRC := $(filter-out $(EXCLUDED_SRC),\
-       $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/stubs/*.c) $(wildcard $(SRC_DIR)/utils/*.c) $(INIH_DIR)/ini.c)
+       $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/stubs/*.c) $(wildcard $(SRC_DIR)/utils/*.c))
+SRC += $(INIH_DIR)/ini.c
 OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRC))
 SHARED_SRC := src/translator.c src/translation_helpers.c src/ssh_chatter_backend.c src/memory_manager.c
 SHARED_OBJ := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SHARED_SRC))
@@ -164,7 +165,7 @@ $(TARGET): $(OBJ) $(TTAK_LIB) $(DOORGAME_DIR)/libdoorgame.a
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Final linking for the shared library
-$(SHARED_TARGET): $(SHARED_OBJ) $(TTAK_LIB)
+$(SHARED_TARGET): $(SHARED_OBJ) $(TTAK_LIB) $(DOORGAME_DIR)/libdoorgame.a
 	$(CC) $(CFLAGS) -shared -o $@ $^ $(COMMON_LDFLAGS)
 
 $(STRESS_TARGET): $(filter-out $(BUILD_DIR)/src/main.o,$(OBJ)) $(STRESS_OBJ) $(TTAK_LIB)

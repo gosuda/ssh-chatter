@@ -46,7 +46,7 @@
 #define ALPHA_MAX_WAYPOINTS 4U
 #define SSH_CHATTER_MAX_BANS 16384
 #define SSH_CHATTER_HISTORY_LIMIT 64
-#define SSH_CHATTER_HISTORY_CACHE_LIMIT 256
+#define SSH_CHATTER_HISTORY_CACHE_LIMIT 32768
 #define SSH_CHATTER_DOOR_GAME_LIMIT 16
 #define SSH_CHATTER_DOOR_GAME_NAME_LEN 32
 #define SSH_CHATTER_DOOR_GAME_DESC_LEN 128
@@ -836,6 +836,8 @@ typedef struct session_ctx {
     bool asciiart_has_cooldown;
     struct timespec last_asciiart_post;
     session_game_state_t game;
+    bool in_archive_mode;
+    time_t archive_view_date;
     bool othello_slot_queued;
     session_block_entry_t block_entries[SSH_CHATTER_MAX_BLOCKED];
     size_t block_entry_count;
@@ -1275,11 +1277,7 @@ typedef struct host {
     _Atomic bool rss_manual_refresh_running;
     ttak_mutex_t rss_refresh_lock;
     bool rss_refresh_lock_initialized;
-    pthread_t archive_thread;
-    bool archive_thread_initialized;
-    _Atomic bool archive_thread_running;
-    _Atomic bool archive_thread_stop;
-    struct timespec archive_last_run;
+    _Atomic bool chat_archive_enabled;
 
     // Legacy reserved nickname list
     char (*reserved_nicknames)[SSH_CHATTER_USERNAME_LEN];
@@ -1361,7 +1359,10 @@ bool host_ddial_client_send_raw(host_t *host, const char *data,
                                 size_t data_len);
 void host_ddial_notify_admin_if_port_adjusted(host_t *host, session_ctx_t *ctx);
 uint64_t host_allocate_session_id(host_t *host);
-void host_archive_start_backend(host_t *host);
+bool host_archive_resolve_path(host_t *host, time_t created_at,
+                                      char *out, size_t out_size);
+size_t host_archive_read_date(host_t *host, const char *date_str,
+                              chat_history_entry_t **out_entries);
 bool host_post_client_message(host_t *host, const char *username,
                               const char *message, const char *color_name,
                               const char *highlight_name, bool is_bold);
@@ -1501,6 +1502,15 @@ extern const char * const kSessionAvatarArt[AVATAR_COUNT];
 extern const char * const kSessionAvatarNames[AVATAR_COUNT];
 
 char* parse_bbs_markup(const char* input, int terminal_width);
+
+static inline bool session_in_protected_section(const session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return false;
+    }
+    return ctx->in_archive_mode || ctx->in_bbs_mode || ctx->in_rss_mode ||
+           ctx->game.active;
+}
 
 #endif
 

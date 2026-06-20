@@ -377,11 +377,15 @@ void host_init(host_t *host, auth_profile_t *auth)
         humanized_log_error("rss", "failed to initialise refresh lock",
                             errno != 0 ? errno : ENOMEM);
     }
-    host->archive_thread_initialized = false;
-    atomic_store(&host->archive_thread_running, false);
-    atomic_store(&host->archive_thread_stop, false);
-    host->archive_last_run.tv_sec = 0;
-    host->archive_last_run.tv_nsec = 0L;
+    atomic_store(&host->chat_archive_enabled, false);
+    const char *archive_env = getenv("SSH_CHATTER_USE_ARCHIVE");
+    if (archive_env != nullptr && archive_env[0] != '\0') {
+        if (strcasecmp(archive_env, "yes") == 0 ||
+            strcasecmp(archive_env, "true") == 0 ||
+            strcmp(archive_env, "1") == 0) {
+            atomic_store(&host->chat_archive_enabled, true);
+        }
+    }
     host_security_configure(host);
     host_version_ip_rules_init(host);
     host->protected_ips = nullptr;
@@ -568,7 +572,6 @@ void host_init(host_t *host, auth_profile_t *auth)
     }
     host_bbs_start_watchdog(host);
     host_rss_start_backend(host);
-    host_archive_start_backend(host);
     host_ddial_client_start(host);
     sshc_memory_context_pop(memory_scope);
 }
@@ -1752,14 +1755,6 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         };
         host_sleep_uninterruptible(&wait);
     }
-
-    if (host->archive_thread_initialized) {
-        atomic_store(&host->archive_thread_stop, true);
-        /* No pthread_join — thread is detached; epoch GC reclaims after exit. */
-        host->archive_thread_initialized = false;
-        atomic_store(&host->archive_thread_running, false);
-    }
-
 
     if (host->bbs_watchdog_thread_initialized) {
         atomic_store(&host->bbs_watchdog_thread_stop, true);

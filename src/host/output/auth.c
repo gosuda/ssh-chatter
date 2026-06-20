@@ -1022,6 +1022,46 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
 
     char command_line[SSH_CHATTER_MAX_INPUT_LEN];
 
+    if (ctx->in_archive_mode) {
+        if (strcmp(normalized, "/archive exit") == 0) {
+            session_handle_archive(ctx, "exit");
+        } else {
+            session_ui_language_t lang = session_ui_language_current(ctx);
+            if (lang < 0 || lang >= SESSION_UI_LANGUAGE_COUNT) {
+                lang = SESSION_UI_LANGUAGE_EN;
+            }
+            const char *msg;
+            switch (lang) {
+            case SESSION_UI_LANGUAGE_KO:
+                msg = "아카이브 모드입니다. 채팅으로 돌아가려면 /archive exit를 입력하세요.";
+                break;
+            case SESSION_UI_LANGUAGE_JP:
+                msg = "アーカイブモードです。チャットに戻るには /archive exit を入力してください。";
+                break;
+            case SESSION_UI_LANGUAGE_ZH:
+                msg = "当前处于档案模式。输入 /archive exit 返回聊天。";
+                break;
+            case SESSION_UI_LANGUAGE_RU:
+                msg = "Активен режим архива. Введите /archive exit, чтобы вернуться в чат.";
+                break;
+            case SESSION_UI_LANGUAGE_DE:
+                msg = "Archivmodus aktiv. Geben Sie /archive exit ein, um zum Chat zurückzukehren.";
+                break;
+            case SESSION_UI_LANGUAGE_FR:
+                msg = "Mode archive actif. Tapez /archive exit pour revenir au chat.";
+                break;
+            case SESSION_UI_LANGUAGE_PL:
+                msg = "Tryb archiwum aktywny. Wpisz /archive exit, aby wrócić do czatu.";
+                break;
+            default:
+                msg = "Archive mode is active. Type /archive exit to return to chat.";
+                break;
+            }
+            session_send_system_line(ctx, msg);
+        }
+        return;
+    }
+
     if (ctx->in_bbs_mode && normalized[0] == '\0') {
         if (!session_acquire_cpu_slot(ctx)) {
             return;

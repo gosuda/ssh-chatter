@@ -360,6 +360,21 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "archive list|enter <YYYY-MM-DD>|exit",
+        .description =
+            {
+                "Browse archived chat history.",
+                "보관된 대화 내역을 둘러봅니다.",
+                "アーカイブされたチャット履歴を閲覧します。",
+                "浏览已归档的聊天记录。",
+                "Просмотреть архивированную историю чата.",
+                "Archivierten Chatverlauf durchsuchen.",
+                "Parcourir l'historique de discussion archivé.",
+                "Przeglądaj zarchiwizowaną historię czatu.",
+            },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "bbs [list|read|post|comment|regen|delete|search|edit|upvote|downvote]",
         .description =
             {

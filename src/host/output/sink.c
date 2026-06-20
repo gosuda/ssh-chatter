@@ -250,7 +250,8 @@ void session_process_pending_sink(session_ctx_t *ctx)
         return;
     }
 
-    if (ctx->editor_mode != SESSION_EDITOR_MODE_NONE || ctx->bbs_rendering_editor) {
+    if (ctx->editor_mode != SESSION_EDITOR_MODE_NONE || ctx->bbs_rendering_editor ||
+        session_in_protected_section(ctx)) {
         return;
     }
 

@@ -1080,8 +1080,8 @@ static void session_render_history_entry(session_ctx_t *ctx,
     session_output_restore_kind(ctx, previous_kind);
 }
 
-static void session_send_history_entry(session_ctx_t *ctx,
-                                       const chat_history_entry_t *entry)
+void session_send_history_entry(session_ctx_t *ctx,
+                                const chat_history_entry_t *entry)
 {
     session_render_history_entry(ctx, entry, true);
 }

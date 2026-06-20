@@ -564,8 +564,10 @@ static void chat_room_broadcast(chat_room_t *room, const char *message,
                 if (from != nullptr && member == from) {
                     continue;
                 }
-                // Skip users who are scrolled back in history
-                if (member->no_update || member->history_scroll_position > 0U) {
+                // Skip users who are scrolled back in history or in a
+                // protected section (archive/bbs/rss/game).
+                if (member->no_update || member->history_scroll_position > 0U ||
+                    session_in_protected_section(member)) {
                     continue;
                 }
                 if (atomic_load(&member->room_snapshot_retired)) {
@@ -700,8 +702,10 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
                 if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
-                // Skip users who are scrolled back in history
-                if (member->no_update || member->history_scroll_position > 0U) {
+                // Skip users who are scrolled back in history or in a
+                // protected section (archive/bbs/rss/game).
+                if (member->no_update || member->history_scroll_position > 0U ||
+                    session_in_protected_section(member)) {
                     continue;
                 }
                 if (atomic_load(&member->room_snapshot_retired)) {
@@ -803,9 +807,12 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                 if (from != nullptr && member == from) {
                     continue;
                 }
-                // Skip users who are scrolled back in history or in BBS Editor mode
+                // Skip users who are scrolled back in history, in an editor,
+                // or browsing a protected section (archive/bbs/rss/game).
                 if (member->no_update || member->history_scroll_position > 0U ||
-                    member->editor_mode != SESSION_EDITOR_MODE_NONE || member->bbs_rendering_editor) {
+                    member->editor_mode != SESSION_EDITOR_MODE_NONE ||
+                    member->bbs_rendering_editor ||
+                    session_in_protected_section(member)) {
                     if (sink_targets != nullptr) {
                         if (atomic_load(&member->room_snapshot_retired)) {
                             continue;
@@ -1061,6 +1068,11 @@ cleanup:
     return success;
 }
 
+static bool host_archive_append_entry(host_t *host,
+                                      const chat_history_entry_t *entry);
+static bool host_state_stream_open(const char *path, FILE **out_fp,
+                                   uint32_t *version, uint32_t *history_count);
+
 static bool host_history_append_locked(host_t *host,
                                        const chat_history_entry_t *entry)
 {
@@ -1085,10 +1097,12 @@ static bool host_history_append_locked(host_t *host,
     if (cache_limit == 0U || host->history_count < cache_limit) {
         host->history[host->history_count++] = *entry;
     } else if (host->history_count > 0U) {
+        chat_history_entry_t evicted = host->history[0];
         memmove(host->history, host->history + 1,
                 (host->history_count - 1U) * sizeof(host->history[0]));
         host->history[host->history_count - 1U] = *entry;
         host->history_start_index += 1U;
+        host_archive_append_entry(host, &evicted);
     } else {
         host->history[0] = *entry;
         host->history_count = 1U;
@@ -1217,6 +1231,193 @@ static bool host_state_write_history_entry(FILE *fp,
 
     return fwrite(&serialized, sizeof(serialized), 1U, fp) == 1U;
 }
+
+bool host_archive_resolve_path(host_t *host, time_t created_at,
+                                      char *out, size_t out_size)
+{
+    if (host == nullptr || out == nullptr || out_size == 0U) {
+        return false;
+    }
+
+    const char *archive_dir = getenv("CHATTER_ARCHIVE_DIR");
+    if (archive_dir == nullptr || archive_dir[0] == '\0') {
+        archive_dir = getenv("CHATTER_STATE_DIR");
+    }
+
+    char base_dir[PATH_MAX];
+    base_dir[0] = '\0';
+    if (archive_dir != nullptr && archive_dir[0] != '\0') {
+        snprintf(base_dir, sizeof(base_dir), "%s", archive_dir);
+    } else if (host->state_file_path[0] != '\0') {
+        const char *last_slash = strrchr(host->state_file_path, '/');
+        if (last_slash != nullptr) {
+            size_t len = (size_t)(last_slash - host->state_file_path);
+            if (len >= sizeof(base_dir)) {
+                len = sizeof(base_dir) - 1U;
+            }
+            memcpy(base_dir, host->state_file_path, len);
+            base_dir[len] = '\0';
+        }
+    }
+
+    struct tm utc;
+    time_t t = created_at;
+    if (gmtime_r(&t, &utc) == nullptr) {
+        utc = (struct tm){0};
+    }
+
+    int written;
+    if (base_dir[0] != '\0') {
+        written = snprintf(out, out_size, "%s/chat_archive_%04d-%02d-%02d.dat",
+                           base_dir, utc.tm_year + 1900, utc.tm_mon + 1,
+                           utc.tm_mday);
+    } else {
+        written = snprintf(out, out_size, "chat_archive_%04d-%02d-%02d.dat",
+                           utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday);
+    }
+    return written > 0 && (size_t)written < out_size;
+}
+
+static bool host_archive_append_entry(host_t *host,
+                                      const chat_history_entry_t *entry)
+{
+    if (host == nullptr || entry == nullptr) {
+        return false;
+    }
+
+    if (!atomic_load(&host->chat_archive_enabled)) {
+        return true;
+    }
+
+    char path[PATH_MAX];
+    if (!host_archive_resolve_path(host, entry->created_at, path, sizeof(path))) {
+        return false;
+    }
+
+    if (!host_ensure_private_data_path(host, path, true)) {
+        return false;
+    }
+
+    bool existed = (access(path, F_OK) == 0);
+    FILE *fp = fopen(path, "r+b");
+    if (fp == nullptr) {
+        fp = fopen(path, "wb");
+    }
+    if (fp == nullptr) {
+        return false;
+    }
+
+    uint32_t history_count = 0U;
+    if (existed) {
+        host_state_header_v1_t base_header = {0};
+        if (fread(&base_header, sizeof(base_header), 1U, fp) == 1U &&
+            base_header.magic == HOST_STATE_MAGIC &&
+            base_header.version == HOST_STATE_VERSION) {
+            history_count = base_header.history_count;
+        }
+        fseeko(fp, 0, SEEK_END);
+    } else {
+        host_state_header_t header = {0};
+        header.base.magic = HOST_STATE_MAGIC;
+        header.base.version = HOST_STATE_VERSION;
+        header.base.history_count = 0U;
+        header.base.preference_count = 0U;
+        header.legacy_sound_count = 0U;
+        header.grant_count = 0U;
+        header.next_message_id = 1U;
+        header.captcha_enabled = 0U;
+        header.geo_language_enabled = 0U;
+        memset(header.reserved, 0, sizeof(header.reserved));
+        if (fwrite(&header, sizeof(header), 1U, fp) != 1U) {
+            fclose(fp);
+            return false;
+        }
+    }
+
+    if (!host_state_write_history_entry(fp, entry)) {
+        fclose(fp);
+        return false;
+    }
+
+    history_count += 1U;
+    fseeko(fp, offsetof(host_state_header_v1_t, history_count), SEEK_SET);
+    fwrite(&history_count, sizeof(history_count), 1U, fp);
+
+    fflush(fp);
+    int fd = fileno(fp);
+    if (fd >= 0) {
+        fsync(fd);
+    }
+    fclose(fp);
+    chmod(path, S_IRUSR | S_IWUSR);
+    return true;
+}
+
+size_t host_archive_read_date(host_t *host, const char *date_str,
+                              chat_history_entry_t **out_entries)
+{
+    if (host == nullptr || date_str == nullptr || out_entries == nullptr) {
+        return 0U;
+    }
+    *out_entries = nullptr;
+
+    struct tm parsed = {0};
+    if (sscanf(date_str, "%d-%d-%d", &parsed.tm_year, &parsed.tm_mon,
+               &parsed.tm_mday) != 3) {
+        return 0U;
+    }
+    parsed.tm_year -= 1900;
+    parsed.tm_mon -= 1;
+    parsed.tm_isdst = -1;
+
+    time_t t = timegm(&parsed);
+    if (t == (time_t)-1) {
+        return 0U;
+    }
+
+    char path[PATH_MAX];
+    if (!host_archive_resolve_path(host, t, path, sizeof(path))) {
+        return 0U;
+    }
+
+    FILE *fp = nullptr;
+    uint32_t version = 0U;
+    uint32_t history_count = 0U;
+    if (!host_state_stream_open(path, &fp, &version, &history_count)) {
+        return 0U;
+    }
+
+    if (history_count == 0U) {
+        fclose(fp);
+        return 0U;
+    }
+
+    chat_history_entry_t *entries =
+        (chat_history_entry_t *)sshc_gc_calloc(history_count, sizeof(*entries));
+    if (entries == nullptr) {
+        fclose(fp);
+        return 0U;
+    }
+
+    size_t loaded = 0U;
+    for (uint32_t idx = 0U; idx < history_count; ++idx) {
+        chat_history_entry_t entry = {0};
+        if (!host_state_read_history_entry(fp, version, &entry)) {
+            break;
+        }
+        entries[loaded++] = entry;
+    }
+    fclose(fp);
+
+    if (loaded == 0U) {
+        sshc_gc_free(entries);
+        return 0U;
+    }
+
+    *out_entries = entries;
+    return loaded;
+}
+
 static bool host_state_stream_open(const char *path, FILE **out_fp,
                                    uint32_t *version, uint32_t *history_count)
 {

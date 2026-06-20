@@ -527,6 +527,10 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         session_handle_bbs(ctx, (args != nullptr && args[0] != '\0') ? args
                                                                      : nullptr);
         return;
+    } else if (session_parse_command_any(ctx, "/archive", effective_line,
+                                         &args)) {
+        session_handle_archive(ctx, args);
+        return;
     }
 
     else if (session_parse_command_any(ctx, "/resetpw", effective_line,

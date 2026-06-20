@@ -1642,8 +1642,6 @@ static int session_utf8_char_width(const char *bytes, size_t length);
 static bool host_history_record_system(host_t *host, const char *message,
                                        chat_history_entry_t *stored_entry);
 static void host_history_cleanup_expired(host_t *host);
-static void session_send_history_entry(session_ctx_t *ctx,
-                                       const chat_history_entry_t *entry);
 static void session_deliver_outgoing_message(session_ctx_t *ctx,
                                              const char *message,
                                              bool clear_prompt_text);

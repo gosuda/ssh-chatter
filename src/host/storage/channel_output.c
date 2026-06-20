@@ -646,7 +646,7 @@ static void session_output_unlock(session_ctx_t *ctx)
 }
 
 // Output buffering functions to prevent flickering
-static void session_output_buffer_start(session_ctx_t *ctx)
+void session_output_buffer_start(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {
         return;
@@ -683,7 +683,7 @@ static void session_output_buffer_flush(session_ctx_t *ctx)
     }
 }
 
-static void session_output_buffer_stop(session_ctx_t *ctx)
+void session_output_buffer_stop(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {
         return;

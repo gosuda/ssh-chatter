@@ -3,6 +3,8 @@
  * @desc Aggregates host_transport implementation parts.
  */
 
+#include "internal.h"
+
 #include "transport/keys.c"
 #include "transport/connection_guard.c"
 #include "transport/color_and_palette.c"

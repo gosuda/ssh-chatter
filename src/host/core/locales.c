@@ -6,6 +6,7 @@ static const char kTranslationQuotaSystemMessage[] =
     "later.";
 
 static const char *const kSessionCommandNames[] = {
+    "archive",
     "asciiart",
     "audio",
     "ban",
@@ -1205,6 +1206,19 @@ static const session_command_alias_t kSessionCommandAliases[] = {
         .localized =
             {
                 [SESSION_UI_LANGUAGE_KO] = "/차단",
+            },
+    },
+    {
+        .canonical = "/archive",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "/아카이브",
+                [SESSION_UI_LANGUAGE_JP] = "/アーカイブ",
+                [SESSION_UI_LANGUAGE_ZH] = "/档案",
+                [SESSION_UI_LANGUAGE_RU] = "/архив",
+                [SESSION_UI_LANGUAGE_DE] = "/archiv",
+                [SESSION_UI_LANGUAGE_FR] = "/archive",
+                [SESSION_UI_LANGUAGE_PL] = "/archiwum",
             },
     },
     {

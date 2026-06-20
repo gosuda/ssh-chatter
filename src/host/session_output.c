@@ -3,6 +3,8 @@
  * @desc Aggregates host_session_output implementation parts.
  */
 
+#include "internal.h"
+
 #include "output/screen.c"
 #include "output/banner.c"
 #include "output/messaging.c"

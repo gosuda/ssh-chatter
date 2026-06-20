@@ -3,6 +3,8 @@
  * @desc Aggregates host_session_commands implementation parts.
  */
 
+#include "internal.h"
+
 #include "commands/media.c"
 #include "commands/mail.c"
 #include "commands/social.c"
@@ -12,3 +14,4 @@
 #include "commands/bbs.c"
 #include "commands/rss.c"
 #include "commands/art.c"
+#include "commands/archive.c"

@@ -32,7 +32,7 @@
  *    - sshc_gc_realloc: allocates the new block via ttak_fastalloc,
  *      copies the payload, then releases the old GC node.
  *    - Context destroy: ttak_epoch_gc_destroy drains the tree and calls
- *      ttak_mem_free on every remaining registered block.
+ *      ttak_mem_freep on every remaining registered block.
  */
 
 #include "ssh_chatter/memory_manager.h"
@@ -202,14 +202,14 @@ static void sshc_memory_context_detach_and_free_ptr(
             ttak_mem_tree_remove(&ctx->epoch_gc.tree, node);
         }
     }
-    ttak_mem_free(ptr);
+    ttak_mem_freep((void **)ptr);
 }
 
 static void sshc_memory_context_defer_ptr(
     sshc_memory_context_t *ctx, void *ptr)
 {
     if (ctx == nullptr || ptr == nullptr) {
-        ttak_mem_free(ptr);
+        ttak_mem_freep((void **)ptr);
         return;
     }
 
@@ -220,7 +220,7 @@ static void sshc_memory_context_defer_ptr(
         pthread_mutex_unlock(&node->lock);
         ttak_mem_node_release(node);
     } else {
-        ttak_mem_free(ptr);
+        ttak_mem_freep((void **)ptr);
     }
 }
 
@@ -294,7 +294,7 @@ void sshc_memory_runtime_shutdown(void)
         sshc_memory_context_t *next = ctx->next;
         if (ctx != sshc_memory_context_global()) {
             /* Drain the per-context tracking list.
-             * Do NOT call ttak_mem_free on allocation->ptr here –
+             * Do NOT call ttak_mem_freep on allocation->ptr here –
              * ttak_epoch_gc_destroy → ttak_mem_tree_destroy handles that. */
             pthread_mutex_lock(&ctx->mutex);
             sshc_memory_allocation_t *allocation = ctx->allocations;
@@ -341,7 +341,7 @@ void sshc_memory_runtime_shutdown(void)
         if (node) {
             ttak_mem_tree_remove(&sshc_global_context.epoch_gc.tree, node);
         }
-        ttak_mem_free(allocation->ptr);
+        ttak_mem_freep(&allocation->ptr);
         ttak_mem_free(allocation);
         allocation = next_alloc;
     }
@@ -735,7 +735,7 @@ void sshc_gc_free(void *ptr)
         ttak_mem_free(allocation);
     } else {
         /* Unknown to this registry: treat as already released or foreign.
-         * Calling ttak_mem_free here can turn shutdown double-cleanup into
+         * Calling ttak_mem_freep here can turn shutdown double-cleanup into
          * lock-after-free on libttak's allocation header. */
         return;
     }
@@ -802,7 +802,7 @@ void sshc_gc_init(void)
 
 static void sshc_epoch_free_callback(void *ptr)
 {
-    ttak_mem_free(ptr);
+    ttak_mem_freep(&ptr);
 }
 
 void sshc_epoch_thread_enter(void)

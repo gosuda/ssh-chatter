@@ -25,7 +25,8 @@ static void session_handle_kick(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    session_ctx_t *target = chat_room_find_user(&ctx->owner->room, target_name);
+    session_ctx_t *target =
+        chat_room_find_user_ref(&ctx->owner->room, target_name);
     if (target == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(message, sizeof(message), "User '%s' is not connected.",
@@ -36,33 +37,29 @@ static void session_handle_kick(session_ctx_t *ctx, const char *arguments)
 
     if (target == ctx) {
         session_send_system_line(ctx, "You cannot kick yourself.");
+        chat_room_release_user_ref(target);
         return;
     }
 
+    char kicked_name[SSH_CHATTER_USERNAME_LEN];
+    snprintf(kicked_name, sizeof(kicked_name), "%s", target->user.name);
+
     char notice[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(notice, sizeof(notice), "* [%s] has been kicked by [%s]",
-             target->user.name, ctx->user.name);
+             kicked_name, ctx->user.name);
     host_history_record_system(ctx->owner, notice, nullptr);
     chat_room_broadcast(&ctx->owner->room, notice, nullptr);
 
-    const bool target_active = session_transport_active(target);
-    if (!target_active || (target->transport_kind == SESSION_TRANSPORT_SSH &&
-                           target->session == nullptr)) {
-        target->should_exit = true;
-        target->has_joined_room = false;
-        chat_room_remove(&ctx->owner->room, target);
-        session_send_system_line(ctx, "User removed from the chat.");
-    } else {
+    if (session_transport_active(target)) {
         session_send_system_line(target,
                                  "You have been kicked by an operator.");
-        target->should_exit = true;
         session_transport_request_close(target);
-        target->has_joined_room = false;
-        chat_room_remove(&ctx->owner->room, target);
-        session_send_system_line(ctx, "User removed from the chat.");
     }
+    target->should_exit = true;
+    chat_room_release_user_ref(target);
+    session_send_system_line(ctx, "User removed from the chat.");
 
-    printf("[kick] %s kicked %s\n", ctx->user.name, target->user.name);
+    printf("[kick] %s kicked %s\n", ctx->user.name, kicked_name);
 }
 
 static void session_handle_ban_name(session_ctx_t *ctx, const char *arguments)

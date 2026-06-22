@@ -1398,6 +1398,9 @@ static void session_send_private_message_line(session_ctx_t *ctx,
                                               const char *message);
 static session_ctx_t *chat_room_find_user(chat_room_t *room,
                                           const char *username);
+static session_ctx_t *chat_room_find_user_ref(chat_room_t *room,
+                                              const char *username);
+static void chat_room_release_user_ref(session_ctx_t *session);
 static bool host_is_ip_banned(host_t *host, const char *ip);
 static bool host_is_username_banned(host_t *host, const char *username);
 static bool host_add_ban_entry(host_t *host, const char *username,

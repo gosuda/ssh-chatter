@@ -201,6 +201,53 @@ static session_ctx_t *chat_room_find_user(chat_room_t *room,
     return result;
 }
 
+static session_ctx_t *chat_room_find_user_ref(chat_room_t *room,
+                                              const char *username)
+{
+    if (room == nullptr || username == nullptr) {
+        return nullptr;
+    }
+
+    session_ctx_t *result = nullptr;
+    ttak_mutex_lock(&room->lock);
+    for (size_t idx = 0; idx < room->member_count; ++idx) {
+        session_ctx_t *member = room->members[idx];
+        if (member == nullptr) {
+            continue;
+        }
+
+        if (strncmp(member->user.name, username, SSH_CHATTER_USERNAME_LEN) !=
+            0) {
+            continue;
+        }
+
+        if (atomic_load(&member->room_snapshot_retired)) {
+            continue;
+        }
+
+        atomic_fetch_add(&member->room_snapshot_refs, 1U);
+        if (atomic_load(&member->room_snapshot_retired)) {
+            atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+            continue;
+        }
+
+        result = member;
+        break;
+    }
+    ttak_mutex_unlock(&room->lock);
+
+    return result;
+}
+
+static void chat_room_release_user_ref(session_ctx_t *session)
+{
+    if (session == nullptr) {
+        return;
+    }
+
+    atomic_fetch_sub(&session->room_snapshot_refs, 1U);
+}
+
 static bool host_username_reserved(host_t *host, const char *username)
 {
     if (host == nullptr || username == nullptr || username[0] == '\0') {

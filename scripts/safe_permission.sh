@@ -63,6 +63,12 @@ DEFAULT_TARGETS=(
   "${CHATTER_GEMINI_COOLDOWN_FILE:-$STATE_ROOT/gemini_cooldown.dat}"
   "${CHATTER_STATE_FILE:-$STATE_ROOT/chatter_state.dat}"
   "${CHATTER_ELIZA_MEMORY_FILE:-$STATE_ROOT/eliza_memory.dat}"
+  "${CHATTER_PW_AUTH_FILE:-$STATE_ROOT/pw_auth.dat}"
+  "${CHATTER_NICKNAME_CLAIM_FILE:-$STATE_ROOT/nickname_claims.dat}"
+)
+
+DEFAULT_DIRECTORIES=(
+  "${CHATTER_USER_DATA_ROOT:-$STATE_ROOT/user-data}"
 )
 
 declare -a TARGETS=()
@@ -115,4 +121,23 @@ secure_file() {
 
 for path in "${TARGETS[@]}"; do
   secure_file "$path"
+done
+
+for directory in "${DEFAULT_DIRECTORIES[@]}"; do
+  if [[ -z "$directory" ]]; then
+    continue
+  fi
+  resolved=$(resolve_path "$directory")
+  if [[ -n "$STATE_ROOT" ]]; then
+    case "$resolved" in
+      "$STATE_ROOT"|"$STATE_ROOT"/*) ;;
+      *)
+        echo "Skipping $resolved (outside $STATE_ROOT)" >&2
+        continue
+        ;;
+    esac
+  fi
+  install -d -m 750 "$resolved"
+  install -d -m 750 "$resolved/profiles"
+  echo "Secured $resolved"
 done

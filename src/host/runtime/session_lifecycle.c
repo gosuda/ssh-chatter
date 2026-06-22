@@ -642,15 +642,31 @@ static bool session_run_login_tui(session_ctx_t *ctx)
             ttak_mutex_lock(&ctx->owner->user_data_lock);
             user_data_ensure_exists(ctx->owner->user_data_root, ctx->user.name, ctx->client_ip, &ctx->user_data);
 
-            for (size_t i = 0; i < 16; ++i) {
-                ctx->user_data.password_salt[i] = (uint8_t)(rand() % 256);
-            }
+            security_layer_generate_salt(ctx->user_data.password_salt);
             security_layer_hash_password(cursor, ctx->user_data.password_salt, ctx->user_data.password_hash);
             
             bool success = user_data_save(ctx->owner->user_data_root, &ctx->user_data, ctx->client_ip);
             ttak_mutex_unlock(&ctx->owner->user_data_lock);
 
             if (success) {
+                if (!session_pw_auth_update(
+                        ctx->owner, ctx->user.name, ctx->user_data.password_salt,
+                        sizeof(ctx->user_data.password_salt),
+                        ctx->user_data.password_hash,
+                        sizeof(ctx->user_data.password_hash), false,
+                        user_data_fixnick_enabled(&ctx->user_data),
+                        ctx->client_ip, true)) {
+                    session_send_system_line(
+                        ctx, "Warning: unable to update pw_auth.dat.");
+                }
+                if (!host_nickname_claim_upsert(
+                        ctx->owner, ctx, ctx->user.name,
+                        ctx->user_data.password_salt,
+                        ctx->user_data.password_hash, false,
+                        user_data_fixnick_enabled(&ctx->user_data))) {
+                    session_send_system_line(
+                        ctx, "Warning: unable to create runtime nickname claim.");
+                }
                 session_send_system_line(ctx, loc->msg_signup_success);
                 session_send_system_line(ctx, "==================== DISCLAIMER ====================");
                 session_send_system_line(ctx, "By signing up, you agree that your nickname and password hash");

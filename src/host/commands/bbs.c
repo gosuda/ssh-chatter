@@ -2461,10 +2461,7 @@ void session_bbs_profile(session_ctx_t *ctx, const char *username)
     /* Load user data to get profile picture */
     user_data_record_t record = {0};
     bool has_data = false;
-    const char *root = getenv("CHATTER_USER_DATA_ROOT");
-    if (root == nullptr || root[0] == '\0') {
-        root = "/etc/ssh-chatter/user-data";
-    }
+    const char *root = ctx->owner->user_data_root;
     if (user_data_load(root, target, "", &record)) {
         has_data = true;
     }
@@ -2523,10 +2520,7 @@ void session_bbs_set_profile(session_ctx_t *ctx)
         session_send_system_line(ctx, "No ASCII art pending. Use /asciiart to create one first.");
         return;
     }
-    const char *root = getenv("CHATTER_USER_DATA_ROOT");
-    if (root == nullptr || root[0] == '\0') {
-        root = "/etc/ssh-chatter/user-data";
-    }
+    const char *root = (ctx->owner != nullptr) ? ctx->owner->user_data_root : "";
     user_data_record_t record = {0};
     if (!user_data_load(root, ctx->user.name, ctx->client_ip, &record)) {
         if (!user_data_init(&record, ctx->user.name, ctx->client_ip)) {
@@ -2579,10 +2573,7 @@ void session_bbs_setavatar(session_ctx_t *ctx, const char *name)
         return;
     }
 
-    const char *root = getenv("CHATTER_USER_DATA_ROOT");
-    if (root == nullptr || root[0] == '\0') {
-        root = "/etc/ssh-chatter/user-data";
-    }
+    const char *root = (ctx->owner != nullptr) ? ctx->owner->user_data_root : "";
     user_data_record_t record = {0};
     if (!user_data_load(root, ctx->user.name, ctx->client_ip, &record)) {
         if (!user_data_init(&record, ctx->user.name, ctx->client_ip)) {
@@ -2792,4 +2783,3 @@ void session_bbs_select_board(session_ctx_t *ctx, const char *arguments)
 #undef session_send_system_line
 #undef session_bbs_render_editor
 #undef session_bbs_render_post
-

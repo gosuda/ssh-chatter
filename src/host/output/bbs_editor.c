@@ -120,10 +120,9 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
     strftime(bumped_line, sizeof(bumped_line),
              "Last activity: %Y-%m-%d %H:%M:%S", &bumped_tm);
 
-    const char *data_root = getenv("CHATTER_USER_DATA_ROOT");
-    if (data_root == nullptr || data_root[0] == '\0') {
-        data_root = "/etc/ssh-chatter/user-data";
-    }
+    const char *data_root =
+        (ctx != nullptr && ctx->owner != nullptr) ? ctx->owner->user_data_root
+                                                  : "";
 
     user_data_record_t author_record = {0};
     if (user_data_load(data_root, post->author, "", &author_record) &&

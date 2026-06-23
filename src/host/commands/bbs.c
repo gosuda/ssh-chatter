@@ -1701,6 +1701,82 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
     session_bbs_render_post(ctx, &snapshot, "Post created.", true);
 }
 
+static void session_bbs_select_avatar_interactive(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    session_send_system_line(ctx, "");
+    session_send_system_line(ctx, "========================================");
+    session_send_system_line(ctx, "  Choose your Profile Logo (Avatar)");
+    session_send_system_line(ctx, "----------------------------------------");
+    session_send_system_line(ctx, "  [1] Monitor");
+    session_send_system_line(ctx, "  [2] Mouse");
+    session_send_system_line(ctx, "  [3] Human");
+    session_send_system_line(ctx, "  [4] Mushroom");
+    session_send_system_line(ctx, "  [5] None / Keep Current");
+    session_send_system_line(ctx, "----------------------------------------");
+    session_send_system_line(ctx, "  Enter choice (1-5):");
+
+    char ch = '\0';
+    const int read_result = session_transport_read(ctx, &ch, 1, -1);
+    if (read_result <= 0) {
+        return;
+    }
+    session_local_echo_char(ctx, ch);
+    session_local_echo_char(ctx, '\n');
+
+    session_avatar_type_t chosen = AVATAR_NONE;
+    bool change = false;
+    if (ch == '1') {
+        chosen = AVATAR_MONITOR;
+        change = true;
+    } else if (ch == '2') {
+        chosen = AVATAR_MOUSE;
+        change = true;
+    } else if (ch == '3') {
+        chosen = AVATAR_HUMAN;
+        change = true;
+    } else if (ch == '4') {
+        chosen = AVATAR_MUSHROOM;
+        change = true;
+    } else if (ch == '5') {
+        chosen = AVATAR_NONE;
+        change = true;
+    }
+
+    if (change) {
+        const char *root = (ctx->owner != nullptr) ? ctx->owner->user_data_root : "";
+        user_data_record_t record = {0};
+        if (!user_data_load(root, ctx->user.name, ctx->client_ip, &record)) {
+            if (!user_data_init(&record, ctx->user.name, ctx->client_ip)) {
+                session_send_system_line(ctx, "Failed to initialize user data.");
+                return;
+            }
+        }
+
+        if (chosen == AVATAR_NONE) {
+            record.profile_picture[0] = '\0';
+        } else {
+            const char *art = kSessionAvatarArt[chosen];
+            size_t len = strlen(art);
+            if (len >= sizeof(record.profile_picture)) {
+                len = sizeof(record.profile_picture) - 1;
+            }
+            memcpy(record.profile_picture, art, len);
+            record.profile_picture[len] = '\0';
+        }
+
+        if (user_data_save(root, &record, ctx->client_ip)) {
+            session_send_system_line(
+                ctx, chosen == AVATAR_NONE ? "Profile logo cleared." : "Profile logo updated.");
+        } else {
+            session_send_system_line(ctx, "Failed to save profile logo.");
+        }
+    }
+}
+
 static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr) {
@@ -1890,6 +1966,7 @@ static void session_bbs_begin_post(session_ctx_t *ctx, const char *arguments)
                 sizeof(notice) - strlen(notice) - 1U);
     }
 
+    session_bbs_select_avatar_interactive(ctx);
     session_bbs_render_editor(ctx, notice[0] != '\0' ? notice : nullptr);
 }
 

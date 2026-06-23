@@ -2178,14 +2178,21 @@ static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
         return;
     }
     ttak_mutex_lock(&host->lock);
-    bbs_post_t *post = host_find_bbs_post_locked(host, id);
-    if (post == nullptr || !post->in_use) {
+    bbs_post_t *post = nullptr;
+    for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {
+        if (host->bbs_posts[idx].id == id) {
+            post = &host->bbs_posts[idx];
+            break;
+        }
+    }
+    if (post == nullptr) {
         ttak_mutex_unlock(&host->lock);
         session_send_system_line(ctx, "No post exists with that identifier.");
         return;
     }
 
-    bool can_delete = (strncmp(post->author, ctx->user.name,
+    bool can_delete = (post->author[0] == '\0' ||
+                       strncmp(post->author, ctx->user.name,
                                SSH_CHATTER_USERNAME_LEN) == 0) ||
                       ctx->user.is_operator || ctx->user.is_lan_operator;
     if (!can_delete) {
@@ -2195,6 +2202,8 @@ static void session_bbs_delete(session_ctx_t *ctx, uint64_t id)
         return;
     }
 
+    post->in_use = false;
+    post->id = 0U;
     host_clear_bbs_post_locked(host, post);
     host_bbs_state_save_locked(host);
     ttak_mutex_unlock(&host->lock);

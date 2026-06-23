@@ -918,7 +918,7 @@ static bool session_acquire_cpu_slot(session_ctx_t *ctx)
     for (;;) {
         bool acquired = false;
         ttak_mutex_lock(&host->lock);
-        if (host->cpu_slot_in_use < host->cpu_slot_limit) {
+        if (host->cpu_slot_in_use < 256U) {
             size_t slot_index = host->cpu_slot_in_use;
             host->cpu_slot_in_use++;
             if (slot_index < 64U) {
@@ -1152,9 +1152,13 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
     if (ctx->in_rss_mode || ctx->ui_mode == SESSION_UI_MODE_RSS) {
         if (strcmp(normalized, "/exit") == 0 ||
             strcasecmp(normalized, "exit") == 0) {
-            session_rss_exit(ctx, nullptr);
-            ctx->ui_mode = SESSION_UI_MODE_ANYTHING;
-            session_send_system_line(ctx, "Returned to general chat mode.");
+            if (ctx->in_rss_mode) {
+                session_rss_exit(ctx, nullptr);
+            } else {
+                session_rss_exit(ctx, nullptr);
+                ctx->ui_mode = SESSION_UI_MODE_ANYTHING;
+                session_send_system_line(ctx, "Returned to general chat mode.");
+            }
         } else {
             const char *rss_args = nullptr;
             if (session_parse_command(normalized, "/rss", &rss_args)) {
@@ -1163,10 +1167,14 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
                          rss_args != nullptr ? rss_args : "");
                 trim_whitespace_inplace(rss_working);
                 if (strcasecmp(rss_working, "exit") == 0) {
-                    session_rss_exit(ctx, nullptr);
-                    ctx->ui_mode = SESSION_UI_MODE_ANYTHING;
-                    session_send_system_line(ctx,
-                                             "Returned to general chat mode.");
+                    if (ctx->in_rss_mode) {
+                        session_rss_exit(ctx, nullptr);
+                    } else {
+                        session_rss_exit(ctx, nullptr);
+                        ctx->ui_mode = SESSION_UI_MODE_ANYTHING;
+                        session_send_system_line(ctx,
+                                                 "Returned to general chat mode.");
+                    }
                 } else {
                     ctx->in_rss_mode = true;
                     session_handle_rss(ctx, rss_args);

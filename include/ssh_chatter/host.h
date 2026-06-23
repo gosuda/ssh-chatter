@@ -1552,6 +1552,9 @@ static inline bool session_in_protected_section(const session_ctx_t *ctx)
         return false;
     }
     return ctx->in_archive_mode || ctx->in_bbs_mode || ctx->in_rss_mode ||
+           ctx->ui_mode == SESSION_UI_MODE_RSS ||
+           ctx->ui_mode == SESSION_UI_MODE_BBS ||
+           ctx->ui_mode == SESSION_UI_MODE_GAME ||
            ctx->game.active;
 }
 

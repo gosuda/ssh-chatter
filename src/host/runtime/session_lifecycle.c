@@ -1072,65 +1072,67 @@ static void *session_thread(void *arg)
         const session_ui_locale_t *locale = session_ui_get_locale(ctx);
         const char *prefix = session_command_prefix(ctx);
 
-        session_send_system_line(
-            ctx,
-            "Chat history starts hidden. Press the UpArrow/DownArrow keys to "
-            "load older messages when you need them.");
-        if (locale->help_scroll_hint != nullptr &&
-            locale->help_scroll_hint[0] != '\0') {
-            session_send_system_line(ctx, locale->help_scroll_hint);
+        if (ctx->ui_mode == SESSION_UI_MODE_ANYTHING) {
+            session_send_system_line(
+                ctx,
+                "Chat history starts hidden. Press the UpArrow/DownArrow keys to "
+                "load older messages when you need them.");
+            if (locale->help_scroll_hint != nullptr &&
+                locale->help_scroll_hint[0] != '\0') {
+                session_send_system_line(ctx, locale->help_scroll_hint);
+            }
+
+            if (locale->welcome_help_hint != nullptr &&
+                locale->welcome_help_hint[0] != '\0') {
+                const char *args[] = {prefix};
+                char message[SSH_CHATTER_MESSAGE_LIMIT];
+                session_format_template(locale->welcome_help_hint, args,
+                                        sizeof(args) / sizeof(args[0]), message,
+                                        sizeof(message));
+                session_send_system_line(ctx, message);
+            }
+
+            if (locale->help_hint_extra != nullptr &&
+                locale->help_hint_extra[0] != '\0') {
+                const char *args[] = {prefix};
+                char message[SSH_CHATTER_MESSAGE_LIMIT];
+                session_format_template(locale->help_hint_extra, args,
+                                        sizeof(args) / sizeof(args[0]), message,
+                                        sizeof(message));
+                session_send_system_line(ctx, message);
+            }
+
+            if (locale->mode_usage != nullptr && locale->mode_usage[0] != '\0') {
+                const char *args[] = {prefix};
+                char message[SSH_CHATTER_MESSAGE_LIMIT];
+                session_format_template(locale->mode_usage, args,
+                                        sizeof(args) / sizeof(args[0]), message,
+                                        sizeof(message));
+                session_send_system_line(ctx, message);
+            }
+
+            if (locale->mode_explain_command != nullptr &&
+                locale->mode_explain_command[0] != '\0') {
+                const char *args[] = {prefix};
+                char message[SSH_CHATTER_MESSAGE_LIMIT];
+                session_format_template(locale->mode_explain_command, args,
+                                        sizeof(args) / sizeof(args[0]), message,
+                                        sizeof(message));
+                session_send_system_line(ctx, message);
+            }
+
+            char bbs_hint[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(bbs_hint, sizeof(bbs_hint),
+                     "This room is alive. Use %sbbs list to browse posts.", prefix);
+            session_send_system_line(ctx, bbs_hint);
+
+            char slow_contact[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(slow_contact, sizeof(slow_contact),
+                     "Replies may be slow. [MORSE] feed is OFF by default; %smorse on to "
+                     "enable and %smorse-chat <text> to send Morse.",
+                     prefix, prefix);
+            session_send_system_line(ctx, slow_contact);
         }
-
-        if (locale->welcome_help_hint != nullptr &&
-            locale->welcome_help_hint[0] != '\0') {
-            const char *args[] = {prefix};
-            char message[SSH_CHATTER_MESSAGE_LIMIT];
-            session_format_template(locale->welcome_help_hint, args,
-                                    sizeof(args) / sizeof(args[0]), message,
-                                    sizeof(message));
-            session_send_system_line(ctx, message);
-        }
-
-        if (locale->help_hint_extra != nullptr &&
-            locale->help_hint_extra[0] != '\0') {
-            const char *args[] = {prefix};
-            char message[SSH_CHATTER_MESSAGE_LIMIT];
-            session_format_template(locale->help_hint_extra, args,
-                                    sizeof(args) / sizeof(args[0]), message,
-                                    sizeof(message));
-            session_send_system_line(ctx, message);
-        }
-
-        if (locale->mode_usage != nullptr && locale->mode_usage[0] != '\0') {
-            const char *args[] = {prefix};
-            char message[SSH_CHATTER_MESSAGE_LIMIT];
-            session_format_template(locale->mode_usage, args,
-                                    sizeof(args) / sizeof(args[0]), message,
-                                    sizeof(message));
-            session_send_system_line(ctx, message);
-        }
-
-        if (locale->mode_explain_command != nullptr &&
-            locale->mode_explain_command[0] != '\0') {
-            const char *args[] = {prefix};
-            char message[SSH_CHATTER_MESSAGE_LIMIT];
-            session_format_template(locale->mode_explain_command, args,
-                                    sizeof(args) / sizeof(args[0]), message,
-                                    sizeof(message));
-            session_send_system_line(ctx, message);
-        }
-
-        char bbs_hint[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(bbs_hint, sizeof(bbs_hint),
-                 "This room is alive. Use %sbbs list to browse posts.", prefix);
-        session_send_system_line(ctx, bbs_hint);
-
-        char slow_contact[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(slow_contact, sizeof(slow_contact),
-                 "Replies may be slow. [MORSE] feed is OFF by default; %smorse on to "
-                 "enable and %smorse-chat <text> to send Morse.",
-                 prefix, prefix);
-        session_send_system_line(ctx, slow_contact);
 
         // Add retro command hint
         {

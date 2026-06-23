@@ -62,6 +62,21 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
+    if (strcmp(command, "help") == 0 || strcmp(command, "도움말") == 0) {
+        session_send_system_line(ctx, "--------------------------------------------------");
+        session_send_system_line(ctx, "BBS Subcommands:");
+        session_send_system_line(ctx, "  list [all|hot|top|new] - List posts");
+        session_send_system_line(ctx, "  read <id>              - Read a post");
+        session_send_system_line(ctx, "  post <title>           - Create a post");
+        session_send_system_line(ctx, "  comment <id>|<text>    - Add a comment");
+        session_send_system_line(ctx, "  delete <id>            - Delete a post");
+        session_send_system_line(ctx, "  profile [username]     - View user profile");
+        session_send_system_line(ctx, "  setavatar <name>       - Set profile logo (monitor|mouse|human|mushroom|none)");
+        session_send_system_line(ctx, "  exit                   - Exit BBS mode");
+        session_send_system_line(ctx, "--------------------------------------------------");
+        return;
+    }
+
     ctx->in_bbs_mode = true;
 
     const char *canonical_command =

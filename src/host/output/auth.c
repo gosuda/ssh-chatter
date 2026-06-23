@@ -1107,6 +1107,7 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
             session_send_system_line(ctx, " - Write a Post:  Type '\033[1;32mpost <title>\033[0m' to start a draft.");
             session_send_system_line(ctx, " - Add a Comment: Type '\033[1;32mcomment <id>|<text>\033[0m' to reply.");
             session_send_system_line(ctx, " - Read a Post:   Type '\033[1;32mread <id>\033[0m' to view content.");
+            session_send_system_line(ctx, " - Set Avatar:    Type '\033[1;32msetavatar <name>\033[0m' to choose profile logo.");
             session_send_system_line(ctx, " - Leave BBS:     Type '\033[1;31mexit\033[0m' to return to general chat.");
             session_send_system_line(ctx, "--------------------------------------------------");
             session_release_cpu_slot(ctx);

@@ -520,6 +520,24 @@ static const session_help_entry_t kSessionHelpExtended[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "bbs setavatar <monitor|mouse|human|mushroom|none>",
+        .description =
+            {
+                "Set a profile logo (avatar) for BBS posts.",
+                "게시판 게시물용 프로필 로고(아바타)를 설정합니다.",
+                "掲示板投稿用のプロフィールロゴ（アバター）を設定します。",
+                "为公告板帖子设置头像（Profile logo）。",
+                "Установить аватар профиля для доски объявлений.",
+            },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "게시판 아바타설정 <monitor|mouse|human|mushroom|none>",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "video <url> [caption]",
         .description =
             {

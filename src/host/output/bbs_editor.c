@@ -3,7 +3,7 @@ const char * const kSessionAvatarArt[AVATAR_COUNT] = {
     [AVATAR_MONITOR]  =
         "   .-----------.\n"
         "   |  \033[1;36m^_^\033[0m      |\n"
-        "   |  \033[1;36m|===|\033[0m     |\n"
+        "   |  \033[1;36m|===|\033[0m    |\n"
         "   `-----------'\n"
         "        | |\n"
         "       _|_|_",
@@ -20,7 +20,7 @@ const char * const kSessionAvatarArt[AVATAR_COUNT] = {
         "      \033[1;31m_.-._\033[0m\n"
         "    \033[1;31m(     )\033[0m\n"
         "     \033[1;37m`---'\033[0m\n"
-        "      \033[1;37m| | |\033[0m",
+        "     \033[1;37m| | |\033[0m",
 };
 
 const char * const kSessionAvatarNames[AVATAR_COUNT] = {

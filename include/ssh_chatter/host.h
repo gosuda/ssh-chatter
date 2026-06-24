@@ -1150,6 +1150,7 @@ typedef struct host {
     bool user_data_ready;
     ttak_mutex_t user_data_lock;
     bool user_data_lock_initialized;
+    user_data_cache_entry_t user_data_cache[USER_DATA_CACHE_SIZE];
     ttak_mutex_t alpha_landers_lock;
     bool alpha_landers_lock_initialized;
     _Atomic bool security_filter_enabled;
@@ -1361,6 +1362,8 @@ void host_ddial_notify_admin_if_port_adjusted(host_t *host, session_ctx_t *ctx);
 uint64_t host_allocate_session_id(host_t *host);
 bool host_archive_resolve_path(host_t *host, time_t created_at,
                                       char *out, size_t out_size);
+bool host_bbs_acquire_storage(host_t *host);
+void host_ensure_idle_subsystems(host_t *host);
 size_t host_archive_read_date(host_t *host, const char *date_str,
                               chat_history_entry_t **out_entries);
 bool host_post_client_message(host_t *host, const char *username,
@@ -1487,6 +1490,46 @@ static inline void host_protected_ips_ensure(host_t *host)
             SSH_CHATTER_MAX_PROTECTED_IPS, SSH_CHATTER_IP_LEN);
         host->protected_ip_capacity = SSH_CHATTER_MAX_PROTECTED_IPS;
     }
+}
+
+static inline void host_ai_chat_memory_release(host_t *host)
+{
+    if (host == nullptr || host->ai_chat_memory == nullptr) {
+        return;
+    }
+    sshc_gc_free(host->ai_chat_memory);
+    host->ai_chat_memory = nullptr;
+    host->ai_chat_memory_count = 0U;
+    host->ai_chat_memory_capacity = 0U;
+}
+
+static inline void host_eliza_memory_release(host_t *host)
+{
+    if (host == nullptr || host->eliza_memory == nullptr) {
+        return;
+    }
+    sshc_gc_free(host->eliza_memory);
+    host->eliza_memory = nullptr;
+    host->eliza_memory_count = 0U;
+    host->eliza_memory_capacity = 0U;
+}
+
+static inline void host_othello_games_release(host_t *host)
+{
+    if (host == nullptr || host->othello_games == nullptr) {
+        return;
+    }
+    sshc_gc_free(host->othello_games);
+    host->othello_games = nullptr;
+}
+
+static inline void host_gonu_games_release(host_t *host)
+{
+    if (host == nullptr || host->gonu_games == nullptr) {
+        return;
+    }
+    sshc_gc_free(host->gonu_games);
+    host->gonu_games = nullptr;
 }
 
 typedef enum {

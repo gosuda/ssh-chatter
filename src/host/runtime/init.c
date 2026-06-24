@@ -141,42 +141,6 @@ static void host_fix_overlapping_bbs_rss_paths(host_t *host)
            host->rss_state_file_path);
 }
 
-static void host_user_data_resolve_root(host_t *host)
-{
-    if (host == nullptr) {
-        return;
-    }
-
-    const char *root = getenv("CHATTER_USER_DATA_ROOT");
-    if (root != nullptr && root[0] != '\0') {
-        int written =
-            snprintf(host->user_data_root, sizeof(host->user_data_root), "%s",
-                     root);
-        if (written < 0 || (size_t)written >= sizeof(host->user_data_root)) {
-            humanized_log_error("mailbox", "user data root path is too long",
-                                ENAMETOOLONG);
-            host->user_data_root[0] = '\0';
-        }
-        return;
-    }
-
-    const char *state_dir = getenv("CHATTER_STATE_DIR");
-    if (state_dir != nullptr && state_dir[0] != '\0') {
-        int written =
-            snprintf(host->user_data_root, sizeof(host->user_data_root),
-                     "%s/user-data", state_dir);
-        if (written < 0 || (size_t)written >= sizeof(host->user_data_root)) {
-            humanized_log_error("mailbox", "user data root path is too long",
-                                ENAMETOOLONG);
-            host->user_data_root[0] = '\0';
-        }
-        return;
-    }
-
-    snprintf(host->user_data_root, sizeof(host->user_data_root), "%s",
-             "/var/lib/mailbox");
-}
-
 void host_init(host_t *host, auth_profile_t *auth)
 {
     if (host == nullptr) {
@@ -369,7 +333,24 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_nickname_claim_resolve_path(host);
     host->alpha_landers_file_path[0] = '\0';
     host_alpha_landers_resolve_path(host);
-    host_user_data_resolve_root(host);
+    const char *state_dir = getenv("CHATTER_STATE_DIR");
+    const char *user_data_root = getenv("CHATTER_USER_DATA_ROOT");
+    const char *default_root = "/var/lib/ssh-chatter";
+    const char *legacy_root = "/var/lib/mailbox";
+
+    if (user_data_root != nullptr && user_data_root[0] != '\0') {
+        snprintf(host->user_data_root, sizeof(host->user_data_root), "%s",
+                 user_data_root);
+    } else if (state_dir != nullptr && state_dir[0] != '\0') {
+        snprintf(host->user_data_root, sizeof(host->user_data_root), "%s",
+                 state_dir);
+    } else if (access(legacy_root, F_OK) == 0) {
+        snprintf(host->user_data_root, sizeof(host->user_data_root), "%s",
+                 legacy_root);
+    } else {
+        snprintf(host->user_data_root, sizeof(host->user_data_root), "%s",
+                 default_root);
+    }
     host->user_data_ready = user_data_ensure_root(host->user_data_root);
     if (ttak_mutex_init(&host->user_data_lock) == 0) {
         host->user_data_lock_initialized = true;

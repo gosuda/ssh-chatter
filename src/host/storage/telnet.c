@@ -920,6 +920,7 @@ static bool session_pw_auth_decode_hex(const char *hex, uint8_t *out,
 }
 
 static bool session_telnet_pw_auth_lookup(host_t *host, const char *username,
+                                          uint8_t *algorithm_out,
                                           uint8_t *salt_out, size_t salt_len,
                                           uint8_t *hash_out, size_t hash_len)
 {
@@ -953,13 +954,28 @@ static bool session_telnet_pw_auth_lookup(host_t *host, const char *username,
         if (second == nullptr) {
             continue;
         }
+        char *third = strchr(second + 1, ':');
 
         *first = '\0';
         *second = '\0';
 
         const char *name = line;
-        const char *salt_hex = first + 1;
-        const char *hash_hex = second + 1;
+        const char *algorithm_str = first + 1;
+        const char *salt_hex = nullptr;
+        const char *hash_hex = nullptr;
+        uint8_t algorithm = USER_DATA_HASH_LEGACY;
+
+        if (third != nullptr) {
+            *third = '\0';
+            salt_hex = second + 1;
+            hash_hex = third + 1;
+            if (strcmp(algorithm_str, "1") == 0) {
+                algorithm = USER_DATA_HASH_PBKDF2;
+            }
+        } else {
+            salt_hex = first + 1;
+            hash_hex = second + 1;
+        }
 
         if (name[0] == '\0') {
             continue;
@@ -991,6 +1007,9 @@ static bool session_telnet_pw_auth_lookup(host_t *host, const char *username,
             memset(hash_out, 0, hash_len);
             memcpy(hash_out, decoded_hash, hash_copy);
         }
+        if (algorithm_out != nullptr) {
+            *algorithm_out = algorithm;
+        }
         found = true;
     }
 
@@ -1012,24 +1031,31 @@ static bool session_telnet_pw_auth_verify(host_t *host, const char *username,
         return false;
     }
 
+    uint8_t algorithm = USER_DATA_HASH_LEGACY;
     uint8_t salt[SECURITY_LAYER_SALT_LEN];
     uint8_t expected[SECURITY_LAYER_HASH_LEN];
-    if (!session_telnet_pw_auth_lookup(host, username, salt, sizeof(salt),
-                                       expected, sizeof(expected))) {
+    if (!session_telnet_pw_auth_lookup(host, username, &algorithm, salt,
+                                       sizeof(salt), expected,
+                                       sizeof(expected))) {
         return false;
     }
 
     uint8_t computed[SECURITY_LAYER_HASH_LEN];
-    security_layer_hash_password(password, salt, computed);
+    if (algorithm == USER_DATA_HASH_PBKDF2) {
+        security_layer_hash_password_strong(password, salt, computed);
+    } else {
+        security_layer_hash_password(password, salt, computed);
+    }
     return memcmp(computed, expected, sizeof(expected)) == 0;
 }
 
 static bool session_telnet_pw_auth_exists(host_t *host, const char *username)
 {
+    uint8_t algorithm = USER_DATA_HASH_LEGACY;
     uint8_t salt[SECURITY_LAYER_SALT_LEN];
     uint8_t hash[SECURITY_LAYER_HASH_LEN];
-    return session_telnet_pw_auth_lookup(host, username, salt, sizeof(salt),
-                                         hash, sizeof(hash));
+    return session_telnet_pw_auth_lookup(host, username, &algorithm, salt,
+                                         sizeof(salt), hash, sizeof(hash));
 }
 
 static bool session_telnet_prompt_unicode_check(session_ctx_t *ctx)

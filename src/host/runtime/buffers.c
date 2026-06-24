@@ -299,7 +299,7 @@ static void host_history_release_cache(host_t *host)
     }
 }
 
-static bool host_bbs_acquire_storage(host_t *host)
+bool host_bbs_acquire_storage(host_t *host)
 {
     if (host == nullptr) {
         return false;
@@ -551,10 +551,12 @@ static void host_idle_state_maintenance(host_t *host,
         return;
     }
 
+    long unload_seconds = host_idle_unload_seconds();
+
     if (!host->idle_state_pending) {
         host->last_room_empty_time = now;
         host->idle_state_pending = true;
-        if (HOST_IDLE_UNLOAD_SECONDS <= 0) {
+        if (unload_seconds <= 0L) {
             goto unload_idle_state;
         }
         return;
@@ -564,20 +566,37 @@ static void host_idle_state_maintenance(host_t *host,
         (long long)(now.tv_sec - host->last_room_empty_time.tv_sec) *
             1000000000LL +
         (long long)(now.tv_nsec - host->last_room_empty_time.tv_nsec);
-    if (HOST_IDLE_UNLOAD_SECONDS > 0 &&
-        idle_ns < (long long)HOST_IDLE_UNLOAD_SECONDS * 1000000000LL) {
+    if (unload_seconds > 0L &&
+        idle_ns < (long long)unload_seconds * 1000000000LL) {
         return;
     }
 
 unload_idle_state:
     host_history_release_cache(host);
     host_bbs_release_cache(host);
+    host_ai_chat_memory_release(host);
+    host_eliza_memory_release(host);
+    host_othello_games_release(host);
+    host_gonu_games_release(host);
     host_manual_gc_tick(host);
 #if defined(__GLIBC__)
     (void)malloc_trim(0);
 #endif
     host->idle_state_pending = false;
     host->last_room_empty_time = now;
+}
+
+void host_ensure_idle_subsystems(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    host_bbs_acquire_storage(host);
+    host_ai_chat_memory_ensure(host);
+    host_eliza_memory_ensure(host);
+    host_othello_games_ensure(host);
+    host_gonu_games_ensure(host);
 }
 
 static void host_ai_chat_consider_reply(host_t *host,

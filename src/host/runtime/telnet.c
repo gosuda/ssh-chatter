@@ -420,6 +420,7 @@ static void *host_telnet_thread(void *arg)
         ++host->connection_count;
         if (host->connection_count == 1) {
             sshc_memory_context_set_gc_aggressive(host->memory_context);
+            host_ensure_idle_subsystems(host);
         }
         ctx->user.is_operator = false;
         ctx->user.is_lan_operator = false;

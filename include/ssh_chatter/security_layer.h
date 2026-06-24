@@ -10,6 +10,7 @@
 #define SECURITY_LAYER_TAG_LEN 16
 #define SECURITY_LAYER_SALT_LEN 16
 #define SECURITY_LAYER_HASH_LEN 32
+#define SECURITY_LAYER_PBKDF2_ITERATIONS 100000U
 
 typedef struct security_layer {
     unsigned char master_key[32];
@@ -31,6 +32,9 @@ bool security_layer_decrypt_message(const security_layer_t *layer,
 void security_layer_generate_salt(uint8_t *salt);
 void security_layer_hash_password(const char *password, const uint8_t *salt,
                                   uint8_t *hash_output);
+void security_layer_hash_password_strong(const char *password,
+                                         const uint8_t *salt,
+                                         uint8_t *hash_output);
 bool security_layer_is_zero_hash(const uint8_t *hash, size_t len);
 
 #endif

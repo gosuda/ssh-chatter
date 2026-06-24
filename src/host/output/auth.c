@@ -131,10 +131,19 @@ static int session_authenticate(session_ctx_t *ctx)
             if (auth_method == SSH_AUTH_METHOD_PASSWORD && password_is_set) {
                 const char *password = ssh_message_auth_password(message);
                 if (password != nullptr) {
-                    uint8_t provided_password_hash[32];
-                    security_layer_hash_password(password, ctx->user_data.password_salt, provided_password_hash);
-                    if (memcmp(provided_password_hash, ctx->user_data.password_hash, sizeof(provided_password_hash)) == 0) {
+                    bool was_legacy = false;
+                    if (user_data_verify_password(&ctx->user_data, password,
+                                                  &was_legacy)) {
                         ctx->authenticated_via_ssh_password = true;
+                        if (was_legacy && ctx->owner != nullptr) {
+                            ttak_mutex_lock(&ctx->owner->user_data_lock);
+                            user_data_upgrade_password_hash(&ctx->user_data,
+                                                            password);
+                            (void)user_data_save(ctx->owner->user_data_root,
+                                                 &ctx->user_data,
+                                                 ctx->client_ip);
+                            ttak_mutex_unlock(&ctx->owner->user_data_lock);
+                        }
                         ssh_message_auth_reply_success(message, 0);
                         authenticated = true;
                         break;

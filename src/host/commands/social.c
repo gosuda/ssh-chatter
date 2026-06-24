@@ -456,10 +456,10 @@ static void session_pw_auth_hex_encode(const uint8_t *input, size_t length,
 }
 
 static bool session_pw_auth_format_line(const char *username,
-                                        const uint8_t *salt, size_t salt_length,
-                                        const uint8_t *hash, size_t hash_length,
-                                        bool ip_wide, bool fixnick,
-                                        const char *owner_ip,
+                                        uint8_t algorithm, const uint8_t *salt,
+                                        size_t salt_length, const uint8_t *hash,
+                                        size_t hash_length, bool ip_wide,
+                                        bool fixnick, const char *owner_ip,
                                         char *buffer, size_t buffer_length)
 {
     if (username == nullptr || buffer == nullptr || buffer_length == 0U) {
@@ -471,16 +471,18 @@ static bool session_pw_auth_format_line(const char *username,
     session_pw_auth_hex_encode(salt, salt_length, salt_hex, sizeof(salt_hex));
     session_pw_auth_hex_encode(hash, hash_length, hash_hex, sizeof(hash_hex));
 
-    int written = snprintf(buffer, buffer_length, "%s:%s:%s:%d:%d:%s", username,
-                           salt_hex, hash_hex, ip_wide ? 1 : 0,
-                           fixnick ? 1 : 0, owner_ip != nullptr ? owner_ip : "");
+    int written =
+        snprintf(buffer, buffer_length, "%s:%u:%s:%s:%d:%d:%s", username,
+                 (unsigned int)algorithm, salt_hex, hash_hex,
+                 ip_wide ? 1 : 0, fixnick ? 1 : 0,
+                 owner_ip != nullptr ? owner_ip : "");
     return written >= 0 && (size_t)written < buffer_length;
 }
 
 static bool session_pw_auth_update(host_t *host, const char *username,
-                                   const uint8_t *salt, size_t salt_length,
-                                   const uint8_t *hash, size_t hash_length,
-                                   bool ip_wide, bool fixnick,
+                                   uint8_t algorithm, const uint8_t *salt,
+                                   size_t salt_length, const uint8_t *hash,
+                                   size_t hash_length, bool ip_wide, bool fixnick,
                                    const char *owner_ip,
                                    bool has_password)
 {
@@ -537,8 +539,8 @@ static bool session_pw_auth_update(host_t *host, const char *username,
                 if (has_password && !replaced) {
                     char formatted[256];
                     if (!session_pw_auth_format_line(
-                            username, salt, salt_length, hash, hash_length,
-                            ip_wide, fixnick, owner_ip, formatted,
+                            username, algorithm, salt, salt_length, hash,
+                            hash_length, ip_wide, fixnick, owner_ip, formatted,
                             sizeof(formatted)) ||
                         fprintf(output, "%s\n", formatted) < 0) {
                         success = false;
@@ -568,8 +570,8 @@ static bool session_pw_auth_update(host_t *host, const char *username,
 
     if (success && has_password && !replaced) {
         char formatted[256];
-        if (!session_pw_auth_format_line(username, salt, salt_length, hash,
-                                         hash_length, ip_wide, fixnick,
+        if (!session_pw_auth_format_line(username, algorithm, salt, salt_length,
+                                         hash, hash_length, ip_wide, fixnick,
                                          owner_ip, formatted,
                                          sizeof(formatted)) ||
             fprintf(output, "%s\n", formatted) < 0) {
@@ -701,8 +703,8 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
         if (session_user_data_commit(ctx)) {
             session_send_system_line(ctx, "Password removed.");
             host_nickname_claim_remove(ctx->owner, ctx->user.name);
-            if (!session_pw_auth_update(ctx->owner, ctx->user.name, nullptr, 0U,
-                                        nullptr, 0U, false, false, nullptr,
+            if (!session_pw_auth_update(ctx->owner, ctx->user.name, 0U, nullptr,
+                                        0U, nullptr, 0U, false, false, nullptr,
                                         false)) {
                 session_send_system_line(
                     ctx, "Warning: unable to update pw_auth.dat.");
@@ -713,16 +715,16 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    security_layer_generate_salt(ctx->user_data.password_salt);
-    security_layer_hash_password(parsed_password, ctx->user_data.password_salt,
-                                 ctx->user_data.password_hash);
+    user_data_upgrade_password_hash(&ctx->user_data, parsed_password);
     user_data_set_reserved_nickname_ip_wide(
         &ctx->user_data, ip_wide_explicit && ip_wide);
 
     if (session_user_data_commit(ctx)) {
         session_send_system_line(ctx, "Password set successfully.");
         if (!session_pw_auth_update(
-                ctx->owner, ctx->user.name, ctx->user_data.password_salt,
+                ctx->owner, ctx->user.name,
+                user_data_password_hash_algorithm(&ctx->user_data),
+                ctx->user_data.password_salt,
                 sizeof(ctx->user_data.password_salt),
                 ctx->user_data.password_hash,
                 sizeof(ctx->user_data.password_hash),
@@ -839,7 +841,7 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
 
         host_nickname_claim_remove(ctx->owner, target_user);
 
-        if (!session_pw_auth_update(ctx->owner, target_user, nullptr, 0U,
+        if (!session_pw_auth_update(ctx->owner, target_user, 0U, nullptr, 0U,
                                     nullptr, 0U, false, false, nullptr,
                                     false)) {
             session_send_system_line(ctx,
@@ -930,7 +932,7 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
                  target_nickname);
         session_send_system_line(ctx, message);
 
-        if (!session_pw_auth_update(ctx->owner, target_nickname, nullptr, 0U,
+        if (!session_pw_auth_update(ctx->owner, target_nickname, 0U, nullptr, 0U,
                                     nullptr, 0U, false, false, nullptr,
                                     false)) {
             session_send_system_line(ctx,

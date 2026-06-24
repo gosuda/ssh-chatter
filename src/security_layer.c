@@ -713,6 +713,27 @@ void security_layer_hash_password(const char *password, const uint8_t *salt,
     EVP_MD_CTX_free(mdctx);
 }
 
+void security_layer_hash_password_strong(const char *password,
+                                         const uint8_t *salt,
+                                         uint8_t *hash_output)
+{
+    if (password == nullptr || salt == nullptr || hash_output == nullptr) {
+        return;
+    }
+
+    /* Keep legacy format for empty passwords so zero-hash checks still work. */
+    if (password[0] == '\0') {
+        security_layer_hash_password(password, salt, hash_output);
+        return;
+    }
+
+    (void)PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt,
+                            SECURITY_LAYER_SALT_LEN,
+                            (int)SECURITY_LAYER_PBKDF2_ITERATIONS,
+                            EVP_sha256(), SECURITY_LAYER_HASH_LEN,
+                            hash_output);
+}
+
 bool security_layer_is_zero_hash(const uint8_t *hash, size_t len)
 {
     if (hash == nullptr || len == 0) {

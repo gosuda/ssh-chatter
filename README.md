@@ -292,7 +292,7 @@ Supported environment variables include:
 - `CHATTER_SECURITY_AI` – Set to `on`/`true`/`1` to enable AI moderation (disabled by default).
 - `CHATTER_FILESTORE_PATH` – Override the managed file storage path (default `/etc/ssh-chatter/user-files`).
 - `CHATTER_FILE_STORAGE_ROOT` – Legacy fallback for the managed file storage path.
-- `CHATTER_MAX_ALLOC_BYTES` – Upper bound for a single contiguous allocation attempt in the internal memory manager (default `16777216`, i.e. 16 MiB). Requests above this limit fail with `ENOMEM` instead of risking abrupt process termination under memory pressure.
+- `CHATTER_MAX_ALLOC_BYTES` – Upper bound for a single contiguous allocation attempt in the internal memory manager. By default there is **no cap** (`SIZE_MAX`). Set this only if you want to impose a hard limit on one allocation. Set to `0`, `unlimited`, `inf`, or `infinity` to explicitly remove any cap.
 
 **Camouflage Code Snippets:**
 For the Tetris camouflage feature, the runtime expects code snippet files in `/var/lib/ssh-chatter/`.

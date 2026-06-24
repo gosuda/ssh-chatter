@@ -84,6 +84,24 @@ typedef struct user_data_record {
     uint8_t reserved[16];
 } user_data_record_t;
 
+#define USER_DATA_HASH_LEGACY 0U
+#define USER_DATA_HASH_PBKDF2 1U
+
+#ifndef USER_DATA_CACHE_SIZE
+#define USER_DATA_CACHE_SIZE 64U
+#endif
+
+#ifndef USER_DATA_CACHE_TTL_SECONDS
+#define USER_DATA_CACHE_TTL_SECONDS 300
+#endif
+
+typedef struct user_data_cache_entry {
+    bool in_use;
+    char username[SSH_CHATTER_USERNAME_LEN];
+    user_data_record_t record;
+    time_t loaded_at;
+} user_data_cache_entry_t;
+
 bool user_data_sanitize_username(const char *restrict username,
                                  char *restrict sanitized, size_t length);
 bool user_data_strip_ansi_sequences(const char *restrict input,
@@ -119,5 +137,14 @@ void user_data_set_reserved_nickname_ip_wide(
 bool user_data_fixnick_enabled(const user_data_record_t *restrict record);
 void user_data_set_fixnick_enabled(user_data_record_t *restrict record,
                                    bool enabled);
+uint8_t user_data_password_hash_algorithm(
+    const user_data_record_t *restrict record);
+void user_data_set_password_hash_algorithm(
+    user_data_record_t *restrict record, uint8_t algorithm);
+bool user_data_verify_password(const user_data_record_t *restrict record,
+                               const char *restrict password,
+                               bool *restrict was_legacy);
+void user_data_upgrade_password_hash(user_data_record_t *restrict record,
+                                     const char *restrict password);
 
 #endif /* SSH_CHATTER_USER_DATA_H */

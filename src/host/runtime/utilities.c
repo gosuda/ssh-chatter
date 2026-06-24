@@ -41,10 +41,31 @@
 #define SSH_CHATTER_AI_PROMPT_CONTEXT_MAX 1536U
 #define SSH_CHATTER_AI_PROMPT_MESSAGE_MAX (SSH_CHATTER_MESSAGE_LIMIT / 2U)
 #define SSH_CHATTER_AI_PROMPT_USERNAME_MAX (SSH_CHATTER_USERNAME_LEN - 1U)
-#define HOST_IDLE_UNLOAD_SECONDS 0
 #define HOST_IDLE_CHECK_INTERVAL_NS 0LL
 #define HOST_MEMORY_PRESSURE_CHECK_INTERVAL_NS 1000000000LL
 #define HOST_MEMORY_PRESSURE_DEFAULT_RSS_MB 768ULL
+
+static pthread_once_t g_host_idle_unload_once = PTHREAD_ONCE_INIT;
+static long g_host_idle_unload_seconds = 30;
+
+static void host_idle_unload_seconds_load(void)
+{
+    const char *env = getenv("CHATTER_IDLE_UNLOAD_SECONDS");
+    if (env != nullptr && env[0] != '\0') {
+        char *end = nullptr;
+        errno = 0;
+        long parsed = strtol(env, &end, 10);
+        if (end != env && *end == '\0' && errno == 0 && parsed >= 0L) {
+            g_host_idle_unload_seconds = parsed;
+        }
+    }
+}
+
+static long host_idle_unload_seconds(void)
+{
+    pthread_once(&g_host_idle_unload_once, host_idle_unload_seconds_load);
+    return g_host_idle_unload_seconds;
+}
 
 static pthread_once_t g_host_memory_pressure_limit_once = PTHREAD_ONCE_INIT;
 static size_t g_host_memory_pressure_limit_bytes = 0U;

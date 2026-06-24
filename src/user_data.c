@@ -16,6 +16,8 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <sys/file.h>
 #include <libgen.h>
 #include <limits.h>
 #include <stdio.h>
@@ -26,7 +28,7 @@
 #include <unistd.h>
 
 #define USER_DATA_MAGIC 0x4D424F58U /* 'MBOX' */
-#define USER_DATA_VERSION 6U
+#define USER_DATA_VERSION 7U
 
 #define USER_DATA_PROFILE_DIRECTORY "profiles"
 #define USER_DATA_VARIANT_LIMIT 32U
@@ -43,6 +45,10 @@ static void user_data_profile_picture_overlay(const char *root,
                                               user_data_record_t *record);
 static bool user_data_profile_picture_store(const char *root,
                                             const user_data_record_t *record);
+static bool user_data_fsync_parent_dir(const char *path);
+static bool user_data_create_backup(const char *path);
+static bool user_data_backup_path(const char *path, char *backup,
+                                  size_t length);
 
 static bool user_data_should_skip_osc_terminator(const char *text, size_t idx)
 {
@@ -204,6 +210,93 @@ static bool user_data_ensure_parent(const char *path)
     return user_data_create_directory(parent);
 }
 
+static bool user_data_fsync_parent_dir(const char *path)
+{
+    if (path == nullptr || path[0] == '\0') {
+        return false;
+    }
+
+    char temp[PATH_MAX];
+    snprintf(temp, sizeof(temp), "%s", path);
+    char *parent = dirname(temp);
+    if (parent == nullptr || parent[0] == '\0') {
+        return false;
+    }
+
+    int fd = open(parent, O_RDONLY | O_DIRECTORY);
+    if (fd < 0) {
+        return false;
+    }
+
+    bool ok = fsync(fd) == 0;
+    close(fd);
+    return ok;
+}
+
+static bool user_data_backup_path(const char *path, char *backup,
+                                  size_t length)
+{
+    if (path == nullptr || path[0] == '\0' || backup == nullptr ||
+        length == 0U) {
+        return false;
+    }
+
+    int written = snprintf(backup, length, "%s.bak", path);
+    return written >= 0 && (size_t)written < length;
+}
+
+static bool user_data_create_backup(const char *path)
+{
+    if (path == nullptr || path[0] == '\0') {
+        return false;
+    }
+
+    if (access(path, F_OK) != 0) {
+        return true;
+    }
+
+    char backup_path[PATH_MAX];
+    if (!user_data_backup_path(path, backup_path, sizeof(backup_path))) {
+        return false;
+    }
+
+    int src = open(path, O_RDONLY);
+    if (src < 0) {
+        return false;
+    }
+
+    int dst = open(backup_path, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+    if (dst < 0) {
+        close(src);
+        return false;
+    }
+
+    char buffer[8192];
+    ssize_t n;
+    bool ok = true;
+    while ((n = read(src, buffer, sizeof(buffer))) > 0) {
+        ssize_t written = write(dst, buffer, (size_t)n);
+        if (written != n) {
+            ok = false;
+            break;
+        }
+    }
+
+    if (ok && fsync(dst) != 0) {
+        ok = false;
+    }
+
+    close(src);
+    close(dst);
+
+    if (!ok) {
+        unlink(backup_path);
+        return false;
+    }
+
+    return true;
+}
+
 static bool user_data_file_exists(const char *path)
 {
     if (path == nullptr || path[0] == '\0') {
@@ -280,31 +373,83 @@ void user_data_set_fixnick_enabled(user_data_record_t *restrict record,
     record->reserved[1] = enabled ? 1U : 0U;
 }
 
-static bool user_data_load_raw(const char *path, user_data_record_t *record,
-                               bool *needs_upgrade)
+uint8_t user_data_password_hash_algorithm(
+    const user_data_record_t *restrict record)
 {
-    if (record == nullptr || path == nullptr || path[0] == '\0') {
+    if (record == nullptr) {
+        return USER_DATA_HASH_LEGACY;
+    }
+
+    uint8_t algorithm = record->reserved[2];
+    return (algorithm == USER_DATA_HASH_PBKDF2) ? USER_DATA_HASH_PBKDF2
+                                                : USER_DATA_HASH_LEGACY;
+}
+
+void user_data_set_password_hash_algorithm(
+    user_data_record_t *restrict record, uint8_t algorithm)
+{
+    if (record == nullptr) {
+        return;
+    }
+
+    record->reserved[2] =
+        (algorithm == USER_DATA_HASH_PBKDF2) ? USER_DATA_HASH_PBKDF2
+                                             : USER_DATA_HASH_LEGACY;
+}
+
+bool user_data_verify_password(const user_data_record_t *restrict record,
+                               const char *restrict password,
+                               bool *restrict was_legacy)
+{
+    if (record == nullptr || password == nullptr) {
         return false;
     }
 
-    FILE *fp = fopen(path, "rb");
-    if (fp == nullptr) {
+    uint8_t computed[32];
+    uint8_t algorithm = user_data_password_hash_algorithm(record);
+
+    if (algorithm == USER_DATA_HASH_PBKDF2) {
+        security_layer_hash_password_strong(password, record->password_salt,
+                                            computed);
+    } else {
+        security_layer_hash_password(password, record->password_salt, computed);
+    }
+
+    bool matched =
+        memcmp(computed, record->password_hash, sizeof(computed)) == 0;
+    if (matched && was_legacy != nullptr) {
+        *was_legacy = (algorithm == USER_DATA_HASH_LEGACY);
+    }
+
+    return matched;
+}
+
+void user_data_upgrade_password_hash(user_data_record_t *restrict record,
+                                     const char *restrict password)
+{
+    if (record == nullptr || password == nullptr || password[0] == '\0') {
+        return;
+    }
+
+    security_layer_generate_salt(record->password_salt);
+    security_layer_hash_password_strong(password, record->password_salt,
+                                        record->password_hash);
+    user_data_set_password_hash_algorithm(record, USER_DATA_HASH_PBKDF2);
+}
+
+static bool user_data_load_raw_fd(int fd, user_data_record_t *record,
+                                  bool *needs_upgrade, size_t *out_file_size)
+{
+    if (fd < 0 || record == nullptr) {
         return false;
     }
 
     struct stat st;
-    if (fstat(fileno(fp), &st) != 0) {
-        fclose(fp);
-        return false;
-    }
-
-    if (fseek(fp, 0L, SEEK_SET) != 0) {
-        fclose(fp);
+    if (fstat(fd, &st) != 0) {
         return false;
     }
 
     if (st.st_size < 0) {
-        fclose(fp);
         return false;
     }
 
@@ -316,12 +461,18 @@ static bool user_data_load_raw(const char *path, user_data_record_t *record,
 
     const size_t to_read =
         file_size < expected_size ? file_size : expected_size;
-    bool loaded = fread(&temp, 1U, to_read, fp) == to_read &&
-                  temp.magic == USER_DATA_MAGIC && temp.version > 0U &&
+    size_t total_read = 0U;
+    unsigned char *read_cursor = (unsigned char *)&temp;
+    while (total_read < to_read) {
+        ssize_t n = read(fd, read_cursor + total_read, to_read - total_read);
+        if (n <= 0) {
+            return false;
+        }
+        total_read += (size_t)n;
+    }
+
+    bool loaded = temp.magic == USER_DATA_MAGIC && temp.version > 0U &&
                   temp.version <= USER_DATA_VERSION;
-
-    fclose(fp);
-
     if (!loaded) {
         return false;
     }
@@ -330,9 +481,49 @@ static bool user_data_load_raw(const char *path, user_data_record_t *record,
         *needs_upgrade =
             temp.version != USER_DATA_VERSION || file_size != expected_size;
     }
+    if (out_file_size != nullptr) {
+        *out_file_size = file_size;
+    }
 
     *record = temp;
     return true;
+}
+
+static bool user_data_load_raw(const char *path, user_data_record_t *record,
+                               bool *needs_upgrade)
+{
+    if (record == nullptr || path == nullptr || path[0] == '\0') {
+        return false;
+    }
+
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        return false;
+    }
+
+    /* Allow concurrent reads, block concurrent writes. */
+    (void)flock(fd, LOCK_SH);
+
+    bool loaded = user_data_load_raw_fd(fd, record, needs_upgrade, nullptr);
+
+    (void)flock(fd, LOCK_UN);
+    close(fd);
+
+    if (!loaded) {
+        /* Try to recover from the backup file if the main record is corrupt. */
+        char backup_path[PATH_MAX];
+        if (user_data_backup_path(path, backup_path, sizeof(backup_path))) {
+            fd = open(backup_path, O_RDONLY);
+            if (fd >= 0) {
+                (void)flock(fd, LOCK_SH);
+                loaded = user_data_load_raw_fd(fd, record, needs_upgrade, nullptr);
+                (void)flock(fd, LOCK_UN);
+                close(fd);
+            }
+        }
+    }
+
+    return loaded;
 }
 
 bool user_data_ensure_root(const char *restrict root)
@@ -765,6 +956,7 @@ bool user_data_init(user_data_record_t *restrict record,
     // Initialize password salt and hash
     security_layer_generate_salt(record->password_salt);
     memset(record->password_hash, 0, sizeof(record->password_hash));
+    user_data_set_password_hash_algorithm(record, USER_DATA_HASH_PBKDF2);
 
     return true;
 }
@@ -835,10 +1027,8 @@ bool user_data_save(const char *restrict root,
         return false;
     }
 
-    FILE *fp = fopen(temp_path, "wb");
-    if (fp == nullptr) {
-        return false;
-    }
+    /* Remove stale temp file from a previous interrupted write. */
+    unlink(temp_path);
 
     user_data_record_t normalized = *record;
     user_data_normalize_record(&normalized, record->username);
@@ -853,31 +1043,50 @@ bool user_data_save(const char *restrict root,
     /* Profile pictures are persisted in dedicated per-user .dat files. */
     memset(disk_record.profile_picture, 0, sizeof(disk_record.profile_picture));
 
-    bool success = fwrite(&disk_record, sizeof(disk_record), 1U, fp) == 1U;
-    int error = success ? 0 : errno;
-    if (success && fflush(fp) != 0) {
+    int fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+    if (fd < 0) {
+        return false;
+    }
+
+    /* Serialize writes to the same user record across processes. */
+    if (flock(fd, LOCK_EX) != 0) {
+        close(fd);
+        unlink(temp_path);
+        return false;
+    }
+
+    /* Snapshot the previous record so we can roll back on failure. */
+    (void)user_data_create_backup(path);
+
+    bool success = true;
+    int error = 0;
+    size_t to_write = sizeof(disk_record);
+    const unsigned char *write_cursor = (const unsigned char *)&disk_record;
+    while (to_write > 0U) {
+        ssize_t n = write(fd, write_cursor, to_write);
+        if (n <= 0) {
+            success = false;
+            error = errno;
+            break;
+        }
+        write_cursor += (size_t)n;
+        to_write -= (size_t)n;
+    }
+
+    if (success && fsync(fd) != 0) {
         success = false;
         error = errno;
     }
 
-    if (success) {
-        int fd = fileno(fp);
-        if (fd >= 0 && fsync(fd) != 0) {
-            success = false;
-            error = errno;
-        }
-    }
-
-    if (fclose(fp) != 0) {
-        if (success) {
-            error = errno;
-        }
+    /* Lock is released when fd is closed. */
+    if (close(fd) != 0 && success) {
         success = false;
+        error = errno;
     }
 
     if (!success) {
         unlink(temp_path);
-        errno = error;
+        errno = error != 0 ? error : EIO;
         return false;
     }
 
@@ -887,6 +1096,9 @@ bool user_data_save(const char *restrict root,
         errno = rename_error;
         return false;
     }
+
+    /* Ensure the rename is durable. */
+    (void)user_data_fsync_parent_dir(path);
 
     if (!user_data_profile_picture_store(root, &normalized)) {
         return false;

@@ -560,7 +560,9 @@ static void session_handle_fixnick(session_ctx_t *ctx, const char *arguments)
 
     if (ctx->owner != nullptr && ctx->owner->pw_auth_file_path[0] != '\0') {
         (void)session_pw_auth_update(
-            ctx->owner, ctx->user.name, ctx->user_data.password_salt,
+            ctx->owner, ctx->user.name,
+            user_data_password_hash_algorithm(&ctx->user_data),
+            ctx->user_data.password_salt,
             sizeof(ctx->user_data.password_salt), ctx->user_data.password_hash,
             sizeof(ctx->user_data.password_hash),
             user_data_reserved_nickname_is_ip_wide(&ctx->user_data), true,

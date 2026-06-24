@@ -29,6 +29,13 @@ Environment=CHATTER_HOST_KEY_DIR=/var/lib/ssh-chatter
 Environment=CHATTER_STATE_DIR=/var/lib/ssh-chatter
 Environment=CHATTER_EXTRA_ARGS=
 EnvironmentFile=-/etc/ssh-chatter/chatter.env
+# Resource limits: remove caps for long-running chat server
+LimitNOFILE=65536:524288
+LimitAS=infinity
+LimitCORE=infinity
+LimitRSS=infinity
+TasksMax=infinity
+# MemoryMax/MemoryLimit intentionally omitted to keep the daemon uncapped
 # Security and capabilities
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE

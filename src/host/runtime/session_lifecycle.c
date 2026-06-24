@@ -616,12 +616,17 @@ static bool session_run_login_tui(session_ctx_t *ctx)
                 continue;
             }
 
-            uint8_t provided_password_hash[32];
-            security_layer_hash_password(cursor, ctx->user_data.password_salt, provided_password_hash);
-
-            if (memcmp(provided_password_hash, ctx->user_data.password_hash, sizeof(provided_password_hash)) == 0) {
+            bool was_legacy = false;
+            if (user_data_verify_password(&ctx->user_data, cursor, &was_legacy)) {
                 session_send_system_line(ctx, loc->msg_login_success);
                 ctx->password_not_set = false;
+                if (was_legacy && ctx->owner != nullptr) {
+                    ttak_mutex_lock(&ctx->owner->user_data_lock);
+                    user_data_upgrade_password_hash(&ctx->user_data, cursor);
+                    (void)user_data_save(ctx->owner->user_data_root,
+                                         &ctx->user_data, ctx->client_ip);
+                    ttak_mutex_unlock(&ctx->owner->user_data_lock);
+                }
                 return true;
             } else {
                 session_send_system_line(ctx, loc->err_incorrect_pw);
@@ -640,17 +645,19 @@ static bool session_run_login_tui(session_ctx_t *ctx)
             }
 
             ttak_mutex_lock(&ctx->owner->user_data_lock);
-            user_data_ensure_exists(ctx->owner->user_data_root, ctx->user.name, ctx->client_ip, &ctx->user_data);
+            user_data_ensure_exists(ctx->owner->user_data_root, ctx->user.name,
+                                    ctx->client_ip, &ctx->user_data);
+            user_data_upgrade_password_hash(&ctx->user_data, cursor);
 
-            security_layer_generate_salt(ctx->user_data.password_salt);
-            security_layer_hash_password(cursor, ctx->user_data.password_salt, ctx->user_data.password_hash);
-            
-            bool success = user_data_save(ctx->owner->user_data_root, &ctx->user_data, ctx->client_ip);
+            bool success = user_data_save(ctx->owner->user_data_root,
+                                          &ctx->user_data, ctx->client_ip);
             ttak_mutex_unlock(&ctx->owner->user_data_lock);
 
             if (success) {
                 if (!session_pw_auth_update(
-                        ctx->owner, ctx->user.name, ctx->user_data.password_salt,
+                        ctx->owner, ctx->user.name,
+                        user_data_password_hash_algorithm(&ctx->user_data),
+                        ctx->user_data.password_salt,
                         sizeof(ctx->user_data.password_salt),
                         ctx->user_data.password_hash,
                         sizeof(ctx->user_data.password_hash), false,

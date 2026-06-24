@@ -107,6 +107,13 @@ Environment=CHATTER_DDIAL_HANDLE=
 EnvironmentFile=-$CONFIG_DIR/chatter.env
 Restart=on-failure
 RestartSec=2s
+# Resource limits: remove caps for long-running chat server
+LimitNOFILE=65536:524288
+LimitAS=infinity
+LimitCORE=infinity
+LimitRSS=infinity
+TasksMax=infinity
+# MemoryMax/MemoryLimit intentionally omitted to keep the daemon uncapped
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true

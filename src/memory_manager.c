@@ -42,6 +42,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <ttak/ht/map.h>
 #include <signal.h>
@@ -85,10 +86,28 @@ static __thread bool sshc_tls_defer_gc_registration = false;
 /* SIZE_MAX = no hard cap by default; override with CHATTER_MAX_ALLOC_BYTES. */
 static size_t sshc_max_single_allocation_bytes = SIZE_MAX;
 
+static bool sshc_memory_alloc_limit_is_unlimited(const char *raw)
+{
+    if (raw == nullptr || raw[0] == '\0') {
+        return false;
+    }
+
+    return strcasecmp(raw, "unlimited") == 0 ||
+           strcasecmp(raw, "inf") == 0 ||
+           strcasecmp(raw, "infinity") == 0 ||
+           strcmp(raw, "0") == 0;
+}
+
 static void sshc_memory_load_alloc_limit_from_env(void)
 {
     const char *raw = getenv("CHATTER_MAX_ALLOC_BYTES");
     if (raw == nullptr || raw[0] == '\0') {
+        return;
+    }
+
+    /* Explicit "unlimited"/"0" removes the cap entirely. */
+    if (sshc_memory_alloc_limit_is_unlimited(raw)) {
+        sshc_max_single_allocation_bytes = SIZE_MAX;
         return;
     }
 
@@ -98,7 +117,7 @@ static void sshc_memory_load_alloc_limit_from_env(void)
     if (errno != 0 || end_ptr == raw || (end_ptr != nullptr && *end_ptr != '\0')) {
         return;
     }
-    if (parsed == 0U || parsed > (unsigned long long)SIZE_MAX) {
+    if (parsed > (unsigned long long)SIZE_MAX) {
         return;
     }
 
@@ -202,14 +221,17 @@ static void sshc_memory_context_detach_and_free_ptr(
             ttak_mem_tree_remove(&ctx->epoch_gc.tree, node);
         }
     }
-    ttak_mem_freep((void **)ptr);
+    ttak_mem_free(ptr);
 }
 
 static void sshc_memory_context_defer_ptr(
     sshc_memory_context_t *ctx, void *ptr)
 {
-    if (ctx == nullptr || ptr == nullptr) {
-        ttak_mem_freep((void **)ptr);
+    if (ptr == nullptr) {
+        return;
+    }
+    if (ctx == nullptr) {
+        ttak_mem_free(ptr);
         return;
     }
 
@@ -220,7 +242,7 @@ static void sshc_memory_context_defer_ptr(
         pthread_mutex_unlock(&node->lock);
         ttak_mem_node_release(node);
     } else {
-        ttak_mem_freep((void **)ptr);
+        ttak_mem_free(ptr);
     }
 }
 
@@ -341,7 +363,8 @@ void sshc_memory_runtime_shutdown(void)
         if (node) {
             ttak_mem_tree_remove(&sshc_global_context.epoch_gc.tree, node);
         }
-        ttak_mem_freep(&allocation->ptr);
+        ttak_mem_free(allocation->ptr);
+        allocation->ptr = nullptr;
         ttak_mem_free(allocation);
         allocation = next_alloc;
     }
@@ -802,7 +825,7 @@ void sshc_gc_init(void)
 
 static void sshc_epoch_free_callback(void *ptr)
 {
-    ttak_mem_freep(&ptr);
+    ttak_mem_free(ptr);
 }
 
 void sshc_epoch_thread_enter(void)

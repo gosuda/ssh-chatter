@@ -186,7 +186,7 @@ static void bbs_format_time(time_t value, char *buffer, size_t length)
     strftime(buffer, length, "%Y-%m-%d %H:%M", &tm_value);
 }
 
-static bool host_bbs_acquire_storage(host_t *host);
+bool host_bbs_acquire_storage(host_t *host);
 static void host_bbs_state_load(host_t *host);
 
 static bool bbs_post_has_required_fields(const bbs_post_t *post)

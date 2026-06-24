@@ -615,16 +615,16 @@ bool user_data_path_for(const char *restrict root,
     }
 
     // Attempt to find a user data file matching just the username first.
-    // This prioritizes users with passwords, allowing them to retain their
-    // preferred nickname even if they roam across different IP addresses.
+    // This prioritizes registered users and IP-wide claims, allowing them to
+    // retain the same nickname regardless of their source address.
     char username_only_path[PATH_MAX];
     if (user_data_username_only_path(root, username, username_only_path,
                                      sizeof(username_only_path))) {
         if (user_data_file_exists(username_only_path)) {
             user_data_record_t existing;
             if (user_data_load_raw(username_only_path, &existing, nullptr)) {
-                // If there's a password hash, prioritize this record.
-                if (user_data_has_password(&existing)) {
+                if (user_data_has_password(&existing) ||
+                    user_data_reserved_nickname_is_ip_wide(&existing)) {
                     size_t username_only_length = strlen(username_only_path);
                     if (username_only_length < length) {
                         memcpy(path, username_only_path,
@@ -638,9 +638,10 @@ bool user_data_path_for(const char *restrict root,
         }
     }
 
-    // If no password-protected username-only record was found, proceed with
-    // IP-based matching or creation for non-password users.
-    // This is essentially the original logic.
+    // If no username-only record was found, proceed with IP-based matching or
+    // creation. Discard any variant whose stored username does not match the
+    // current session. Among matching variants, prefer an IP-wide record, then
+    // fall back to one whose last_ip matches the current session IP.
     if (ip == nullptr || ip[0] == '\0') {
         int final_written = snprintf(path, length, "%s/%s.dat", root, sanitized);
         return final_written >= 0 && (size_t)final_written < length;
@@ -649,6 +650,10 @@ bool user_data_path_for(const char *restrict root,
     size_t available_index = USER_DATA_VARIANT_LIMIT;
     char candidate_name[SSH_CHATTER_USERNAME_LEN * 2U];
     char candidate_path[PATH_MAX];
+    char ip_match_path[PATH_MAX];
+    size_t ip_match_written = 0U;
+    bool has_ip_match = false;
+
     for (size_t idx = 0U; idx < USER_DATA_VARIANT_LIMIT; ++idx) {
         if (!user_data_build_variant_name(sanitized, idx, candidate_name,
                                           sizeof(candidate_name))) {
@@ -666,14 +671,29 @@ bool user_data_path_for(const char *restrict root,
             if (user_data_load_raw(candidate_path, &existing, nullptr)) {
                 bool username_match = strncmp(existing.username, username,
                                               sizeof(existing.username)) == 0;
+                if (!username_match) {
+                    // Different nickname; ignore this stale variant.
+                    continue;
+                }
+
                 bool ip_match =
                     strncmp(existing.last_ip, ip, SSH_CHATTER_IP_LEN) == 0;
-                if (username_match && ip_match) {
+                bool ip_wide =
+                    user_data_reserved_nickname_is_ip_wide(&existing);
+
+                if (ip_wide) {
                     if ((size_t)written < length) {
                         memcpy(path, candidate_path, (size_t)written + 1U);
                         return true;
                     }
                     return false;
+                }
+
+                if (ip_match && !has_ip_match) {
+                    has_ip_match = true;
+                    ip_match_written = (size_t)written;
+                    memcpy(ip_match_path, candidate_path,
+                           (size_t)written + 1U);
                 }
             }
             continue;
@@ -682,6 +702,14 @@ bool user_data_path_for(const char *restrict root,
         if (available_index == USER_DATA_VARIANT_LIMIT) {
             available_index = idx;
         }
+    }
+
+    if (has_ip_match) {
+        if (ip_match_written < length) {
+            memcpy(path, ip_match_path, ip_match_written + 1U);
+            return true;
+        }
+        return false;
     }
 
     if (!create_if_missing || available_index == USER_DATA_VARIANT_LIMIT) {
@@ -953,6 +981,10 @@ bool user_data_init(user_data_record_t *restrict record,
     record->last_updated = (uint64_t)time(nullptr);
     memset(record->reserved, 0, sizeof(record->reserved));
 
+    // Newly created records are IP-wide by default so the nickname is
+    // claimed across all source addresses.
+    user_data_set_reserved_nickname_ip_wide(record, true);
+
     // Initialize password salt and hash
     security_layer_generate_salt(record->password_salt);
     memset(record->password_hash, 0, sizeof(record->password_hash));
@@ -992,6 +1024,54 @@ bool user_data_load(const char *restrict root, const char *restrict username,
     return true;
 }
 
+static void user_data_remove_ip_variants(const char *root,
+                                         const char *username,
+                                         const char *keep_path)
+{
+    if (root == nullptr || root[0] == '\0' || username == nullptr ||
+        username[0] == '\0') {
+        return;
+    }
+
+    char sanitized[SSH_CHATTER_USERNAME_LEN * 2U];
+    if (!user_data_sanitize_username(username, sanitized, sizeof(sanitized))) {
+        return;
+    }
+
+    char candidate_name[SSH_CHATTER_USERNAME_LEN * 2U];
+    char candidate_path[PATH_MAX];
+    for (size_t idx = 0U; idx < USER_DATA_VARIANT_LIMIT; ++idx) {
+        if (!user_data_build_variant_name(sanitized, idx, candidate_name,
+                                          sizeof(candidate_name))) {
+            continue;
+        }
+
+        int written = snprintf(candidate_path, sizeof(candidate_path),
+                               "%s/%s.dat", root, candidate_name);
+        if (written < 0 || (size_t)written >= sizeof(candidate_path)) {
+            continue;
+        }
+
+        if (keep_path != nullptr && strcmp(candidate_path, keep_path) == 0) {
+            continue;
+        }
+
+        if (!user_data_file_exists(candidate_path)) {
+            continue;
+        }
+
+        user_data_record_t existing;
+        if (!user_data_load_raw(candidate_path, &existing, nullptr)) {
+            continue;
+        }
+
+        if (strncmp(existing.username, username,
+                    sizeof(existing.username)) == 0) {
+            (void)unlink(candidate_path);
+        }
+    }
+}
+
 bool user_data_save(const char *restrict root,
                     const user_data_record_t *restrict record,
                     const char *restrict ip)
@@ -1003,7 +1083,8 @@ bool user_data_save(const char *restrict root,
     char path[PATH_MAX];
     const char *effective_ip =
         (ip != nullptr && ip[0] != '\0') ? ip : record->last_ip;
-    if (user_data_has_password(record)) {
+    const bool ip_wide = user_data_reserved_nickname_is_ip_wide(record);
+    if (user_data_has_password(record) || ip_wide) {
         if (!user_data_username_only_path(root, record->username, path,
                                           sizeof(path))) {
             return false;
@@ -1102,6 +1183,10 @@ bool user_data_save(const char *restrict root,
 
     if (!user_data_profile_picture_store(root, &normalized)) {
         return false;
+    }
+
+    if (ip_wide) {
+        user_data_remove_ip_variants(root, record->username, path);
     }
 
     return true;

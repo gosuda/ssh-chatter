@@ -813,11 +813,6 @@ static void *session_thread(void *arg)
             }
             authenticated = true;
             ctx->user.is_authenticated = true;
-            if (ctx->password_not_set) {
-                session_send_raw_text(
-                    ctx, "Welcome! Your account has no password set. Please "
-                         "use the /password command to set one.\r\n");
-            }
         }
 
         if (session_accept_channel(ctx) != 0) {
@@ -917,6 +912,12 @@ static void *session_thread(void *arg)
     // Run login TUI before room entry
     if (!session_run_login_tui(ctx)) {
         SESSION_THREAD_ERROR_EXIT();
+    }
+
+    if (ctx->password_not_set) {
+        session_send_raw_text(
+            ctx, "Welcome! Your account has no password set. Please "
+                 "use the /password command to set one.\r\n");
     }
 
     const bool banned_username =

@@ -1111,7 +1111,8 @@ bool user_data_save(const char *restrict root,
     /* Remove stale temp file from a previous interrupted write. */
     unlink(temp_path);
 
-    user_data_record_t normalized = *record;
+    user_data_record_t normalized;
+    memcpy(&normalized, record, sizeof(normalized));
     user_data_normalize_record(&normalized, record->username);
     normalized.magic = USER_DATA_MAGIC;
     normalized.version = USER_DATA_VERSION;
@@ -1120,7 +1121,8 @@ bool user_data_save(const char *restrict root,
                  effective_ip);
     }
 
-    user_data_record_t disk_record = normalized;
+    user_data_record_t disk_record;
+    memcpy(&disk_record, &normalized, sizeof(disk_record));
     /* Profile pictures are persisted in dedicated per-user .dat files. */
     memset(disk_record.profile_picture, 0, sizeof(disk_record.profile_picture));
 
@@ -1197,11 +1199,11 @@ bool user_data_ensure_exists(const char *restrict root,
                              const char *restrict ip,
                              user_data_record_t *restrict record)
 {
-    if (record != nullptr && user_data_load(root, username, ip, record)) {
+    user_data_record_t temp;
+    if (user_data_load(root, username, ip, record != nullptr ? record : &temp)) {
         return true;
     }
 
-    user_data_record_t temp;
     if (!user_data_init(&temp, username, ip)) {
         return false;
     }

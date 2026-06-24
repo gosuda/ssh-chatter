@@ -22,16 +22,10 @@ BUILD_DIR := build
 TTAK_DIR := lib/libttak
 INIH_DIR := lib/inih
 DOORGAME_DIR := lib/doorgame
-HAVE_GLOBAL_TTAK := $(shell test -f /usr/local/lib/libttak.a && echo 1 || echo 0)
-ifeq ($(HAVE_GLOBAL_TTAK),1)
-TTAK_LIB := /usr/local/lib/libttak.a
-CFLAGS_TTAK := -I /usr/local/include
-LDFLAGS_TTAK := -lttak
-else
+# Prefer the bundled libttak so patched sources are used consistently.
 TTAK_LIB := $(TTAK_DIR)/lib/libttak.a
 CFLAGS_TTAK := -I $(TTAK_DIR)/include
 LDFLAGS_TTAK :=
-endif
 
 CFLAGS_LIBSSH := $(shell pkg-config --cflags libssh 2>/dev/null)
 LDFLAGS_LIBSSH := $(shell pkg-config --libs libssh 2>/dev/null || echo "-lssh")

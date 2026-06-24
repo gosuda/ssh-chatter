@@ -727,11 +727,13 @@ void security_layer_hash_password_strong(const char *password,
         return;
     }
 
-    (void)PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt,
-                            SECURITY_LAYER_SALT_LEN,
-                            (int)SECURITY_LAYER_PBKDF2_ITERATIONS,
-                            EVP_sha256(), SECURITY_LAYER_HASH_LEN,
-                            hash_output);
+    if (PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt,
+                          SECURITY_LAYER_SALT_LEN,
+                          (int)SECURITY_LAYER_PBKDF2_ITERATIONS,
+                          EVP_sha256(), SECURITY_LAYER_HASH_LEN,
+                          hash_output) != 1) {
+        memset(hash_output, 0, SECURITY_LAYER_HASH_LEN);
+    }
 }
 
 bool security_layer_is_zero_hash(const uint8_t *hash, size_t len)

@@ -164,12 +164,10 @@ static void sshc_memory_context_init(sshc_memory_context_t *ctx,
     /* EpochGC: per-context generational collector (local gc init<->destroy cycle). */
     ttak_epoch_gc_init(&ctx->epoch_gc);
 
-    /* Reclamation: relaxed cadence to reduce CPU overhead under load.
-     * The background thread still runs, but less aggressively. */
-    ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
-    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
-                                         TT_MILLI_SECOND(100),
-                                         TT_MILLI_SECOND(400));
+    /* Disable libttak's aggressive background rotation thread; it spins on
+     * ttak_epoch_reclaim and consumes whole cores.  We rotate/reclaim
+     * explicitly when a session resets or is destroyed. */
+    ttak_epoch_gc_manual_rotate(&ctx->epoch_gc, true);
     ctx->max_lifetime_ticks = 0;
 
 }
@@ -259,11 +257,13 @@ void sshc_memory_runtime_init(void)
         GC_set_free_space_divisor(10); 
         GC_init(); 
 #endif
-        /* Global TTAK tuning: slightly denser cleanup cadence and lower
-         * pressure threshold to reduce deferred-epoch buildup. */
+        /* Global TTAK tuning: very lazy cleanup to avoid runaway CPU in
+         * libttak's background threads.  Per-session ttak_epoch_gc_rotate
+         * calls still reclaim memory on disconnect. */
         ttak_mem_set_trace(
             sshc_env_truthy(getenv("SSH_CHATTER_MEM_TRACE")) ? 1 : 0);
-        ttak_mem_configure_gc(TT_MILLI_SECOND(100), TT_MILLI_SECOND(500), 4096);
+        ttak_mem_configure_gc(TT_MILLI_SECOND(60000), TT_MILLI_SECOND(300000),
+                              1048576);
 
         /* Hash map for O(1) ptr → allocation* lookup (initial capacity 1024). */
         sshc_alloc_map = ttak_create_map(1024, ttak_get_tick_count());
@@ -401,13 +401,8 @@ sshc_memory_context_t *sshc_memory_context_create(const char *label,
     sshc_memory_context_init(ctx, label);
     ctx->max_lifetime_ticks = max_lifetime_ticks;
 
-    /* Session context: relaxed intervals to batch cleanups under churn.
-     * Pressure threshold raised to 4 KiB so tiny allocations don't force
-     * immediate background passes. */
-    ttak_mem_tree_set_manual_cleanup(&ctx->epoch_gc.tree, false);
-    ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
-                                         TT_MILLI_SECOND(100),
-                                         TT_MILLI_SECOND(400));
+    /* Session context: disable libttak's background rotation thread. */
+    ttak_epoch_gc_manual_rotate(&ctx->epoch_gc, true);
     ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 4096);
 
     /* Vertical Hierarchy: Register this session owner as a child of the global owner.
@@ -788,6 +783,7 @@ void sshc_memory_context_reset(sshc_memory_context_t *ctx)
     /* Per-user GC rotate: single-pass cleanup of every unreferenced block
      * belonging to this session. */
     ttak_epoch_gc_rotate(&ctx->epoch_gc);
+    sshc_epoch_reclaim();
 }
 
 void sshc_memory_context_epoch_gc_rotate(sshc_memory_context_t *ctx)

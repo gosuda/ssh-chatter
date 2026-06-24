@@ -649,6 +649,13 @@ static bool session_run_login_tui(session_ctx_t *ctx)
                                     ctx->client_ip, &ctx->user_data);
             user_data_upgrade_password_hash(&ctx->user_data, cursor);
 
+            if (!user_data_has_password(&ctx->user_data)) {
+                ttak_mutex_unlock(&ctx->owner->user_data_lock);
+                session_send_system_line(ctx,
+                                         "[auth] Failed to save credentials.");
+                continue;
+            }
+
             bool success = user_data_save(ctx->owner->user_data_root,
                                           &ctx->user_data, ctx->client_ip);
             ttak_mutex_unlock(&ctx->owner->user_data_lock);

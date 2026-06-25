@@ -262,6 +262,16 @@ static void session_destroy(session_ctx_t *ctx)
         return;
     }
 
+    /*
+     * Defensive cleanup: error-exit paths (e.g. username conflict) may not
+     * have passed through the normal thread teardown that removes the
+     * session from the room.  Removing here prevents dangling pointers in
+     * the member list from causing use-after-free on the next login.
+     */
+    if (ctx->has_joined_room && ctx->owner != nullptr) {
+        chat_room_remove(&ctx->owner->room, ctx);
+    }
+
     session_runtime_unbind(ctx);
     session_detach_external_state(ctx);
     session_drain_reclamation(ctx->memory_context, ctx->owner);
@@ -620,6 +630,7 @@ static bool session_run_login_tui(session_ctx_t *ctx)
             if (user_data_verify_password(&ctx->user_data, cursor, &was_legacy)) {
                 session_send_system_line(ctx, loc->msg_login_success);
                 ctx->password_not_set = false;
+                ctx->user_data_loaded = true;
                 if (was_legacy && ctx->owner != nullptr) {
                     ttak_mutex_lock(&ctx->owner->user_data_lock);
                     user_data_upgrade_password_hash(&ctx->user_data, cursor);
@@ -688,6 +699,7 @@ static bool session_run_login_tui(session_ctx_t *ctx)
                 session_send_system_line(ctx, "No other personal information is collected.");
                 session_send_system_line(ctx, "====================================================");
                 ctx->password_not_set = false;
+                ctx->user_data_loaded = true;
                 return true;
             } else {
                 session_send_system_line(ctx, "[auth] Failed to save credentials.");

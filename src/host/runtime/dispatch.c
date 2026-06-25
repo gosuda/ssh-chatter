@@ -1655,5 +1655,7 @@ static void session_reset_for_retry(session_ctx_t *ctx)
     ctx->last_message_time.tv_nsec = 0;
     ctx->user_data_loaded = false;
     memset(&ctx->user_data, 0, sizeof(ctx->user_data));
+    ctx->password_not_set = false;
+    ctx->authenticated_via_ssh_password = false;
     session_refresh_output_encoding(ctx);
 }

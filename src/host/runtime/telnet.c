@@ -416,15 +416,20 @@ static void *host_telnet_thread(void *arg)
         /* Favor CP437-style output for legacy telnet clients */
         ctx->prefer_cp437_output = true;
 
+        bool first_connection = false;
         ttak_mutex_lock(&host->lock);
         ++host->connection_count;
-        if (host->connection_count == 1) {
+        first_connection = (host->connection_count == 1);
+        if (first_connection) {
             sshc_memory_context_set_gc_aggressive(host->memory_context);
-            host_ensure_idle_subsystems(host);
         }
         ctx->user.is_operator = false;
         ctx->user.is_lan_operator = false;
         ttak_mutex_unlock(&host->lock);
+
+        if (first_connection) {
+            host_ensure_idle_subsystems(host);
+        }
 
         pthread_t thread_id;
         if (pthread_create(&thread_id, nullptr, session_thread, ctx) != 0) {

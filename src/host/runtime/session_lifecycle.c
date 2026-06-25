@@ -133,47 +133,49 @@ static void session_detach_external_state(session_ctx_t *ctx)
         }
         ttak_mutex_unlock(&host->lock);
 
-        for (size_t idx = 0U; idx < SSH_CHATTER_OTHELLO_MAX_SLOTS; ++idx) {
-            bool should_release = false;
-            session_ctx_t *opponent = nullptr;
-            othello_game_state_t snapshot = {0};
-            unsigned opponent_index = 0U;
-            bool had_snapshot = false;
+        if (host->othello_games != nullptr) {
+            for (size_t idx = 0U; idx < SSH_CHATTER_OTHELLO_MAX_SLOTS; ++idx) {
+                bool should_release = false;
+                session_ctx_t *opponent = nullptr;
+                othello_game_state_t snapshot = {0};
+                unsigned opponent_index = 0U;
+                bool had_snapshot = false;
 
-            ttak_mutex_lock(&host->lock);
-            othello_multiplayer_slot_t *slot = &host->othello_games[idx];
-            if (slot->in_use &&
-                (slot->players[0] == ctx || slot->players[1] == ctx)) {
-                if (slot->active) {
-                    had_snapshot = true;
-                    snapshot = slot->state;
-                    if (slot->players[0] == ctx) {
-                        opponent = slot->players[1];
-                        opponent_index = 1U;
-                    } else {
-                        opponent = slot->players[0];
-                        opponent_index = 0U;
+                ttak_mutex_lock(&host->lock);
+                othello_multiplayer_slot_t *slot = &host->othello_games[idx];
+                if (slot->in_use &&
+                    (slot->players[0] == ctx || slot->players[1] == ctx)) {
+                    if (slot->active) {
+                        had_snapshot = true;
+                        snapshot = slot->state;
+                        if (slot->players[0] == ctx) {
+                            opponent = slot->players[1];
+                            opponent_index = 1U;
+                        } else {
+                            opponent = slot->players[0];
+                            opponent_index = 0U;
+                        }
                     }
+                    should_release = true;
+                    host_othello_release_slot_locked(host, slot);
                 }
-                should_release = true;
-                host_othello_release_slot_locked(host, slot);
-            }
-            ttak_mutex_unlock(&host->lock);
+                ttak_mutex_unlock(&host->lock);
 
-            if (!should_release) {
-                continue;
-            }
+                if (!should_release) {
+                    continue;
+                }
 
-            if (opponent != nullptr) {
-                if (had_snapshot) {
-                    session_game_othello_sync_player_from_snapshot(
-                        opponent, &snapshot, opponent_index, -1, false);
-                    if (opponent->game.othello != nullptr) {
-                        opponent->game.othello->game_over = true;
+                if (opponent != nullptr) {
+                    if (had_snapshot) {
+                        session_game_othello_sync_player_from_snapshot(
+                            opponent, &snapshot, opponent_index, -1, false);
+                        if (opponent->game.othello != nullptr) {
+                            opponent->game.othello->game_over = true;
+                        }
                     }
+                    session_game_suspend(opponent,
+                                         "Opponent disconnected. Game ended.");
                 }
-                session_game_suspend(opponent,
-                                     "Opponent disconnected. Game ended.");
             }
         }
     }

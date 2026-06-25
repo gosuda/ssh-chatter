@@ -92,6 +92,8 @@ CFLAGS = -std=c2x -Ofast \
               -fdelete-null-pointer-checks \
               -MMD -MP
 
+CFLAGS += $(CFLAGS_EXTRA)
+
 # ==============================================================================
 # LINKER FLAGS (LDFLAGS) - Extreme Security and Optimization
 # ==============================================================================
@@ -115,6 +117,8 @@ COMMON_LDFLAGS = \
     -Wl,-z,stack-size=8388608 \
     -Wl,-z,combreloc \
     -Wl,--build-id=none
+
+COMMON_LDFLAGS += $(LDFLAGS_EXTRA)
 
 LDFLAGS = $(COMMON_LDFLAGS) $(LDFLAGS_LIBSSH)
 
@@ -169,7 +173,7 @@ $(DISPLAY_TEST_TARGET): $(DISPLAY_TEST_OBJ) $(TTAK_LIB)
 	$(CC) $(CFLAGS) -o $@ $^ -Wno-error $(LDFLAGS)
 
 $(TTAK_LIB):
-	$(MAKE) -C $(TTAK_DIR) all
+	$(MAKE) -C $(TTAK_DIR) all EXTRA_CFLAGS="$(CFLAGS_EXTRA)" EXTRA_LDFLAGS="$(LDFLAGS_EXTRA)"
 
 # Rule for compiling object files
 $(BUILD_DIR)/%.o: %.c

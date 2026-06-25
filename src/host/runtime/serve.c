@@ -217,6 +217,14 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
             goto loop_cleanup;
         }
 
+        /* libssh defaults to a small listen backlog; raise it so bursts of
+         * concurrent connections do not overflow the accept queue while the
+         * single-threaded listener is busy with setup/GC. */
+        socket_t bind_fd_for_backlog = ssh_bind_get_fd(bind_handle);
+        if (bind_fd_for_backlog != SSH_INVALID_SOCKET) {
+            (void)listen((int)bind_fd_for_backlog, 128);
+        }
+
         host->listener.handle = bind_handle;
         host->listener.accept_error_streak = 0U;
         host->listener.last_error_time.tv_sec = 0;

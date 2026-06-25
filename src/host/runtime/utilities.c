@@ -43,7 +43,7 @@
 #define SSH_CHATTER_AI_PROMPT_USERNAME_MAX (SSH_CHATTER_USERNAME_LEN - 1U)
 #define HOST_IDLE_CHECK_INTERVAL_NS 0LL
 #define HOST_MEMORY_PRESSURE_CHECK_INTERVAL_NS 1000000000LL
-#define HOST_MEMORY_PRESSURE_DEFAULT_RSS_MB 768ULL
+#define HOST_MEMORY_PRESSURE_DEFAULT_RSS_MB 0ULL
 
 static pthread_once_t g_host_idle_unload_once = PTHREAD_ONCE_INIT;
 static long g_host_idle_unload_seconds = 30;
@@ -271,7 +271,9 @@ static inline bool host_gc_cycle(host_t *host, struct timespec *last_gc_run,
     }
 
     sshc_memory_context_epoch_gc_rotate(host->memory_context);
-    sshc_epoch_reclaim();
+    /* Reclaim is deferred to avoid blocking the accept loop; periodic
+     * drains during idle maintenance and explicit session teardown are
+     * enough on a well-resourced host. */
     *last_gc_run = now;
     return host_memory_pressure_restart(host, last_pressure_check);
 }
@@ -282,5 +284,4 @@ void session_manual_gc_tick(session_ctx_t *ctx)
         return;
     }
     sshc_memory_context_epoch_gc_rotate(ctx->memory_context);
-    sshc_epoch_reclaim();
 }

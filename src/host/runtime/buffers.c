@@ -4,7 +4,6 @@ void host_manual_gc_tick(host_t *host)
         return;
     }
     sshc_memory_context_epoch_gc_rotate(host->memory_context);
-    sshc_epoch_reclaim();
 }
 
 static bool host_room_has_members(host_t *host)

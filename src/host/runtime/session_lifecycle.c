@@ -1058,8 +1058,6 @@ static void *session_thread(void *arg)
             host_sleep_uninterruptible(&wait_time);
         }
         chat_room_add(&ctx->owner->room, ctx);
-        session_manual_gc_tick(ctx);
-        host_manual_gc_tick(ctx->owner);
         ctx->has_joined_room = true;
         printf("[join] %s\n", ctx->user.name);
 

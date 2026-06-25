@@ -262,16 +262,6 @@ static void session_destroy(session_ctx_t *ctx)
         return;
     }
 
-    /*
-     * Defensive cleanup: error-exit paths (e.g. username conflict) may not
-     * have passed through the normal thread teardown that removes the
-     * session from the room.  Removing here prevents dangling pointers in
-     * the member list from causing use-after-free on the next login.
-     */
-    if (ctx->has_joined_room && ctx->owner != nullptr) {
-        chat_room_remove(&ctx->owner->room, ctx);
-    }
-
     session_runtime_unbind(ctx);
     session_detach_external_state(ctx);
     session_drain_reclamation(ctx->memory_context, ctx->owner);
@@ -737,6 +727,13 @@ static void *session_thread(void *arg)
 
 #define SESSION_THREAD_ERROR_EXIT()                                            \
     do {                                                                       \
+        /* Error-exit paths may not reach the normal teardown that removes    \
+         * the session from the room; do it here to avoid leaving a dangling   \
+         * pointer in the member list.                                         \
+         */                                                                    \
+        if (ctx->has_joined_room && ctx->owner != nullptr) {                   \
+            chat_room_remove(&ctx->owner->room, ctx);                          \
+        }                                                                      \
         if (memory_scope != nullptr) {                                         \
             session_memory_scope_pop(memory_scope);                            \
             memory_scope = nullptr;                                            \

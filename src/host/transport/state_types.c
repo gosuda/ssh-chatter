@@ -564,13 +564,37 @@ static bool chat_room_ensure_capacity(chat_room_t *room, size_t required)
         new_capacity *= 2U;
     }
 
+    /* The chat room metadata belongs to the host memory context, but
+     * chat_room_add/remove are called from session threads.  If the members
+     * array were allocated in a transient session context it would be
+     * reclaimed when that session ends, leaving room->members as a dangling
+     * pointer and crashing the next chat_room_add.  Pin the array to the
+     * host context explicitly. */
+    sshc_memory_context_t *host_ctx =
+        (room->owner != nullptr) ? room->owner->memory_context : nullptr;
+    sshc_memory_context_t *prev_ctx = nullptr;
+    if (host_ctx != nullptr) {
+        prev_ctx = sshc_memory_context_push(host_ctx);
+    }
+
     session_ctx_t **resized =
-        sshc_gc_realloc(room->members, new_capacity * sizeof(*resized));
+        (session_ctx_t **)sshc_gc_malloc(new_capacity * sizeof(*resized));
+
+    if (prev_ctx != nullptr) {
+        sshc_memory_context_pop(prev_ctx);
+    }
+
     if (resized == nullptr) {
         return false;
     }
 
-    for (size_t idx = room->member_capacity; idx < new_capacity; ++idx) {
+    if (room->members != nullptr) {
+        memcpy(resized, room->members,
+               room->member_count * sizeof(*resized));
+        sshc_gc_free(room->members);
+    }
+
+    for (size_t idx = room->member_count; idx < new_capacity; ++idx) {
         resized[idx] = nullptr;
     }
 

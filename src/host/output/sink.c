@@ -425,3 +425,146 @@ void session_clear_pending_sink(session_ctx_t *ctx)
 
     ctx->pending_should_sink = false;
 }
+
+/**
+ * @desc Save the current chat-session context before entering a protected
+ *       mode (RSS/BBS/game/archive) and reset the session to a clean state
+ *       for the mode UI.
+ * @param ctx Session context to snapshot.
+ * @return None.
+ */
+void session_mode_push_chat_context(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->has_chat_snapshot) {
+        return;
+    }
+
+    session_chat_snapshot_t *snap = &ctx->chat_snapshot;
+
+    memcpy(snap->input_buffer, ctx->input_buffer,
+           sizeof(snap->input_buffer));
+    snap->input_length = ctx->input_length;
+    snap->input_history_position = ctx->input_history_position;
+
+    snap->history_scroll_position = ctx->history_scroll_position;
+    snap->history_latest_notified = ctx->history_latest_notified;
+    snap->history_oldest_notified = ctx->history_oldest_notified;
+    snap->scrollback_rendered_lines = ctx->scrollback_rendered_lines;
+    snap->no_update = ctx->no_update;
+    snap->pending_should_sink = ctx->pending_should_sink;
+    snap->last_sink_history_total = ctx->last_sink_history_total;
+
+    snap->display_model_follow_tail =
+        (ctx->display_model_initialized
+             ? display_model_is_following_tail(&ctx->display_model)
+             : true);
+
+    snap->output_buffering_enabled = ctx->output_buffering_enabled;
+    snap->output_buffer_length = ctx->output_buffer_length;
+    memcpy(snap->output_buffer, ctx->output_buffer,
+           sizeof(snap->output_buffer));
+
+    snap->realtime_line_count = ctx->realtime_line_count;
+    snap->realtime_recent_count = ctx->realtime_recent_count;
+    snap->realtime_recent_start = ctx->realtime_recent_start;
+    snap->capture_realtime_output = ctx->capture_realtime_output;
+    snap->has_last_output_line = ctx->has_last_output_line;
+    memcpy(snap->last_output_line, ctx->last_output_line,
+           sizeof(snap->last_output_line));
+
+    ctx->has_chat_snapshot = true;
+
+    /* Give the mode UI a clean input line. */
+    ctx->input_length = 0U;
+    ctx->input_buffer[0] = '\0';
+    ctx->input_history_position = -1;
+
+    /* Reset scrollback / view state for the mode UI. */
+    ctx->history_scroll_position = 0U;
+    ctx->history_latest_notified = false;
+    ctx->history_oldest_notified = false;
+    ctx->scrollback_rendered_lines = 0U;
+    ctx->no_update = false;
+    ctx->pending_should_sink = false;
+    ctx->last_sink_history_total = 0U;
+
+    if (ctx->display_model_initialized) {
+        display_model_follow_tail(&ctx->display_model);
+    }
+
+    /* Flush and reset the output buffer so mode output starts clean. */
+    if (ctx->output_buffering_enabled) {
+        session_output_buffer_stop(ctx);
+    }
+    ctx->output_buffer_length = 0U;
+
+    ctx->realtime_line_count = 0U;
+    ctx->realtime_recent_count = 0U;
+    ctx->realtime_recent_start = 0U;
+    ctx->capture_realtime_output = false;
+    ctx->has_last_output_line = false;
+    ctx->last_output_line[0] = '\0';
+}
+
+/**
+ * @desc Restore the chat-session context saved by
+ *       session_mode_push_chat_context() and redraw the previous chat view.
+ * @param ctx Session context to restore.
+ * @return None.
+ */
+void session_mode_pop_chat_context(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || !ctx->has_chat_snapshot) {
+        return;
+    }
+
+    session_chat_snapshot_t *snap = &ctx->chat_snapshot;
+
+    /* Restore chat input. */
+    memcpy(ctx->input_buffer, snap->input_buffer, sizeof(ctx->input_buffer));
+    ctx->input_length = snap->input_length;
+    ctx->input_history_position = snap->input_history_position;
+
+    /* Restore scrollback / sink state. */
+    ctx->history_scroll_position = snap->history_scroll_position;
+    ctx->history_latest_notified = snap->history_latest_notified;
+    ctx->history_oldest_notified = snap->history_oldest_notified;
+    ctx->scrollback_rendered_lines = snap->scrollback_rendered_lines;
+    ctx->no_update = snap->no_update;
+    ctx->pending_should_sink = snap->pending_should_sink;
+    ctx->last_sink_history_total = snap->last_sink_history_total;
+
+    /* Restore display model view mode. */
+    if (ctx->display_model_initialized) {
+        if (snap->display_model_follow_tail) {
+            display_model_follow_tail(&ctx->display_model);
+        }
+    }
+
+    /* Flush any buffered mode output and restore buffering state with an
+     * empty buffer. */
+    if (ctx->output_buffering_enabled) {
+        session_output_buffer_stop(ctx);
+    }
+    ctx->output_buffering_enabled = snap->output_buffering_enabled;
+    ctx->output_buffer_length = 0U;
+
+    ctx->realtime_line_count = snap->realtime_line_count;
+    ctx->realtime_recent_count = snap->realtime_recent_count;
+    ctx->realtime_recent_start = snap->realtime_recent_start;
+    ctx->capture_realtime_output = snap->capture_realtime_output;
+    ctx->has_last_output_line = snap->has_last_output_line;
+    memcpy(ctx->last_output_line, snap->last_output_line,
+           sizeof(ctx->last_output_line));
+
+    ctx->has_chat_snapshot = false;
+
+    /* Redraw the chat view at the restored position. */
+    if (ctx->history_scroll_position == 0U && !ctx->no_update) {
+        session_scrollback_reset_position(ctx);
+    } else {
+        session_scrollback_navigate(ctx, 0, 0);
+    }
+
+    session_channel_flush(ctx);
+}

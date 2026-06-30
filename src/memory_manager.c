@@ -47,6 +47,9 @@
 #include <ttak/ht/map.h>
 #include <signal.h>
 
+// Global atomic counter for tracking outstanding allocations
+static _Atomic size_t sshc_allocation_counter = 0;
+
 
 typedef struct sshc_memory_allocation {
     void *ptr;
@@ -151,7 +154,11 @@ static bool sshc_env_truthy(const char *value)
 static void sshc_memory_context_init(sshc_memory_context_t *ctx,
                                      const char *label)
 {
-    pthread_mutex_init(&ctx->mutex, nullptr);
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&ctx->mutex, &attr);
+    pthread_mutexattr_destroy(&attr);
     ctx->allocations = nullptr;
     ctx->label = label;
     ctx->next = nullptr;
@@ -193,8 +200,10 @@ static void sshc_memory_context_refresh_node_expiry(
         return;
     }
 
+    pthread_mutex_lock(&ctx->mutex);
     ttak_mem_node_t *node = ttak_mem_tree_find_node(&ctx->epoch_gc.tree, ptr);
     if (node == nullptr) {
+        pthread_mutex_unlock(&ctx->mutex);
         return;
     }
 
@@ -203,6 +212,7 @@ static void sshc_memory_context_refresh_node_expiry(
                              ? ttak_get_tick_count() + ctx->max_lifetime_ticks
                              : __TTAK_UNSAFE_MEM_FOREVER__;
     pthread_mutex_unlock(&node->lock);
+    pthread_mutex_unlock(&ctx->mutex);
 }
 
 static void sshc_memory_context_detach_and_free_ptr(
@@ -213,11 +223,13 @@ static void sshc_memory_context_detach_and_free_ptr(
     }
 
     if (ctx != nullptr) {
+        pthread_mutex_lock(&ctx->mutex);
         ttak_mem_node_t *node =
             ttak_mem_tree_find_node(&ctx->epoch_gc.tree, ptr);
         if (node != nullptr) {
             ttak_mem_tree_remove(&ctx->epoch_gc.tree, node);
         }
+        pthread_mutex_unlock(&ctx->mutex);
     }
     ttak_mem_free(ptr);
 }
@@ -233,6 +245,7 @@ static void sshc_memory_context_defer_ptr(
         return;
     }
 
+    pthread_mutex_lock(&ctx->mutex);
     ttak_mem_node_t *node = ttak_mem_tree_find_node(&ctx->epoch_gc.tree, ptr);
     if (node != nullptr) {
         pthread_mutex_lock(&node->lock);
@@ -242,6 +255,7 @@ static void sshc_memory_context_defer_ptr(
     } else {
         ttak_mem_free(ptr);
     }
+    pthread_mutex_unlock(&ctx->mutex);
 }
 
 static sshc_memory_context_t *sshc_memory_context_global(void)
@@ -449,8 +463,10 @@ void sshc_memory_context_destroy(sshc_memory_context_t *ctx)
     }
 
     sshc_memory_context_reset(ctx);
+    pthread_mutex_lock(&ctx->mutex);
     ttak_epoch_gc_destroy(&ctx->epoch_gc);
     if (ctx->owner) ttak_owner_destroy(ctx->owner);
+    pthread_mutex_unlock(&ctx->mutex);
     pthread_mutex_destroy(&ctx->mutex);
 
     pthread_mutex_lock(&sshc_registry_mutex);
@@ -559,11 +575,16 @@ void *sshc_gc_malloc(size_t size)
     /* ttak_fastalloc: allocates + registers in the per-context epoch GC tree
      * in a single call, replacing the former two-step ttak_mem_alloc +
      * ttak_epoch_gc_register pattern. */
+    pthread_mutex_lock(&ctx->mutex);
     uint64_t lifetime = sshc_memory_context_lifetime(ctx);
     void *ptr = ttak_fastalloc(&ctx->epoch_gc, size, lifetime,
                                ttak_get_tick_count());
-    if (ptr == nullptr) return nullptr;
+    if (ptr == nullptr) {
+        pthread_mutex_unlock(&ctx->mutex);
+        return nullptr;
+    }
     sshc_memory_context_refresh_node_expiry(ctx, ptr);
+    pthread_mutex_unlock(&ctx->mutex);
 
     sshc_memory_allocation_t *allocation =
         (sshc_memory_allocation_t *)ttak_mem_alloc(
@@ -584,6 +605,8 @@ void *sshc_gc_malloc(size_t size)
 
     sshc_memory_context_register_allocation(ctx, allocation);
     sshc_memory_registry_add(allocation);
+    // Increment allocation counter
+    __atomic_add_fetch(&sshc_allocation_counter, 1, __ATOMIC_RELAXED);
     return ptr;
 }
 
@@ -629,14 +652,17 @@ void *sshc_gc_realloc(void *ptr, size_t size)
         old_allocation != nullptr ? old_allocation->context : ctx;
     size_t old_size = old_allocation != nullptr ? old_allocation->size : 0;
 
+    pthread_mutex_lock(&allocation_ctx->mutex);
     uint64_t lifetime = sshc_memory_context_lifetime(allocation_ctx);
     void *new_ptr = ttak_fastalloc(&allocation_ctx->epoch_gc, size,
                                    lifetime, ttak_get_tick_count());
     if (new_ptr == nullptr) {
+        pthread_mutex_unlock(&allocation_ctx->mutex);
         if (old_allocation) sshc_memory_registry_add(old_allocation);
         return nullptr;
     }
     sshc_memory_context_refresh_node_expiry(allocation_ctx, new_ptr);
+    pthread_mutex_unlock(&allocation_ctx->mutex);
 
     if (old_size > 0) {
         memcpy(new_ptr, ptr, old_size < size ? old_size : size);
@@ -750,7 +776,9 @@ void sshc_gc_free(void *ptr)
         } else {
             sshc_memory_context_detach_and_free_ptr(allocation->context, ptr);
         }
-        ttak_mem_free(allocation);
+        // Decrement allocation counter
+    __atomic_sub_fetch(&sshc_allocation_counter, 1, __ATOMIC_RELAXED);
+    ttak_mem_free(allocation);
     } else {
         /* Unknown to this registry: treat as already released or foreign.
          * Calling ttak_mem_freep here can turn shutdown double-cleanup into
@@ -782,32 +810,53 @@ void sshc_memory_context_reset(sshc_memory_context_t *ctx)
 
     /* Per-user GC rotate: single-pass cleanup of every unreferenced block
      * belonging to this session. */
+    pthread_mutex_lock(&ctx->mutex);
     ttak_epoch_gc_rotate(&ctx->epoch_gc);
+    pthread_mutex_unlock(&ctx->mutex);
     sshc_epoch_reclaim();
 }
 
 void sshc_memory_context_epoch_gc_rotate(sshc_memory_context_t *ctx)
 {
     if (ctx == nullptr) return;
+    pthread_mutex_lock(&ctx->mutex);
     ttak_epoch_gc_rotate(&ctx->epoch_gc);
+    pthread_mutex_unlock(&ctx->mutex);
+}
+
+void sshc_memory_context_epoch_gc_rotate_all(void)
+{
+    pthread_mutex_lock(&sshc_registry_mutex);
+    sshc_memory_context_t *ctx = sshc_contexts;
+    while (ctx != nullptr) {
+        pthread_mutex_lock(&ctx->mutex);
+        ttak_epoch_gc_rotate(&ctx->epoch_gc);
+        pthread_mutex_unlock(&ctx->mutex);
+        ctx = ctx->next;
+    }
+    pthread_mutex_unlock(&sshc_registry_mutex);
 }
 
 void sshc_memory_context_set_gc_aggressive(sshc_memory_context_t *ctx)
 {
     if (ctx == nullptr) return;
+    pthread_mutex_lock(&ctx->mutex);
     ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
                                          TT_MILLI_SECOND(100),
                                          TT_MILLI_SECOND(400));
     ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 4096);
+    pthread_mutex_unlock(&ctx->mutex);
 }
 
 void sshc_memory_context_set_gc_relaxed(sshc_memory_context_t *ctx)
 {
     if (ctx == nullptr) return;
+    pthread_mutex_lock(&ctx->mutex);
     ttak_mem_tree_set_cleaning_intervals(&ctx->epoch_gc.tree,
                                          TT_MILLI_SECOND(2000),
                                          TT_MILLI_SECOND(10000));
     ttak_mem_tree_set_pressure_threshold(&ctx->epoch_gc.tree, 65536);
+    pthread_mutex_unlock(&ctx->mutex);
 }
 
 void sshc_gc_init(void) 

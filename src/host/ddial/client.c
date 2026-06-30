@@ -681,6 +681,9 @@ static void host_history_delete_matching_message(host_t *host, const char *messa
     ttak_mutex_unlock(&host->lock);
 }
 
+/* Broadcast an already-normalized DDial line into the Chatter room.  This
+ * function is called without client->lock held; kick/timeout handling and
+ * slot learning happen during line extraction under the lock. */
 static void ddial_client_broadcast_line(host_t *host, const char *line)
 {
     if (host == nullptr || line == nullptr || line[0] == '\0') {
@@ -689,34 +692,14 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
 
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
 
-    char normalized[SSH_CHATTER_MESSAGE_LIMIT];
-    ddial_client_normalize_line(line, normalized, sizeof(normalized));
-    if (normalized[0] == '\0') {
-        return;
-    }
-
-    /* If the server tells us we are being kicked/timed out, close the socket
-     * so the main loop reconnects immediately. */
-    if (ddial_client_line_looks_like_kick(normalized)) {
-        ttak_mutex_lock(&client->lock);
-        if (client->upstream_fd >= 0) {
-            close(client->upstream_fd);
-            client->upstream_fd = -1;
-        }
-        client->connected = false;
-        if (client->reconnect_attempts < 100000U) {
-            client->reconnect_attempts++;
-        }
-        clock_gettime(CLOCK_MONOTONIC, &client->last_disconnect_time);
-        ttak_mutex_unlock(&client->lock);
-    }
-
     char parsed_handle[DDIAL_MAX_HANDLE_LEN];
     const char *parsed_message = nullptr;
     bool is_our_line = false;
 
-    if (ddial_parse_incoming_chat(normalized, parsed_handle, sizeof(parsed_handle), &parsed_message)) {
-        if (client->handle[0] != '\0' && strcasecmp(parsed_handle, client->handle) == 0) {
+    if (ddial_parse_incoming_chat(line, parsed_handle, sizeof(parsed_handle),
+                                  &parsed_message)) {
+        if (client->handle[0] != '\0' &&
+            strcasecmp(parsed_handle, client->handle) == 0) {
             is_our_line = true;
         }
     }
@@ -727,16 +710,18 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
 
         const char *color_start = "";
         const char *color_end = "";
-        if (host->user_theme.userColor != nullptr && host->user_theme.userColor[0] != '\0') {
+        if (host->user_theme.userColor != nullptr &&
+            host->user_theme.userColor[0] != '\0') {
             color_start = host->user_theme.userColor;
             color_end = ANSI_RESET;
         } else {
             color_start = ANSI_GREEN;
             color_end = ANSI_RESET;
         }
-        snprintf(display_line, sizeof(display_line), "%s[SENT]%s %s", color_start, color_end, normalized);
+        snprintf(display_line, sizeof(display_line), "%s[SENT]%s %s",
+                 color_start, color_end, line);
     } else {
-        snprintf(display_line, sizeof(display_line), "%s", normalized);
+        snprintf(display_line, sizeof(display_line), "%s", line);
     }
 
     /* Commit the normalized DDial line to Chatter history and render it
@@ -748,17 +733,39 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
     }
 }
 
-static void ddial_client_process_buffer(host_t *host, ddial_client_t *client,
-                                        bool force_flush)
+#define DDIAL_CLIENT_MAX_EXTRACTED_LINES 64U
+
+typedef struct {
+    char line[SSH_CHATTER_MESSAGE_LIMIT];
+} ddial_extracted_line_t;
+
+/* Extract complete lines from the recv buffer.  Must be called with
+ * client->lock held.  Returns the number of lines extracted into out_lines.
+ * If a kick/timeout line is seen, tears down the connection under the lock
+ * and sets *out_disconnected.  Slot learning is performed here so the lock
+ * is not held while broadcasting to the room. */
+static size_t ddial_client_extract_lines(ddial_client_t *client,
+                                         ddial_extracted_line_t *out_lines,
+                                         size_t max_lines,
+                                         bool force_flush,
+                                         bool *out_disconnected)
 {
-    if (host == nullptr || client == nullptr) {
-        return;
+    if (client == nullptr || out_lines == nullptr || max_lines == 0U) {
+        return 0U;
     }
 
     char *buf = client->recv_buffer;
     size_t len = client->recv_buf_len;
+    size_t extracted = 0U;
+    if (out_disconnected != nullptr) {
+        *out_disconnected = false;
+    }
 
     for (;;) {
+        if (extracted >= max_lines) {
+            break;
+        }
+
         char *eol = nullptr;
         size_t eol_len = 0U;
 
@@ -801,21 +808,48 @@ static void ddial_client_process_buffer(host_t *host, ddial_client_t *client,
         if (line_len > 0U && line[line_len - 1U] == '\r') {
             line[line_len - 1U] = '\0';
         }
-        if (line[0] != '\0') {
-            char normalized_line[SSH_CHATTER_MESSAGE_LIMIT];
-            ddial_client_normalize_line(line, normalized_line, sizeof(normalized_line));
-            if (normalized_line[0] != '\0') {
-                ddial_client_learn_slot(client, normalized_line);
-                ddial_client_broadcast_line(host, normalized_line);
-            }
-        }
 
         size_t consumed = line_len + eol_len;
         memmove(buf, buf + consumed, len - consumed);
         len -= consumed;
+
+        if (line[0] == '\0') {
+            continue;
+        }
+
+        char normalized_line[SSH_CHATTER_MESSAGE_LIMIT];
+        ddial_client_normalize_line(line, normalized_line,
+                                    sizeof(normalized_line));
+        if (normalized_line[0] == '\0') {
+            continue;
+        }
+
+        /* If the server tells us we are being kicked/timed out, tear down the
+         * connection while still under the lock. */
+        if (ddial_client_line_looks_like_kick(normalized_line)) {
+            if (client->upstream_fd >= 0) {
+                close(client->upstream_fd);
+                client->upstream_fd = -1;
+            }
+            client->connected = false;
+            if (client->reconnect_attempts < 100000U) {
+                client->reconnect_attempts++;
+            }
+            clock_gettime(CLOCK_MONOTONIC, &client->last_disconnect_time);
+            client->recv_buf_len = 0U;
+            if (out_disconnected != nullptr) {
+                *out_disconnected = true;
+            }
+            return 0U;
+        }
+
+        ddial_client_learn_slot(client, normalized_line);
+        snprintf(out_lines[extracted].line, sizeof(out_lines[extracted].line),
+                 "%s", normalized_line);
+        ++extracted;
     }
 
-    if (force_flush && len > 0U) {
+    if (force_flush && len > 0U && extracted < max_lines) {
         size_t line_len = len;
         if (line_len >= SSH_CHATTER_MESSAGE_LIMIT) {
             line_len = SSH_CHATTER_MESSAGE_LIMIT - 1U;
@@ -826,18 +860,70 @@ static void ddial_client_process_buffer(host_t *host, ddial_client_t *client,
         if (line_len > 0U && line[line_len - 1U] == '\r') {
             line[line_len - 1U] = '\0';
         }
+        len = 0U;
+
         if (line[0] != '\0') {
             char normalized_line[SSH_CHATTER_MESSAGE_LIMIT];
-            ddial_client_normalize_line(line, normalized_line, sizeof(normalized_line));
+            ddial_client_normalize_line(line, normalized_line,
+                                        sizeof(normalized_line));
             if (normalized_line[0] != '\0') {
+                if (ddial_client_line_looks_like_kick(normalized_line)) {
+                    if (client->upstream_fd >= 0) {
+                        close(client->upstream_fd);
+                        client->upstream_fd = -1;
+                    }
+                    client->connected = false;
+                    if (client->reconnect_attempts < 100000U) {
+                        client->reconnect_attempts++;
+                    }
+                    clock_gettime(CLOCK_MONOTONIC,
+                                  &client->last_disconnect_time);
+                    client->recv_buf_len = 0U;
+                    if (out_disconnected != nullptr) {
+                        *out_disconnected = true;
+                    }
+                    return 0U;
+                }
+
                 ddial_client_learn_slot(client, normalized_line);
-                ddial_client_broadcast_line(host, normalized_line);
+                snprintf(out_lines[extracted].line,
+                         sizeof(out_lines[extracted].line), "%s",
+                         normalized_line);
+                ++extracted;
             }
         }
-        len = 0U;
     }
 
     client->recv_buf_len = len;
+    return extracted;
+}
+
+/* Lock-protected wrapper that extracts buffered lines and then broadcasts
+ * them without holding client->lock. */
+static void ddial_client_flush_received_lines(host_t *host,
+                                              ddial_client_t *client,
+                                              bool force_flush)
+{
+    if (host == nullptr || client == nullptr) {
+        return;
+    }
+
+    ddial_extracted_line_t lines[DDIAL_CLIENT_MAX_EXTRACTED_LINES];
+    bool disconnected = false;
+
+    ttak_mutex_lock(&client->lock);
+    size_t count = ddial_client_extract_lines(client, lines,
+                                              DDIAL_CLIENT_MAX_EXTRACTED_LINES,
+                                              force_flush, &disconnected);
+    ttak_mutex_unlock(&client->lock);
+
+    if (disconnected) {
+        return;
+    }
+
+    for (size_t i = 0U; i < count; ++i) {
+        ddial_client_broadcast_line(host, lines[i].line);
+    }
 }
 
 static bool ddial_client_read_chunk(ddial_client_t *client, host_t *host)
@@ -852,6 +938,9 @@ static bool ddial_client_read_chunk(ddial_client_t *client, host_t *host)
         return false;
     }
 
+    ddial_extracted_line_t lines[DDIAL_CLIENT_MAX_EXTRACTED_LINES];
+    bool disconnected = false;
+
     ttak_mutex_lock(&client->lock);
     ddial_client_process_telnet(client, temp, (size_t)n);
 
@@ -863,9 +952,16 @@ static bool ddial_client_read_chunk(ddial_client_t *client, host_t *host)
         client->recv_buf_len -= drop;
     }
 
-    ddial_client_process_buffer(host, client, false);
+    size_t count = ddial_client_extract_lines(client, lines,
+                                              DDIAL_CLIENT_MAX_EXTRACTED_LINES,
+                                              false, &disconnected);
     ttak_mutex_unlock(&client->lock);
 
+    for (size_t i = 0U; i < count; ++i) {
+        ddial_client_broadcast_line(host, lines[i].line);
+    }
+
+    (void)disconnected;
     return true;
 }
 
@@ -1073,10 +1169,9 @@ static void *ddial_client_thread(void *arg)
                     sleep(backoff);
                     continue;
                 }
-                /* Flush any banners/prompts accumulated during login. */
-                ttak_mutex_lock(&client->lock);
-                ddial_client_process_buffer(host, client, false);
-                ttak_mutex_unlock(&client->lock);
+                /* Flush any banners/prompts accumulated during login.
+                 * Extraction happens under client->lock; broadcasting does not. */
+                ddial_client_flush_received_lines(host, client, false);
             }
 
             struct pollfd pfd;
@@ -1297,28 +1392,37 @@ void host_ddial_client_send(host_t *host, const char *handle,
     }
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
 
+    /* Snapshot connection state briefly, then format the wire message without
+     * holding client->lock so inbound traffic can still be processed. */
     ttak_mutex_lock(&client->lock);
-    if (!client->enabled || !client->connected || client->upstream_fd < 0 ||
-        atomic_load(&client->auth_state) != DDIAL_AUTH_APPROVED) {
-        ttak_mutex_unlock(&client->lock);
+    bool enabled = client->enabled;
+    bool connected = client->connected;
+    int upstream_fd = client->upstream_fd;
+    ddial_auth_state_t auth_state = atomic_load(&client->auth_state);
+    ttak_mutex_unlock(&client->lock);
+
+    if (!enabled || !connected || upstream_fd < 0 ||
+        auth_state != DDIAL_AUTH_APPROVED) {
         return;
     }
 
     char prefixed_message[SSH_CHATTER_MESSAGE_LIMIT];
     if (handle != nullptr && handle[0] != '\0') {
         char clean_handle[DDIAL_MAX_HANDLE_LEN];
-        ddial_strip_ansi(handle, strlen(handle), clean_handle, sizeof(clean_handle));
-        snprintf(prefixed_message, sizeof(prefixed_message), "%s) %s", clean_handle, message);
+        ddial_strip_ansi(handle, strlen(handle), clean_handle,
+                         sizeof(clean_handle));
+        snprintf(prefixed_message, sizeof(prefixed_message), "%s) %s",
+                 clean_handle, message);
     } else {
         snprintf(prefixed_message, sizeof(prefixed_message), "%s", message);
     }
 
     char normalized_message[SSH_CHATTER_MESSAGE_LIMIT];
-    ddial_client_normalize_outbound_text(prefixed_message, strlen(prefixed_message),
+    ddial_client_normalize_outbound_text(prefixed_message,
+                                         strlen(prefixed_message),
                                          normalized_message,
                                          sizeof(normalized_message));
     if (normalized_message[0] == '\0') {
-        ttak_mutex_unlock(&client->lock);
         return;
     }
 
@@ -1326,13 +1430,17 @@ void host_ddial_client_send(host_t *host, const char *handle,
     int wire_len = snprintf(wire_line, sizeof(wire_line), "%s\r\n",
                             normalized_message);
     if (wire_len <= 0 || (size_t)wire_len >= sizeof(wire_line)) {
-        ttak_mutex_unlock(&client->lock);
         return;
     }
 
-    (void)ddial_client_send_all(client->upstream_fd, wire_line,
-                                (size_t)wire_len);
-    ddial_client_update_send_time(client);
+    /* Hold the lock only for the actual socket write and send-time update. */
+    ttak_mutex_lock(&client->lock);
+    if (client->enabled && client->connected && client->upstream_fd == upstream_fd &&
+        atomic_load(&client->auth_state) == DDIAL_AUTH_APPROVED) {
+        (void)ddial_client_send_all(client->upstream_fd, wire_line,
+                                    (size_t)wire_len);
+        ddial_client_update_send_time(client);
+    }
     ttak_mutex_unlock(&client->lock);
 }
 

@@ -1096,6 +1096,7 @@ static void session_game_start_gonu(session_ctx_t *ctx)
     session_game_gonu_reset(state, variant);
     ctx->game.type = SESSION_GAME_GONU;
     ctx->game.active = true;
+    session_mode_push_chat_context(ctx);
     state->awaiting_mode_selection = true;
 
     session_send_system_line(ctx, "");
@@ -1237,6 +1238,7 @@ static void session_game_suspend(session_ctx_t *ctx, const char *reason)
 
     ctx->game.active = false;
     ctx->game.type = SESSION_GAME_NONE;
+    session_mode_pop_chat_context(ctx);
     session_manual_gc_tick(ctx);
     host_manual_gc_tick(ctx->owner);
 }

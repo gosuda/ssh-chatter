@@ -811,6 +811,7 @@ static void session_bbs_show_dashboard(session_ctx_t *ctx)
     ctx->in_bbs_mode = true;
     ctx->bbs_view_active = false;
     ctx->bbs_view_post_id = 0U;
+    session_mode_push_chat_context(ctx);
 
     session_send_system_line(ctx, "\n\033[1;36m>>> Connecting to Retro BBS Network... <<<\033[0m");
     session_send_system_line(ctx, "\033[1;32m>>> Baud Rate: 14400 bps | Terminal: ANSI-BBS | STATUS: ONLINE <<<\033[0m\n");

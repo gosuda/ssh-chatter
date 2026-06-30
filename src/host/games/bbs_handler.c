@@ -58,6 +58,7 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         ctx->bbs_view_total_lines = 0U;
         ctx->bbs_rendering_editor = false;
         session_bbs_workspace_release(ctx);
+        session_mode_pop_chat_context(ctx);
         session_send_system_line(ctx, "Exited BBS mode.");
         return;
     }
@@ -78,6 +79,7 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
     }
 
     ctx->in_bbs_mode = true;
+    session_mode_push_chat_context(ctx);
 
     const char *canonical_command =
         session_bbs_subcommand_canonicalize(ctx, command);

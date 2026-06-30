@@ -309,6 +309,7 @@ static void session_handle_archive_enter(session_ctx_t *ctx, const char *date_st
 
     ctx->in_archive_mode = true;
     ctx->archive_view_date = 0;
+    session_mode_push_chat_context(ctx);
 
     session_archive_render_entries(ctx, entries, count);
 }
@@ -327,8 +328,8 @@ static void session_handle_archive_exit(session_ctx_t *ctx)
 
     ctx->in_archive_mode = false;
     ctx->archive_view_date = 0;
+    session_mode_pop_chat_context(ctx);
     session_send_system_line(ctx, archive_text_left_mode(lang));
-    session_scrollback_reset_position(ctx);
 }
 
 void session_handle_archive(session_ctx_t *ctx, const char *arguments)

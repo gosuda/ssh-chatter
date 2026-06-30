@@ -194,12 +194,14 @@ static void session_game_start_liargame(session_ctx_t *ctx)
 
     ctx->game.type = SESSION_GAME_LIARGAME;
     ctx->game.active = true;
+    session_mode_push_chat_context(ctx);
     ctx->game.is_camouflaged = false;
     liar_game_state_t *state = session_game_ensure_liar(ctx);
     if (state == nullptr) {
         session_send_system_line(ctx, "Unable to allocate liar game state.");
         ctx->game.active = false;
         ctx->game.type = SESSION_GAME_NONE;
+        session_mode_pop_chat_context(ctx);
         return;
     }
     state->round_number = 0U;

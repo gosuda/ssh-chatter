@@ -672,6 +672,35 @@ typedef enum session_newline_mode {
     SESSION_NEWLINE_MODE_CRLF,
 } session_newline_mode_t;
 
+/* Saved chat-session context used to isolate RSS/BBS/game/archive modes from
+ * the normal chat view, input, output buffer, and scrollback state. */
+typedef struct session_chat_snapshot {
+    char input_buffer[SSH_CHATTER_MAX_INPUT_LEN];
+    size_t input_length;
+    int input_history_position;
+
+    size_t history_scroll_position;
+    bool history_latest_notified;
+    bool history_oldest_notified;
+    size_t scrollback_rendered_lines;
+    bool no_update;
+    bool pending_should_sink;
+    size_t last_sink_history_total;
+
+    bool display_model_follow_tail;
+
+    bool output_buffering_enabled;
+    size_t output_buffer_length;
+    char output_buffer[SSH_CHATTER_OUTPUT_BUFFER_SIZE];
+
+    size_t realtime_line_count;
+    size_t realtime_recent_count;
+    size_t realtime_recent_start;
+    bool capture_realtime_output;
+    bool has_last_output_line;
+    char last_output_line[SSH_CHATTER_MESSAGE_LIMIT];
+} session_chat_snapshot_t;
+
 typedef struct session_ctx {
     uint64_t session_id;
     void *session_data;
@@ -880,6 +909,9 @@ typedef struct session_ctx {
     char last_output_line[SSH_CHATTER_MESSAGE_LIMIT];
     bool has_last_output_line;
     bool disable_output_dedup;
+    // Saved chat context while the session is in a protected mode (RSS/BBS/game/archive)
+    session_chat_snapshot_t chat_snapshot;
+    bool has_chat_snapshot;
     // Dedicated memory context for this session
     sshc_memory_context_t *memory_context;
     // Ownership and isolation context

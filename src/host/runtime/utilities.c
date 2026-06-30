@@ -248,7 +248,7 @@ static bool host_memory_pressure_restart(host_t *host,
 static inline bool host_gc_cycle(host_t *host, struct timespec *last_gc_run,
                                  struct timespec *last_pressure_check)
 {
-    if (host == NULL || host->memory_context == NULL || last_gc_run == NULL) {
+    if (host == nullptr || host->memory_context == nullptr || last_gc_run == nullptr) {
         return false;
     }
 
@@ -257,23 +257,39 @@ static inline bool host_gc_cycle(host_t *host, struct timespec *last_gc_run,
         return false;
     }
 
+    /* If no active connections, skip regular GC cycles completely.
+     * Idle cleanup is handled by host_idle_state_maintenance. */
+    if (host->connection_count == 0U) {
+        const long long idle_pressure_interval_ns = 30000000000LL; /* 30 seconds */
+        const long elapsed_check_sec = now.tv_sec - last_pressure_check->tv_sec;
+        const long elapsed_check_nsec = now.tv_nsec - last_pressure_check->tv_nsec;
+        const long long elapsed_check_ns =
+            (long long)elapsed_check_sec * 1000000000LL + (long long)elapsed_check_nsec;
+        if (elapsed_check_ns >= idle_pressure_interval_ns) {
+            return host_memory_pressure_restart(host, last_pressure_check);
+        }
+        return false;
+    }
+
     const long elapsed_sec = now.tv_sec - last_gc_run->tv_sec;
     const long elapsed_nsec = now.tv_nsec - last_gc_run->tv_nsec;
     const long long elapsed_total_ns =
         (long long)elapsed_sec * 1000000000LL + (long long)elapsed_nsec;
 
-    /* Adaptive interval: faster under heavy load, slower when idle.
-     * This reduces CPU overhead from frequent epoch-rotates. */
+    /* Adaptive interval: only run GC when active. Under active connections,
+     * run GC every 5.0 seconds under light load, or 2.0 seconds under heavy load. */
     const long long base_interval_ns =
-        (host->connection_count >= 32U) ? 250000000LL : 500000000LL;
+        (host->connection_count >= 32U) ? 2000000000LL : 5000000000LL;
     if (elapsed_total_ns < base_interval_ns) {
         return host_memory_pressure_restart(host, last_pressure_check);
     }
 
-    sshc_memory_context_epoch_gc_rotate(host->memory_context);
-    /* Reclaim is deferred to avoid blocking the accept loop; periodic
-     * drains during idle maintenance and explicit session teardown are
-     * enough on a well-resourced host. */
+    /* Rotate all memory contexts (including global, host, and all sessions) */
+    sshc_memory_context_epoch_gc_rotate_all();
+
+    /* Run EBR global reclaim to free retired memory */
+    sshc_epoch_reclaim();
+
     *last_gc_run = now;
     return host_memory_pressure_restart(host, last_pressure_check);
 }

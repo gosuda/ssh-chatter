@@ -1346,12 +1346,14 @@ static void session_game_start_tetris(session_ctx_t *ctx)
     ctx->game.tetris->next_piece = session_game_tetris_take_piece(ctx);
     ctx->game.type = SESSION_GAME_TETRIS;
     ctx->game.active = true;
+    session_mode_push_chat_context(ctx);
     ctx->game.tetris->game_over = false;
     bool previous_translation_suppress = ctx->translation_suppress_output;
     if (!session_game_tetris_spawn_piece(ctx)) {
         session_send_system_line(ctx, "Unable to start Tetris right now.");
         ctx->game.active = false;
         ctx->game.type = SESSION_GAME_NONE;
+        session_mode_pop_chat_context(ctx);
         return;
     }
 

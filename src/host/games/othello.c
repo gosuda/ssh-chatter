@@ -171,6 +171,7 @@ static void session_game_othello_sync_player_from_snapshot(
 
     player->game.active = true;
     player->game.type = SESSION_GAME_OTHELLO;
+    session_mode_push_chat_context(player);
     player->game.is_camouflaged = false;
 
     othello_game_state_t *state = player->game.othello;
@@ -279,6 +280,7 @@ static void host_othello_try_promote_queue_locked(host_t *host)
         queued->othello_slot_queued = false;
         queued->game.active = true;
         queued->game.type = SESSION_GAME_OTHELLO;
+        session_mode_push_chat_context(queued);
         queued->game.is_camouflaged = false;
         othello_game_state_t *state = queued->game.othello;
         session_game_othello_copy_core(state, &slot->state);
@@ -1415,11 +1417,15 @@ static void session_game_start_othello(session_ctx_t *ctx)
 
     ctx->game.active = true;
     ctx->game.type = SESSION_GAME_OTHELLO;
+    session_mode_push_chat_context(ctx);
     ctx->game.is_camouflaged = false;
     session_game_seed_rng(ctx);
     othello_game_state_t *state = session_game_ensure_othello(ctx);
     if (state == nullptr) {
         session_send_system_line(ctx, "Unable to allocate Othello state.");
+        ctx->game.active = false;
+        ctx->game.type = SESSION_GAME_NONE;
+        session_mode_pop_chat_context(ctx);
         return;
     }
     session_game_othello_reset_state(state);

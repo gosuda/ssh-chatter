@@ -23,6 +23,7 @@ static void session_rss_exit(session_ctx_t *ctx, const char *reason)
 
     const bool was_active = ctx->in_rss_mode;
     session_rss_clear(ctx);
+    session_mode_pop_chat_context(ctx);
 
     if (reason != nullptr && reason[0] != '\0') {
         session_send_system_line(ctx, reason);
@@ -122,6 +123,7 @@ static void session_rss_begin(session_ctx_t *ctx, const char *tag,
         ctx->rss_view.items[idx] = items[idx];
     }
     ctx->in_rss_mode = true;
+    session_mode_push_chat_context(ctx);
 
     char intro[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(

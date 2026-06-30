@@ -1648,6 +1648,7 @@ static void session_game_start_alpha(session_ctx_t *ctx)
     alpha_centauri_game_state_t *state = session_game_ensure_alpha(ctx);
     ctx->game.type = SESSION_GAME_ALPHA;
     ctx->game.active = true;
+    session_mode_push_chat_context(ctx);
     ctx->game.is_camouflaged = false;
     state->active = true;
 

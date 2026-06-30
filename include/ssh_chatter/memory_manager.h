@@ -99,6 +99,7 @@ tt_owner_t *sshc_memory_context_get_owner(sshc_memory_context_t *ctx);
  * from a background thread or at natural safepoints.
  */
 void sshc_memory_context_epoch_gc_rotate(sshc_memory_context_t *ctx);
+void sshc_memory_context_epoch_gc_rotate_all(void);
 
 /**
  * @brief Set aggressive GC cadence for active load (users connected).

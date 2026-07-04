@@ -9,12 +9,12 @@
 
 // Base64url encoding/decoding helpers
 static char *base64url_encode(const unsigned char *input, size_t length) {
-    if (!input) return NULL;
+    if (!input) return nullptr;
     
     // Standard Base64 length calculation
     size_t encoded_len = 4 * ((length + 2) / 3);
     char *output = sshc_gc_malloc(encoded_len + 1);
-    if (!output) return NULL;
+    if (!output) return nullptr;
 
     const char base64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_ ";
     
@@ -41,7 +41,7 @@ static char *base64url_encode(const unsigned char *input, size_t length) {
 }
 
 static unsigned char *base64url_decode(const char *input, size_t *out_len) {
-    if (!input || !out_len) return NULL;
+    if (!input || !out_len) return nullptr;
     
     size_t len = strlen(input);
     size_t padding = 0;
@@ -53,7 +53,7 @@ static unsigned char *base64url_decode(const char *input, size_t *out_len) {
     
     size_t decoded_len = (len * 3) / 4; // approximate
     unsigned char *output = sshc_gc_malloc(decoded_len + padding + 1); // + safety
-    if (!output) return NULL;
+    if (!output) return nullptr;
 
     // Decoding table could be faster, but loop is simple for now
     int values[256];
@@ -107,14 +107,14 @@ static void hmac_sha256(const char *secret, const char *data, unsigned char *out
 }
 
 char *jwt_generate(const char *secret, const char *username, int64_t expiry_seconds) {
-    if (!secret || !username) return NULL;
+    if (!secret || !username) return nullptr;
 
     // Header
     const char *header_json = "{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
     char *header_b64 = base64url_encode((unsigned char *)header_json, strlen(header_json));
     
     // Payload
-    time_t now = time(NULL);
+    time_t now = time(nullptr);
     char payload_json[256];
     snprintf(payload_json, sizeof(payload_json), "{\"sub\":\"%s\",\"iat\":%ld,\"exp\":%ld}", 
              username, (long)now, (long)(now + expiry_seconds));
@@ -199,7 +199,7 @@ bool jwt_verify(const char *secret, const char *token, char **username_out) {
     char *exp_key = strstr(json_str, "\"exp\":");
     if (exp_key) {
         long exp = atol(exp_key + 6);
-        if (time(NULL) > exp) {
+        if (time(nullptr) > exp) {
             sshc_gc_free(payload_json);
             return false;
         }

@@ -26,7 +26,7 @@
 static size_t session_encode_utf8_codepoint(uint32_t codepoint, char *output,
                                             size_t capacity)
 {
-    if (output == NULL || capacity == 0U) {
+    if (output == nullptr || capacity == 0U) {
         return 0U;
     }
 
@@ -160,7 +160,7 @@ static size_t session_codepage_iconv_chunk(session_codepage_t codepage,
                                            size_t length, char *output,
                                            size_t capacity)
 {
-    if (bytes == NULL || length == 0U || output == NULL || capacity == 0U) {
+    if (bytes == nullptr || length == 0U || output == nullptr || capacity == 0U) {
         return 0U;
     }
 
@@ -183,7 +183,7 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
                                      unsigned char byte, char *output,
                                      size_t capacity)
 {
-    if (output == NULL || capacity == 0U || context == NULL) {
+    if (output == nullptr || capacity == 0U || context == nullptr) {
         return 0U;
     }
 
@@ -334,7 +334,7 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
     case SESSION_CODEPAGE_CP850:
     case SESSION_CODEPAGE_CP852:
     case SESSION_CODEPAGE_CP1251: {
-        const uint16_t *table = NULL;
+        const uint16_t *table = nullptr;
         switch (codepage) {
         case SESSION_CODEPAGE_CP437:
             table = kCp437ToUnicode;
@@ -356,7 +356,7 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
         context->state = 0;
         context->lead_byte = 0;
 
-        if (table != NULL) {
+        if (table != nullptr) {
             /* For single-byte tables, byte-0x80 is the index */
             codepoint = table[byte - 0x80U];
             valid_sequence = true;
@@ -459,7 +459,7 @@ const char *session_codepage_iconv_name(session_codepage_t codepage)
 {
     switch (codepage) {
     case SESSION_CODEPAGE_UTF8:
-        return NULL; /* No conversion needed */
+        return nullptr; /* No conversion needed */
     case SESSION_CODEPAGE_CP437:
         return "CP437//TRANSLIT";
     case SESSION_CODEPAGE_CP949:
@@ -475,16 +475,16 @@ const char *session_codepage_iconv_name(session_codepage_t codepage)
     case SESSION_CODEPAGE_CP852:
         return "CP852//TRANSLIT";
     case SESSION_CODEPAGE_AUTO:
-        return NULL; /* Resolved dynamically */
+        return nullptr; /* Resolved dynamically */
     default:
-        return NULL;
+        return nullptr;
     }
 }
 
 static bool session_iconv_strip_options(const char *name, char *output,
                                         size_t length)
 {
-    if (name == NULL || output == NULL || length == 0U) {
+    if (name == nullptr || output == nullptr || length == 0U) {
         return false;
     }
 
@@ -543,7 +543,7 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
                                 size_t output_capacity)
 {
     session_codepage_context_t context = {0, 0};
-    if (input == NULL || input_length == 0U || output == NULL ||
+    if (input == nullptr || input_length == 0U || output == nullptr ||
         output_capacity == 0U) {
         return 0U;
     }
@@ -561,7 +561,7 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
                                   codepage == SESSION_CODEPAGE_CP932 ||
                                   codepage == SESSION_CODEPAGE_CP936);
 
-    if (iconv_name == NULL) {
+    if (iconv_name == nullptr) {
         if (is_multibyte_codepage) {
             return 0U; /* No iconv name for multi-byte, conversion impossible */
         }
@@ -617,7 +617,7 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
 session_codepage_t session_codepage_detect_auto(const unsigned char *input,
                                                 size_t input_length)
 {
-    if (input == NULL || input_length == 0U) {
+    if (input == nullptr || input_length == 0U) {
         return SESSION_CODEPAGE_UTF8;
     }
 
@@ -648,12 +648,12 @@ session_codepage_t session_codepage_detect_auto(const unsigned char *input,
 
 #ifdef SSH_CHATTER_HAVE_UCHARDET
     uchardet_t ud = uchardet_new();
-    if (ud != NULL) {
+    if (ud != nullptr) {
         if (uchardet_handle_data(ud, (const char *)input,
                                  (size_t)input_length) == 0) {
             uchardet_data_end(ud);
             const char *charset = uchardet_get_charset(ud);
-            if (charset != NULL && charset[0] != '\0') {
+            if (charset != nullptr && charset[0] != '\0') {
                 session_codepage_t result = SESSION_CODEPAGE_UTF8;
                 if (strcasecmp(charset, "UTF-8") == 0)
                     result = SESSION_CODEPAGE_UTF8;
@@ -706,7 +706,7 @@ size_t session_utf8_to_codepage(session_codepage_t codepage, const char *input,
                                 size_t input_length, char *output,
                                 size_t output_capacity)
 {
-    if (input == NULL || input_length == 0U || output == NULL ||
+    if (input == nullptr || input_length == 0U || output == nullptr ||
         output_capacity == 0U) {
         return 0U;
     }
@@ -721,7 +721,7 @@ size_t session_utf8_to_codepage(session_codepage_t codepage, const char *input,
 
     const char *iconv_name = session_codepage_iconv_name(codepage);
 
-    if (iconv_name == NULL) {
+    if (iconv_name == nullptr) {
         /* No iconv name for this codepage, conversion impossible */
         return 0U;
     }

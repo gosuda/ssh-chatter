@@ -64,7 +64,7 @@ static int session_authenticate(session_ctx_t *ctx)
             // Load user data
             bool loaded_by_username = false;
             ttak_mutex_lock(&ctx->owner->user_data_lock);
-            if (user_data_load(ctx->owner->user_data_root, ctx->user.name, NULL,
+            if (user_data_load(ctx->owner->user_data_root, ctx->user.name, nullptr,
                                &ctx->user_data)) {
                 if (!security_layer_is_zero_hash(
                         ctx->user_data.password_hash,

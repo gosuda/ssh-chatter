@@ -63,7 +63,7 @@ static bool session_telnet_write_block(session_ctx_t *ctx,
                         .tv_sec = 0,
                         .tv_nsec = 10000000, /* 10ms backoff */
                     };
-                    nanosleep(&backoff, NULL);
+                    nanosleep(&backoff, nullptr);
                     continue;
                 }
                 /* Other errors are fatal */

@@ -7,7 +7,7 @@
 #include "doorgame/doorgame.h"
 
 #ifndef nullptr
-#define nullptr (void *)(NULL)
+#define nullptr (void *)(nullptr)
 #endif
 
 /* ------------------------------------------------------------------------- */

@@ -565,7 +565,7 @@ static bool session_run_login_tui(session_ctx_t *ctx)
             if (empty_enter_count >= 2) {
                 bool password_is_set = false;
                 ttak_mutex_lock(&ctx->owner->user_data_lock);
-                (void)user_data_load(ctx->owner->user_data_root, ctx->user.name, NULL, &ctx->user_data);
+                (void)user_data_load(ctx->owner->user_data_root, ctx->user.name, nullptr, &ctx->user_data);
                 password_is_set = !security_layer_is_zero_hash(
                     ctx->user_data.password_hash, sizeof(ctx->user_data.password_hash));
                 ttak_mutex_unlock(&ctx->owner->user_data_lock);
@@ -593,7 +593,7 @@ static bool session_run_login_tui(session_ctx_t *ctx)
 
         bool password_is_set = false;
         ttak_mutex_lock(&ctx->owner->user_data_lock);
-        (void)user_data_load(ctx->owner->user_data_root, ctx->user.name, NULL, &ctx->user_data);
+        (void)user_data_load(ctx->owner->user_data_root, ctx->user.name, nullptr, &ctx->user_data);
         password_is_set = !security_layer_is_zero_hash(
             ctx->user_data.password_hash, sizeof(ctx->user_data.password_hash));
         ttak_mutex_unlock(&ctx->owner->user_data_lock);
@@ -1022,13 +1022,13 @@ static void *session_thread(void *arg)
             ctx, "~~~ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ~~~");
     /* Duplicate the MOTD string because strtok_r modifies the source string */
         char *motd_copy = sshc_strdup(ctx->owner->motd);
-        if (motd_copy != NULL) {
+        if (motd_copy != nullptr) {
             char *saveptr;
             char *line = strtok_r(motd_copy, "\n", &saveptr);
         
-            while (line != NULL) {
+            while (line != nullptr) {
                 session_send_system_line(ctx, line);
-                line = strtok_r(NULL, "\n", &saveptr);
+                line = strtok_r(nullptr, "\n", &saveptr);
             }
         
             /* Free the allocated copy after processing */

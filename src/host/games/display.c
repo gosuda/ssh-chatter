@@ -115,7 +115,7 @@ static bool session_parse_color_arguments(char *working, char **tokens,
 
 static bool session_valid_ansi_256_sequence(const char *sequence)
 {
-    if (sequence == NULL) {
+    if (sequence == nullptr) {
         return false;
     }
 
@@ -178,27 +178,27 @@ static bool session_valid_ansi_256_sequence(const char *sequence)
             char *truecolor_target =
                 (fg_truecolor_ptr) ? fg_truecolor_ptr : bg_truecolor_ptr;
 
-            if (target != NULL) {
+            if (target != nullptr) {
                 target += 5;
 
-                char *endptr = NULL;
+                char *endptr = nullptr;
                 long val = strtol(target, &endptr, 10);
                 if (val < 0 || val > 255 || target == endptr) {
                     return false;
                 }
             }
 
-            if (truecolor_target != NULL) {
+            if (truecolor_target != nullptr) {
                 truecolor_target += 5;
                 for (int component = 0; component < 3; ++component) {
-                    char *endptr = NULL;
+                    char *endptr = nullptr;
                     long val = strtol(truecolor_target, &endptr, 10);
                     if (val < 0 || val > 255 || truecolor_target == endptr) {
                         return false;
                     }
 
                     if (component < 2) {
-                        if (endptr == NULL || *endptr != ';') {
+                        if (endptr == nullptr || *endptr != ';') {
                             return false;
                         }
                         truecolor_target = endptr + 1;
@@ -214,7 +214,7 @@ static bool session_valid_ansi_256_sequence(const char *sequence)
 static bool session_translate_escape_sequences(const char *input, char *output,
                                                size_t output_size)
 {
-    if (input == NULL || output == NULL || output_size == 0U) {
+    if (input == nullptr || output == nullptr || output_size == 0U) {
         return false;
     }
 

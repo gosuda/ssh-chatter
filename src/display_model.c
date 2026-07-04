@@ -14,7 +14,7 @@ static size_t display_model_effective_viewport(const display_model_t *model,
                                                size_t fallback_lines)
 {
     size_t vp = 0U;
-    if (model != NULL && model->last_viewport_height > 0U) {
+    if (model != nullptr && model->last_viewport_height > 0U) {
         vp = (size_t)model->last_viewport_height;
     } else {
         vp = fallback_lines;
@@ -39,12 +39,12 @@ static bool display_model_view_lines(const display_model_t *model,
                                      ttak_abstract_map_t *view,
                                      const display_line_t **lines_out)
 {
-    if (view == NULL || lines_out == NULL) {
+    if (view == nullptr || lines_out == nullptr) {
         return false;
     }
 
-    *lines_out = NULL;
-    if (model == NULL || model->line_storage == NULL) {
+    *lines_out = nullptr;
+    if (model == nullptr || model->line_storage == nullptr) {
         return false;
     }
 
@@ -64,12 +64,12 @@ static bool display_model_view_lines_mut(display_model_t *model,
                                          ttak_abstract_map_t *view,
                                          display_line_t **lines_out)
 {
-    if (view == NULL || lines_out == NULL) {
+    if (view == nullptr || lines_out == nullptr) {
         return false;
     }
 
-    *lines_out = NULL;
-    if (model == NULL || model->line_storage == NULL) {
+    *lines_out = nullptr;
+    if (model == nullptr || model->line_storage == nullptr) {
         return false;
     }
 
@@ -200,7 +200,7 @@ static bool display_model_ensure_capacity(display_model_t *model,
 
 bool display_model_init(display_model_t *model, size_t initial_capacity)
 {
-    if (model == NULL) {
+    if (model == nullptr) {
         return false;
     }
 
@@ -213,7 +213,7 @@ bool display_model_init(display_model_t *model, size_t initial_capacity)
 
     model->line_storage = ttak_abstract_alloc(initial_capacity *
                                               sizeof(display_line_t));
-    if (model->line_storage == NULL) {
+    if (model->line_storage == nullptr) {
         return false;
     }
 
@@ -223,7 +223,7 @@ bool display_model_init(display_model_t *model, size_t initial_capacity)
 
 void display_model_destroy(display_model_t *model)
 {
-    if (model == NULL) {
+    if (model == nullptr) {
         return;
     }
 
@@ -235,7 +235,7 @@ size_t display_model_wrap_line(const char *text, unsigned int width,
                                uint64_t message_id,
                                display_line_t *out, size_t out_capacity)
 {
-    if (text == NULL || width == 0U || out == NULL || out_capacity == 0U) {
+    if (text == nullptr || width == 0U || out == nullptr || out_capacity == 0U) {
         return 0U;
     }
 
@@ -313,14 +313,14 @@ bool display_model_recompute_layout(display_model_t *model,
                                     size_t count,
                                     unsigned int width)
 {
-    if (model == NULL) {
+    if (model == nullptr) {
         return false;
     }
 
     model->line_count = 0U;
     model->layout_width = width;
 
-    if (count == 0U || message_ids == NULL || texts == NULL || width == 0U) {
+    if (count == 0U || message_ids == nullptr || texts == nullptr || width == 0U) {
         model->dirty = false;
         return true;
     }
@@ -338,7 +338,7 @@ bool display_model_recompute_layout(display_model_t *model,
         }
 
         ttak_abstract_map_t write_view;
-        display_line_t *lines = NULL;
+        display_line_t *lines = nullptr;
         if (!display_model_view_lines_mut(model, model->line_count, wrapped,
                                           &write_view, &lines)) {
             return false;
@@ -357,7 +357,7 @@ bool display_model_append_message(display_model_t *model,
                                   const char *text,
                                   unsigned int width)
 {
-    if (model == NULL || text == NULL || width == 0U) {
+    if (model == nullptr || text == nullptr || width == 0U) {
         return false;
     }
 
@@ -369,7 +369,7 @@ bool display_model_append_message(display_model_t *model,
     }
 
     ttak_abstract_map_t write_view;
-    display_line_t *lines = NULL;
+    display_line_t *lines = nullptr;
     if (!display_model_view_lines_mut(model, model->line_count, wrapped,
                                       &write_view, &lines)) {
         return false;
@@ -385,12 +385,12 @@ bool display_model_append_message(display_model_t *model,
 size_t display_model_resolve_anchor(const display_model_t *model,
                                     const display_view_anchor_t *anchor)
 {
-    if (model == NULL || anchor == NULL || model->line_count == 0U) {
+    if (model == nullptr || anchor == nullptr || model->line_count == 0U) {
         return SIZE_MAX;
     }
 
     ttak_abstract_map_t read_view;
-    const display_line_t *lines = NULL;
+    const display_line_t *lines = nullptr;
     if (!display_model_view_lines(model, 0U, model->line_count, &read_view,
                                   &lines)) {
         return SIZE_MAX;
@@ -431,8 +431,8 @@ void display_model_compute_visible(display_model_t *model,
                                    unsigned int viewport_height,
                                    display_visible_frame_t *frame)
 {
-    if (model == NULL || frame == NULL) {
-        if (frame != NULL) {
+    if (model == nullptr || frame == nullptr) {
+        if (frame != nullptr) {
             memset(frame, 0, sizeof(*frame));
         }
         return;
@@ -443,7 +443,7 @@ void display_model_compute_visible(display_model_t *model,
     if (model->line_count == 0U || viewport_height == 0U) {
         frame->at_tail = true;
         frame->at_head = true;
-        if (model != NULL) {
+        if (model != nullptr) {
             model->has_last_visible_frame = false;
             model->last_visible_start = 0U;
             model->last_viewport_height = viewport_height;
@@ -501,18 +501,18 @@ void display_model_compute_visible(display_model_t *model,
 
 void display_model_release_visible(display_visible_frame_t *frame)
 {
-    if (frame == NULL) {
+    if (frame == nullptr) {
         return;
     }
 
     ttak_abstract_unmap(&frame->storage_map);
-    frame->lines = NULL;
+    frame->lines = nullptr;
     frame->count = 0U;
 }
 
 void display_model_scroll_up(display_model_t *model, size_t lines)
 {
-    if (model == NULL || model->line_count == 0U || lines == 0U) {
+    if (model == nullptr || model->line_count == 0U || lines == 0U) {
         return;
     }
 
@@ -547,7 +547,7 @@ void display_model_scroll_up(display_model_t *model, size_t lines)
     }
 
     ttak_abstract_map_t read_view;
-    const display_line_t *line = NULL;
+    const display_line_t *line = nullptr;
     if (!display_model_view_lines(model, current_idx, 1U, &read_view, &line)) {
         return;
     }
@@ -558,7 +558,7 @@ void display_model_scroll_up(display_model_t *model, size_t lines)
 
 void display_model_scroll_down(display_model_t *model, size_t lines)
 {
-    if (model == NULL || model->line_count == 0U || lines == 0U) {
+    if (model == nullptr || model->line_count == 0U || lines == 0U) {
         return;
     }
 
@@ -592,7 +592,7 @@ void display_model_scroll_down(display_model_t *model, size_t lines)
     }
 
     ttak_abstract_map_t read_view;
-    const display_line_t *line = NULL;
+    const display_line_t *line = nullptr;
     if (!display_model_view_lines(model, new_idx, 1U, &read_view, &line)) {
         display_model_follow_tail(model);
         return;
@@ -604,7 +604,7 @@ void display_model_scroll_down(display_model_t *model, size_t lines)
 
 void display_model_follow_tail(display_model_t *model)
 {
-    if (model == NULL) {
+    if (model == nullptr) {
         return;
     }
 
@@ -617,7 +617,7 @@ void display_model_follow_tail(display_model_t *model)
 
 bool display_model_is_following_tail(const display_model_t *model)
 {
-    if (model == NULL) {
+    if (model == nullptr) {
         return true;
     }
 
@@ -626,7 +626,7 @@ bool display_model_is_following_tail(const display_model_t *model)
 
 size_t display_model_total_lines(const display_model_t *model)
 {
-    if (model == NULL) {
+    if (model == nullptr) {
         return 0U;
     }
 

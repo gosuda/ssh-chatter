@@ -30,8 +30,8 @@ static void session_handle_morse(session_ctx_t *ctx, const char *arguments)
     }
 
     if (strcasecmp(command, "on") == 0) {
-        char *filter = strtok(NULL, "");
-        if (filter == NULL || filter[0] == '\0') {
+        char *filter = strtok(nullptr, "");
+        if (filter == nullptr || filter[0] == '\0') {
             session_send_system_line(ctx, kUsage);
             return;
         }

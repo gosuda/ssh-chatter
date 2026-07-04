@@ -1523,7 +1523,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             const char *path = sftp_client_message_get_filename(msg);
             char resolved[PATH_MAX];
             if (!file_transfer_resolve_path(ctx->owner, path, resolved,
-                                            sizeof(resolved), NULL, 0U)) {
+                                            sizeof(resolved), nullptr, 0U)) {
                 sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
                                   "Permission denied.");
                 break;
@@ -1547,7 +1547,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             const char *path = sftp_client_message_get_filename(msg);
             char resolved[PATH_MAX];
             if (!file_transfer_resolve_path(ctx->owner, path, resolved,
-                                            sizeof(resolved), NULL, 0U)) {
+                                            sizeof(resolved), nullptr, 0U)) {
                 sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
                                   "Permission denied.");
                 break;
@@ -1620,7 +1620,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             uint32_t flags = sftp_client_message_get_flags(msg);
             char resolved[PATH_MAX];
             if (!file_transfer_resolve_path(ctx->owner, path, resolved,
-                                            sizeof(resolved), NULL, 0U)) {
+                                            sizeof(resolved), nullptr, 0U)) {
                 sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
                                   "Permission denied.");
                 break;
@@ -1766,7 +1766,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             const char *path = sftp_client_message_get_filename(msg);
             char resolved[PATH_MAX];
             if (!file_transfer_resolve_path(ctx->owner, path, resolved,
-                                            sizeof(resolved), NULL, 0U)) {
+                                            sizeof(resolved), nullptr, 0U)) {
                 sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
                                   "Permission denied.");
                 break;
@@ -1784,9 +1784,9 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             char resolved_old[PATH_MAX];
             char resolved_new[PATH_MAX];
             if (!file_transfer_resolve_path(ctx->owner, oldpath, resolved_old,
-                                            sizeof(resolved_old), NULL, 0U) ||
+                                            sizeof(resolved_old), nullptr, 0U) ||
                 !file_transfer_resolve_path(ctx->owner, newpath, resolved_new,
-                                            sizeof(resolved_new), NULL, 0U)) {
+                                            sizeof(resolved_new), nullptr, 0U)) {
                 sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
                                   "Permission denied.");
                 break;
@@ -1802,7 +1802,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             const char *path = sftp_client_message_get_filename(msg);
             char resolved[PATH_MAX];
             if (!file_transfer_resolve_path(ctx->owner, path, resolved,
-                                            sizeof(resolved), NULL, 0U)) {
+                                            sizeof(resolved), nullptr, 0U)) {
                 sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
                                   "Permission denied.");
                 break;
@@ -1818,7 +1818,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             const char *path = sftp_client_message_get_filename(msg);
             char resolved[PATH_MAX];
             if (!file_transfer_resolve_path(ctx->owner, path, resolved,
-                                            sizeof(resolved), NULL, 0U)) {
+                                            sizeof(resolved), nullptr, 0U)) {
                 sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
                                   "Permission denied.");
                 break;
@@ -1834,7 +1834,7 @@ int file_transfer_handle_sftp(session_ctx_t *ctx)
             const char *path = sftp_client_message_get_filename(msg);
             char resolved[PATH_MAX];
             if (!file_transfer_resolve_path(ctx->owner, path, resolved,
-                                            sizeof(resolved), NULL, 0U)) {
+                                            sizeof(resolved), nullptr, 0U)) {
                 sftp_reply_status(msg, SSH_FX_PERMISSION_DENIED,
                                   "Permission denied.");
                 break;

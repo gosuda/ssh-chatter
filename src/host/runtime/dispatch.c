@@ -1562,7 +1562,7 @@ static void session_close_channel(session_ctx_t *ctx)
     }
 
     /* Nullify the channel pointer first so that concurrent readers
-     * (e.g. in-flight broadcast threads) see NULL via
+     * (e.g. in-flight broadcast threads) see nullptr via
      * session_transport_active() and bail out before we free the
      * underlying libssh object. */
     ssh_channel old_channel = ctx->channel;

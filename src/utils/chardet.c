@@ -4,8 +4,8 @@ static bool sshc_chardet_validate_utf8(const unsigned char *data,
                                        size_t length,
                                        size_t *out_multibyte)
 {
-    if (data == NULL || length == 0U) {
-        if (out_multibyte != NULL) {
+    if (data == nullptr || length == 0U) {
+        if (out_multibyte != nullptr) {
             *out_multibyte = 0U;
         }
         return true;
@@ -45,7 +45,7 @@ static bool sshc_chardet_validate_utf8(const unsigned char *data,
         idx += need + 1U;
     }
 
-    if (out_multibyte != NULL) {
+    if (out_multibyte != nullptr) {
         *out_multibyte = multibyte;
     }
     return true;
@@ -53,7 +53,7 @@ static bool sshc_chardet_validate_utf8(const unsigned char *data,
 
 bool sshc_chardet_prefers_utf8(const char *data, size_t length)
 {
-    if (data == NULL || length == 0U) {
+    if (data == nullptr || length == 0U) {
         return false;
     }
 

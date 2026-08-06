@@ -1094,16 +1094,20 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
             return;
         }
 
-        const char *handle = nullptr;
+        char handle_str[SSH_CHATTER_USERNAME_LEN] = {0};
+        char key_str[256] = {0};
         if (remaining != nullptr && remaining[0] != '\0') {
-            handle = remaining;
-            while (*handle == ' ' || *handle == '\t') {
-                ++handle;
+            remaining = session_consume_token(remaining, handle_str, sizeof(handle_str));
+            if (remaining != nullptr && remaining[0] != '\0') {
+                session_consume_token(remaining, key_str, sizeof(key_str));
             }
         }
 
+        const char *handle = handle_str[0] != '\0' ? handle_str : nullptr;
+        const char *key = key_str[0] != '\0' ? key_str : nullptr;
+
         if (host_ddial_client_configure(ctx->owner, host_str, (int)port_long,
-                                        handle)) {
+                                        handle, key)) {
             session_send_system_line(
                 ctx, "DDial relay configured and connecting...");
         } else {

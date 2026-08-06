@@ -1083,6 +1083,7 @@ typedef struct ddial_relay {
     char host[256];
     int port;
     char handle[SSH_CHATTER_USERNAME_LEN];
+    char key[256];
     char recv_buffer[SSH_CHATTER_MESSAGE_LIMIT * 4];
     size_t recv_buf_len;
     int telnet_state;
@@ -1382,7 +1383,7 @@ void host_ddial_broadcast_system(host_t *host, const char *message);
 void host_ddial_init(host_t *host);
 void host_ddial_shutdown(host_t *host);
 bool host_ddial_client_configure(host_t *host, const char *host_str, int port,
-                                 const char *handle);
+                                 const char *handle, const char *key);
 void host_ddial_client_disconnect(host_t *host);
 void host_ddial_client_reconnect(host_t *host);
 void host_ddial_client_start(host_t *host);

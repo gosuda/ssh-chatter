@@ -11,7 +11,10 @@
  *     terminal-type).  We answer DO echo, DO SGA, WILL terminal-type and
  *     reply to the terminal-type subnegotiation with "ANSI".
  *   - Server sends "Enter Password or [RETURN]: ".
- *   - Client sends a bare CR/LF for guest login.
+ *   - With a configured password the client waits 5 seconds after CONNECT,
+ *     sends the password, and verifies the login went through; a rejected
+ *     password tears the connection down instead of falling back to guest.
+ *   - Without a password the client sends a bare CR/LF for guest login.
  *   - Server sends welcome banner and a "-->" prompt, plus a status line
  *     such as " #1(T1:?)" where the leading number is our assigned slot.
  *   - Client sets the handle with "/H<handle>\r\n".
@@ -52,6 +55,13 @@
 #define DDIAL_CLIENT_LOGIN_PROMPT_TIMEOUT_SEC 8
 #define DDIAL_CLIENT_PREAUTH_DRAIN_MS (DDIAL_CLIENT_LOGIN_PROMPT_TIMEOUT_SEC * 1000)
 #define DDIAL_CLIENT_POSTAUTH_DRAIN_MS 2000
+/* Password login grace period: Retro-Dial needs a moment after CONNECT
+ * before its telnet negotiation and password prompt settle, so wait a fixed
+ * 5 seconds before sending the configured password. */
+#define DDIAL_CLIENT_AUTH_PRE_SEND_DELAY_MS 5000
+/* How long to watch for a login success/failure marker after the password
+ * has been sent. */
+#define DDIAL_CLIENT_AUTH_RESULT_TIMEOUT_MS 10000
 
 enum {
     DDIAL_TELNET_DATA = 0,
@@ -74,6 +84,10 @@ typedef struct ddial_client {
     bool connected;
     bool auth_sent;
     _Atomic ddial_auth_state_t auth_state;
+    /* Password login verdict: 0 = pending, 1 = success marker seen,
+     * -1 = failure marker/re-prompt seen.  Only meaningful when a password
+     * (key) is configured. */
+    int auth_result;
     struct timespec auth_deadline;
     bool locally_registered;
     char host[256];
@@ -162,6 +176,7 @@ static void ddial_client_disconnect(ddial_client_t *client)
     client->connected = false;
     client->auth_sent = false;
     atomic_store(&client->auth_state, DDIAL_AUTH_NONE);
+    client->auth_result = 0;
     client->auth_deadline.tv_sec = 0;
     client->auth_deadline.tv_nsec = 0;
     client->recv_buf_len = 0U;
@@ -258,6 +273,7 @@ static bool ddial_client_connect_socket(ddial_client_t *client)
     client->connected = true;
     client->auth_sent = false;
     atomic_store(&client->auth_state, DDIAL_AUTH_NONE);
+    client->auth_result = 0;
     client->recv_buf_len = 0U;
     client->telnet_state = DDIAL_TELNET_DATA;
     client->telnet_cmd = 0U;
@@ -614,6 +630,47 @@ static void ddial_client_normalize_line(const char *src, char *dst,
     snprintf(dst, dst_cap, "%s", start);
 }
 
+/* Watch normalized inbound lines for login verdict markers while a password
+ * login is pending.  Only used when a password (key) is configured; guest
+ * logins never set auth_result.  Must be called with client->lock held. */
+static void ddial_client_note_auth_marker(ddial_client_t *client,
+                                          const char *line)
+{
+    if (client == nullptr || line == nullptr || client->key[0] == '\0' ||
+        client->auth_result != 0) {
+        return;
+    }
+
+    static const char *fail_needles[] = {
+        "password needed", "invalid password", "incorrect password",
+        "wrong password",  "access denied",    "try again",
+    };
+    for (size_t i = 0U; i < sizeof(fail_needles) / sizeof(fail_needles[0]);
+         ++i) {
+        if (strcasestr(line, fail_needles[i]) != nullptr) {
+            client->auth_result = -1;
+            return;
+        }
+    }
+
+    static const char *ok_needles[] = {
+        "welcome to", "callers today", "callers total",
+    };
+    for (size_t i = 0U; i < sizeof(ok_needles) / sizeof(ok_needles[0]); ++i) {
+        if (strcasestr(line, ok_needles[i]) != nullptr) {
+            client->auth_result = 1;
+            return;
+        }
+    }
+
+    /* Member/guest login broadcast ("}-->. +^..." / "}}-->. +^..."): while
+     * stuck at the password prompt the server does not relay channel traffic,
+     * so seeing a login broadcast means we cleared authentication. */
+    if (line[0] == '}' && strstr(line, "+^") != nullptr) {
+        client->auth_result = 1;
+    }
+}
+
 static bool ddial_parse_incoming_chat(const char *line, char *out_handle, size_t handle_cap, const char **out_message)
 {
     if (line == nullptr || line[0] != '#') {
@@ -845,6 +902,7 @@ static size_t ddial_client_extract_lines(ddial_client_t *client,
         }
 
         ddial_client_learn_slot(client, normalized_line);
+        ddial_client_note_auth_marker(client, normalized_line);
         snprintf(out_lines[extracted].line, sizeof(out_lines[extracted].line),
                  "%s", normalized_line);
         ++extracted;
@@ -887,6 +945,7 @@ static size_t ddial_client_extract_lines(ddial_client_t *client,
                 }
 
                 ddial_client_learn_slot(client, normalized_line);
+                ddial_client_note_auth_marker(client, normalized_line);
                 snprintf(out_lines[extracted].line,
                          sizeof(out_lines[extracted].line), "%s",
                          normalized_line);
@@ -1099,6 +1158,71 @@ static bool ddial_client_drain_until_login_prompt(ddial_client_t *client,
     }
 }
 
+/* After the password has been sent, watch inbound traffic until a login
+ * verdict marker arrives, the server re-prints the password prompt (which
+ * means the password was rejected), or the timeout expires.  Returns false
+ * only on socket errors. */
+static bool ddial_client_drain_until_auth_result(ddial_client_t *client,
+                                                 host_t *host,
+                                                 int timeout_ms)
+{
+    if (client == nullptr || host == nullptr || client->upstream_fd < 0 ||
+        timeout_ms <= 0) {
+        return true;
+    }
+
+    struct timespec start;
+    if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) {
+        return true;
+    }
+
+    for (;;) {
+        ttak_mutex_lock(&client->lock);
+        int result = client->auth_result;
+        bool reprompted =
+            ddial_client_buffer_contains_ci_locked(client, "password");
+        if (reprompted && result == 0) {
+            client->auth_result = -1;
+            result = -1;
+        }
+        ttak_mutex_unlock(&client->lock);
+        if (result != 0) {
+            return true;
+        }
+
+        struct timespec now;
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+            return true;
+        }
+        long elapsed_ms = (long)((now.tv_sec - start.tv_sec) * 1000L) +
+                          (long)((now.tv_nsec - start.tv_nsec) / 1000000L);
+        if (elapsed_ms >= timeout_ms) {
+            return true;
+        }
+
+        int remaining_ms = timeout_ms - (int)elapsed_ms;
+        int poll_ms = remaining_ms < 100 ? remaining_ms : 100;
+        struct pollfd pfd = {.fd = client->upstream_fd, .events = POLLIN};
+        int poll_rc = poll(&pfd, 1, poll_ms);
+        if (poll_rc < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return false;
+        }
+        if (poll_rc == 0) {
+            continue;
+        }
+        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            return false;
+        }
+        if ((pfd.revents & POLLIN) != 0 &&
+            !ddial_client_read_chunk(client, host)) {
+            return false;
+        }
+    }
+}
+
 static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
 {
     if (client == nullptr || host == nullptr) {
@@ -1107,29 +1231,67 @@ static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
 
     ddial_client_begin_telnet(client);
 
-    /* Wait for the password prompt when it arrives, then send password or RETURN.
-     * On old/slow links this avoids racing input ahead of Retro-Dial's CONNECT/password state. */
-    if (!ddial_client_drain_until_login_prompt(
-            client, host, DDIAL_CLIENT_PREAUTH_DRAIN_MS)) {
-        return false;
-    }
-
-    /* Send password if configured, or bare RETURN for guest login. */
-    char line[512];
     if (client->key[0] != '\0') {
-        snprintf(line, sizeof(line), "%s\r\n", client->key);
-    } else {
-        snprintf(line, sizeof(line), "\r\n");
-    }
-    ttak_mutex_lock(&client->lock);
-    if (client->connected && client->upstream_fd >= 0) {
-        (void)ddial_client_send_all(client->upstream_fd, line, strlen(line));
-        ddial_client_update_send_time(client);
-    }
-    ttak_mutex_unlock(&client->lock);
+        /* Password login: wait a fixed 5 second grace period after CONNECT so
+         * the upstream can finish telnet negotiation and print its password
+         * prompt, then send the configured password. */
+        if (!ddial_client_drain_for(client, host,
+                                    DDIAL_CLIENT_AUTH_PRE_SEND_DELAY_MS)) {
+            return false;
+        }
 
-    if (!ddial_client_drain_for(client, host, DDIAL_CLIENT_POSTAUTH_DRAIN_MS)) {
-        return false;
+        /* Drop the pending "Password:" prompt from the receive buffer so a
+         * re-prompt after we send the password is recognized as a rejection. */
+        char line[512];
+        snprintf(line, sizeof(line), "%s\r\n", client->key);
+        ttak_mutex_lock(&client->lock);
+        client->recv_buf_len = 0U;
+        client->auth_result = 0;
+        if (client->connected && client->upstream_fd >= 0) {
+            (void)ddial_client_send_all(client->upstream_fd, line,
+                                        strlen(line));
+            ddial_client_update_send_time(client);
+        }
+        ttak_mutex_unlock(&client->lock);
+
+        /* Watch the post-auth traffic and confirm the login actually went
+         * through.  A rejected password must never fall back to guest
+         * login -- the connection is torn down instead. */
+        if (!ddial_client_drain_until_auth_result(
+                client, host, DDIAL_CLIENT_AUTH_RESULT_TIMEOUT_MS)) {
+            return false;
+        }
+
+        ttak_mutex_lock(&client->lock);
+        int auth_result = client->auth_result;
+        ttak_mutex_unlock(&client->lock);
+        if (auth_result <= 0) {
+            printf("[ddial] upstream %s:%d did not accept the configured "
+                   "password (%s); disconnecting instead of guest login\n",
+                   client->host, client->port,
+                   auth_result < 0 ? "rejected" : "no login confirmation");
+            return false;
+        }
+    } else {
+        /* Guest login: wait for the password prompt when it arrives, then
+         * send a bare RETURN.  On old/slow links this avoids racing input
+         * ahead of Retro-Dial's CONNECT/password state. */
+        if (!ddial_client_drain_until_login_prompt(
+                client, host, DDIAL_CLIENT_PREAUTH_DRAIN_MS)) {
+            return false;
+        }
+
+        ttak_mutex_lock(&client->lock);
+        if (client->connected && client->upstream_fd >= 0) {
+            (void)ddial_client_send_all(client->upstream_fd, "\r\n", 2U);
+            ddial_client_update_send_time(client);
+        }
+        ttak_mutex_unlock(&client->lock);
+
+        if (!ddial_client_drain_for(client, host,
+                                    DDIAL_CLIENT_POSTAUTH_DRAIN_MS)) {
+            return false;
+        }
     }
 
     /* Send handle after the guest/member login has had time to enter the chat loop. */

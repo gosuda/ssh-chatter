@@ -1391,6 +1391,10 @@ void host_ddial_client_send(host_t *host, const char *handle,
                             const char *message);
 bool host_ddial_client_send_raw(host_t *host, const char *data,
                                 size_t data_len);
+void host_ddial_client_send_private(host_t *host, uint16_t target_slot,
+                                    const char *our_handle,
+                                    const char *message);
+
 void host_ddial_notify_admin_if_port_adjusted(host_t *host, session_ctx_t *ctx);
 uint64_t host_allocate_session_id(host_t *host);
 bool host_archive_resolve_path(host_t *host, time_t created_at,

@@ -140,6 +140,20 @@ ddial_command_t ddial_parse_command(const char *line, size_t line_len,
     case 'D':
         out_msg->command = DDIAL_CMD_DUPLEX;
         return DDIAL_CMD_DUPLEX;
+    case 'K':
+        out_msg->command = DDIAL_CMD_KICK;
+        /* Argument is the target slot number. */
+        {
+            size_t body_len = args_len;
+            if (body_len >= sizeof(out_msg->body)) {
+                body_len = sizeof(out_msg->body) - 1U;
+            }
+            if (body_len > 0U) {
+                memcpy(out_msg->body, args, body_len);
+                out_msg->body[body_len] = '\0';
+            }
+        }
+        return DDIAL_CMD_KICK;
     default:
         return DDIAL_CMD_UNKNOWN;
     }
@@ -217,7 +231,7 @@ bool ddial_format_chat(char *dst, size_t dst_cap, uint16_t slot,
         channel = DDIAL_MAX_CHANNEL;
     }
 
-    int written = snprintf(dst, dst_cap, "#%u%sCH%u:%s%s%s %s\r\n",
+    int written = snprintf(dst, dst_cap, "#%u%sT%u:%s%s%s %s\r\n",
                            (unsigned int)slot, bo, (unsigned int)channel,
                            clean_handle, sym, bc, message);
     return written > 0 && (size_t)written < dst_cap;
@@ -254,11 +268,179 @@ bool ddial_format_who_entry(char *dst, size_t dst_cap, uint16_t slot,
     const char *sym = ddial_tier_symbol(tier);
 
     int written =
-        snprintf(dst, dst_cap, "#%u%sCH%u:%s%s) #%03u\r\n",
+        snprintf(dst, dst_cap, "#%u%sT%u:%s%s) #%03u\r\n",
                  (unsigned int)slot, bo, (unsigned int)channel, clean_handle,
                  sym, (unsigned int)account);
     (void)bc;
     return written > 0 && (size_t)written < dst_cap;
+}
+
+/* Link-mode public chat: #slot[Tchan:handle) message\r\n  (no tier symbol in
+ * the on-wire form sent over a link -- the bracket already encodes the tier). */
+bool ddial_format_link_chat(char *dst, size_t dst_cap, uint16_t slot,
+                            uint8_t channel, ddial_user_tier_t tier,
+                            const char *handle, const char *message)
+{
+    if (dst == nullptr || dst_cap == 0U || handle == nullptr ||
+        message == nullptr) {
+        return false;
+    }
+    char clean_handle[DDIAL_MAX_HANDLE_LEN];
+    ddial_strip_ansi(handle, strlen(handle), clean_handle,
+                     sizeof(clean_handle));
+    const char *bo = ddial_tier_bracket_open(tier);
+    if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
+    if (channel > DDIAL_MAX_CHANNEL)  { channel = DDIAL_MAX_CHANNEL; }
+    int written = snprintf(dst, dst_cap, "#%u%sT%u:%s) %s\r\n",
+                           (unsigned int)slot, bo,
+                           (unsigned int)channel, clean_handle, message);
+    return written > 0 && (size_t)written < dst_cap;
+}
+
+/* Link-mode private message sent to a target slot on the remote station.
+ * Format: /P<target_slot> #<our_slot>[T<ch>:<our_handle>) <message>\r\n */
+bool ddial_format_link_private(char *dst, size_t dst_cap,
+                               uint16_t target_slot,
+                               uint16_t our_slot, uint8_t channel,
+                               ddial_user_tier_t our_tier,
+                               const char *our_handle, const char *message)
+{
+    if (dst == nullptr || dst_cap == 0U || our_handle == nullptr ||
+        message == nullptr) {
+        return false;
+    }
+    char clean_handle[DDIAL_MAX_HANDLE_LEN];
+    ddial_strip_ansi(our_handle, strlen(our_handle), clean_handle,
+                     sizeof(clean_handle));
+    const char *bo = ddial_tier_bracket_open(our_tier);
+    if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
+    if (channel > DDIAL_MAX_CHANNEL)  { channel = DDIAL_MAX_CHANNEL; }
+    int written = snprintf(dst, dst_cap,
+                           "/P%u #%u%sT%u:%s) %s\r\n",
+                           (unsigned int)target_slot,
+                           (unsigned int)our_slot, bo,
+                           (unsigned int)channel, clean_handle, message);
+    return written > 0 && (size_t)written < dst_cap;
+}
+
+/* Link-mode email routing.
+ * Format: /E~<to_station_padded><from_account>(<from_account>:<from_handle>) <message>\r\n
+ * Example: /E~001123(002:User) hello */
+bool ddial_format_link_email(char *dst, size_t dst_cap,
+                             uint16_t to_station, uint16_t from_account,
+                             const char *from_handle, const char *message)
+{
+    if (dst == nullptr || dst_cap == 0U || from_handle == nullptr ||
+        message == nullptr) {
+        return false;
+    }
+    char clean_handle[DDIAL_MAX_HANDLE_LEN];
+    ddial_strip_ansi(from_handle, strlen(from_handle), clean_handle,
+                     sizeof(clean_handle));
+    int written = snprintf(dst, dst_cap,
+                           "/E~%03u%03u(%03u:%s) %s\r\n",
+                           (unsigned int)to_station,
+                           (unsigned int)from_account,
+                           (unsigned int)from_account,
+                           clean_handle, message);
+    return written > 0 && (size_t)written < dst_cap;
+}
+
+/* Member login broadcast over a link.
+ * Format: }-->. +^#<slot>[T<ch>:<handle>:#<account>*\r\n
+ * If locked use ',' instead of '.'. */
+bool ddial_format_link_login(char *dst, size_t dst_cap,
+                             uint16_t slot, uint8_t channel,
+                             ddial_user_tier_t tier,
+                             const char *handle, uint16_t account,
+                             bool station_locked)
+{
+    if (dst == nullptr || dst_cap == 0U || handle == nullptr) {
+        return false;
+    }
+    char clean_handle[DDIAL_MAX_HANDLE_LEN];
+    ddial_strip_ansi(handle, strlen(handle), clean_handle,
+                     sizeof(clean_handle));
+    const char *bo = ddial_tier_bracket_open(tier);
+    /* Member=}, Guest=}} */
+    const char *prefix = (tier == DDIAL_TIER_GUEST) ? "}}": "}";
+    char lock_char = station_locked ? ',' : '.';
+    if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
+    int written = snprintf(dst, dst_cap,
+                           "%s-->%c +^#%u%sT%u:%s:#%u*\r\n",
+                           prefix, lock_char,
+                           (unsigned int)slot, bo,
+                           (unsigned int)channel, clean_handle,
+                           (unsigned int)account);
+    return written > 0 && (size_t)written < dst_cap;
+}
+
+/* Member logout broadcast over a link. */
+bool ddial_format_link_logout(char *dst, size_t dst_cap,
+                              uint16_t slot, uint8_t channel,
+                              ddial_user_tier_t tier,
+                              const char *handle, uint16_t account,
+                              bool station_locked)
+{
+    if (dst == nullptr || dst_cap == 0U || handle == nullptr) {
+        return false;
+    }
+    char clean_handle[DDIAL_MAX_HANDLE_LEN];
+    ddial_strip_ansi(handle, strlen(handle), clean_handle,
+                     sizeof(clean_handle));
+    const char *bo = ddial_tier_bracket_open(tier);
+    const char *prefix = (tier == DDIAL_TIER_GUEST) ? "}}": "}";
+    char lock_char = station_locked ? ',' : '.';
+    if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
+    int written = snprintf(dst, dst_cap,
+                           "%s-->%c -^#%u%sT%u:%s:#%u*\r\n",
+                           prefix, lock_char,
+                           (unsigned int)slot, bo,
+                           (unsigned int)channel, clean_handle,
+                           (unsigned int)account);
+    return written > 0 && (size_t)written < dst_cap;
+}
+
+/* Expand DDial caret-newlines: replace every '^' with '\n' in-place.
+ * Returns the new string length. */
+size_t ddial_expand_carets(const char *src, size_t src_len,
+                           char *dst, size_t dst_cap)
+{
+    if (src == nullptr || dst == nullptr || dst_cap == 0U) {
+        return 0U;
+    }
+    size_t j = 0U;
+    for (size_t i = 0U; i < src_len && j + 1U < dst_cap; ++i) {
+        if (src[i] == '^') {
+            dst[j++] = '\n';
+        } else {
+            dst[j++] = src[i];
+        }
+    }
+    dst[j] = '\0';
+    return j;
+}
+
+/* Parse an inbound link broadcast prefix.
+ * Returns DDIAL_LINK_MSG_UNKNOWN if the line does not start with '}'.
+ * On success fills *out_kind and advances *p past the prefix bytes. */
+ddial_link_msg_t ddial_parse_link_prefix(const char *line,
+                                          const char **out_rest)
+{
+    if (line == nullptr || line[0] != '}') {
+        if (out_rest) *out_rest = line;
+        return DDIAL_LINK_MSG_UNKNOWN;
+    }
+    if (line[1] == '}' && line[2] == '}') {
+        if (out_rest) *out_rest = line + 3;
+        return DDIAL_LINK_MSG_STATION_BROADCAST;
+    }
+    if (line[1] == '}') {
+        if (out_rest) *out_rest = line + 2;
+        return DDIAL_LINK_MSG_GUEST_EVENT;
+    }
+    if (out_rest) *out_rest = line + 1;
+    return DDIAL_LINK_MSG_MEMBER_EVENT;
 }
 
 bool ddial_format_prompt(char *dst, size_t dst_cap)

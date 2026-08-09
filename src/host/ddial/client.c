@@ -581,10 +581,11 @@ static size_t ddial_client_sanitize_line(const char *src, size_t src_len,
     return j;
 }
 
-/* Normalize a raw DDial wire line to a clean ddial.dat-style entry before
- * stuffing it into Chatter history.  Terminal noise is stripped, whitespace
- * is trimmed, and the common hdcbbs.com variants (chat, station list, linked
- * station, node list) are preserved in canonical form. */
+/* Normalize a raw DDial wire line to a clean form before stuffing it into
+ * Chatter history.  Link-mode prefix bytes (}, }}, }}}) are parsed and the
+ * payload is expanded (^ -> newline).  Terminal noise is stripped and
+ * whitespace is trimmed.  The common hdcbbs.com variants (chat, station list,
+ * linked station, node list) are preserved in canonical form. */
 static void ddial_client_normalize_line(const char *src, char *dst,
                                         size_t dst_cap)
 {
@@ -607,6 +608,48 @@ static void ddial_client_normalize_line(const char *src, char *dst,
     }
     if (len == 0U) {
         return;
+    }
+
+    /* --- Link-mode prefix parsing ---
+     * Lines received on a link connection begin with one or more '}' bytes
+     * that indicate the message type:
+     *   }   = member login/logoff event
+     *   }}  = guest login/logoff event
+     *   }}} = station broadcast (/SP list line)
+     * The payload after the prefix may contain '^' as a newline substitute;
+     * we expand those before storing. */
+    if (start[0] == '}') {
+        const char *rest = nullptr;
+        ddial_link_msg_t kind = ddial_parse_link_prefix(start, &rest);
+
+        /* Expand '^' -> ' ' for single-line display (newlines would break the
+         * Chatter history format; use a space as a visual separator). */
+        char expanded[SSH_CHATTER_MESSAGE_LIMIT];
+        size_t exp_len = 0U;
+        for (size_t i = 0U; rest[i] != '\0' && exp_len + 1U < sizeof(expanded); ++i) {
+            expanded[exp_len++] = (rest[i] == '^') ? ' ' : rest[i];
+        }
+        expanded[exp_len] = '\0';
+
+        /* Trim leading whitespace that often follows the prefix on the wire. */
+        const char *payload = expanded;
+        while (*payload != '\0' && isspace((unsigned char)*payload)) {
+            ++payload;
+        }
+
+        switch (kind) {
+        case DDIAL_LINK_MSG_MEMBER_EVENT:
+            snprintf(dst, dst_cap, "[LINK] %s", payload);
+            return;
+        case DDIAL_LINK_MSG_GUEST_EVENT:
+            snprintf(dst, dst_cap, "[LINK] %s", payload);
+            return;
+        case DDIAL_LINK_MSG_STATION_BROADCAST:
+            snprintf(dst, dst_cap, "[SYSOP] %s", payload);
+            return;
+        default:
+            break;
+        }
     }
 
     /* Node list lines such as "7762-.LateNight.Detroit313" are normalized
@@ -663,10 +706,11 @@ static void ddial_client_note_auth_marker(ddial_client_t *client,
         }
     }
 
-    /* Member/guest login broadcast ("}-->. +^..." / "}}-->. +^..."): while
-     * stuck at the password prompt the server does not relay channel traffic,
-     * so seeing a login broadcast means we cleared authentication. */
-    if (line[0] == '}' && strstr(line, "+^") != nullptr) {
+    /* Member/guest login broadcast -- the '-->. +^...' payload arrives both as
+     * a plain line (when we are a regular user) and with a '}' / '}}' prefix
+     * (when we are operating as a link).  In both cases seeing '+^' means we
+     * cleared authentication. */
+    if (strstr(line, "+^") != nullptr || strstr(line, "->") != nullptr) {
         client->auth_result = 1;
     }
 }
@@ -1571,10 +1615,12 @@ void host_ddial_client_send(host_t *host, const char *handle,
     /* Snapshot connection state briefly, then format the wire message without
      * holding client->lock so inbound traffic can still be processed. */
     ttak_mutex_lock(&client->lock);
-    bool enabled = client->enabled;
+    bool enabled   = client->enabled;
     bool connected = client->connected;
-    int upstream_fd = client->upstream_fd;
+    int  upstream_fd  = client->upstream_fd;
     ddial_auth_state_t auth_state = atomic_load(&client->auth_state);
+    uint16_t our_slot = client->slot;
+    bool     slot_known = client->slot_known;
     ttak_mutex_unlock(&client->lock);
 
     if (!enabled || !connected || upstream_fd < 0 ||
@@ -1582,39 +1628,101 @@ void host_ddial_client_send(host_t *host, const char *handle,
         return;
     }
 
-    char prefixed_message[SSH_CHATTER_MESSAGE_LIMIT];
-    if (handle != nullptr && handle[0] != '\0') {
-        char clean_handle[DDIAL_MAX_HANDLE_LEN];
-        ddial_strip_ansi(handle, strlen(handle), clean_handle,
-                         sizeof(clean_handle));
-        snprintf(prefixed_message, sizeof(prefixed_message), "%s) %s",
-                 clean_handle, message);
-    } else {
-        snprintf(prefixed_message, sizeof(prefixed_message), "%s", message);
-    }
-
-    char normalized_message[SSH_CHATTER_MESSAGE_LIMIT];
-    ddial_client_normalize_outbound_text(prefixed_message,
-                                         strlen(prefixed_message),
-                                         normalized_message,
-                                         sizeof(normalized_message));
-    if (normalized_message[0] == '\0') {
+    /* Normalize text to 7-bit ASCII before putting it on the wire. */
+    char clean_msg[SSH_CHATTER_MESSAGE_LIMIT];
+    ddial_client_normalize_outbound_text(message, strlen(message),
+                                         clean_msg, sizeof(clean_msg));
+    if (clean_msg[0] == '\0') {
         return;
     }
 
-    char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 4];
-    int wire_len = snprintf(wire_line, sizeof(wire_line), "%s\r\n",
-                            normalized_message);
+    char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 64];
+    int  wire_len;
+
+    if (slot_known && our_slot > 0U && handle != nullptr && handle[0] != '\0') {
+        /* Link mode: send full #slot[Tchan:handle) message wire form. */
+        char clean_handle[DDIAL_MAX_HANDLE_LEN];
+        ddial_strip_ansi(handle, strlen(handle), clean_handle,
+                         sizeof(clean_handle));
+        wire_len = snprintf(wire_line, sizeof(wire_line),
+                            "#%u(T%u:%s) %s\r\n",
+                            (unsigned)our_slot,
+                            (unsigned)DDIAL_DEFAULT_CHANNEL,
+                            clean_handle, clean_msg);
+    } else if (handle != nullptr && handle[0] != '\0') {
+        /* Slot not yet known: fall back to "handle) message" form. */
+        char clean_handle[DDIAL_MAX_HANDLE_LEN];
+        ddial_strip_ansi(handle, strlen(handle), clean_handle,
+                         sizeof(clean_handle));
+        wire_len = snprintf(wire_line, sizeof(wire_line),
+                            "%s) %s\r\n", clean_handle, clean_msg);
+    } else {
+        wire_len = snprintf(wire_line, sizeof(wire_line),
+                            "%s\r\n", clean_msg);
+    }
+
     if (wire_len <= 0 || (size_t)wire_len >= sizeof(wire_line)) {
         return;
     }
 
     /* Hold the lock only for the actual socket write and send-time update. */
     ttak_mutex_lock(&client->lock);
-    if (client->enabled && client->connected && client->upstream_fd == upstream_fd &&
+    if (client->enabled && client->connected &&
+        client->upstream_fd == upstream_fd &&
         atomic_load(&client->auth_state) == DDIAL_AUTH_APPROVED) {
         (void)ddial_client_send_all(client->upstream_fd, wire_line,
                                     (size_t)wire_len);
+        ddial_client_update_send_time(client);
+    }
+    ttak_mutex_unlock(&client->lock);
+}
+
+/* Send a /P private message to a remote slot over the link. */
+void host_ddial_client_send_private(host_t *host, uint16_t target_slot,
+                                    const char *our_handle,
+                                    const char *message)
+{
+    if (host == nullptr || message == nullptr || target_slot == 0U) {
+        return;
+    }
+    ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
+
+    ttak_mutex_lock(&client->lock);
+    bool enabled      = client->enabled;
+    bool connected    = client->connected;
+    int  upstream_fd  = client->upstream_fd;
+    ddial_auth_state_t auth_state = atomic_load(&client->auth_state);
+    uint16_t our_slot = client->slot;
+    ttak_mutex_unlock(&client->lock);
+
+    if (!enabled || !connected || upstream_fd < 0 ||
+        auth_state != DDIAL_AUTH_APPROVED) {
+        return;
+    }
+
+    char clean_msg[SSH_CHATTER_MESSAGE_LIMIT];
+    ddial_client_normalize_outbound_text(message, strlen(message),
+                                         clean_msg, sizeof(clean_msg));
+    if (clean_msg[0] == '\0') {
+        return;
+    }
+
+    char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 64];
+    if (!ddial_format_link_private(wire_line, sizeof(wire_line),
+                                   target_slot, our_slot,
+                                   DDIAL_DEFAULT_CHANNEL,
+                                   DDIAL_TIER_PASSWORD,
+                                   our_handle != nullptr ? our_handle : "",
+                                   clean_msg)) {
+        return;
+    }
+
+    ttak_mutex_lock(&client->lock);
+    if (client->enabled && client->connected &&
+        client->upstream_fd == upstream_fd &&
+        atomic_load(&client->auth_state) == DDIAL_AUTH_APPROVED) {
+        (void)ddial_client_send_all(client->upstream_fd, wire_line,
+                                    strlen(wire_line));
         ddial_client_update_send_time(client);
     }
     ttak_mutex_unlock(&client->lock);

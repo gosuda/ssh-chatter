@@ -30,6 +30,7 @@ typedef enum ddial_command {
     DDIAL_CMD_VERSION,    /* /V */
     DDIAL_CMD_BELL,       /* /B */
     DDIAL_CMD_DUPLEX,     /* /D */
+    DDIAL_CMD_KICK,       /* /K<slot> - cosysop only over link */
     DDIAL_CMD_LINK,       /* /LINK (legacy extension stub) */
 } ddial_command_t;
 
@@ -38,6 +39,14 @@ typedef enum ddial_user_tier {
     DDIAL_TIER_PASSWORD,
     DDIAL_TIER_MASTER,
 } ddial_user_tier_t;
+
+/* Inbound link broadcast message type (prefix parsing result). */
+typedef enum ddial_link_msg {
+    DDIAL_LINK_MSG_UNKNOWN = 0,
+    DDIAL_LINK_MSG_MEMBER_EVENT,      /* } prefix  - member login/logout    */
+    DDIAL_LINK_MSG_GUEST_EVENT,       /* }} prefix - guest login/logout      */
+    DDIAL_LINK_MSG_STATION_BROADCAST, /* }}} prefix - /SP who-is-online list */
+} ddial_link_msg_t;
 
 typedef struct ddial_parsed_message {
     ddial_command_t command;
@@ -60,6 +69,7 @@ void host_ddial_broadcast_to_sessions(host_t *host, const char *message);
 ddial_command_t ddial_parse_command(const char *line, size_t line_len,
                                     ddial_parsed_message_t *out_msg);
 
+/* Standard (non-link) formatters */
 bool ddial_format_chat(char *dst, size_t dst_cap, uint16_t slot,
                        uint8_t channel, ddial_user_tier_t tier,
                        const char *handle, const char *message);
@@ -75,6 +85,40 @@ bool ddial_format_prompt(char *dst, size_t dst_cap);
 
 bool ddial_format_system(char *dst, size_t dst_cap, const char *message);
 
+/* Link-mode wire formatters */
+bool ddial_format_link_chat(char *dst, size_t dst_cap, uint16_t slot,
+                            uint8_t channel, ddial_user_tier_t tier,
+                            const char *handle, const char *message);
+
+bool ddial_format_link_private(char *dst, size_t dst_cap,
+                               uint16_t target_slot,
+                               uint16_t our_slot, uint8_t channel,
+                               ddial_user_tier_t our_tier,
+                               const char *our_handle, const char *message);
+
+bool ddial_format_link_email(char *dst, size_t dst_cap,
+                             uint16_t to_station, uint16_t from_account,
+                             const char *from_handle, const char *message);
+
+bool ddial_format_link_login(char *dst, size_t dst_cap,
+                             uint16_t slot, uint8_t channel,
+                             ddial_user_tier_t tier,
+                             const char *handle, uint16_t account,
+                             bool station_locked);
+
+bool ddial_format_link_logout(char *dst, size_t dst_cap,
+                              uint16_t slot, uint8_t channel,
+                              ddial_user_tier_t tier,
+                              const char *handle, uint16_t account,
+                              bool station_locked);
+
+/* Inbound link helpers */
+ddial_link_msg_t ddial_parse_link_prefix(const char *line,
+                                          const char **out_rest);
+
+size_t ddial_expand_carets(const char *src, size_t src_len,
+                           char *dst, size_t dst_cap);
+
 size_t ddial_strip_ansi(const char *src, size_t src_len, char *dst,
                         size_t dst_cap);
 
@@ -86,3 +130,4 @@ size_t ddial_filter_telnet_iac(const char *src, size_t src_len, char *dst,
 #endif
 
 #endif /* SSH_CHATTER_DDIAL_PROTOCOL_H */
+

@@ -65,6 +65,9 @@ struct ddial_session;
 void host_ddial_register_session(struct ddial_session *sess);
 void host_ddial_unregister_session(struct ddial_session *sess);
 void host_ddial_broadcast_to_sessions(host_t *host, const char *message);
+bool host_ddial_send_private(host_t *host, uint16_t target_slot,
+                             uint16_t from_slot, const char *from_handle,
+                             const char *message);
 
 ddial_command_t ddial_parse_command(const char *line, size_t line_len,
                                     ddial_parsed_message_t *out_msg);
@@ -130,4 +133,3 @@ size_t ddial_filter_telnet_iac(const char *src, size_t src_len, char *dst,
 #endif
 
 #endif /* SSH_CHATTER_DDIAL_PROTOCOL_H */
-

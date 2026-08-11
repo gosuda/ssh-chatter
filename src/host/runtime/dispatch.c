@@ -160,6 +160,37 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
         return;
     }
 
+    /* DDial/RDial commands are also valid as direct one-letter slash
+     * commands.  Keep this after the named Chatter commands so /pm, /mail,
+     * /users, etc. retain their existing meanings. */
+    if (effective_line[0] == '/' && effective_line[1] != '\0') {
+        char ddial_command = effective_line[1];
+        bool direct_ddial_shape =
+            effective_line[2] == '\0' || effective_line[2] == ' ' ||
+            effective_line[2] == '\t';
+        char upper_ddial_command =
+            (char)toupper((unsigned char)ddial_command);
+        if ((upper_ddial_command == 'P' || upper_ddial_command == 'J' ||
+             upper_ddial_command == 'K' ||
+             (upper_ddial_command == 'E' && effective_line[2] == '~'))) {
+            direct_ddial_shape = true;
+        }
+        if (strlen(effective_line) >= 2U && direct_ddial_shape &&
+            ((ddial_command >= 'A' && ddial_command <= 'Z') ||
+             (ddial_command >= 'a' && ddial_command <= 'z') ||
+             ddial_command == '?')) {
+            switch (upper_ddial_command) {
+            case 'B': case 'C': case 'D': case 'E': case 'H': case 'I':
+            case 'J': case 'K': case 'N': case 'P': case 'Q': case 'S':
+            case 'T': case 'U': case 'V': case 'W':
+                session_handle_ddial_slash(ctx, effective_line);
+                return;
+            default:
+                break;
+            }
+        }
+    }
+
     else if (session_parse_command_any(ctx, "/pm", effective_line, &args)) {
         session_handle_pm(ctx, args);
         return;

@@ -245,6 +245,7 @@ void session_output_buffer_start(session_ctx_t *ctx);
 void session_output_buffer_stop(session_ctx_t *ctx);
 void session_handle_archive(session_ctx_t *ctx, const char *arguments);
 void session_handle_wall(session_ctx_t *ctx, const char *arguments);
+void session_handle_ddial_slash(session_ctx_t *ctx, const char *line);
 void session_wall_render(session_ctx_t *ctx, const char *status);
 void session_wall_exit(session_ctx_t *ctx, const char *status);
 bool session_wall_process_line(session_ctx_t *ctx, const char *line,

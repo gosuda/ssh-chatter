@@ -16,6 +16,7 @@
 #include <netdb.h>
 #include <poll.h>
 #include <pthread.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -51,6 +52,7 @@ typedef struct ddial_session {
     uint64_t session_id;
     char client_ip[SSH_CHATTER_IP_LEN];
     char handle[DDIAL_MAX_HANDLE_LEN];
+    uint16_t slot;
     uint8_t channel;
     bool logged_in;
     bool should_exit;
@@ -209,17 +211,29 @@ static void ddial_session_process_line(ddial_session_t *sess, const char *line)
 
     switch (cmd) {
     case DDIAL_CMD_CHAT:
-    case DDIAL_CMD_PRIVATE:
-    case DDIAL_CMD_UNKNOWN:
-        if (line[0] != '\0' && sess->owner != nullptr) {
+        if (msg.body[0] != '\0' && sess->owner != nullptr) {
             char formatted[SSH_CHATTER_MESSAGE_LIMIT];
-            if (ddial_format_chat(formatted, sizeof(formatted), 1U,
+            if (ddial_format_chat(formatted, sizeof(formatted), sess->slot,
                                   sess->channel, DDIAL_TIER_GUEST,
-                                  sess->handle, line)) {
+                                  sess->handle, msg.body)) {
                 host_ddial_broadcast_to_sessions(sess->owner, formatted);
             }
         }
         break;
+    case DDIAL_CMD_UNKNOWN:
+        ddial_session_write_line(sess, "Unknown command. Type /H for help.");
+        break;
+    case DDIAL_CMD_PRIVATE: {
+        char *end = nullptr;
+        unsigned long target = strtoul(msg.handle, &end, 10);
+        if (msg.handle[0] == '\0' || end == msg.handle || *end != '\0' ||
+            target == 0U || target > UINT16_MAX || msg.body[0] == '\0' ||
+            !host_ddial_send_private(sess->owner, (uint16_t)target,
+                                     sess->slot, sess->handle, msg.body)) {
+            ddial_session_write_line(sess, "Private message delivery failed.");
+        }
+        break;
+    }
     case DDIAL_CMD_JOIN:
         if (msg.channel >= DDIAL_MIN_CHANNEL &&
             msg.channel <= DDIAL_MAX_CHANNEL) {

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 typedef struct ddial_session_registry_node {
     struct ddial_session_registry_node *next;
@@ -32,9 +33,59 @@ void host_ddial_register_session(struct ddial_session *sess)
     }
     node->session = sess;
     pthread_mutex_lock(&g_ddial_registry_lock);
+    /* DDial slots are station-local and must be stable while a session is
+     * connected.  Reuse the first free slot instead of advertising every
+     * local user as #1. */
+    uint16_t candidate = 1U;
+    for (;;) {
+        bool used = false;
+        for (ddial_session_registry_node_t *scan = g_ddial_sessions;
+             scan != nullptr; scan = scan->next) {
+            if (scan->session != nullptr && scan->session->slot == candidate) {
+                used = true;
+                break;
+            }
+        }
+        if (!used || candidate == UINT16_MAX) {
+            break;
+        }
+        ++candidate;
+    }
+    sess->slot = candidate;
     node->next = g_ddial_sessions;
     g_ddial_sessions = node;
     pthread_mutex_unlock(&g_ddial_registry_lock);
+}
+
+bool host_ddial_send_private(host_t *host, uint16_t target_slot,
+                             uint16_t from_slot, const char *from_handle,
+                             const char *message)
+{
+    if (host == nullptr || target_slot == 0U || from_slot == 0U ||
+        from_handle == nullptr || message == nullptr) {
+        return false;
+    }
+
+    char formatted[SSH_CHATTER_MESSAGE_LIMIT];
+    if (!ddial_format_private(formatted, sizeof(formatted), from_slot,
+                              from_handle, message)) {
+        return false;
+    }
+
+    bool delivered = false;
+    pthread_mutex_lock(&g_ddial_registry_lock);
+    for (ddial_session_registry_node_t *cur = g_ddial_sessions;
+         cur != nullptr; cur = cur->next) {
+        struct ddial_session *target = cur->session;
+        if (target != nullptr && target->owner == host &&
+            target->slot == target_slot && target->logged_in) {
+            ddial_session_write_raw(target, formatted, strlen(formatted));
+            delivered = true;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_ddial_registry_lock);
+    return delivered;
 }
 
 void host_ddial_unregister_session(struct ddial_session *sess)
@@ -185,4 +236,3 @@ void host_ddial_write_who(ddial_session_t *target)
     }
     pthread_mutex_unlock(&g_ddial_registry_lock);
 }
-

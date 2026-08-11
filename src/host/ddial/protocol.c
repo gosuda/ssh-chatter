@@ -268,10 +268,9 @@ bool ddial_format_who_entry(char *dst, size_t dst_cap, uint16_t slot,
     const char *sym = ddial_tier_symbol(tier);
 
     int written =
-        snprintf(dst, dst_cap, "#%u%sT%u:%s%s) #%03u\r\n",
+        snprintf(dst, dst_cap, "#%u%sT%u:%s%s%s #%03u\r\n",
                  (unsigned int)slot, bo, (unsigned int)channel, clean_handle,
-                 sym, (unsigned int)account);
-    (void)bc;
+                 sym, bc, (unsigned int)account);
     return written > 0 && (size_t)written < dst_cap;
 }
 
@@ -324,7 +323,7 @@ bool ddial_format_link_private(char *dst, size_t dst_cap,
 }
 
 /* Link-mode email routing.
- * Format: /E~<to_station_padded><from_account>(<from_account>:<from_handle>) <message>\r\n
+ * Format: /E~<to_station_padded>(<from_account>:<from_handle>) <message>\r\n
  * Example: /E~001123(002:User) hello */
 bool ddial_format_link_email(char *dst, size_t dst_cap,
                              uint16_t to_station, uint16_t from_account,
@@ -338,9 +337,8 @@ bool ddial_format_link_email(char *dst, size_t dst_cap,
     ddial_strip_ansi(from_handle, strlen(from_handle), clean_handle,
                      sizeof(clean_handle));
     int written = snprintf(dst, dst_cap,
-                           "/E~%03u%03u(%03u:%s) %s\r\n",
+                           "/E~%03u(%03u:%s) %s\r\n",
                            (unsigned int)to_station,
-                           (unsigned int)from_account,
                            (unsigned int)from_account,
                            clean_handle, message);
     return written > 0 && (size_t)written < dst_cap;
@@ -367,7 +365,7 @@ bool ddial_format_link_login(char *dst, size_t dst_cap,
     char lock_char = station_locked ? ',' : '.';
     if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
     int written = snprintf(dst, dst_cap,
-                           "%s-->%c +^#%u%sT%u:%s:#%u*\r\n",
+                           "%s\a-->%c +^#%u%sT%u:%s:#%u*\r\n",
                            prefix, lock_char,
                            (unsigned int)slot, bo,
                            (unsigned int)channel, clean_handle,
@@ -393,7 +391,7 @@ bool ddial_format_link_logout(char *dst, size_t dst_cap,
     char lock_char = station_locked ? ',' : '.';
     if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
     int written = snprintf(dst, dst_cap,
-                           "%s-->%c -^#%u%sT%u:%s:#%u*\r\n",
+                           "%s\a-->%c -^#%u%sT%u:%s:#%u*\r\n",
                            prefix, lock_char,
                            (unsigned int)slot, bo,
                            (unsigned int)channel, clean_handle,
@@ -431,7 +429,7 @@ ddial_link_msg_t ddial_parse_link_prefix(const char *line,
         if (out_rest) *out_rest = line;
         return DDIAL_LINK_MSG_UNKNOWN;
     }
-    if (line[1] == '}' && line[2] == '}') {
+    if (line[1] != '\0' && line[1] == '}' && line[2] == '}') {
         if (out_rest) *out_rest = line + 3;
         return DDIAL_LINK_MSG_STATION_BROADCAST;
     }

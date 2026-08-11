@@ -1,4 +1,76 @@
 
+typedef enum session_ddial_text {
+    SESSION_DDIAL_TEXT_UNKNOWN = 0,
+    SESSION_DDIAL_TEXT_USAGE_CHAT,
+    SESSION_DDIAL_TEXT_USAGE_PRIVATE,
+    SESSION_DDIAL_TEXT_OPERATOR_RAW,
+    SESSION_DDIAL_TEXT_OPERATOR_KICK,
+    SESSION_DDIAL_TEXT_TOO_LONG,
+    SESSION_DDIAL_TEXT_DISCONNECTED,
+} session_ddial_text_t;
+
+static const char *session_ddial_text(const session_ctx_t *ctx,
+                                      session_ddial_text_t text)
+{
+    session_ui_language_t language = session_ui_language_current(ctx);
+    if (language < 0 || language >= SESSION_UI_LANGUAGE_COUNT) {
+        language = SESSION_UI_LANGUAGE_EN;
+    }
+
+    static const char *const translations[][SESSION_UI_LANGUAGE_COUNT] = {
+        [SESSION_DDIAL_TEXT_UNKNOWN] = {
+            "Unknown DDial command.", "알 수 없는 DDial 명령입니다.",
+            "不明なDDialコマンドです。", "未知的DDial命令。",
+            "Неизвестная команда DDial.", "Unbekannter DDial-Befehl.",
+            "Commande DDial inconnue.", "Nieznane polecenie DDial."},
+        [SESSION_DDIAL_TEXT_USAGE_CHAT] = {
+            "Usage: /C <message>", "/C <메시지> 사용법", "/C <メッセージ> の使い方",
+            "用法：/C <消息>", "Использование: /C <сообщение>",
+            "Verwendung: /C <Nachricht>", "Utilisation : /C <message>",
+            "Użycie: /C <wiadomość>"},
+        [SESSION_DDIAL_TEXT_USAGE_PRIVATE] = {
+            "Usage: /P<slot> <message>", "/P<슬롯> <메시지> 사용법",
+            "使い方: /P<スロット> <メッセージ>", "用法：/P<槽位> <消息>",
+            "Использование: /P<слот> <сообщение>",
+            "Verwendung: /P<Slot> <Nachricht>",
+            "Utilisation : /P<slot> <message>",
+            "Użycie: /P<slot> <wiadomość>"},
+        [SESSION_DDIAL_TEXT_OPERATOR_RAW] = {
+            "Only operators may send raw DDial link commands.",
+            "운영자만 raw DDial 링크 명령을 보낼 수 있습니다.",
+            "raw DDialリンクコマンドを送信できるのはオペレーターだけです。",
+            "只有操作员可以发送原始DDial链接命令。",
+            "Только операторы могут отправлять сырые команды ссылки DDial.",
+            "Nur Operatoren dürfen rohe DDial-Linkbefehle senden.",
+            "Seuls les opérateurs peuvent envoyer des commandes DDial brutes.",
+            "Tylko operatorzy mogą wysyłać surowe polecenia łącza DDial."},
+        [SESSION_DDIAL_TEXT_OPERATOR_KICK] = {
+            "Only operators may send /K over a DDial link.",
+            "운영자만 DDial 링크로 /K를 보낼 수 있습니다.",
+            "DDialリンクで/Kを送信できるのはオペレーターだけです。",
+            "只有操作员可以通过DDial链接发送/K。",
+            "Только операторы могут отправлять /K через ссылку DDial.",
+            "Nur Operatoren dürfen /K über einen DDial-Link senden.",
+            "Seuls les opérateurs peuvent envoyer /K via une liaison DDial.",
+            "Tylko operatorzy mogą wysyłać /K przez łącze DDial."},
+        [SESSION_DDIAL_TEXT_TOO_LONG] = {
+            "DDial command is too long.", "DDial 명령이 너무 깁니다.",
+            "DDialコマンドが長すぎます。", "DDial命令过长。",
+            "Команда DDial слишком длинная.", "DDial-Befehl ist zu lang.",
+            "La commande DDial est trop longue.", "Polecenie DDial jest za długie."},
+        [SESSION_DDIAL_TEXT_DISCONNECTED] = {
+            "DDial link is not connected or authenticated.",
+            "DDial 링크가 연결되지 않았거나 인증되지 않았습니다.",
+            "DDialリンクが接続されていないか、認証されていません。",
+            "DDial链接未连接或未通过认证。",
+            "Ссылка DDial не подключена или не прошла аутентификацию.",
+            "DDial-Link ist nicht verbunden oder authentifiziert.",
+            "La liaison DDial n'est pas connectée ou authentifiée.",
+            "Łącze DDial nie jest połączone lub uwierzytelnione."},
+    };
+    return translations[text][language];
+}
+
 static void session_handle_nick(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr) {
@@ -1026,6 +1098,14 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
     }
 
     if (strcasecmp(action, "raw") == 0) {
+        /* Raw link bytes are protocol commands, not ordinary chat input.
+         * Exposing this to every user would allow arbitrary /K, /V, /E, etc.
+         * to be injected into the remote station. */
+        if (!ctx->user.is_operator) {
+            session_send_system_line(ctx, session_ddial_text(
+                ctx, SESSION_DDIAL_TEXT_OPERATOR_RAW));
+            return;
+        }
         if (rest == nullptr || rest[0] == '\0') {
             session_send_system_line(ctx, "Usage: /ddial raw <c-string>");
             session_send_system_line(
@@ -1120,4 +1200,72 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, "Unknown /ddial subcommand.");
     session_send_system_line(
         ctx, "Usage: /ddial <connect <host> <port> [handle]|raw <c-string>|reconnect|disconnect|status>");
+}
+
+void session_handle_ddial_slash(session_ctx_t *ctx, const char *line)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || line == nullptr) {
+        return;
+    }
+
+    ddial_parsed_message_t parsed;
+    ddial_command_t command =
+        ddial_parse_command(line, strlen(line), &parsed);
+    if (command == DDIAL_CMD_UNKNOWN) {
+        session_send_system_line(ctx, session_ddial_text(
+            ctx, SESSION_DDIAL_TEXT_UNKNOWN));
+        return;
+    }
+
+    if (command == DDIAL_CMD_CHAT) {
+        if (parsed.body[0] == '\0') {
+            session_send_system_line(ctx, session_ddial_text(
+                ctx, SESSION_DDIAL_TEXT_USAGE_CHAT));
+            return;
+        }
+        host_ddial_client_send(ctx->owner, ctx->user.name, parsed.body);
+        return;
+    }
+
+    if (command == DDIAL_CMD_PRIVATE) {
+        char *end = nullptr;
+        unsigned long target = strtoul(parsed.handle, &end, 10);
+        if (parsed.handle[0] == '\0' || end == parsed.handle || *end != '\0' ||
+            target == 0U || target > UINT16_MAX || parsed.body[0] == '\0') {
+            session_send_system_line(ctx, session_ddial_text(
+                ctx, SESSION_DDIAL_TEXT_USAGE_PRIVATE));
+            return;
+        }
+        host_ddial_client_send_private(ctx->owner, (uint16_t)target,
+                                       ctx->user.name, parsed.body);
+        return;
+    }
+
+    if (command == DDIAL_CMD_KICK && !ctx->user.is_operator) {
+        session_send_system_line(ctx, session_ddial_text(
+            ctx, SESSION_DDIAL_TEXT_OPERATOR_KICK));
+        return;
+    }
+
+    /* The command has already been parsed and allow-listed above.  Forward
+     * the original DDial spelling so routing commands such as /E~... retain
+     * their exact wire syntax. */
+    char wire[DDIAL_MAX_LINE_LEN + 2U];
+    size_t length = strlen(line);
+    while (length > 0U && (line[length - 1U] == '\r' ||
+                           line[length - 1U] == '\n')) {
+        --length;
+    }
+    if (length == 0U || length + 2U > sizeof(wire)) {
+        session_send_system_line(ctx, session_ddial_text(
+            ctx, SESSION_DDIAL_TEXT_TOO_LONG));
+        return;
+    }
+    memcpy(wire, line, length);
+    wire[length++] = '\r';
+    wire[length++] = '\n';
+    if (!host_ddial_client_send_raw(ctx->owner, wire, length)) {
+        session_send_system_line(ctx, session_ddial_text(
+            ctx, SESSION_DDIAL_TEXT_DISCONNECTED));
+    }
 }

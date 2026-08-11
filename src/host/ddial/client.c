@@ -1737,7 +1737,8 @@ bool host_ddial_client_send_raw(host_t *host, const char *data,
 
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
     ttak_mutex_lock(&client->lock);
-    if (!client->enabled || !client->connected || client->upstream_fd < 0) {
+    if (!client->enabled || !client->connected || client->upstream_fd < 0 ||
+        atomic_load(&client->auth_state) != DDIAL_AUTH_APPROVED) {
         ttak_mutex_unlock(&client->lock);
         return false;
     }

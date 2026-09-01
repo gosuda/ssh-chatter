@@ -1078,6 +1078,8 @@ typedef struct ddial_relay {
     bool connected;
     bool auth_sent;
     _Atomic ddial_auth_state_t auth_state;
+    /* Password login verdict: 0 = pending, 1 = success, -1 = failure. */
+    int auth_result;
     struct timespec auth_deadline;
     bool locally_registered;
     char host[256];
@@ -1096,6 +1098,7 @@ typedef struct ddial_relay {
     bool slot_known;
     unsigned int reconnect_attempts;
     struct timespec last_disconnect_time;
+    struct timespec last_broadcast_time;
 } ddial_relay_t;
 
 typedef struct host {

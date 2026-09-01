@@ -1337,12 +1337,21 @@ static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
         ttak_mutex_lock(&client->lock);
         int auth_result = client->auth_result;
         ttak_mutex_unlock(&client->lock);
-        if (auth_result <= 0) {
-            printf("[ddial] upstream %s:%d did not accept the configured "
-                   "password (%s); disconnecting instead of guest login\n",
-                   client->host, client->port,
-                   auth_result < 0 ? "rejected" : "no login confirmation");
+        if (auth_result < 0) {
+            printf("[ddial] upstream %s:%d rejected the configured password; "
+                   "disconnecting instead of guest login\n",
+                   client->host, client->port);
             return false;
+        }
+        if (auth_result == 0) {
+            /* Link accounts are message-in/message-out: after the password is
+             * accepted the station often stays silent (no banner, no login
+             * broadcast).  A wrong password re-prints the prompt, which the
+             * drain loop already turned into a rejection.  Silence therefore
+             * means the link is up. */
+            printf("[ddial] upstream %s:%d sent no login confirmation; "
+                   "assuming link access granted\n",
+                   client->host, client->port);
         }
     } else {
         /* Guest login: wait for the password prompt when it arrives, then

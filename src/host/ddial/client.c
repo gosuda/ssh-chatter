@@ -106,6 +106,7 @@ typedef struct ddial_client {
     bool slot_known;
     unsigned int reconnect_attempts;
     struct timespec last_disconnect_time;
+    struct timespec last_broadcast_time;
 } ddial_client_t;
 
 static ssize_t ddial_client_send_all(int fd, const char *buf, size_t len)
@@ -186,6 +187,8 @@ static void ddial_client_disconnect(ddial_client_t *client)
     client->telnet_sb_len = 0U;
     client->last_send_time.tv_sec = 0;
     client->last_send_time.tv_nsec = 0;
+    client->last_broadcast_time.tv_sec = 0;
+    client->last_broadcast_time.tv_nsec = 0;
     client->slot = 0U;
     client->slot_known = false;
     if (client->reconnect_attempts < 100000U) {
@@ -652,6 +655,56 @@ static void ddial_client_normalize_line(const char *src, char *dst,
         }
     }
 
+    /* Dual-channel link chat: a '~' prefix marks a message tuned to the
+     * "other" channel; the remainder is a standard chat line. */
+    if (start[0] == '~' && start[1] == '#') {
+        snprintf(dst, dst_cap, "%s", start + 1);
+        return;
+    }
+
+    /* Private message arriving over the link: "/P<slot> #<from>[T<ch>:<h>) msg".
+     * Reformat to the local ddial display form "P#<from>[T<ch>:<h>) msg". */
+    if (start[0] == '/' && (start[1] == 'P' || start[1] == 'p')) {
+        if (start[2] == 'S' || start[2] == 's') {
+            /* /PS station-to-station private message. */
+            const char *msg = start + 3;
+            while (*msg == ' ') {
+                ++msg;
+            }
+            snprintf(dst, dst_cap, "[SYSOP] %s", msg);
+            return;
+        }
+        uint16_t target_slot = 0U;
+        uint16_t from_slot = 0U;
+        uint8_t channel = DDIAL_DEFAULT_CHANNEL;
+        char from_handle[DDIAL_MAX_HANDLE_LEN];
+        const char *msg = nullptr;
+        if (ddial_parse_incoming_private(start, &target_slot, &from_slot,
+                                         &channel, from_handle,
+                                         sizeof(from_handle), &msg)) {
+            snprintf(dst, dst_cap, "P#%u[T%u:%s) %s",
+                     (unsigned int)from_slot, (unsigned int)channel,
+                     from_handle, msg);
+            return;
+        }
+    }
+
+    /* E-mail arriving over the link: "/E~SSSNNN(aaa:handle) msg". */
+    if (start[0] == '/' && (start[1] == 'E' || start[1] == 'e') &&
+        start[2] == '~') {
+        unsigned from_station = 0U;
+        unsigned from_id = 0U;
+        char from_handle[DDIAL_MAX_HANDLE_LEN];
+        const char *msg = nullptr;
+        if (ddial_parse_incoming_email(start, &from_station, &from_id,
+                                       from_handle, sizeof(from_handle),
+                                       &msg)) {
+            snprintf(dst, dst_cap, "[E-MAIL #%03u@%03u %s] %s", from_id,
+                     from_station, from_handle, msg);
+            return;
+        }
+    }
+
     /* Node list lines such as "7762-.LateNight.Detroit313" are normalized
      * to "#7762-.LateNight.Detroit313" so they look like other DDial rows. */
     const char *dash_dot = strstr(start, "-.");
@@ -715,51 +768,6 @@ static void ddial_client_note_auth_marker(ddial_client_t *client,
     }
 }
 
-static bool ddial_parse_incoming_chat(const char *line, char *out_handle, size_t handle_cap, const char **out_message)
-{
-    if (line == nullptr || line[0] != '#') {
-        return false;
-    }
-    const char *p = line + 1;
-    while (*p != '\0' && isdigit((unsigned char)*p)) {
-        p++;
-    }
-    if (*p != '(' && *p != '[' && *p != '<') {
-        return false;
-    }
-    p++;
-    if (*p != 'T' || !isdigit((unsigned char)*(p + 1)) || *(p + 2) != ':') {
-        return false;
-    }
-    p += 3;
-    const char *handle_start = p;
-    while (*p != '\0' && *p != ')' && *p != ']' && *p != '>') {
-        p++;
-    }
-    if (*p == '\0') {
-        return false;
-    }
-    const char *handle_end = p;
-    while (handle_end > handle_start && (*(handle_end - 1) == '*' || *(handle_end - 1) == '$')) {
-        handle_end--;
-    }
-    size_t len = (size_t)(handle_end - handle_start);
-    if (len >= handle_cap) {
-        len = handle_cap - 1;
-    }
-    memcpy(out_handle, handle_start, len);
-    out_handle[len] = '\0';
-
-    p++;
-    if (*p == ' ') {
-        p++;
-    }
-    if (out_message != nullptr) {
-        *out_message = p;
-    }
-    return true;
-}
-
 static void host_history_delete_matching_message(host_t *host, const char *message)
 {
     ttak_mutex_lock(&host->lock);
@@ -798,8 +806,9 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
     const char *parsed_message = nullptr;
     bool is_our_line = false;
 
-    if (ddial_parse_incoming_chat(line, parsed_handle, sizeof(parsed_handle),
-                                  &parsed_message)) {
+    if (ddial_parse_incoming_chat(line, nullptr, nullptr, nullptr, nullptr,
+                                  nullptr, parsed_handle,
+                                  sizeof(parsed_handle), &parsed_message)) {
         if (client->handle[0] != '\0' &&
             strcasecmp(parsed_handle, client->handle) == 0) {
             is_our_line = true;
@@ -846,7 +855,8 @@ typedef struct {
  * If a kick/timeout line is seen, tears down the connection under the lock
  * and sets *out_disconnected.  Slot learning is performed here so the lock
  * is not held while broadcasting to the room. */
-static size_t ddial_client_extract_lines(ddial_client_t *client,
+static size_t ddial_client_extract_lines(host_t *host,
+                                         ddial_client_t *client,
                                          ddial_extracted_line_t *out_lines,
                                          size_t max_lines,
                                          bool force_flush,
@@ -947,6 +957,24 @@ static size_t ddial_client_extract_lines(ddial_client_t *client,
 
         ddial_client_learn_slot(client, normalized_line);
         ddial_client_note_auth_marker(client, normalized_line);
+
+        /* Route link private messages to the owning local -DT session. */
+        uint16_t pm_target = 0U;
+        uint16_t pm_from = 0U;
+        uint8_t pm_channel = DDIAL_DEFAULT_CHANNEL;
+        char pm_handle[DDIAL_MAX_HANDLE_LEN];
+        const char *pm_msg = nullptr;
+        if (host != nullptr &&
+            ddial_parse_incoming_private(line, &pm_target, &pm_from,
+                                         &pm_channel, pm_handle,
+                                         sizeof(pm_handle), &pm_msg)) {
+            char pm_display[SSH_CHATTER_MESSAGE_LIMIT];
+            snprintf(pm_display, sizeof(pm_display), "P#%u[T%u:%s) %s",
+                     (unsigned int)pm_from, (unsigned int)pm_channel,
+                     pm_handle, pm_msg);
+            host_ddial_deliver_private_line(host, pm_target, pm_display);
+        }
+
         snprintf(out_lines[extracted].line, sizeof(out_lines[extracted].line),
                  "%s", normalized_line);
         ++extracted;
@@ -1016,7 +1044,7 @@ static void ddial_client_flush_received_lines(host_t *host,
     bool disconnected = false;
 
     ttak_mutex_lock(&client->lock);
-    size_t count = ddial_client_extract_lines(client, lines,
+    size_t count = ddial_client_extract_lines(host, client, lines,
                                               DDIAL_CLIENT_MAX_EXTRACTED_LINES,
                                               force_flush, &disconnected);
     ttak_mutex_unlock(&client->lock);
@@ -1056,7 +1084,7 @@ static bool ddial_client_read_chunk(ddial_client_t *client, host_t *host)
         client->recv_buf_len -= drop;
     }
 
-    size_t count = ddial_client_extract_lines(client, lines,
+    size_t count = ddial_client_extract_lines(host, client, lines,
                                               DDIAL_CLIENT_MAX_EXTRACTED_LINES,
                                               false, &disconnected);
     ttak_mutex_unlock(&client->lock);
@@ -1358,6 +1386,31 @@ static bool ddial_client_do_login(ddial_client_t *client, host_t *host)
     return true;
 }
 
+/* Send the }}} station user-list broadcast upstream roughly every
+ * DDIAL_STATION_BROADCAST_INTERVAL_SEC seconds. */
+static void ddial_client_maybe_station_broadcast(host_t *host,
+                                                 ddial_client_t *client)
+{
+    if (host == nullptr || client == nullptr || client->upstream_fd < 0) {
+        return;
+    }
+    if (atomic_load(&client->auth_state) != DDIAL_AUTH_APPROVED) {
+        return;
+    }
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        return;
+    }
+    if (client->last_broadcast_time.tv_sec != 0 &&
+        now.tv_sec - client->last_broadcast_time.tv_sec <
+            (time_t)DDIAL_STATION_BROADCAST_INTERVAL_SEC) {
+        return;
+    }
+    if (host_ddial_client_send_station_broadcast(host)) {
+        client->last_broadcast_time = now;
+    }
+}
+
 static void *ddial_client_thread(void *arg)
 {
     host_t *host = (host_t *)arg;
@@ -1383,6 +1436,10 @@ static void *ddial_client_thread(void *arg)
                 /* Flush any banners/prompts accumulated during login.
                  * Extraction happens under client->lock; broadcasting does not. */
                 ddial_client_flush_received_lines(host, client, false);
+                /* Announce our current user list to the linked station. */
+                client->last_broadcast_time.tv_sec = 0;
+                client->last_broadcast_time.tv_nsec = 0;
+                ddial_client_maybe_station_broadcast(host, client);
             }
 
             struct pollfd pfd;
@@ -1401,6 +1458,7 @@ static void *ddial_client_thread(void *arg)
             }
             if (poll_rc == 0) {
                 ddial_client_maybe_keepalive(client);
+                ddial_client_maybe_station_broadcast(host, client);
                 continue;
             }
             if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
@@ -1607,6 +1665,16 @@ static size_t ddial_client_normalize_outbound_text(const char *src,
 void host_ddial_client_send(host_t *host, const char *handle,
                             const char *message)
 {
+    host_ddial_client_send_channel(host, handle, DDIAL_DEFAULT_CHANNEL,
+                                   message);
+}
+
+/* Link-mode public chat.  Channel 1 (the tuned link channel) goes out as
+ * "#slot[T1:handle) msg"; channels 2-4 go out with the '~' dual-channel
+ * prefix per the wire spec. */
+void host_ddial_client_send_channel(host_t *host, const char *handle,
+                                    uint8_t channel, const char *message)
+{
     if (host == nullptr || message == nullptr) {
         return;
     }
@@ -1636,29 +1704,44 @@ void host_ddial_client_send(host_t *host, const char *handle,
         return;
     }
 
+    if (channel < DDIAL_MIN_CHANNEL) {
+        channel = DDIAL_DEFAULT_CHANNEL;
+    }
+    if (channel > DDIAL_MAX_CHANNEL) {
+        channel = DDIAL_MAX_CHANNEL;
+    }
+
     char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 64];
     int  wire_len;
 
     if (slot_known && our_slot > 0U && handle != nullptr && handle[0] != '\0') {
-        /* Link mode: send full #slot[Tchan:handle) message wire form. */
-        char clean_handle[DDIAL_MAX_HANDLE_LEN];
-        ddial_strip_ansi(handle, strlen(handle), clean_handle,
-                         sizeof(clean_handle));
-        wire_len = snprintf(wire_line, sizeof(wire_line),
-                            "#%u(T%u:%s) %s\r\n",
-                            (unsigned)our_slot,
-                            (unsigned)DDIAL_DEFAULT_CHANNEL,
-                            clean_handle, clean_msg);
+        /* Link mode: send the full #slot[Tchan:handle) message wire form
+         * (with '~' dual-channel prefix when tuned away from channel 1). */
+        bool formatted;
+        if (channel != DDIAL_DEFAULT_CHANNEL) {
+            formatted = ddial_format_link_dual_chat(
+                wire_line, sizeof(wire_line), our_slot, channel,
+                DDIAL_TIER_PASSWORD, handle, clean_msg);
+        } else {
+            formatted = ddial_format_link_chat(
+                wire_line, sizeof(wire_line), our_slot, channel,
+                DDIAL_TIER_PASSWORD, handle, clean_msg);
+        }
+        wire_len = formatted ? (int)strlen(wire_line) : -1;
     } else if (handle != nullptr && handle[0] != '\0') {
         /* Slot not yet known: fall back to "handle) message" form. */
         char clean_handle[DDIAL_MAX_HANDLE_LEN];
-        ddial_strip_ansi(handle, strlen(handle), clean_handle,
-                         sizeof(clean_handle));
+        ddial_sanitize_handle(handle, strlen(handle), clean_handle,
+                              sizeof(clean_handle));
+        char clean_body[DDIAL_MAX_BODY_LEN + 1U];
+        ddial_clean_body(clean_msg, clean_body, sizeof(clean_body));
         wire_len = snprintf(wire_line, sizeof(wire_line),
-                            "%s) %s\r\n", clean_handle, clean_msg);
+                            "%s) %s\r\n", clean_handle, clean_body);
     } else {
+        char clean_body[DDIAL_MAX_BODY_LEN + 1U];
+        ddial_clean_body(clean_msg, clean_body, sizeof(clean_body));
         wire_len = snprintf(wire_line, sizeof(wire_line),
-                            "%s\r\n", clean_msg);
+                            "%s\r\n", clean_body);
     }
 
     if (wire_len <= 0 || (size_t)wire_len >= sizeof(wire_line)) {
@@ -1726,6 +1809,73 @@ void host_ddial_client_send_private(host_t *host, uint16_t target_slot,
         ddial_client_update_send_time(client);
     }
     ttak_mutex_unlock(&client->lock);
+}
+
+/* Announce a login/logout of one of our users to the linked station, using
+ * the "}-->. +^#slot[T1:handle:#acct*" / "}}-->. -^#slot(T1:?" wire forms.
+ * The slot/channel identify the user on *our* station. */
+static void host_ddial_client_send_link_event(host_t *host, uint16_t slot,
+                                              uint8_t channel,
+                                              ddial_user_tier_t tier,
+                                              const char *handle,
+                                              uint16_t account, bool is_login)
+{
+    if (host == nullptr || handle == nullptr || handle[0] == '\0') {
+        return;
+    }
+    ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
+
+    ttak_mutex_lock(&client->lock);
+    bool enabled      = client->enabled;
+    bool connected    = client->connected;
+    int  upstream_fd  = client->upstream_fd;
+    ddial_auth_state_t auth_state = atomic_load(&client->auth_state);
+    ttak_mutex_unlock(&client->lock);
+
+    if (!enabled || !connected || upstream_fd < 0 ||
+        auth_state != DDIAL_AUTH_APPROVED) {
+        return;
+    }
+
+    char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 64];
+    bool formatted = is_login
+                         ? ddial_format_link_login(wire_line, sizeof(wire_line),
+                                                   slot, channel, tier,
+                                                   handle, account, false,
+                                                   false)
+                         : ddial_format_link_logout(wire_line, sizeof(wire_line),
+                                                    slot, channel, tier,
+                                                    handle, account, false,
+                                                    false);
+    if (!formatted) {
+        return;
+    }
+
+    ttak_mutex_lock(&client->lock);
+    if (client->enabled && client->connected &&
+        client->upstream_fd == upstream_fd &&
+        atomic_load(&client->auth_state) == DDIAL_AUTH_APPROVED) {
+        (void)ddial_client_send_all(client->upstream_fd, wire_line,
+                                    strlen(wire_line));
+        ddial_client_update_send_time(client);
+    }
+    ttak_mutex_unlock(&client->lock);
+}
+
+void host_ddial_client_send_login(host_t *host, uint16_t slot,
+                                  uint8_t channel, ddial_user_tier_t tier,
+                                  const char *handle, uint16_t account)
+{
+    host_ddial_client_send_link_event(host, slot, channel, tier, handle,
+                                      account, true);
+}
+
+void host_ddial_client_send_logout(host_t *host, uint16_t slot,
+                                   uint8_t channel, ddial_user_tier_t tier,
+                                   const char *handle, uint16_t account)
+{
+    host_ddial_client_send_link_event(host, slot, channel, tier, handle,
+                                      account, false);
 }
 
 bool host_ddial_client_send_raw(host_t *host, const char *data,

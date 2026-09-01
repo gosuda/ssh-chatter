@@ -152,12 +152,15 @@ static bool ddial_session_set_handle(ddial_session_t *sess, const char *name)
     if (sess == nullptr || name == nullptr || name[0] == '\0') {
         return false;
     }
-    size_t len = strlen(name);
-    if (len >= sizeof(sess->handle)) {
-        len = sizeof(sess->handle) - 1U;
+    /* The wire spec forbids '^' ')' '}' CR LF in handles and caps them at
+     * 25 chars; sanitize before storing so outbound lines stay legal. */
+    char clean[DDIAL_MAX_HANDLE_LEN];
+    if (ddial_sanitize_handle(name, strlen(name), clean, sizeof(clean)) ==
+            0U ||
+        clean[0] == '\0') {
+        return false;
     }
-    memcpy(sess->handle, name, len);
-    sess->handle[len] = '\0';
+    snprintf(sess->handle, sizeof(sess->handle), "%s", clean);
     return true;
 }
 
@@ -200,6 +203,10 @@ static void ddial_session_process_line(ddial_session_t *sess, const char *line)
                      "Welcome, %s. You are on channel %u.", sess->handle,
                      (unsigned int)sess->channel);
             ddial_session_write_line(sess, greeting);
+            /* Announce the login to the linked station, if any. */
+            host_ddial_client_send_login(sess->owner, sess->slot,
+                                         sess->channel, DDIAL_TIER_GUEST,
+                                         sess->handle, 0U);
         } else {
             ddial_session_write_line(sess, "Invalid handle. Try again.");
         }
@@ -384,6 +391,11 @@ static void *ddial_session_thread(void *arg)
     });
 
     sess->should_exit = true;
+    if (sess->logged_in && sess->handle[0] != '\0') {
+        /* Announce the logout to the linked station, if any. */
+        host_ddial_client_send_logout(sess->owner, sess->slot, sess->channel,
+                                      DDIAL_TIER_GUEST, sess->handle, 0U);
+    }
     if (sess->fd >= 0) {
         close(sess->fd);
         sess->fd = -1;

@@ -1374,6 +1374,8 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
                const char *json_port, const char *ddial_bind_addr,
                const char *ddial_port);
 
+#include "ddial_protocol.h"
+
 bool host_ddial_listener_start(host_t *host, const char *bind_addr,
                                const char *port);
 void host_ddial_listener_stop(host_t *host);
@@ -1389,6 +1391,17 @@ void host_ddial_client_reconnect(host_t *host);
 void host_ddial_client_start(host_t *host);
 void host_ddial_client_send(host_t *host, const char *handle,
                             const char *message);
+void host_ddial_client_send_channel(host_t *host, const char *handle,
+                                    uint8_t channel, const char *message);
+void host_ddial_client_send_login(host_t *host, uint16_t slot,
+                                  uint8_t channel, ddial_user_tier_t tier,
+                                  const char *handle, uint16_t account);
+void host_ddial_client_send_logout(host_t *host, uint16_t slot,
+                                   uint8_t channel, ddial_user_tier_t tier,
+                                   const char *handle, uint16_t account);
+bool host_ddial_client_send_station_broadcast(host_t *host);
+bool host_ddial_deliver_private_line(host_t *host, uint16_t target_slot,
+                                     const char *display_line);
 bool host_ddial_client_send_raw(host_t *host, const char *data,
                                 size_t data_len);
 void host_ddial_client_send_private(host_t *host, uint16_t target_slot,

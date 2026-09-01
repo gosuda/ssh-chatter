@@ -10,6 +10,7 @@
 
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const char *ddial_tier_symbol(ddial_user_tier_t tier)
@@ -49,6 +50,83 @@ static const char *ddial_tier_bracket_close(ddial_user_tier_t tier)
     default:
         return ")";
     }
+}
+
+/* Copy a handle for the wire: strip ANSI noise, then drop the characters the
+ * protocol forbids in handles ('^' ')' '}' CR LF, plus the other bracket
+ * closers that would terminate the handle early), and cap the result at
+ * DDIAL_MAX_HANDLE_WIRE_LEN. */
+size_t ddial_sanitize_handle(const char *src, size_t src_len, char *dst,
+                             size_t dst_cap)
+{
+    if (dst == nullptr || dst_cap == 0U) {
+        return 0U;
+    }
+    dst[0] = '\0';
+    if (src == nullptr) {
+        return 0U;
+    }
+
+    char stripped[DDIAL_MAX_HANDLE_LEN];
+    ddial_strip_ansi(src, src_len, stripped, sizeof(stripped));
+
+    size_t j = 0U;
+    for (size_t i = 0U; stripped[i] != '\0' && j + 1U < dst_cap &&
+                        j < DDIAL_MAX_HANDLE_WIRE_LEN;
+         ++i) {
+        unsigned char c = (unsigned char)stripped[i];
+        if (c == '^' || c == ')' || c == '}' || c == ']' || c == '>' ||
+            c == '\r' || c == '\n') {
+            continue;
+        }
+        dst[j++] = (char)c;
+    }
+    dst[j] = '\0';
+    return j;
+}
+
+/* Line numbers containing the digit 8 or 9 are invalid on strict ddials
+ * (only 7 modem slots per board: 0-7, 10-17, 20-27, ...). */
+bool ddial_slot_is_valid(uint16_t slot)
+{
+    uint16_t n = slot;
+    if (n == 0U) {
+        return true;
+    }
+    while (n > 0U) {
+        uint16_t digit = (uint16_t)(n % 10U);
+        if (digit == 8U || digit == 9U) {
+            return false;
+        }
+        n = (uint16_t)(n / 10U);
+    }
+    return true;
+}
+
+/* Truncate a message body to the 255-char ddial limit and make sure it does
+ * not carry an embedded CR/LF (the line terminator must appear only once, at
+ * the very end of the wire line). */
+static size_t ddial_clean_body(const char *message, char *dst, size_t dst_cap)
+{
+    if (dst == nullptr || dst_cap == 0U) {
+        return 0U;
+    }
+    dst[0] = '\0';
+    if (message == nullptr) {
+        return 0U;
+    }
+    size_t j = 0U;
+    for (size_t i = 0U; message[i] != '\0' && j + 1U < dst_cap &&
+                        j < DDIAL_MAX_BODY_LEN;
+         ++i) {
+        char c = message[i];
+        if (c == '\r' || c == '\n') {
+            break;
+        }
+        dst[j++] = c;
+    }
+    dst[j] = '\0';
+    return j;
 }
 
 ddial_command_t ddial_parse_command(const char *line, size_t line_len,
@@ -217,8 +295,10 @@ bool ddial_format_chat(char *dst, size_t dst_cap, uint16_t slot,
     }
 
     char clean_handle[DDIAL_MAX_HANDLE_LEN];
-    ddial_strip_ansi(handle, strlen(handle), clean_handle,
-                     sizeof(clean_handle));
+    ddial_sanitize_handle(handle, strlen(handle), clean_handle,
+                          sizeof(clean_handle));
+    char clean_body[DDIAL_MAX_BODY_LEN + 1U];
+    ddial_clean_body(message, clean_body, sizeof(clean_body));
 
     const char *bo = ddial_tier_bracket_open(tier);
     const char *bc = ddial_tier_bracket_close(tier);
@@ -233,7 +313,7 @@ bool ddial_format_chat(char *dst, size_t dst_cap, uint16_t slot,
 
     int written = snprintf(dst, dst_cap, "#%u%sT%u:%s%s%s %s\r\n",
                            (unsigned int)slot, bo, (unsigned int)channel,
-                           clean_handle, sym, bc, message);
+                           clean_handle, sym, bc, clean_body);
     return written > 0 && (size_t)written < dst_cap;
 }
 
@@ -245,11 +325,13 @@ bool ddial_format_private(char *dst, size_t dst_cap, uint16_t from_slot,
         return false;
     }
     char clean_handle[DDIAL_MAX_HANDLE_LEN];
-    ddial_strip_ansi(from_handle, strlen(from_handle), clean_handle,
-                     sizeof(clean_handle));
+    ddial_sanitize_handle(from_handle, strlen(from_handle), clean_handle,
+                          sizeof(clean_handle));
+    char clean_body[DDIAL_MAX_BODY_LEN + 1U];
+    ddial_clean_body(message, clean_body, sizeof(clean_body));
     int written =
         snprintf(dst, dst_cap, "IM from #%u[%s]: %s\r\n",
-                 (unsigned int)from_slot, clean_handle, message);
+                 (unsigned int)from_slot, clean_handle, clean_body);
     return written > 0 && (size_t)written < dst_cap;
 }
 
@@ -261,8 +343,8 @@ bool ddial_format_who_entry(char *dst, size_t dst_cap, uint16_t slot,
         return false;
     }
     char clean_handle[DDIAL_MAX_HANDLE_LEN];
-    ddial_strip_ansi(handle, strlen(handle), clean_handle,
-                     sizeof(clean_handle));
+    ddial_sanitize_handle(handle, strlen(handle), clean_handle,
+                          sizeof(clean_handle));
     const char *bo = ddial_tier_bracket_open(tier);
     const char *bc = ddial_tier_bracket_close(tier);
     const char *sym = ddial_tier_symbol(tier);
@@ -285,14 +367,94 @@ bool ddial_format_link_chat(char *dst, size_t dst_cap, uint16_t slot,
         return false;
     }
     char clean_handle[DDIAL_MAX_HANDLE_LEN];
-    ddial_strip_ansi(handle, strlen(handle), clean_handle,
-                     sizeof(clean_handle));
+    ddial_sanitize_handle(handle, strlen(handle), clean_handle,
+                          sizeof(clean_handle));
+    char clean_body[DDIAL_MAX_BODY_LEN + 1U];
+    ddial_clean_body(message, clean_body, sizeof(clean_body));
     const char *bo = ddial_tier_bracket_open(tier);
     if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
     if (channel > DDIAL_MAX_CHANNEL)  { channel = DDIAL_MAX_CHANNEL; }
     int written = snprintf(dst, dst_cap, "#%u%sT%u:%s) %s\r\n",
                            (unsigned int)slot, bo,
-                           (unsigned int)channel, clean_handle, message);
+                           (unsigned int)channel, clean_handle, clean_body);
+    return written > 0 && (size_t)written < dst_cap;
+}
+
+/* Dual-channel link chat: same wire form as link chat but prefixed with '~'
+ * so the remote station posts it on the "other" tuned channel. */
+bool ddial_format_link_dual_chat(char *dst, size_t dst_cap, uint16_t slot,
+                                 uint8_t channel, ddial_user_tier_t tier,
+                                 const char *handle, const char *message)
+{
+    if (dst == nullptr || dst_cap == 0U || handle == nullptr ||
+        message == nullptr) {
+        return false;
+    }
+    char clean_handle[DDIAL_MAX_HANDLE_LEN];
+    ddial_sanitize_handle(handle, strlen(handle), clean_handle,
+                          sizeof(clean_handle));
+    char clean_body[DDIAL_MAX_BODY_LEN + 1U];
+    ddial_clean_body(message, clean_body, sizeof(clean_body));
+    const char *bo = ddial_tier_bracket_open(tier);
+    if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
+    if (channel > DDIAL_MAX_CHANNEL)  { channel = DDIAL_MAX_CHANNEL; }
+    int written = snprintf(dst, dst_cap, "~#%u%sT%u:%s) %s\r\n",
+                           (unsigned int)slot, bo,
+                           (unsigned int)channel, clean_handle, clean_body);
+    return written > 0 && (size_t)written < dst_cap;
+}
+
+/* Station broadcast list header: "}}}-.<station>" ("}}}-," when locked). */
+bool ddial_format_broadcast_header(char *dst, size_t dst_cap,
+                                   const char *station_name,
+                                   bool station_locked)
+{
+    if (dst == nullptr || dst_cap == 0U || station_name == nullptr ||
+        station_name[0] == '\0') {
+        return false;
+    }
+    char clean_name[DDIAL_MAX_HANDLE_LEN];
+    ddial_sanitize_handle(station_name, strlen(station_name), clean_name,
+                          sizeof(clean_name));
+    if (clean_name[0] == '\0') {
+        return false;
+    }
+    int written = snprintf(dst, dst_cap, "}}}-%c%s",
+                           station_locked ? ',' : '.', clean_name);
+    return written > 0 && (size_t)written < dst_cap;
+}
+
+/* One user entry in a station broadcast list: "^#<slot>[T<ch>:<handle>:<acct>".
+ * Link users use '=' as the line type: "^#99[T1=Hard Drive Cafe:902". */
+bool ddial_format_broadcast_entry(char *dst, size_t dst_cap, uint16_t slot,
+                                  uint8_t channel, ddial_user_tier_t tier,
+                                  const char *handle, uint16_t account,
+                                  bool is_link)
+{
+    if (dst == nullptr || dst_cap == 0U || handle == nullptr) {
+        return false;
+    }
+    char clean_handle[DDIAL_MAX_HANDLE_LEN];
+    ddial_sanitize_handle(handle, strlen(handle), clean_handle,
+                          sizeof(clean_handle));
+    const char *bo = ddial_tier_bracket_open(tier);
+    if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
+    if (channel > DDIAL_MAX_CHANNEL)  { channel = DDIAL_MAX_CHANNEL; }
+    int written;
+    if (is_link) {
+        written = snprintf(dst, dst_cap, "^#%u%sT%u=%s:%u",
+                           (unsigned int)slot, bo, (unsigned int)channel,
+                           clean_handle, (unsigned int)account);
+    } else if (tier == DDIAL_TIER_GUEST) {
+        /* Guests appear without an account number. */
+        written = snprintf(dst, dst_cap, "^#%u%sT%u:%s",
+                           (unsigned int)slot, bo, (unsigned int)channel,
+                           clean_handle);
+    } else {
+        written = snprintf(dst, dst_cap, "^#%u%sT%u:%s:%u",
+                           (unsigned int)slot, bo, (unsigned int)channel,
+                           clean_handle, (unsigned int)account);
+    }
     return written > 0 && (size_t)written < dst_cap;
 }
 
@@ -309,8 +471,10 @@ bool ddial_format_link_private(char *dst, size_t dst_cap,
         return false;
     }
     char clean_handle[DDIAL_MAX_HANDLE_LEN];
-    ddial_strip_ansi(our_handle, strlen(our_handle), clean_handle,
-                     sizeof(clean_handle));
+    ddial_sanitize_handle(our_handle, strlen(our_handle), clean_handle,
+                          sizeof(clean_handle));
+    char clean_body[DDIAL_MAX_BODY_LEN + 1U];
+    ddial_clean_body(message, clean_body, sizeof(clean_body));
     const char *bo = ddial_tier_bracket_open(our_tier);
     if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
     if (channel > DDIAL_MAX_CHANNEL)  { channel = DDIAL_MAX_CHANNEL; }
@@ -318,7 +482,7 @@ bool ddial_format_link_private(char *dst, size_t dst_cap,
                            "/P%u #%u%sT%u:%s) %s\r\n",
                            (unsigned int)target_slot,
                            (unsigned int)our_slot, bo,
-                           (unsigned int)channel, clean_handle, message);
+                           (unsigned int)channel, clean_handle, clean_body);
     return written > 0 && (size_t)written < dst_cap;
 }
 
@@ -334,43 +498,38 @@ bool ddial_format_link_email(char *dst, size_t dst_cap,
         return false;
     }
     char clean_handle[DDIAL_MAX_HANDLE_LEN];
-    ddial_strip_ansi(from_handle, strlen(from_handle), clean_handle,
-                     sizeof(clean_handle));
+    ddial_sanitize_handle(from_handle, strlen(from_handle), clean_handle,
+                          sizeof(clean_handle));
+    char clean_body[DDIAL_MAX_BODY_LEN + 1U];
+    ddial_clean_body(message, clean_body, sizeof(clean_body));
     int written = snprintf(dst, dst_cap,
                            "/E~%03u(%03u:%s) %s\r\n",
                            (unsigned int)to_station,
                            (unsigned int)from_account,
-                           clean_handle, message);
+                           clean_handle, clean_body);
     return written > 0 && (size_t)written < dst_cap;
 }
 
+static bool ddial_format_link_event(char *dst, size_t dst_cap,
+                                    uint16_t slot, uint8_t channel,
+                                    ddial_user_tier_t tier,
+                                    const char *handle, uint16_t account,
+                                    bool is_link, bool station_locked,
+                                    bool is_login);
+
 /* Member login broadcast over a link.
- * Format: }-->. +^#<slot>[T<ch>:<handle>:#<account>*\r\n
+ *   member: }-->. +^#<slot>[T<ch>:<handle>:#<account>*\r\n
+ *   guest:  }}-->. +^#<slot>(T<ch>:?\r\n
+ *   link:   }-->. +^#<slot>[T<ch>=<station>\r\n
  * If locked use ',' instead of '.'. */
 bool ddial_format_link_login(char *dst, size_t dst_cap,
                              uint16_t slot, uint8_t channel,
                              ddial_user_tier_t tier,
                              const char *handle, uint16_t account,
-                             bool station_locked)
+                             bool is_link, bool station_locked)
 {
-    if (dst == nullptr || dst_cap == 0U || handle == nullptr) {
-        return false;
-    }
-    char clean_handle[DDIAL_MAX_HANDLE_LEN];
-    ddial_strip_ansi(handle, strlen(handle), clean_handle,
-                     sizeof(clean_handle));
-    const char *bo = ddial_tier_bracket_open(tier);
-    /* Member=}, Guest=}} */
-    const char *prefix = (tier == DDIAL_TIER_GUEST) ? "}}": "}";
-    char lock_char = station_locked ? ',' : '.';
-    if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
-    int written = snprintf(dst, dst_cap,
-                           "%s\a-->%c +^#%u%sT%u:%s:#%u*\r\n",
-                           prefix, lock_char,
-                           (unsigned int)slot, bo,
-                           (unsigned int)channel, clean_handle,
-                           (unsigned int)account);
-    return written > 0 && (size_t)written < dst_cap;
+    return ddial_format_link_event(dst, dst_cap, slot, channel, tier, handle,
+                                   account, is_link, station_locked, true);
 }
 
 /* Member logout broadcast over a link. */
@@ -378,24 +537,52 @@ bool ddial_format_link_logout(char *dst, size_t dst_cap,
                               uint16_t slot, uint8_t channel,
                               ddial_user_tier_t tier,
                               const char *handle, uint16_t account,
-                              bool station_locked)
+                              bool is_link, bool station_locked)
+{
+    return ddial_format_link_event(dst, dst_cap, slot, channel, tier, handle,
+                                   account, is_link, station_locked, false);
+}
+
+static bool ddial_format_link_event(char *dst, size_t dst_cap,
+                                    uint16_t slot, uint8_t channel,
+                                    ddial_user_tier_t tier,
+                                    const char *handle, uint16_t account,
+                                    bool is_link, bool station_locked,
+                                    bool is_login)
 {
     if (dst == nullptr || dst_cap == 0U || handle == nullptr) {
         return false;
     }
     char clean_handle[DDIAL_MAX_HANDLE_LEN];
-    ddial_strip_ansi(handle, strlen(handle), clean_handle,
-                     sizeof(clean_handle));
+    ddial_sanitize_handle(handle, strlen(handle), clean_handle,
+                          sizeof(clean_handle));
     const char *bo = ddial_tier_bracket_open(tier);
-    const char *prefix = (tier == DDIAL_TIER_GUEST) ? "}}": "}";
+    /* Member/link = }, Guest = }} */
+    const char *prefix = (tier == DDIAL_TIER_GUEST) ? "}}" : "}";
     char lock_char = station_locked ? ',' : '.';
+    char sign = is_login ? '+' : '-';
     if (channel < DDIAL_MIN_CHANNEL) { channel = DDIAL_DEFAULT_CHANNEL; }
-    int written = snprintf(dst, dst_cap,
-                           "%s\a-->%c -^#%u%sT%u:%s:#%u*\r\n",
-                           prefix, lock_char,
-                           (unsigned int)slot, bo,
+    if (channel > DDIAL_MAX_CHANNEL)  { channel = DDIAL_MAX_CHANNEL; }
+
+    int written;
+    if (is_link) {
+        written = snprintf(dst, dst_cap, "%s-->%c %c^#%u%sT%u=%s\r\n",
+                           prefix, lock_char, sign, (unsigned int)slot, bo,
+                           (unsigned int)channel, clean_handle);
+    } else if (tier == DDIAL_TIER_GUEST) {
+        written = snprintf(dst, dst_cap, "%s-->%c %c^#%u%sT%u:?\r\n",
+                           prefix, lock_char, sign, (unsigned int)slot, bo,
+                           (unsigned int)channel);
+    } else if (account > 0U) {
+        written = snprintf(dst, dst_cap, "%s-->%c %c^#%u%sT%u:%s:#%u*\r\n",
+                           prefix, lock_char, sign, (unsigned int)slot, bo,
                            (unsigned int)channel, clean_handle,
                            (unsigned int)account);
+    } else {
+        written = snprintf(dst, dst_cap, "%s-->%c %c^#%u%sT%u:%s\r\n",
+                           prefix, lock_char, sign, (unsigned int)slot, bo,
+                           (unsigned int)channel, clean_handle);
+    }
     return written > 0 && (size_t)written < dst_cap;
 }
 
@@ -538,4 +725,228 @@ size_t ddial_filter_telnet_iac(const char *src, size_t src_len, char *dst,
         }
     }
     return j;
+}
+
+/* Parse one bracketed identity "#<slot><bo>T<ch><lt>:<handle><bc>" starting at
+ * *pp.  Advances *pp past the closing bracket on success. */
+static bool ddial_parse_identity(const char **pp, uint16_t *out_slot,
+                                 uint8_t *out_channel, bool *out_is_link,
+                                 char *out_handle, size_t handle_cap)
+{
+    const char *p = *pp;
+    if (*p != '#') {
+        return false;
+    }
+    ++p;
+    if (!isdigit((unsigned char)*p)) {
+        return false;
+    }
+    unsigned long slot = strtoul(p, (char **)&p, 10);
+    if (slot > UINT16_MAX) {
+        return false;
+    }
+    char bo = *p;
+    if (bo != '(' && bo != '[' && bo != '<') {
+        return false;
+    }
+    ++p;
+    if (*p != 'T' || !isdigit((unsigned char)p[1])) {
+        return false;
+    }
+    unsigned int channel = (unsigned int)(p[1] - '0');
+    p += 2;
+    bool is_link = false;
+    if (*p == ':' || *p == '=') {
+        is_link = (*p == '=');
+        ++p;
+    }
+    const char *handle_start = p;
+    while (*p != '\0' && *p != ')' && *p != ']' && *p != '>') {
+        ++p;
+    }
+    if (*p == '\0') {
+        return false;
+    }
+    const char *handle_end = p;
+    /* A ':' inside the handle region begins the account number; strip it. */
+    for (const char *q = handle_start; q < handle_end; ++q) {
+        if (*q == ':') {
+            handle_end = q;
+            break;
+        }
+    }
+    while (handle_end > handle_start &&
+           (handle_end[-1] == '*' || handle_end[-1] == '$')) {
+        --handle_end;
+    }
+    if (out_handle != nullptr && handle_cap > 0U) {
+        size_t len = (size_t)(handle_end - handle_start);
+        if (len >= handle_cap) {
+            len = handle_cap - 1U;
+        }
+        memcpy(out_handle, handle_start, len);
+        out_handle[len] = '\0';
+    }
+    if (out_slot != nullptr) {
+        *out_slot = (uint16_t)slot;
+    }
+    if (out_channel != nullptr) {
+        *out_channel = (uint8_t)channel;
+    }
+    if (out_is_link != nullptr) {
+        *out_is_link = is_link;
+    }
+    *pp = p + 1;
+    return true;
+}
+
+/* Parse an inbound public chat line from a link:
+ *   "[link_slot]#<slot><bo>T<ch>:<handle><bc> <message>"
+ * with an optional leading '~' marking a dual-channel message. */
+bool ddial_parse_incoming_chat(const char *line, uint16_t *out_link_slot,
+                               uint16_t *out_slot, uint8_t *out_channel,
+                               bool *out_is_link, bool *out_dual_channel,
+                               char *out_handle, size_t handle_cap,
+                               const char **out_message)
+{
+    if (line == nullptr) {
+        return false;
+    }
+    const char *p = line;
+
+    bool dual = false;
+    if (*p == (char)DDIAL_LINK_ESCAPE) {
+        dual = true;
+        ++p;
+    }
+
+    /* Optional link slot prefix, e.g. "99#2[T1:Freddy)". */
+    const char *save = p;
+    uint16_t link_slot = 0U;
+    if (isdigit((unsigned char)*p)) {
+        unsigned long candidate = strtoul(p, (char **)&p, 10);
+        if (*p == '#' && candidate > 0U && candidate <= UINT16_MAX) {
+            link_slot = (uint16_t)candidate;
+        } else {
+            p = save;
+        }
+    }
+
+    if (!ddial_parse_identity(&p, out_slot, out_channel, out_is_link,
+                              out_handle, handle_cap)) {
+        return false;
+    }
+    if (*p == ' ') {
+        ++p;
+    }
+    if (out_link_slot != nullptr) {
+        *out_link_slot = link_slot;
+    }
+    if (out_dual_channel != nullptr) {
+        *out_dual_channel = dual;
+    }
+    if (out_message != nullptr) {
+        *out_message = p;
+    }
+    return true;
+}
+
+/* Parse an inbound private message arriving over a link:
+ *   "/P<target_slot> #<from_slot><bo>T<ch>:<handle><bc> <message>" */
+bool ddial_parse_incoming_private(const char *line, uint16_t *out_target_slot,
+                                  uint16_t *out_from_slot,
+                                  uint8_t *out_channel, char *out_handle,
+                                  size_t handle_cap, const char **out_message)
+{
+    if (line == nullptr || line[0] != '/' ||
+        (line[1] != 'P' && line[1] != 'p')) {
+        return false;
+    }
+    const char *p = line + 2;
+    if (!isdigit((unsigned char)*p)) {
+        return false;
+    }
+    unsigned long target = strtoul(p, (char **)&p, 10);
+    if (target > UINT16_MAX) {
+        return false;
+    }
+    while (*p == ' ') {
+        ++p;
+    }
+    if (!ddial_parse_identity(&p, out_from_slot, out_channel, nullptr,
+                              out_handle, handle_cap)) {
+        return false;
+    }
+    if (*p == ' ') {
+        ++p;
+    }
+    if (out_target_slot != nullptr) {
+        *out_target_slot = (uint16_t)target;
+    }
+    if (out_message != nullptr) {
+        *out_message = p;
+    }
+    return true;
+}
+
+/* Parse an inbound e-mail line:
+ *   "/E~<from_station_3d><to_id_3d>(<from_id>:<handle>) <message>" */
+bool ddial_parse_incoming_email(const char *line, unsigned *out_from_station,
+                                unsigned *out_from_id, char *out_handle,
+                                size_t handle_cap, const char **out_message)
+{
+    if (line == nullptr || line[0] != '/' ||
+        (line[1] != 'E' && line[1] != 'e') || line[2] != '~') {
+        return false;
+    }
+    const char *p = line + 3;
+    for (int i = 0; i < 6; ++i) {
+        if (!isdigit((unsigned char)p[i])) {
+            return false;
+        }
+    }
+    unsigned from_station =
+        (unsigned)((p[0] - '0') * 100 + (p[1] - '0') * 10 + (p[2] - '0'));
+    p += 6;
+    if (*p != '(') {
+        return false;
+    }
+    ++p;
+    if (!isdigit((unsigned char)*p)) {
+        return false;
+    }
+    unsigned from_id = (unsigned)strtoul(p, (char **)&p, 10);
+    if (*p != ':') {
+        return false;
+    }
+    ++p;
+    const char *handle_start = p;
+    while (*p != '\0' && *p != ')') {
+        ++p;
+    }
+    if (*p != ')') {
+        return false;
+    }
+    if (out_handle != nullptr && handle_cap > 0U) {
+        size_t len = (size_t)(p - handle_start);
+        if (len >= handle_cap) {
+            len = handle_cap - 1U;
+        }
+        memcpy(out_handle, handle_start, len);
+        out_handle[len] = '\0';
+    }
+    ++p;
+    if (*p == ' ') {
+        ++p;
+    }
+    if (out_from_station != nullptr) {
+        *out_from_station = from_station;
+    }
+    if (out_from_id != nullptr) {
+        *out_from_id = from_id;
+    }
+    if (out_message != nullptr) {
+        *out_message = p;
+    }
+    return true;
 }

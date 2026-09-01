@@ -9,9 +9,13 @@
 #define DDIAL_MAX_CHANNEL 4
 #define DDIAL_DEFAULT_CHANNEL 1
 #define DDIAL_MAX_HANDLE_LEN 32
+#define DDIAL_MAX_HANDLE_WIRE_LEN 25 /* spec: never exceed 25 chars */
 #define DDIAL_MAX_MESSAGE_LEN 512
+#define DDIAL_MAX_BODY_LEN 255 /* spec: ddial message body limit */
 #define DDIAL_MAX_LINE_LEN 1024
 #define DDIAL_LINK_ESCAPE 0x7E /* '~' */
+/* How often a linked station sends its }}} user broadcast list. */
+#define DDIAL_STATION_BROADCAST_INTERVAL_SEC (15 * 60)
 
 typedef enum ddial_command {
     DDIAL_CMD_UNKNOWN = 0,
@@ -107,17 +111,56 @@ bool ddial_format_link_login(char *dst, size_t dst_cap,
                              uint16_t slot, uint8_t channel,
                              ddial_user_tier_t tier,
                              const char *handle, uint16_t account,
-                             bool station_locked);
+                             bool is_link, bool station_locked);
 
 bool ddial_format_link_logout(char *dst, size_t dst_cap,
                               uint16_t slot, uint8_t channel,
                               ddial_user_tier_t tier,
                               const char *handle, uint16_t account,
-                              bool station_locked);
+                              bool is_link, bool station_locked);
 
 /* Inbound link helpers */
 ddial_link_msg_t ddial_parse_link_prefix(const char *line,
                                           const char **out_rest);
+
+/* Handle/slot hygiene per the wire spec:
+ * handles may never contain '^' ')' '}' CR or LF and are capped at
+ * DDIAL_MAX_HANDLE_WIRE_LEN; slot numbers containing the digit 8 or 9 are
+ * not recognized by some ddials and must be skipped. */
+size_t ddial_sanitize_handle(const char *src, size_t src_len, char *dst,
+                             size_t dst_cap);
+bool ddial_slot_is_valid(uint16_t slot);
+
+/* Dual-channel link chat: ~#slot<bracket>T<ch>:<handle>) message\r\n */
+bool ddial_format_link_dual_chat(char *dst, size_t dst_cap, uint16_t slot,
+                                 uint8_t channel, ddial_user_tier_t tier,
+                                 const char *handle, const char *message);
+
+/* Station broadcast list (}}} prefix).  Build the header first, then append
+ * one entry per online user; terminate the finished list with "\r\n". */
+bool ddial_format_broadcast_header(char *dst, size_t dst_cap,
+                                   const char *station_name,
+                                   bool station_locked);
+bool ddial_format_broadcast_entry(char *dst, size_t dst_cap, uint16_t slot,
+                                  uint8_t channel, ddial_user_tier_t tier,
+                                  const char *handle, uint16_t account,
+                                  bool is_link);
+
+/* Inbound link line parsers.  All take a single line without CR/LF. */
+bool ddial_parse_incoming_chat(const char *line, uint16_t *out_link_slot,
+                               uint16_t *out_slot, uint8_t *out_channel,
+                               bool *out_is_link, bool *out_dual_channel,
+                               char *out_handle, size_t handle_cap,
+                               const char **out_message);
+
+bool ddial_parse_incoming_private(const char *line, uint16_t *out_target_slot,
+                                  uint16_t *out_from_slot,
+                                  uint8_t *out_channel, char *out_handle,
+                                  size_t handle_cap, const char **out_message);
+
+bool ddial_parse_incoming_email(const char *line, unsigned *out_from_station,
+                                unsigned *out_from_id, char *out_handle,
+                                size_t handle_cap, const char **out_message);
 
 size_t ddial_expand_carets(const char *src, size_t src_len,
                            char *dst, size_t dst_cap);

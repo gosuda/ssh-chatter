@@ -38,6 +38,12 @@ void host_ddial_register_session(struct ddial_session *sess)
      * local user as #1. */
     uint16_t candidate = 1U;
     for (;;) {
+        /* Slots containing the digit 8 or 9 are invalid on strict ddials;
+         * skip them so every session lands on a wire-legal line number. */
+        if (!ddial_slot_is_valid(candidate)) {
+            ++candidate;
+            continue;
+        }
         bool used = false;
         for (ddial_session_registry_node_t *scan = g_ddial_sessions;
              scan != nullptr; scan = scan->next) {
@@ -182,6 +188,106 @@ void host_ddial_broadcast_system(host_t *host, const char *message)
 /* Forward reference defined in server.c (same translation unit). */
 extern void ddial_session_write_line(struct ddial_session *sess,
                                      const char *text);
+
+/* Deliver an inbound link private message to the local DDial session that
+ * owns target_slot.  The line is delivered in the local display form
+ * "P#<from>[T<ch>:<handle>) <msg>".  Returns true when a local session was
+ * found. */
+bool host_ddial_deliver_private_line(host_t *host, uint16_t target_slot,
+                                     const char *display_line)
+{
+    if (host == nullptr || target_slot == 0U || display_line == nullptr ||
+        display_line[0] == '\0') {
+        return false;
+    }
+    char formatted[SSH_CHATTER_MESSAGE_LIMIT + 4];
+    int n = snprintf(formatted, sizeof(formatted), "%s\r\n", display_line);
+    if (n <= 0 || (size_t)n >= sizeof(formatted)) {
+        return false;
+    }
+
+    bool delivered = false;
+    pthread_mutex_lock(&g_ddial_registry_lock);
+    for (ddial_session_registry_node_t *cur = g_ddial_sessions;
+         cur != nullptr; cur = cur->next) {
+        struct ddial_session *sess = cur->session;
+        if (sess == nullptr || sess->owner != host) {
+            continue;
+        }
+        if (!sshc_memory_is_valid_gc_pointer(sess) ||
+            !sshc_pointer_check(sess, sizeof(*sess))) {
+            continue;
+        }
+        if (sess->slot == target_slot && sess->logged_in) {
+            SSHC_SAFE_BLOCK_BEGIN() {
+                ddial_session_write_raw(sess, formatted, (size_t)n);
+            } SSHC_SAFE_BLOCK_END({
+                /* delivery failure: leave delivered=false */
+            });
+            delivered = true;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_ddial_registry_lock);
+    return delivered;
+}
+
+/* Build the "}}}-.<station>^#<slot>..." user broadcast list from the local
+ * DDial session registry and send it upstream over the link.  Stations send
+ * this list every 10-20 minutes so peers can track who is online. */
+bool host_ddial_client_send_station_broadcast(host_t *host)
+{
+    if (host == nullptr) {
+        return false;
+    }
+
+    const char *station_env = getenv("CHATTER_DDIAL_STATION");
+    char station[DDIAL_MAX_HANDLE_LEN];
+    if (station_env != nullptr && station_env[0] != '\0') {
+        ddial_sanitize_handle(station_env, strlen(station_env), station,
+                              sizeof(station));
+    } else {
+        snprintf(station, sizeof(station), "%s", "Chatter");
+    }
+
+    char list[SSH_CHATTER_MESSAGE_LIMIT];
+    if (!ddial_format_broadcast_header(list, sizeof(list), station, false)) {
+        return false;
+    }
+
+    size_t used = strlen(list);
+    pthread_mutex_lock(&g_ddial_registry_lock);
+    for (ddial_session_registry_node_t *cur = g_ddial_sessions;
+         cur != nullptr; cur = cur->next) {
+        struct ddial_session *sess = cur->session;
+        if (sess == nullptr || sess->owner != host) {
+            continue;
+        }
+        bool valid = sshc_memory_is_valid_gc_pointer(sess) &&
+                     sshc_pointer_check(sess, sizeof(*sess));
+        if (!valid || !sess->logged_in || sess->handle[0] == '\0') {
+            continue;
+        }
+        char entry[128];
+        if (!ddial_format_broadcast_entry(entry, sizeof(entry), sess->slot,
+                                          sess->channel, DDIAL_TIER_PASSWORD,
+                                          sess->handle, 0U, false)) {
+            continue;
+        }
+        size_t entry_len = strlen(entry);
+        if (used + entry_len + 3U > sizeof(list)) {
+            break;
+        }
+        memcpy(list + used, entry, entry_len);
+        used += entry_len;
+    }
+    pthread_mutex_unlock(&g_ddial_registry_lock);
+
+    list[used++] = '\r';
+    list[used++] = '\n';
+    list[used] = '\0';
+    return host_ddial_client_send_raw(host, list, used);
+}
 
 void host_ddial_write_who(ddial_session_t *target)
 {

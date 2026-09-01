@@ -738,7 +738,9 @@ static void ddial_client_note_auth_marker(ddial_client_t *client,
     }
 
     static const char *fail_needles[] = {
-        "password needed", "invalid password", "incorrect password",
+        /* NOTE: "PASSWORD needed for full access" is a Retro-Dial
+         * informational banner, not a rejection -- never match on it. */
+        "invalid password", "incorrect password",
         "wrong password",  "access denied",    "try again",
     };
     for (size_t i = 0U; i < sizeof(fail_needles) / sizeof(fail_needles[0]);

@@ -1194,6 +1194,7 @@ static void *session_thread(void *arg)
                  ANSI_BRIGHT_RED, ANSI_RESET, join_name);
         host_history_record_system(ctx->owner, join_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, join_message, nullptr);
+        host_ddial_chat_link_register(ctx);
     }
 
     session_clear_input_without_prompt(ctx);
@@ -1893,6 +1894,7 @@ static void *session_thread(void *arg)
         }
         host_history_record_system(ctx->owner, part_message, nullptr);
         chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
+        host_ddial_chat_link_unregister(ctx);
         atomic_store(&ctx->room_snapshot_retired, true);
         chat_room_remove(&ctx->owner->room, ctx);
         session_manual_gc_tick(ctx);

@@ -720,6 +720,10 @@ typedef struct session_ctx {
     uint8_t ddial_channel;
     bool ddial_logged_in;
     bool ddial_should_exit;
+    /* Station Link "Chat Mode" compatibility: slot this plain chat session
+     * is advertised under over an active DDial link, or 0 when not
+     * registered (see host_ddial_chat_link_register/unregister). */
+    uint16_t ddial_link_slot;
     chat_user_t user;
     bool lan_operator_credentials_valid;
     auth_profile_t auth;
@@ -1403,6 +1407,11 @@ void host_ddial_client_send_logout(host_t *host, uint16_t slot,
                                    uint8_t channel, ddial_user_tier_t tier,
                                    const char *handle, uint16_t account);
 bool host_ddial_client_send_station_broadcast(host_t *host);
+/* Chat Mode compatibility linking: presence-only announce/withdraw of a
+ * plain SSH/telnet chat session over an active Station Link. No message
+ * relay is implemented for these entries. */
+void host_ddial_chat_link_register(session_ctx_t *ctx);
+void host_ddial_chat_link_unregister(session_ctx_t *ctx);
 bool host_ddial_deliver_private_line(host_t *host, uint16_t target_slot,
                                      const char *display_line);
 bool host_ddial_client_send_raw(host_t *host, const char *data,

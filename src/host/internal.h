@@ -239,6 +239,7 @@ void session_clear_pending_sink(session_ctx_t *ctx);
 void session_mode_push_chat_context(session_ctx_t *ctx);
 void session_mode_pop_chat_context(session_ctx_t *ctx);
 void session_send_system_line(session_ctx_t *ctx, const char *message);
+void session_send_raw_text(session_ctx_t *ctx, const char *text);
 void session_send_history_entry(session_ctx_t *ctx,
                                 const chat_history_entry_t *entry);
 void session_output_buffer_start(session_ctx_t *ctx);

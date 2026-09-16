@@ -2554,7 +2554,8 @@ void session_bbs_profile(session_ctx_t *ctx, const char *username)
     }
 
     if (has_data && record.profile_picture[0] != '\0') {
-        session_send_system_line(ctx, record.profile_picture);
+        /* Multi-line avatar art: split into per-line sends for proper CRLF. */
+        session_send_raw_text(ctx, record.profile_picture);
     } else {
         session_send_system_line(ctx, "(No profile picture set)");
     }
@@ -2638,7 +2639,7 @@ void session_bbs_setavatar(session_ctx_t *ctx, const char *name)
             ctx, "Usage: /bbs setavatar <monitor|mouse|human|mushroom|none>");
         session_send_system_line(ctx, "Available avatars:");
         for (size_t i = 1; i < AVATAR_COUNT; ++i) {
-            session_send_system_line(ctx, kSessionAvatarArt[i]);
+            session_send_raw_text(ctx, kSessionAvatarArt[i]);
             char line[SSH_CHATTER_MESSAGE_LIMIT];
             snprintf(line, sizeof(line), "  -> %s", kSessionAvatarNames[i]);
             session_send_system_line(ctx, line);

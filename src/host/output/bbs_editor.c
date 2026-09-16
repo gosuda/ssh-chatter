@@ -127,7 +127,9 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
     user_data_record_t author_record = {0};
     if (user_data_load(data_root, post->author, "", &author_record) &&
         author_record.profile_picture[0] != '\0') {
-        session_send_system_line(ctx, author_record.profile_picture);
+        /* Avatar art contains embedded newlines; send line-by-line so each
+         * line gets a proper CRLF instead of stair-stepping on the raw LF. */
+        session_send_raw_text(ctx, author_record.profile_picture);
     }
 
     session_send_plain_line(ctx, title_line);
@@ -149,7 +151,7 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
             user_data_record_t commenter_record = {0};
             if (user_data_load(data_root, comment->author, "", &commenter_record) &&
                 commenter_record.profile_picture[0] != '\0') {
-                session_send_system_line(ctx, commenter_record.profile_picture);
+                session_send_raw_text(ctx, commenter_record.profile_picture);
             }
 
             char comment_author_line[SSH_CHATTER_MESSAGE_LIMIT];

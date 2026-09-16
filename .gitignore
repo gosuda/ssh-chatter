@@ -17,3 +17,4 @@ build/
 stress-test
 display-model-test
 *.deb
+.cache/

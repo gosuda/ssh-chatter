@@ -599,15 +599,15 @@ int host_serve(host_t *host, const char *bind_addr, const char *port,
 
 loop_cleanup:
         if (bind_handle != nullptr) {
+            /* ssh_bind_free() also releases keys handed over via
+             * SSH_BIND_OPTIONS_IMPORT_KEY, so imported_keys must NOT be
+             * freed again here (double free). */
             ssh_bind_free(bind_handle);
             host->listener.handle = nullptr;
         }
 
         for (size_t idx = 0; idx < host_key_count; ++idx) {
-            if (imported_keys[idx] != nullptr) {
-                ssh_key_free(imported_keys[idx]);
-                imported_keys[idx] = nullptr;
-            }
+            imported_keys[idx] = nullptr;
         }
 
         // Check for shutdown signal before deciding to restart

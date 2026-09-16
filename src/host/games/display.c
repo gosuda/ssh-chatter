@@ -1411,6 +1411,18 @@ static bool session_fetch_weather_summary(const char *city,
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
 
     CURLcode result = curl_easy_perform(curl);
+    if (result == CURLE_PEER_FAILED_VERIFICATION ||
+        result == CURLE_SSL_CONNECT_ERROR ||
+        result == CURLE_SSL_CERTPROBLEM) {
+        /* wttr.in lets its certificate lapse occasionally; fall back to
+         * plain HTTP so /weather keeps working until it is renewed. */
+        sshc_abstract_byte_buffer_free(&buffer.bytes);
+        sshc_abstract_byte_buffer_init(&buffer.bytes);
+        char http_url[512];
+        snprintf(http_url, sizeof(http_url), "http://%s", url + 8U);
+        curl_easy_setopt(curl, CURLOPT_URL, http_url);
+        result = curl_easy_perform(curl);
+    }
     if (result != CURLE_OK) {
         goto cleanup;
     }

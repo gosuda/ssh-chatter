@@ -1770,6 +1770,11 @@ static void session_bbs_select_avatar_interactive(session_ctx_t *ctx)
         }
 
         if (user_data_save(root, &record, ctx->client_ip)) {
+            /* Keep the session record in sync so the logout-time save does
+             * not overwrite (and delete) the picture we just stored. */
+            snprintf(ctx->user_data.profile_picture,
+                     sizeof(ctx->user_data.profile_picture), "%s",
+                     record.profile_picture);
             session_send_system_line(
                 ctx, chosen == AVATAR_NONE ? "Profile logo cleared." : "Profile logo updated.");
         } else {
@@ -2623,6 +2628,9 @@ void session_bbs_set_profile(session_ctx_t *ctx)
     memcpy(record.profile_picture, ctx->asciiart_buffer, copy_len);
     record.profile_picture[copy_len] = '\0';
     if (user_data_save(root, &record, ctx->client_ip)) {
+        snprintf(ctx->user_data.profile_picture,
+                 sizeof(ctx->user_data.profile_picture), "%s",
+                 record.profile_picture);
         session_send_system_line(ctx, "Profile picture updated.");
     } else {
         session_send_system_line(ctx, "Failed to save profile picture.");
@@ -2683,6 +2691,9 @@ void session_bbs_setavatar(session_ctx_t *ctx, const char *name)
     }
 
     if (user_data_save(root, &record, ctx->client_ip)) {
+        snprintf(ctx->user_data.profile_picture,
+                 sizeof(ctx->user_data.profile_picture), "%s",
+                 record.profile_picture);
         session_send_system_line(
             ctx, chosen == AVATAR_NONE ? "Avatar removed." : "Avatar updated.");
     } else {

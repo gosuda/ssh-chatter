@@ -15,7 +15,7 @@ const char * const kSessionAvatarArt[AVATAR_COUNT] = {
     [AVATAR_HUMAN]    =
         "       \033[1;33mo\033[0m\n"
         "      \033[1;33m/|\\\033[0m\n"
-        "      \033[1;33m/ \\033[0m",
+        "      \033[1;33m/ \\\033[0m",
     [AVATAR_MUSHROOM] =
         "      \033[1;31m_.-._\033[0m\n"
         "    \033[1;31m(     )\033[0m\n"

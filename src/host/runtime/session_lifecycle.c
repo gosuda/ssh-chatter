@@ -417,6 +417,10 @@ static void session_ask_ui_mode(session_ctx_t *ctx)
         if (ctx->ops != nullptr && ctx->ops->dispatch_command != nullptr) {
             ctx->ops->dispatch_command(ctx, "/bbs door");
         }
+        session_send_system_line(
+            ctx, "Game Mode commands: /game <tetris|liargame|alpha|othello|gonu> "
+                 "for built-in games, /bbs door [name] for door games, "
+                 "/gameopt reset for options, /exit to leave.");
     } else {
         ctx->ui_mode = SESSION_UI_MODE_ANYTHING;
         session_send_system_line(ctx, "Invalid choice. Defaulting to Do Anything Mode.");

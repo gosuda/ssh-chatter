@@ -29,10 +29,11 @@ static int session_authenticate(session_ctx_t *ctx)
 {
     ssh_message message = nullptr;
     bool authenticated = false;
-    if (ctx != nullptr) {
-        ctx->lan_operator_credentials_valid = false;
-        ctx->authenticated_via_ssh_password = false;
+    if (ctx == nullptr || ctx->session == nullptr || ctx->owner == nullptr) {
+        return -1;
     }
+    ctx->lan_operator_credentials_valid = false;
+    ctx->authenticated_via_ssh_password = false;
 
     // Declare credential here to ensure it's in scope for all uses
     lan_operator_credential_t *credential = nullptr;
@@ -180,6 +181,10 @@ static int session_accept_channel(session_ctx_t *ctx)
 {
     ssh_message message = nullptr;
 
+    if (ctx == nullptr || ctx->session == nullptr) {
+        return -1;
+    }
+
     while ((message = ssh_message_get(ctx->session)) != nullptr) {
         const int message_type = ssh_message_type(message);
         if (message_type == SSH_REQUEST_SERVICE) {
@@ -284,6 +289,10 @@ static int session_prepare_shell(session_ctx_t *ctx)
 {
     ssh_message message = nullptr;
     bool shell_ready = false;
+
+    if (ctx == nullptr || ctx->session == nullptr) {
+        return -1;
+    }
 
     while (!shell_ready &&
            (message = ssh_message_get(ctx->session)) != nullptr) {

@@ -1299,9 +1299,12 @@ static size_t host_rss_refresh_cycle(host_t *host, bool abort_on_stop)
                 ttak_mutex_lock(&host->room.lock);
                 for (size_t i = 0; i < host->room.member_count; ++i) {
                     session_ctx_t *member = host->room.members[i];
-                    if (member != nullptr && member->breaking_alerts_enabled) {
-                        session_send_system_line(member, notice);
+                    if (member == nullptr ||
+                        atomic_load(&member->room_snapshot_retired) ||
+                        !member->breaking_alerts_enabled) {
+                        continue;
                     }
+                    session_send_system_line(member, notice);
                 }
                 ttak_mutex_unlock(&host->room.lock);
             }

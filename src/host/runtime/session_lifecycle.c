@@ -91,7 +91,7 @@ static void session_release_transport_state(session_ctx_t *ctx)
     }
 
     if (ctx->transport_kind == SESSION_TRANSPORT_SSH &&
-        ctx->channel != nullptr) {
+        ctx->channel != nullptr && ctx->session != nullptr) {
         ssh_channel_request_send_exit_status(ctx->channel, ctx->exit_status);
     }
     session_close_channel(ctx);

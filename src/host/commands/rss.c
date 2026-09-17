@@ -307,7 +307,8 @@ static void session_handle_rss(session_ctx_t *ctx, const char *arguments)
     }
 
     static const char *kUsage =
-        "Usage: /rss <add <url> <tag>|del <tag>|rename <old> <new>|read <tag>|list>";
+        "Usage: /rss <list|read <tag>|add <url> <tag>|del <tag>|rename <old> "
+        "<new>|exit>";
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
     session_command_format_usage(ctx, "/rss", kUsage, usage, sizeof(usage));

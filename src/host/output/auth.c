@@ -1043,6 +1043,9 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
     if (ctx->in_archive_mode) {
         if (strcmp(normalized, "/archive exit") == 0) {
             session_handle_archive(ctx, "exit");
+        } else if (normalized[0] != '/') {
+            /* Forward bare input so list/enter/help work inside archive mode. */
+            session_handle_archive(ctx, normalized);
         } else {
             session_ui_language_t lang = session_ui_language_current(ctx);
             if (lang < 0 || lang >= SESSION_UI_LANGUAGE_COUNT) {
@@ -1201,8 +1204,9 @@ static void session_process_line(session_ctx_t *ctx, const char *line)
                 session_handle_rss(ctx, rss_forwarded);
             } else {
                 session_send_system_line(
-                    ctx, "RSS Newsfeeds mode is active. Use list, read <tag>, "
-                         "/rss list, /rss read <tag>, or exit.");
+                    ctx, "RSS Newsfeeds mode is active. Commands: list | "
+                         "read <tag> | add <url> <tag> | del <tag> | "
+                         "rename <old> <new> | exit");
             }
         }
         session_release_cpu_slot(ctx);

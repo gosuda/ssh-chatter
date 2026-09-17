@@ -204,6 +204,17 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             },
     },
     {
+        .canonical = "help",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "help",
+                [SESSION_UI_LANGUAGE_KO] = "도움말",
+                [SESSION_UI_LANGUAGE_JP] = "ヘルプ",
+                [SESSION_UI_LANGUAGE_ZH] = "帮助",
+                [SESSION_UI_LANGUAGE_RU] = "помощь",
+            },
+    },
+    {
         .canonical = "setgamelock",
         .localized =
             {

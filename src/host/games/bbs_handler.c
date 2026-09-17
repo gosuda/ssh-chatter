@@ -17,6 +17,34 @@ extern void session_bbs_door_run(session_ctx_t *ctx, const char *name);
 extern void session_bbs_setgamelock(session_ctx_t *ctx, const char *arguments);
 
 // Handle the /bbs command entry point.
+static void session_bbs_print_help(session_ctx_t *ctx)
+{
+    session_send_system_line(ctx, "--------------------------------------------------");
+    session_send_system_line(ctx, "BBS Subcommands:");
+    session_send_system_line(ctx, "  list [all|hot|top|new] - List posts");
+    session_send_system_line(ctx, "  read <id>              - Read a post");
+    session_send_system_line(ctx, "  topic read <tag>       - List posts by tag");
+    session_send_system_line(ctx, "  post <title> [tags...] - Create a post");
+    session_send_system_line(ctx, "  edit <id>              - Edit a post");
+    session_send_system_line(ctx, "  comment <id>|<text>    - Add a comment");
+    session_send_system_line(ctx, "  upvote <id>            - Upvote a post");
+    session_send_system_line(ctx, "  downvote <id>          - Downvote a post");
+    session_send_system_line(ctx, "  cmtvote <id> <idx> up|down - Vote on a comment");
+    session_send_system_line(ctx, "  regen <id>             - Regenerate a post");
+    session_send_system_line(ctx, "  delete <id>            - Delete a post");
+    session_send_system_line(ctx, "  search <keyword>       - Search posts");
+    session_send_system_line(ctx, "  board <id>             - Select a board");
+    session_send_system_line(ctx, "  boards                 - List boards");
+    session_send_system_line(ctx, "  profile [username]     - View user profile");
+    session_send_system_line(ctx, "  set-profile            - Set profile picture from pending ASCII art");
+    session_send_system_line(ctx, "  setavatar <name>       - Set profile logo (monitor|mouse|human|mushroom|none)");
+    session_send_system_line(ctx, "  draft <save|list|load|delete> - Manage drafts");
+    session_send_system_line(ctx, "  door [name]            - List or launch door games");
+    session_send_system_line(ctx, "  setgamelock <name>     - Lock a door game (admin)");
+    session_send_system_line(ctx, "  exit                   - Exit BBS mode");
+    session_send_system_line(ctx, "--------------------------------------------------");
+}
+
 static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
@@ -64,30 +92,7 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
     }
 
     if (strcmp(command, "help") == 0 || strcmp(command, "도움말") == 0) {
-        session_send_system_line(ctx, "--------------------------------------------------");
-        session_send_system_line(ctx, "BBS Subcommands:");
-        session_send_system_line(ctx, "  list [all|hot|top|new] - List posts");
-        session_send_system_line(ctx, "  read <id>              - Read a post");
-        session_send_system_line(ctx, "  topic read <tag>       - List posts by tag");
-        session_send_system_line(ctx, "  post <title> [tags...] - Create a post");
-        session_send_system_line(ctx, "  edit <id>              - Edit a post");
-        session_send_system_line(ctx, "  comment <id>|<text>    - Add a comment");
-        session_send_system_line(ctx, "  upvote <id>            - Upvote a post");
-        session_send_system_line(ctx, "  downvote <id>          - Downvote a post");
-        session_send_system_line(ctx, "  cmtvote <id> <idx> up|down - Vote on a comment");
-        session_send_system_line(ctx, "  regen <id>             - Regenerate a post");
-        session_send_system_line(ctx, "  delete <id>            - Delete a post");
-        session_send_system_line(ctx, "  search <keyword>       - Search posts");
-        session_send_system_line(ctx, "  board <id>             - Select a board");
-        session_send_system_line(ctx, "  boards                 - List boards");
-        session_send_system_line(ctx, "  profile [username]     - View user profile");
-        session_send_system_line(ctx, "  set-profile            - Set profile picture from pending ASCII art");
-        session_send_system_line(ctx, "  setavatar <name>       - Set profile logo (monitor|mouse|human|mushroom|none)");
-        session_send_system_line(ctx, "  draft <save|list|load|delete> - Manage drafts");
-        session_send_system_line(ctx, "  door [name]            - List or launch door games");
-        session_send_system_line(ctx, "  setgamelock <name>     - Lock a door game (admin)");
-        session_send_system_line(ctx, "  exit                   - Exit BBS mode");
-        session_send_system_line(ctx, "--------------------------------------------------");
+        session_bbs_print_help(ctx);
         return;
     }
 
@@ -105,6 +110,8 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
     if (strcmp(canonical_command, "list") == 0) {
         session_bbs_prepare_canvas(ctx);
         session_bbs_list(ctx, rest);
+    } else if (strcmp(canonical_command, "help") == 0) {
+        session_bbs_print_help(ctx);
     } else if (strcmp(canonical_command, "read") == 0) {
         if (rest == nullptr || rest[0] == '\0') {
             session_bbs_send_usage(ctx, "read", "<id>");

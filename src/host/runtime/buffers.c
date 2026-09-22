@@ -307,9 +307,16 @@ bool host_bbs_acquire_storage(host_t *host)
         return true;
     }
 
-    bbs_post_t *allocated = (bbs_post_t *)sshc_gc_calloc(
+    bbs_post_t *allocated = nullptr;
+    /* Host-owned array allocated from a session thread: pin to the host
+     * memory context so it survives the session (same dangling-pointer class
+     * as the boards/votes/drafts loads). */
+    sshc_memory_context_t *prev_ctx =
+        sshc_memory_context_push(host->memory_context);
+    allocated = (bbs_post_t *)sshc_gc_calloc(
         SSH_CHATTER_BBS_MAX_POSTS, sizeof(host->bbs_posts[0]));
     if (allocated == nullptr) {
+        sshc_memory_context_pop(prev_ctx);
         humanized_log_error("bbs", "failed to allocate post cache",
                             errno != 0 ? errno : ENOMEM);
         return false;
@@ -323,11 +330,13 @@ bool host_bbs_acquire_storage(host_t *host)
                 sshc_gc_free(allocated[j].comments);
             }
             sshc_gc_free(allocated);
+            sshc_memory_context_pop(prev_ctx);
             humanized_log_error("bbs", "failed to allocate comments cache",
                                 errno != 0 ? errno : ENOMEM);
             return false;
         }
     }
+    sshc_memory_context_pop(prev_ctx);
 
     ttak_mutex_lock(&host->lock);
     if (host->bbs_posts != nullptr) {

@@ -163,6 +163,21 @@ static void host_bbs_boards_load(host_t *host);
 static void host_bbs_votes_load(host_t *host);
 static void host_bbs_drafts_load(host_t *host);
 
+/* The boards/votes/drafts arrays are host-owned, but the loaders run on
+ * session threads where the current memory context may belong to the
+ * session.  Pin the loads to the host memory context so the arrays are not
+ * reclaimed when the calling session's context is collected (this was the
+ * SIGSEGV in session_bbs_list: host->bbs_boards dangled). */
+static void host_bbs_aux_loads(host_t *host)
+{
+    sshc_memory_context_t *prev_ctx =
+        sshc_memory_context_push(host->memory_context);
+    host_bbs_boards_load(host);
+    host_bbs_votes_load(host);
+    host_bbs_drafts_load(host);
+    sshc_memory_context_pop(prev_ctx);
+}
+
 static void host_bbs_state_save_locked(host_t *host)
 {
     if (!host_bbs_storage_ready(host)) {
@@ -657,9 +672,7 @@ static void host_bbs_state_load(host_t *host)
     FILE *fp = fopen(host->bbs_state_file_path, "rb");
     if (fp == nullptr) {
         host->bbs_cache_loaded = true;
-        host_bbs_boards_load(host);
-        host_bbs_votes_load(host);
-        host_bbs_drafts_load(host);
+        host_bbs_aux_loads(host);
         return;
     }
 
@@ -667,9 +680,7 @@ static void host_bbs_state_load(host_t *host)
     if (fd < 0) {
         fclose(fp);
         host->bbs_cache_loaded = true;
-        host_bbs_boards_load(host);
-        host_bbs_votes_load(host);
-        host_bbs_drafts_load(host);
+        host_bbs_aux_loads(host);
         return;
     }
 
@@ -677,9 +688,7 @@ static void host_bbs_state_load(host_t *host)
     if (fstat(fd, &st) != 0 || st.st_size <= 0) {
         fclose(fp);
         host->bbs_cache_loaded = true;
-        host_bbs_boards_load(host);
-        host_bbs_votes_load(host);
-        host_bbs_drafts_load(host);
+        host_bbs_aux_loads(host);
         return;
     }
 
@@ -687,9 +696,7 @@ static void host_bbs_state_load(host_t *host)
     if (mapped_len < sizeof(bbs_state_header_t)) {
         fclose(fp);
         host->bbs_cache_loaded = true;
-        host_bbs_boards_load(host);
-        host_bbs_votes_load(host);
-        host_bbs_drafts_load(host);
+        host_bbs_aux_loads(host);
         return;
     }
 
@@ -699,9 +706,7 @@ static void host_bbs_state_load(host_t *host)
     fp = nullptr;
     if (mapped == MAP_FAILED) {
         host->bbs_cache_loaded = true;
-        host_bbs_boards_load(host);
-        host_bbs_votes_load(host);
-        host_bbs_drafts_load(host);
+        host_bbs_aux_loads(host);
         return;
     }
 
@@ -717,9 +722,7 @@ static void host_bbs_state_load(host_t *host)
         memset(mapped, 0, mapped_len);
         munmap(mapped, mapped_len);
         host->bbs_cache_loaded = true;
-        host_bbs_boards_load(host);
-        host_bbs_votes_load(host);
-        host_bbs_drafts_load(host);
+        host_bbs_aux_loads(host);
         return;
     }
 
@@ -727,9 +730,7 @@ static void host_bbs_state_load(host_t *host)
         memset(mapped, 0, mapped_len);
         munmap(mapped, mapped_len);
         host->bbs_cache_loaded = true;
-        host_bbs_boards_load(host);
-        host_bbs_votes_load(host);
-        host_bbs_drafts_load(host);
+        host_bbs_aux_loads(host);
         return;
     }
 
@@ -906,9 +907,7 @@ static void host_bbs_state_load(host_t *host)
     host->bbs_cache_loaded = true;
 
     /* load auxiliary data directly */
-    host_bbs_boards_load(host);
-    host_bbs_votes_load(host);
-    host_bbs_drafts_load(host);
+    host_bbs_aux_loads(host);
 }
 
 static void host_bbs_watchdog_scan(host_t *host)

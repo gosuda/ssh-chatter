@@ -16,6 +16,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "一覧",
                 [SESSION_UI_LANGUAGE_ZH] = "列表",
                 [SESSION_UI_LANGUAGE_RU] = "список",
+                [SESSION_UI_LANGUAGE_DE] = "liste",
+                [SESSION_UI_LANGUAGE_FR] = "liste",
+                [SESSION_UI_LANGUAGE_PL] = "lista",
             },
     },
     {
@@ -27,6 +30,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "検索",
                 [SESSION_UI_LANGUAGE_ZH] = "搜索",
                 [SESSION_UI_LANGUAGE_RU] = "поиск",
+                [SESSION_UI_LANGUAGE_DE] = "suche",
+                [SESSION_UI_LANGUAGE_FR] = "recherche",
+                [SESSION_UI_LANGUAGE_PL] = "szukaj",
             },
     },
     {
@@ -38,6 +44,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "閲覧",
                 [SESSION_UI_LANGUAGE_ZH] = "阅读",
                 [SESSION_UI_LANGUAGE_RU] = "читать",
+                [SESSION_UI_LANGUAGE_DE] = "lesen",
+                [SESSION_UI_LANGUAGE_FR] = "lire",
+                [SESSION_UI_LANGUAGE_PL] = "czytaj",
             },
     },
     {
@@ -49,6 +58,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "トピック",
                 [SESSION_UI_LANGUAGE_ZH] = "主题",
                 [SESSION_UI_LANGUAGE_RU] = "тема",
+                [SESSION_UI_LANGUAGE_DE] = "thema",
+                [SESSION_UI_LANGUAGE_FR] = "sujet",
+                [SESSION_UI_LANGUAGE_PL] = "temat",
             },
     },
     {
@@ -60,6 +72,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "投稿",
                 [SESSION_UI_LANGUAGE_ZH] = "发布",
                 [SESSION_UI_LANGUAGE_RU] = "пост",
+                [SESSION_UI_LANGUAGE_DE] = "beitrag",
+                [SESSION_UI_LANGUAGE_FR] = "message",
+                [SESSION_UI_LANGUAGE_PL] = "wpis",
             },
     },
     {
@@ -71,6 +86,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "編集",
                 [SESSION_UI_LANGUAGE_ZH] = "编辑",
                 [SESSION_UI_LANGUAGE_RU] = "редакт",
+                [SESSION_UI_LANGUAGE_DE] = "bearbeiten",
+                [SESSION_UI_LANGUAGE_FR] = "modifier",
+                [SESSION_UI_LANGUAGE_PL] = "edytuj",
             },
     },
     {
@@ -82,6 +100,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "コメント",
                 [SESSION_UI_LANGUAGE_ZH] = "评论",
                 [SESSION_UI_LANGUAGE_RU] = "коммент",
+                [SESSION_UI_LANGUAGE_DE] = "kommentar",
+                [SESSION_UI_LANGUAGE_FR] = "commentaire",
+                [SESSION_UI_LANGUAGE_PL] = "komentarz",
             },
     },
     {
@@ -93,6 +114,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "再掲",
                 [SESSION_UI_LANGUAGE_ZH] = "置顶",
                 [SESSION_UI_LANGUAGE_RU] = "поднять",
+                [SESSION_UI_LANGUAGE_DE] = "erneuern",
+                [SESSION_UI_LANGUAGE_FR] = "renouveler",
+                [SESSION_UI_LANGUAGE_PL] = "odswiez",
             },
     },
     {
@@ -104,6 +128,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "削除",
                 [SESSION_UI_LANGUAGE_ZH] = "删除",
                 [SESSION_UI_LANGUAGE_RU] = "удалить",
+                [SESSION_UI_LANGUAGE_DE] = "loeschen",
+                [SESSION_UI_LANGUAGE_FR] = "supprimer",
+                [SESSION_UI_LANGUAGE_PL] = "usun",
             },
     },
     {
@@ -115,6 +142,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "ドア",
                 [SESSION_UI_LANGUAGE_ZH] = "门",
                 [SESSION_UI_LANGUAGE_RU] = "дверь",
+                [SESSION_UI_LANGUAGE_DE] = "tor",
+                [SESSION_UI_LANGUAGE_FR] = "porte",
+                [SESSION_UI_LANGUAGE_PL] = "drzwi",
             },
     },
     {
@@ -126,6 +156,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "板一覧",
                 [SESSION_UI_LANGUAGE_ZH] = "版面列表",
                 [SESSION_UI_LANGUAGE_RU] = "доски",
+                [SESSION_UI_LANGUAGE_DE] = "foren",
+                [SESSION_UI_LANGUAGE_FR] = "forums",
+                [SESSION_UI_LANGUAGE_PL] = "forum",
             },
     },
     {
@@ -137,6 +170,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "賛成",
                 [SESSION_UI_LANGUAGE_ZH] = "赞",
                 [SESSION_UI_LANGUAGE_RU] = "за",
+                [SESSION_UI_LANGUAGE_DE] = "empfehlen",
+                [SESSION_UI_LANGUAGE_FR] = "pour",
+                [SESSION_UI_LANGUAGE_PL] = "polec",
             },
     },
     {
@@ -148,6 +184,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "反対",
                 [SESSION_UI_LANGUAGE_ZH] = "踩",
                 [SESSION_UI_LANGUAGE_RU] = "против",
+                [SESSION_UI_LANGUAGE_DE] = "ablehnen",
+                [SESSION_UI_LANGUAGE_FR] = "contre",
+                [SESSION_UI_LANGUAGE_PL] = "przeciw",
             },
     },
     {
@@ -159,6 +198,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "コメント投票",
                 [SESSION_UI_LANGUAGE_ZH] = "评论投票",
                 [SESSION_UI_LANGUAGE_RU] = "голос-коммент",
+                [SESSION_UI_LANGUAGE_DE] = "kommvote",
+                [SESSION_UI_LANGUAGE_FR] = "votecom",
+                [SESSION_UI_LANGUAGE_PL] = "gloskoment",
             },
     },
     {
@@ -170,6 +212,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "コメント編集",
                 [SESSION_UI_LANGUAGE_ZH] = "评论编辑",
                 [SESSION_UI_LANGUAGE_RU] = "комментред",
+                [SESSION_UI_LANGUAGE_DE] = "kommentarbearbeiten",
+                [SESSION_UI_LANGUAGE_FR] = "modifiercommentaire",
+                [SESSION_UI_LANGUAGE_PL] = "edytujkomentarz",
             },
     },
     {
@@ -181,6 +226,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "コメント削除",
                 [SESSION_UI_LANGUAGE_ZH] = "评论删除",
                 [SESSION_UI_LANGUAGE_RU] = "комментдел",
+                [SESSION_UI_LANGUAGE_DE] = "kommentarloeschen",
+                [SESSION_UI_LANGUAGE_FR] = "supprimercommentaire",
+                [SESSION_UI_LANGUAGE_PL] = "usunkomentarz",
             },
     },
     {
@@ -192,6 +240,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "プロフィール",
                 [SESSION_UI_LANGUAGE_ZH] = "个人资料",
                 [SESSION_UI_LANGUAGE_RU] = "профиль",
+                [SESSION_UI_LANGUAGE_DE] = "profil",
+                [SESSION_UI_LANGUAGE_FR] = "profil",
+                [SESSION_UI_LANGUAGE_PL] = "profil",
             },
     },
     {
@@ -203,6 +254,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "プロフィール設定",
                 [SESSION_UI_LANGUAGE_ZH] = "设置个人资料",
                 [SESSION_UI_LANGUAGE_RU] = "профиль-установить",
+                [SESSION_UI_LANGUAGE_DE] = "profilsetzen",
+                [SESSION_UI_LANGUAGE_FR] = "defprofil",
+                [SESSION_UI_LANGUAGE_PL] = "ustawprofil",
             },
     },
     {
@@ -214,6 +268,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "下書き",
                 [SESSION_UI_LANGUAGE_ZH] = "草稿",
                 [SESSION_UI_LANGUAGE_RU] = "черновик",
+                [SESSION_UI_LANGUAGE_DE] = "entwurf",
+                [SESSION_UI_LANGUAGE_FR] = "brouillon",
+                [SESSION_UI_LANGUAGE_PL] = "szkic",
             },
     },
     {
@@ -225,6 +282,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "板移動",
                 [SESSION_UI_LANGUAGE_ZH] = "版面",
                 [SESSION_UI_LANGUAGE_RU] = "доска",
+                [SESSION_UI_LANGUAGE_DE] = "wechseln",
+                [SESSION_UI_LANGUAGE_FR] = "changer",
+                [SESSION_UI_LANGUAGE_PL] = "przejdz",
             },
     },
     {
@@ -236,6 +296,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "exit",
                 [SESSION_UI_LANGUAGE_ZH] = "exit",
                 [SESSION_UI_LANGUAGE_RU] = "exit",
+                [SESSION_UI_LANGUAGE_DE] = "exit",
+                [SESSION_UI_LANGUAGE_FR] = "quitter",
+                [SESSION_UI_LANGUAGE_PL] = "wyjdz",
             },
     },
     {
@@ -247,6 +310,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "アバター設定",
                 [SESSION_UI_LANGUAGE_ZH] = "头像设置",
                 [SESSION_UI_LANGUAGE_RU] = "аватар-установить",
+                [SESSION_UI_LANGUAGE_DE] = "avatarsetzen",
+                [SESSION_UI_LANGUAGE_FR] = "defavatar",
+                [SESSION_UI_LANGUAGE_PL] = "ustawavatar",
             },
     },
     {
@@ -258,6 +324,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_JP] = "ヘルプ",
                 [SESSION_UI_LANGUAGE_ZH] = "帮助",
                 [SESSION_UI_LANGUAGE_RU] = "помощь",
+                [SESSION_UI_LANGUAGE_DE] = "hilfe",
+                [SESSION_UI_LANGUAGE_FR] = "aide",
+                [SESSION_UI_LANGUAGE_PL] = "pomoc",
             },
     },
     {
@@ -271,6 +340,7 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
                 [SESSION_UI_LANGUAGE_RU] = "игроблок",
                 [SESSION_UI_LANGUAGE_DE] = "spielsperre",
                 [SESSION_UI_LANGUAGE_FR] = "verroujeu",
+                [SESSION_UI_LANGUAGE_PL] = "blokadagry",
             },
     },
 };
@@ -481,6 +551,12 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                     "公告板 [列表|阅读|发布|评论|评论编辑|评论删除|置顶|删除|搜索|编辑|赞|踩]",
                 [SESSION_UI_LANGUAGE_RU] =
                     "доска [список|читать|пост|коммент|коммент-ред|коммент-удал|поднять|удалить|поиск|редакт|за|против]",
+                [SESSION_UI_LANGUAGE_DE] =
+                    "forum [liste|lesen|beitrag|kommentar|kommentarbearbeiten|kommentarloeschen|erneuern|loeschen|suche|bearbeiten|empfehlen|ablehnen]",
+                [SESSION_UI_LANGUAGE_FR] =
+                    "forum [liste|lire|message|commentaire|modifiercommentaire|supprimercommentaire|renouveler|supprimer|recherche|modifier|pour|contre]",
+                [SESSION_UI_LANGUAGE_PL] =
+                    "forum [lista|czytaj|wpis|komentarz|edytujkomentarz|usunkomentarz|odswiez|usun|szukaj|edytuj|polec|przeciw]",
             },
         .description_arg_count = 1,
         .description_args = {SESSION_HELP_TEMPLATE_ARG_BBS_TERMINATOR},
@@ -643,6 +719,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 [SESSION_UI_LANGUAGE_JP] = "掲示板 アバター設定 <monitor|mouse|human|mushroom|none>",
                 [SESSION_UI_LANGUAGE_ZH] = "公告板 头像设置 <monitor|mouse|human|mushroom|none>",
                 [SESSION_UI_LANGUAGE_RU] = "доска аватар-установить <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_DE] = "forum avatarsetzen <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_FR] = "forum defavatar <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_PL] = "forum ustawavatar <monitor|mouse|human|mushroom|none>",
             },
         .label_arg_count = 0U,
         .label_args = {},

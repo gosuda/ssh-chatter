@@ -378,6 +378,10 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
                 name = descriptor->name->ru;
                 description = descriptor->description->ru;
                 break;
+            case SESSION_UI_LANGUAGE_PL:
+                name = descriptor->name->pl;
+                description = descriptor->description->pl;
+                break;
             default:
                 break;
             }
@@ -458,6 +462,10 @@ static void session_handle_palette(session_ctx_t *ctx, const char *arguments)
     case SESSION_UI_LANGUAGE_RU:
         name = descriptor->name->ru;
         description = descriptor->description->ru;
+        break;
+    case SESSION_UI_LANGUAGE_PL:
+        name = descriptor->name->pl;
+        description = descriptor->description->pl;
         break;
     default:
         break;

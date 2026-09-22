@@ -123,6 +123,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             {
                 [SESSION_UI_LANGUAGE_EN] = "boards",
                 [SESSION_UI_LANGUAGE_KO] = "게시판",
+                [SESSION_UI_LANGUAGE_JP] = "板一覧",
+                [SESSION_UI_LANGUAGE_ZH] = "版面列表",
+                [SESSION_UI_LANGUAGE_RU] = "доски",
             },
     },
     {
@@ -131,6 +134,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             {
                 [SESSION_UI_LANGUAGE_EN] = "upvote",
                 [SESSION_UI_LANGUAGE_KO] = "추천",
+                [SESSION_UI_LANGUAGE_JP] = "賛成",
+                [SESSION_UI_LANGUAGE_ZH] = "赞",
+                [SESSION_UI_LANGUAGE_RU] = "за",
             },
     },
     {
@@ -139,6 +145,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             {
                 [SESSION_UI_LANGUAGE_EN] = "downvote",
                 [SESSION_UI_LANGUAGE_KO] = "반대",
+                [SESSION_UI_LANGUAGE_JP] = "反対",
+                [SESSION_UI_LANGUAGE_ZH] = "踩",
+                [SESSION_UI_LANGUAGE_RU] = "против",
             },
     },
     {
@@ -147,6 +156,31 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             {
                 [SESSION_UI_LANGUAGE_EN] = "cmtvote",
                 [SESSION_UI_LANGUAGE_KO] = "댓글투표",
+                [SESSION_UI_LANGUAGE_JP] = "コメント投票",
+                [SESSION_UI_LANGUAGE_ZH] = "评论投票",
+                [SESSION_UI_LANGUAGE_RU] = "голос-коммент",
+            },
+    },
+    {
+        .canonical = "cmtedit",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "cmtedit",
+                [SESSION_UI_LANGUAGE_KO] = "댓글수정",
+                [SESSION_UI_LANGUAGE_JP] = "コメント編集",
+                [SESSION_UI_LANGUAGE_ZH] = "评论编辑",
+                [SESSION_UI_LANGUAGE_RU] = "комментред",
+            },
+    },
+    {
+        .canonical = "cmtdel",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "cmtdel",
+                [SESSION_UI_LANGUAGE_KO] = "댓글삭제",
+                [SESSION_UI_LANGUAGE_JP] = "コメント削除",
+                [SESSION_UI_LANGUAGE_ZH] = "评论删除",
+                [SESSION_UI_LANGUAGE_RU] = "комментдел",
             },
     },
     {
@@ -155,6 +189,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             {
                 [SESSION_UI_LANGUAGE_EN] = "profile",
                 [SESSION_UI_LANGUAGE_KO] = "프로필",
+                [SESSION_UI_LANGUAGE_JP] = "プロフィール",
+                [SESSION_UI_LANGUAGE_ZH] = "个人资料",
+                [SESSION_UI_LANGUAGE_RU] = "профиль",
             },
     },
     {
@@ -163,6 +200,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             {
                 [SESSION_UI_LANGUAGE_EN] = "set-profile",
                 [SESSION_UI_LANGUAGE_KO] = "프로필설정",
+                [SESSION_UI_LANGUAGE_JP] = "プロフィール設定",
+                [SESSION_UI_LANGUAGE_ZH] = "设置个人资料",
+                [SESSION_UI_LANGUAGE_RU] = "профиль-установить",
             },
     },
     {
@@ -171,6 +211,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             {
                 [SESSION_UI_LANGUAGE_EN] = "draft",
                 [SESSION_UI_LANGUAGE_KO] = "임시저장",
+                [SESSION_UI_LANGUAGE_JP] = "下書き",
+                [SESSION_UI_LANGUAGE_ZH] = "草稿",
+                [SESSION_UI_LANGUAGE_RU] = "черновик",
             },
     },
     {
@@ -201,6 +244,9 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             {
                 [SESSION_UI_LANGUAGE_EN] = "setavatar",
                 [SESSION_UI_LANGUAGE_KO] = "아바타설정",
+                [SESSION_UI_LANGUAGE_JP] = "アバター設定",
+                [SESSION_UI_LANGUAGE_ZH] = "头像设置",
+                [SESSION_UI_LANGUAGE_RU] = "аватар-установить",
             },
     },
     {
@@ -243,6 +289,9 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "チャットと掲示板で必要な基本コマンドを表示します。",
                 "显示聊天与公告板所需的核心命令。",
                 "Показать основные команды для чата и доски объявлений.",
+                "Grundlegende Chat- und BBS-Befehle anzeigen.",
+                "Afficher les commandes essentielles du chat et du BBS.",
+                "Pokaż podstawowe polecenia czatu i BBS.",
             },
     },
     {
@@ -255,6 +304,9 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "補助および運営向けコマンドを一覧表示します。",
                 "列出可选命令和管理员命令。",
                 "Показать дополнительные и операторские команды.",
+                "Optionale und Operator-Befehle auflisten.",
+                "Lister les commandes optionnelles et opérateur.",
+                "Wyświetl polecenia opcjonalne i operatorskie.",
             },
     },
     {
@@ -264,6 +316,12 @@ static const session_help_entry_t kSessionHelpEssential[] = {
             {
                 "Connect to Retro-Dial.",
                 "Retro-Dial에 연결합니다.",
+                "Retro-Dialに接続します。",
+                "连接 Retro-Dial。",
+                "Подключиться к Retro-Dial.",
+                "Mit Retro-Dial verbinden.",
+                "Se connecter à Retro-Dial.",
+                "Połącz z Retro-Dial.",
             },
     },
     {
@@ -276,6 +334,9 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "メッセージまたは返信に返信します。",
                 "回复消息或回复链。",
                 "Ответить на сообщение или ответ.",
+                "Auf eine Nachricht oder Antwort antworten.",
+                "Répondre à un message ou à une réponse.",
+                "Odpowiedz na wiadomość lub odpowiedź.",
             },
         .label_translations =
             {
@@ -297,6 +358,9 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "接続中のユーザー1人にプライベートメッセージを送ります。",
                 "向一名在线用户发送私信。",
                 "Отправить личное сообщение подключённому пользователю.",
+                "Einem verbundenen Benutzer eine private Nachricht senden.",
+                "Envoyer un message privé à un utilisateur connecté.",
+                "Wyślij prywatną wiadomość do jednego użytkownika.",
             },
     },
     {
@@ -309,6 +373,9 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "ハンドル名の配色を設定します。",
                 "设置昵称的配色。",
                 "Настроить оформление вашего ника.",
+                "Ihren Handle gestalten.",
+                "Décorer votre pseudo.",
+                "Nadaj styl swojej nazwie.",
             },
         .label_translations =
             {
@@ -332,6 +399,9 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "将 IP-wide 预留昵称的当前颜色固化为固定 ANSI 昵称。",
                 "Сохраняет текущий цвет IP-wide зарезервированного ника как "
                 "единый ANSI-ник.",
+                "Den aktuellen Farbstil eines IP-weit reservierten Nicknamens als festen ANSI-Handle speichern.",
+                "Conserver le style actuel d'un pseudo réservé IP-wide comme handle ANSI fixe.",
+                "Zapisz bieżący styl zarezerwowanego IP-wide nicka jako stały ANSI handle.",
             },
         .label_translations =
             {
@@ -355,6 +425,9 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "で初期化）。",
                 "自定义界面颜色（用 %ssystemcolor reset 重置）。",
                 "Настроить цвета интерфейса (сброс — %ssystemcolor reset).",
+                "Oberflächenfarben anpassen (Zurücksetzen mit %ssystemcolor reset).",
+                "Personnaliser les couleurs de l'interface (réinitialisation avec %ssystemcolor reset).",
+                "Dostosuj kolory interfejsu (reset: %ssystemcolor reset).",
             },
         .label_translations =
             {
@@ -386,7 +459,7 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "bbs [list|read|post|comment|regen|delete|search|edit|upvote|downvote]",
+        .label = "bbs [list|read|post|comment|cmtedit|cmtdel|regen|delete|search|edit|upvote|downvote]",
         .description =
             {
                 "Open the bulletin board system (finish %s to post).",
@@ -394,17 +467,20 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "掲示板を開きます（投稿は %s で終了）。",
                 "打开公告板系统（以 %s 结束提交）。",
                 "Открыть доску объявлений (завершайте ввод строкой %s).",
+                "Das Bulletin-Board-System öffnen (Beitrag mit %s abschließen).",
+                "Ouvrir le système de forum (terminer avec %s pour publier).",
+                "Otwórz tablicę ogłoszeń (zakończ %s, aby opublikować).",
             },
         .label_translations =
             {
                 [SESSION_UI_LANGUAGE_KO] =
-                    "게시판 [목록|읽기|게시|댓글|갱신|삭제|검색|수정|추천|반대]",
+                    "게시판 [목록|읽기|게시|댓글|댓글수정|댓글삭제|갱신|삭제|검색|수정|추천|반대]",
                 [SESSION_UI_LANGUAGE_JP] =
-                    "掲示板 [一覧|閲覧|投稿|コメント|再掲|削除|検索|編集|賛成|反対]",
+                    "掲示板 [一覧|閲覧|投稿|コメント|コメント編集|コメント削除|再掲|削除|検索|編集|賛成|反対]",
                 [SESSION_UI_LANGUAGE_ZH] =
-                    "公告板 [列表|阅读|发布|评论|置顶|删除|搜索|编辑|赞|踩]",
+                    "公告板 [列表|阅读|发布|评论|评论编辑|评论删除|置顶|删除|搜索|编辑|赞|踩]",
                 [SESSION_UI_LANGUAGE_RU] =
-                    "доска [список|читать|пост|коммент|поднять|удалить|поиск|редакт|за|против]",
+                    "доска [список|читать|пост|коммент|коммент-ред|коммент-удал|поднять|удалить|поиск|редакт|за|против]",
             },
         .description_arg_count = 1,
         .description_args = {SESSION_HELP_TEMPLATE_ARG_BBS_TERMINATOR},
@@ -419,6 +495,9 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "特定のトピックに属する投稿を表示します。",
                 "查看特定主题下的帖子。",
                 "Показать записи выбранной темы.",
+                "Beiträge zu einem bestimmten Thema anzeigen.",
+                "Afficher les messages d'un sujet précis.",
+                "Pokaż posty z określonego tematu.",
             },
         .label_translations =
             {
@@ -438,6 +517,9 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "メッセージの範囲を削除します。",
                 "删除一段消息。",
                 "Удалить диапазон сообщений.",
+                "Einen Nachrichtenbereich löschen.",
+                "Supprimer une plage de messages.",
+                "Usuń zakres wiadomości.",
             },
         .description_arg_count = 1,
         .description_args = {SESSION_HELP_TEMPLATE_ARG_COMMAND_GOOD},
@@ -455,6 +537,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "名前にテキストが含まれるユーザーを検索します。",
                 "按名称中包含的文字搜索用户。",
                 "Найти пользователей, чьи имена содержат указанный текст.",
+                "Nach Benutzern suchen, deren Name den Text enthält.",
+                "Rechercher les utilisateurs dont le nom contient le texte.",
+                "Wyszukaj użytkowników, których nazwa zawiera podany tekst.",
             },
         .label_translations =
             {
@@ -476,6 +561,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "ステータスメッセージを設定または削除します。",
                 "设置或清除状态消息。",
                 "Установить или очистить статусное сообщение.",
+                "Statusnachricht festlegen oder löschen.",
+                "Définir ou effacer votre message de statut.",
+                "Ustaw lub wyczyść swój status.",
             },
         .label_translations =
             {
@@ -497,6 +585,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "他のユーザーのステータスメッセージを表示します。",
                 "查看其他用户的状态消息。",
                 "Показать статус другого пользователя.",
+                "Statusnachricht eines anderen anzeigen.",
+                "Afficher le message de statut de quelqu'un.",
+                "Pokaż status innego użytkownika.",
             },
         .label_translations =
             {
@@ -518,6 +609,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "画像リンクを共有します。",
                 "分享图片链接。",
                 "Поделиться ссылкой на изображение.",
+                "Einen Bildlink teilen.",
+                "Partager un lien vers une image.",
+                "Udostępnij link do obrazu.",
             },
         .label_translations =
             {
@@ -539,10 +633,16 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "掲示板投稿用のプロフィールロゴ（アバター）を設定します。",
                 "为公告板帖子设置头像（Profile logo）。",
                 "Установить аватар профиля для доски объявлений.",
+                "Ein Profil-Logo (Avatar) für BBS-Beiträge festlegen.",
+                "Définir un logo de profil (avatar) pour les messages du BBS.",
+                "Ustaw logo profilu (awatar) dla postów BBS.",
             },
         .label_translations =
             {
                 [SESSION_UI_LANGUAGE_KO] = "게시판 아바타설정 <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_JP] = "掲示板 アバター設定 <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_ZH] = "公告板 头像设置 <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_RU] = "доска аватар-установить <monitor|mouse|human|mushroom|none>",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -557,6 +657,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "動画リンクを共有します。",
                 "分享视频链接。",
                 "Поделиться ссылкой на видео.",
+                "Einen Videolink teilen.",
+                "Partager un lien vers une vidéo.",
+                "Udostępnij link do filmu.",
             },
         .label_translations =
             {
@@ -578,6 +681,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "音声クリップのリンクを共有します。",
                 "分享音频链接。",
                 "Поделиться ссылкой на аудио.",
+                "Einen Audiolink teilen.",
+                "Partager un lien vers un clip audio.",
+                "Udostępnij link do pliku audio.",
             },
         .label_translations =
             {
@@ -599,6 +705,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "ダウンロード可能なファイルを共有します。",
                 "分享可下载的文件。",
                 "Поделиться загружаемым файлом.",
+                "Eine herunterladbare Datei teilen.",
+                "Partager un fichier téléchargeable.",
+                "Udostępnij plik do pobrania.",
             },
         .label_translations =
             {
@@ -620,6 +729,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "ストレージのファイル一覧を表示します。",
                 "列出存储区中的文件。",
                 "Показать список файлов в хранилище.",
+                "Verwaltete Speicherdateien auflisten.",
+                "Lister les fichiers du stockage géré.",
+                "Wyświetl listę plików w zarządzanym magazynie.",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -634,6 +746,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "TELNET ZMODEM アップロードを開始します。",
                 "启动 TELNET ZMODEM 上传。",
                 "Запустить загрузку через ZMODEM для TELNET.",
+                "Einen TELNET-ZMODEM-Upload nach /etc/ssh-chatter/user-files starten.",
+                "Démarrer un envoi ZMODEM TELNET vers /etc/ssh-chatter/user-files.",
+                "Rozpocznij upload ZMODEM TELNET do /etc/ssh-chatter/user-files.",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -648,6 +763,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "指定したファイルを TELNET ZMODEM でダウンロードします。",
                 "以 TELNET ZMODEM 下载指定文件。",
                 "Загрузить указанный файл через ZMODEM (TELNET).",
+                "Einen TELNET-ZMODEM-Download der genannten Datei starten.",
+                "Démarrer le téléchargement ZMODEM TELNET du fichier nommé.",
+                "Rozpocznij pobieranie pliku przez ZMODEM TELNET.",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -663,6 +781,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "メールボックスを管理します。",
                 "管理你的邮箱。",
                 "Управлять почтовым ящиком.",
+                "Ihr Postfach verwalten.",
+                "Gérer votre boîte mail.",
+                "Zarządzaj skrzynką pocztową.",
             },
         .label_translations =
             {
@@ -692,6 +813,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "打开 ASCII 艺术编辑器（最多128行，每个 IP 10 分钟一次）。",
                 "Открыть редактор ASCII-арта (до 128 строк, раз в 10 минут на "
                 "IP).",
+                "Den ASCII-Art-Editor öffnen (max. 128 Zeilen, 1× pro 10 Minuten pro IP).",
+                "Ouvrir l'éditeur ASCII art (max 128 lignes, 1 fois/10 min par IP).",
+                "Otwórz edytor ASCII art (maks. 128 linii, 1 na 10 min na IP).",
             },
         .label_translations =
             {
@@ -713,6 +837,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "ハンドル名の配色を設定します。",
                 "设置昵称的配色。",
                 "Настроить оформление вашего ника.",
+                "Ihren Handle gestalten.",
+                "Décorer votre pseudo.",
+                "Nadaj styl swojej nazwie.",
             },
         .label_translations =
             {
@@ -736,6 +863,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "将 IP-wide 预留昵称的当前颜色固化为固定 ANSI 昵称。",
                 "Сохраняет текущий цвет IP-wide зарезервированного ника как "
                 "единый ANSI-ник.",
+                "Den aktuellen Farbstil eines IP-weit reservierten Nicknamens als festen ANSI-Handle speichern.",
+                "Conserver le style actuel d'un pseudo réservé IP-wide comme handle ANSI fixe.",
+                "Zapisz bieżący styl zarezerwowanego IP-wide nicka jako stały ANSI handle.",
             },
         .label_translations =
             {
@@ -759,6 +889,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "で初期化）。",
                 "自定义界面颜色（用 %ssystemcolor reset 重置）。",
                 "Настроить цвета интерфейса (сброс — %ssystemcolor reset).",
+                "Oberflächenfarben anpassen (Zurücksetzen mit %ssystemcolor reset).",
+                "Personnaliser les couleurs de l'interface (réinitialisation avec %ssystemcolor reset).",
+                "Dostosuj kolory interfejsu (reset: %ssystemcolor reset).",
             },
         .label_translations =
             {
@@ -783,6 +916,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "端末出力の翻訳先を指定します。",
                 "设置终端输出的翻译语言。",
                 "Задать язык для перевода терминальных сообщений.",
+                "Terminalausgabe in eine Sprache übersetzen.",
+                "Traduire la sortie du terminal vers une langue.",
+                "Tłumacz wyjście terminala na wybrany język.",
             },
         .label_translations =
             {
@@ -804,6 +940,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "自分の送信メッセージを翻訳します。",
                 "翻译你发送的消息。",
                 "Переводить исходящие сообщения.",
+                "Ihre ausgehenden Nachrichten übersetzen.",
+                "Traduire vos messages envoyés.",
+                "Tłumacz swoje wysyłane wiadomości.",
             },
         .label_translations =
             {
@@ -826,6 +965,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "出力改行モードを設定します（auto は /os 設定に従います）。",
                 "设置输出换行模式（auto 跟随 /os 设置）。",
                 "Задать режим окончания строк (auto следует /os).",
+                "Zeilenendemodus für die Ausgabe festlegen (auto folgt der /os-Einstellung).",
+                "Définir le mode de fin de ligne (auto suit le réglage /os).",
+                "Ustaw tryb zakończeń linii (auto = zgodnie z /os).",
             },
         .label_translations =
             {
@@ -847,6 +989,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "都市の天気を表示します。",
                 "显示城市的天气。",
                 "Показать погоду для города.",
+                "Wetter für eine Region und Stadt anzeigen.",
+                "Afficher la météo pour une région et une ville.",
+                "Pokaż pogodę dla regionu i miasta.",
             },
         .label_translations =
             {
@@ -868,6 +1013,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "言語設定後に翻訳機能を有効/無効にします。",
                 "在设定语言后开启或关闭翻译。",
                 "Включить или отключить перевод после настройки языков.",
+                "Übersetzung nach der Sprachkonfiguration ein- oder ausschalten.",
+                "Activer ou désactiver la traduction après configuration des langues.",
+                "Włącz lub wyłącz tłumaczenie po skonfigurowaniu języków.",
             },
         .label_translations =
             {
@@ -940,6 +1088,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "青地にマゼンタの速報通知を表示するか選択します。",
                 "选择是否显示蓝底洋红色的快讯提示。",
                 "Выбрать показ синих оповещений о срочных новостях.",
+                "Wählen, ob blau-magenta Eilmeldungen angezeigt werden.",
+                "Choisir l'affichage des alertes urgentes bleues et magenta.",
+                "Wybierz, czy pokazywać niebiesko-magentowe alerty.",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -955,6 +1106,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "翻訳キャプション前に空行を確保します。",
                 "在聊天翻译字幕前预留空行。",
                 "Резервировать пустые строки перед переводами в чате.",
+                "Leerzeilen vor übersetzten Untertiteln im Chat reservieren.",
+                "Réserver des lignes vides avant les sous-titres traduits dans le chat.",
+                "Zarezerwuj puste linie przed przetłumaczonymi podpisami w czacie.",
             },
         .label_translations =
             {
@@ -976,6 +1130,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "定義済みの配色を適用します（%spalette list を参照）。",
                 "应用预设的界面配色（参见 %spalette list）。",
                 "Применить готовую палитру интерфейса (см. %spalette list).",
+                "Eine vordefinierte Oberflächenpalette anwenden (%spalette list).",
+                "Appliquer une palette d'interface prédéfinie (%spalette list).",
+                "Zastosuj predefiniowaną paletę interfejsu (%spalette list).",
             },
         .label_translations =
             {
@@ -998,6 +1155,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "パスワードを設定/削除し、実行中のニック占有を作成します。",
                 "设置/清除密码，并创建运行时昵称占用。",
                 "Задать/очистить пароль и создать активное удержание ника.",
+                "Passwort festlegen oder löschen und eine Laufzeit-Nickname-Beanspruchung erstellen.",
+                "Définir ou effacer votre mot de passe et créer une réservation de pseudo.",
+                "Ustaw lub wyczyść hasło i utwórz czasowe zajęcie nicka.",
             },
     },
     {
@@ -1010,6 +1170,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "別のタイムゾーンでサーバー時刻を表示します。",
                 "查看其他时区的服务器时间。",
                 "Показать серверное время в другом часовом поясе.",
+                "Serverzeit in einer anderen Zeitzone anzeigen.",
+                "Voir l'heure du serveur dans un autre fuseau horaire.",
+                "Zobacz czas serwera w innej strefie czasowej.",
             },
         .label_translations =
             {
@@ -1031,6 +1194,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "使用中のOSを記録します。",
                 "记录你使用的操作系统。",
                 "Сохранить информацию о вашей ОС.",
+                "Das verwendete Betriebssystem erfassen.",
+                "Enregistrer le système d'exploitation utilisé.",
+                "Zapisz używany system operacyjny.",
             },
         .label_translations =
             {
@@ -1052,6 +1218,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "他のユーザーが登録したOSを確認します。",
                 "查看他人记录的操作系统。",
                 "Посмотреть, какую ОС указал другой пользователь.",
+                "Das erfasste Betriebssystem eines anderen anzeigen.",
+                "Consulter le système d'exploitation enregistré d'un autre utilisateur.",
+                "Sprawdź zapisany system operacyjny innego użytkownika.",
             },
         .label_translations =
             {
@@ -1073,6 +1242,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "誕生日を登録します。",
                 "登记你的生日。",
                 "Зарегистрировать дату рождения.",
+                "Ihren Geburtstag registrieren.",
+                "Enregistrer votre date de naissance.",
+                "Zarejestruj swoje urodziny.",
             },
         .label_translations =
             {
@@ -1095,6 +1267,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "接続中のユーザーを自分だけに一覧表示します。",
                 "私下查看所有在线用户。",
                 "Получить приватный список всех подключённых.",
+                "Alle verbundenen Benutzer privat auflisten.",
+                "Lister en privé tous les utilisateurs connectés.",
+                "Prywatnie wyświetl listę wszystkich połączonych.",
             },
         .label_translations =
             {
@@ -1116,6 +1291,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "Immigrants' Flag 殿堂を表示します。",
                 "查看 Immigrants' Flag 名人堂。",
                 "Открыть зал славы Immigrants' Flag.",
+                "Die Immigrants'-Flag-Ruhmeshalle anzeigen.",
+                "Voir le hall of fame du Immigrants' Flag.",
+                "Zobacz galerię sław Immigrants' Flag.",
             },
         .label_translations =
             {
@@ -1138,6 +1316,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "グローバル投票を開始または終了します（開始は運営のみ）。",
                 "开始或结束全局投票（仅管理员可开始）。",
                 "Запустить или завершить общий опрос (запуск только для оператора).",
+                "Die globale Umfrage starten oder beenden (Start nur für Operatoren).",
+                "Démarrer ou clôturer le sondage global (réservé aux opérateurs).",
+                "Rozpocznij lub zamknij globalną ankietę (start tylko dla operatorów).",
             },
         .label_translations =
             {
@@ -1162,6 +1343,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "ラベル付き投票を開始または管理します。",
                 "开始或管理命名投票。",
                 "Запустить или управлять именованным опросом.",
+                "Eine benannte Umfrage starten oder verwalten.",
+                "Démarrer ou gérer un sondage nommé.",
+                "Rozpocznij lub zarządzaj nazwaną ankietą.",
             },
         .label_translations =
             {
@@ -1186,6 +1370,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "ラベルを指定して名前付き投票に投票します。",
                 "按标签在命名投票中投票。",
                 "Проголосовать в именованном опросе по метке.",
+                "In einer benannten Umfrage nach Label abstimmen.",
+                "Voter dans un sondage nommé par son étiquette.",
+                "Głosuj w nazwanej ankiecie według etykiety.",
             },
         .label_translations =
             {
@@ -1207,6 +1394,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "ユーザーを呼び出すベルを送ります。",
                 "向用户发送提醒铃声。",
                 "Отправить звуковой сигнал пользователю.",
+                "Einen Benutzer mit einem Klingelton rufen.",
+                "Envoyer une sonnerie pour appeler un utilisateur.",
+                "Wyślij dzwonek, aby zawołać użytkownika.",
             },
         .label_translations =
             {
@@ -1231,6 +1421,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "本地屏蔽某用户或 IP 的消息（用 %sblock list 查看）。",
                 "Скрыть сообщения пользователя или IP локально (проверка через "
                 "%sblock list).",
+                "Nachrichten eines Benutzers oder einer IP lokal ausblenden (%sblock list zum Überprüfen).",
+                "Masquer localement les messages d'un utilisateur ou d'une IP (voir %sblock list).",
+                "Lokalnie ukryj wiadomości użytkownika lub IP (sprawdź %sblock list).",
             },
         .label_translations =
             {
@@ -1252,6 +1445,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "ローカルのブロックを解除します。",
                 "解除本地屏蔽。",
                 "Удалить локальную блокировку.",
+                "Einen lokalen Blockeintrag entfernen.",
+                "Supprimer une entrée de blocage locale.",
+                "Usuń lokalny wpis blokady.",
             },
         .label_translations =
             {
@@ -1273,6 +1469,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "番号を指定してメッセージにリアクションします。",
                 "按编号为消息添加表情反应。",
                 "Реагировать на сообщение по номеру.",
+                "Auf eine Nachricht per Nummer reagieren.",
+                "Réagir à un message par son numéro.",
+                "Zareaguj na wiadomość podając numer.",
             },
         .label_arg_count = 7U,
         .label_args =
@@ -1307,6 +1506,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "保存された RSS フィードを一覧表示します。",
                 "列出已保存的 RSS 源。",
                 "Показать сохранённые RSS-ленты.",
+                "Gespeicherte RSS-Feeds auflisten.",
+                "Lister les flux RSS enregistrés.",
+                "Wyświetl listę zapisanych kanałów RSS.",
             },
         .label_translations =
             {
@@ -1328,6 +1530,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "保存されたフィードをインラインリーダーで開きます。",
                 "在内嵌阅读器中打开已保存的源。",
                 "Открыть сохранённую ленту во встроенном ридере.",
+                "Einen gespeicherten Feed im integrierten Reader öffnen.",
+                "Ouvrir un flux enregistré dans le lecteur intégré.",
+                "Otwórz zapisany kanał w wbudowanej czytelni.",
             },
         .label_translations =
             {
@@ -1354,6 +1559,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "渲染，输出启用混合检测。",
                 "Включить профиль Windows 11 с legacy CP949: ввод UTF-8, "
                 "UI в legacy-режиме, гибридное автоопределение вывода.",
+                "Das Windows-11-Legacy-CP949-Profil aktivieren: moderne UTF-8-Eingabe, Legacy-UI-Darstellung und hybride Ausgabeerkennung.",
+                "Activer le profil CP949 legacy de Windows 11 : saisie UTF-8 moderne, rendu d'interface legacy et détection de sortie hybride.",
+                "Włącz starszy profil CP949 systemu Windows 11: nowoczesne wejście UTF-8, stare renderowanie UI i hybrydowa detekcja wyjścia.",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -1385,6 +1593,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "進行中のゲームを一時停止します（プレイ中に Ctrl+Z）。",
                 "暂停正在进行的游戏（游戏中按 Ctrl+Z）。",
                 "Приостановить активную игру (Ctrl+Z во время игры).",
+                "Das aktive Spiel anhalten (Strg+Z während des Spiels).",
+                "Suspendre le jeu en cours (Ctrl+Z pendant le jeu).",
+                "Wstrzymaj aktywną grę (Ctrl+Z podczas gry).",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -1402,6 +1613,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "翻訳対象範囲を制限します（オペレーター専用）。",
                 "限制翻译范围（仅限管理员）。",
                 "Ограничить область перевода (только для операторов).",
+                "Übersetzungsumfang begrenzen (nur Operatoren).",
+                "Limiter la portée de la traduction (opérateurs uniquement).",
+                "Ogranicz zakres tłumaczenia (tylko operatorzy).",
             },
         .label_translations =
             {
@@ -1425,6 +1639,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "AI メンバーの参加を切り替えます（オペレーター専用）。",
                 "切换 AI 成员参与（仅限管理员）。",
                 "Включить/выключить участие AI-участников (оператор).",
+                "KI-Mitgliedschaft umschalten (nur Operatoren).",
+                "Activer ou désactiver la participation des membres IA (opérateur).",
+                "Włącz lub wyłącz udział AI (tylko operator).",
             },
         .label_translations =
             {
@@ -1446,6 +1663,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "Gemini プロバイダーを切り替えます（オペレーター専用）。",
                 "切换 Gemini 提供方（仅限管理员）。",
                 "Включить/выключить провайдер Gemini (оператор).",
+                "Gemini-Anbieter umschalten (nur Operatoren).",
+                "Activer ou désactiver le fournisseur Gemini (opérateur).",
+                "Włącz lub wyłącz dostawcę Gemini (tylko operator).",
             },
         .label_translations =
             {
@@ -1467,6 +1687,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "Gemini の自動クールダウンを解除します（オペレーター専用）。",
                 "清除 Gemini 自动冷却（仅限管理员）。",
                 "Снять автоматическую задержку Gemini (оператор).",
+                "Automatische Gemini-Sperrzeit aufheben (nur Operatoren).",
+                "Effacer le délai automatique de Gemini (opérateur).",
+                "Wyzeruj automatyczny czas odnowienia Gemini (tylko operator).",
             },
         .label_translations =
             {
@@ -1488,6 +1711,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "CAPTCHA の必須設定を切り替えます（オペレーター専用）。",
                 "切换验证码要求（仅限管理员）。",
                 "Включить/выключить требование капчи (оператор).",
+                "CAPTCHA-Anforderung umschalten (nur Operatoren).",
+                "Activer ou désactiver l'exigence de captcha (opérateur).",
+                "Włącz lub wyłącz wymaganie captcha (tylko operator).",
             },
         .label_translations =
             {
@@ -1510,6 +1736,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "IP にオペレーター権限を付与します（LAN 限定）。",
                 "为 IP 授予管理员权限（仅限局域网）。",
                 "Выдать операторские права IP-адресу (только LAN).",
+                "Einer IP Operatorzugriff gewähren (nur LAN).",
+                "Accorder les droits opérateur à une IP (LAN uniquement).",
+                "Przyznaj uprawnienia operatora IP (tylko LAN).",
             },
         .label_translations =
             {
@@ -1531,6 +1760,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "このセッションで /bin/sh シェルに入ります（権限付与済み管理者/LAN オペレーター）。",
                 "在当前会话进入 /bin/sh（仅限已授予管理员/LAN 运维）。",
                 "Открыть /bin/sh в текущей сессии (для выданных админов/LAN-операторов).",
+                "In dieser Sitzung /bin/sh starten (für berechtigte Admins/LAN-Ops). SSH_CHATTER_ALLOW_DANGEROUS_MANAGEMENT=true setzen, um über sudo zu starten.",
+                "Ouvrir /bin/sh pour cette session (admins/LAN autorisés). Définir SSH_CHATTER_ALLOW_DANGEROUS_MANAGEMENT=true pour lancer via sudo.",
+                "Przejdź do /bin/sh w tej sesji (uprawnieni admini/LAN). Ustaw SSH_CHATTER_ALLOW_DANGEROUS_MANAGEMENT=true, aby uruchomić przez sudo.",
             },
         .label_translations =
             {
@@ -1552,6 +1784,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "IP のオペレーター権限を剥奪します（LAN トップ管理者）。",
                 "撤销 IP 的管理员权限（局域网最高管理员）。",
                 "Отозвать операторские права IP (только старший LAN-админ).",
+                "Operatorzugriff einer IP entziehen (nur LAN-Hauptadmin).",
+                "Révoquer les droits opérateur d'une IP (admin principal LAN).",
+                "Odbierz uprawnienia operatora IP (główny admin LAN).",
             },
         .label_translations =
             {
@@ -1573,6 +1808,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "ユーザーを切断します（オペレーター専用）。",
                 "断开某位用户（仅限管理员）。",
                 "Отключить пользователя (operator).",
+                "Einen Benutzer trennen (nur Operatoren).",
+                "Déconnecter un utilisateur (opérateur).",
+                "Rozłącz użytkownika (tylko operator).",
             },
         .label_translations =
             {
@@ -1594,6 +1832,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "ユーザーを追放します（オペレーター専用）。",
                 "封禁用户（仅限管理员）。",
                 "Забанить пользователя (оператор).",
+                "Einen Benutzer bannen (nur Operatoren).",
+                "Bannir un utilisateur (opérateur).",
+                "Zbanuj użytkownika (tylko operator).",
             },
         .label_translations =
             {
@@ -1615,6 +1856,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "ニックネームを禁止します（オペレーター専用）。",
                 "屏蔽昵称（仅限管理员）。",
                 "Заблокировать ник (оператор).",
+                "Einen Nicknamen blockieren (nur Operatoren).",
+                "Bloquer un pseudo (opérateur).",
+                "Zablokuj nick (tylko operator).",
             },
         .label_translations =
             {
@@ -1636,6 +1880,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "現在のBANを一覧表示します（オペレーター専用）。",
                 "列出当前生效的封禁（仅限管理员）。",
                 "Показать активные баны (оператор).",
+                "Aktive Bans auflisten (nur Operatoren).",
+                "Lister les bannissements actifs (opérateur).",
+                "Wyświetl listę aktywnych banów (tylko operator).",
             },
         .label_translations =
             {
@@ -1657,6 +1904,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "チャット履歴のメッセージを削除します（オペレーター専用）。",
                 "删除聊天记录中的消息（仅限管理员）。",
                 "Удалить сообщения из истории чата (operator).",
+                "Chat-Verlaufsnachrichten entfernen (nur Operatoren).",
+                "Supprimer des messages de l'historique du chat (opérateur).",
+                "Usuń wiadomości z historii czatu (tylko operator).",
             },
         .label_translations =
             {
@@ -1679,6 +1929,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "BAN を解除します（オペレーター専用）。",
                 "解除封禁（仅限管理员）。",
                 "Снять бан (operator).",
+                "Einen Ban aufheben (nur Operatoren).",
+                "Lever un bannissement (opérateur).",
+                "Zdejmij bana (tylko operator).",
             },
         .label_translations =
             {
@@ -1700,6 +1953,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "フィードを登録します（オペレーター専用）。",
                 "注册新的源（仅限管理员）。",
                 "Добавить ленту (оператор).",
+                "Einen Feed registrieren (nur Operatoren).",
+                "Enregistrer un flux (opérateur).",
+                "Zarejestruj kanał (tylko operator).",
             },
         .label_translations =
             {
@@ -1721,6 +1977,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "フィードを削除します（オペレーター専用）。",
                 "删除源（仅限管理员）。",
                 "Удалить ленту (operator).",
+                "Einen Feed löschen (nur Operatoren).",
+                "Supprimer un flux (opérateur).",
+                "Usuń kanał (tylko operator).",
             },
         .label_translations =
             {
@@ -1743,6 +2002,9 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                 "。",
                 "查看用户最近的连接地址（仅限管理员）。",
                 "Посмотреть последний известный адрес пользователя (operator).",
+                "Die letzte bekannte Adresse eines Benutzers anzeigen (nur Operatoren).",
+                "Consulter la dernière adresse connue d'un utilisateur (opérateur).",
+                "Sprawdź ostatni znany adres użytkownika (tylko operator).",
             },
         .label_translations =
             {

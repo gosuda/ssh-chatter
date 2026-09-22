@@ -159,9 +159,13 @@ static bool host_bbs_serialized_is_sane(const bbs_state_post_entry_disk_t *seria
 static void host_bbs_boards_save_locked(host_t *host);
 static void host_bbs_votes_save_locked(host_t *host);
 static void host_bbs_drafts_save_locked(host_t *host);
+static void host_bbs_notifications_save_locked(host_t *host);
+static void host_bbs_readmarks_save_locked(host_t *host);
 static void host_bbs_boards_load(host_t *host);
 static void host_bbs_votes_load(host_t *host);
 static void host_bbs_drafts_load(host_t *host);
+static void host_bbs_notifications_load(host_t *host);
+static void host_bbs_readmarks_load(host_t *host);
 
 /* The boards/votes/drafts arrays are host-owned, but the loaders run on
  * session threads where the current memory context may belong to the
@@ -175,7 +179,145 @@ static void host_bbs_aux_loads(host_t *host)
     host_bbs_boards_load(host);
     host_bbs_votes_load(host);
     host_bbs_drafts_load(host);
+    host_bbs_notifications_load(host);
+    host_bbs_readmarks_load(host);
     sshc_memory_context_pop(prev_ctx);
+}
+
+/* Best-effort time-based backup rotation for the main BBS state file.
+ * Never propagates failure: the primary save has already succeeded by the
+ * time this runs, so any error here simply skips the backup. */
+static time_t host_bbs_last_backup_time;
+
+static int host_bbs_backup_name_compare(const void *left, const void *right)
+{
+    const char *const *a = (const char *const *)left;
+    const char *const *b = (const char *const *)right;
+    return strcmp(*a, *b);
+}
+
+static void host_bbs_backup_rotate_locked(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+
+    time_t now = time(nullptr);
+    if (now <= 0) {
+        return;
+    }
+    if (host_bbs_last_backup_time != 0 &&
+        now - host_bbs_last_backup_time < 3600) {
+        return;
+    }
+
+    char dir[PATH_MAX];
+    const char *slash = strrchr(host->bbs_state_file_path, '/');
+    if (slash != nullptr) {
+        size_t dir_len = (size_t)(slash - host->bbs_state_file_path);
+        if (dir_len == 0U) {
+            dir_len = 1U; /* root directory "/" */
+        }
+        if (dir_len >= sizeof(dir)) {
+            return;
+        }
+        memcpy(dir, host->bbs_state_file_path, dir_len);
+        dir[dir_len] = '\0';
+    } else {
+        snprintf(dir, sizeof(dir), ".");
+    }
+
+    char stamp[32];
+    struct tm backup_tm;
+    if (localtime_r(&now, &backup_tm) == nullptr) {
+        return;
+    }
+    strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", &backup_tm);
+
+    char backup_path[PATH_MAX];
+    int written = snprintf(backup_path, sizeof(backup_path),
+                           "%s/bbs_backup_%s.dat", dir, stamp);
+    if (written < 0 || (size_t)written >= sizeof(backup_path)) {
+        return;
+    }
+
+    FILE *source = fopen(host->bbs_state_file_path, "rb");
+    if (source == nullptr) {
+        return;
+    }
+    FILE *target = fopen(backup_path, "wb");
+    if (target == nullptr) {
+        fclose(source);
+        return;
+    }
+    chmod(backup_path, S_IRUSR | S_IWUSR);
+
+    char copy_buffer[8192];
+    size_t chunk;
+    bool copy_ok = true;
+    while ((chunk = fread(copy_buffer, 1U, sizeof(copy_buffer), source)) >
+           0U) {
+        if (fwrite(copy_buffer, 1U, chunk, target) != chunk) {
+            copy_ok = false;
+            break;
+        }
+    }
+    if (ferror(source)) {
+        copy_ok = false;
+    }
+    if (fclose(target) != 0) {
+        copy_ok = false;
+    }
+    fclose(source);
+
+    if (!copy_ok) {
+        unlink(backup_path);
+        return;
+    }
+    host_bbs_last_backup_time = now;
+
+    // Prune older backups, keeping the newest 7.  Names are timestamped so
+    // lexicographic order matches chronological order.
+    DIR *directory = opendir(dir);
+    if (directory == nullptr) {
+        return;
+    }
+    char *names[64];
+    size_t name_count = 0U;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != nullptr && name_count < 64U) {
+        if (strncmp(entry->d_name, "bbs_backup_", 11) != 0) {
+            continue;
+        }
+        size_t name_len = strlen(entry->d_name);
+        if (name_len < 4U ||
+            strcmp(entry->d_name + name_len - 4U, ".dat") != 0) {
+            continue;
+        }
+        names[name_count] = strdup(entry->d_name);
+        if (names[name_count] != nullptr) {
+            ++name_count;
+        }
+    }
+    closedir(directory);
+
+    qsort(names, name_count, sizeof(names[0]),
+          host_bbs_backup_name_compare);
+
+    const size_t keep = 7U;
+    size_t delete_count =
+        name_count > keep ? name_count - keep : 0U;
+    for (size_t idx = 0U; idx < delete_count; ++idx) {
+        char old_path[PATH_MAX];
+        int old_written =
+            snprintf(old_path, sizeof(old_path), "%s/%s", dir, names[idx]);
+        if (old_written > 0 && (size_t)old_written < sizeof(old_path)) {
+            unlink(old_path);
+        }
+    }
+    for (size_t idx = 0U; idx < name_count; ++idx) {
+        free(names[idx]);
+    }
 }
 
 static void host_bbs_state_save_locked(host_t *host)
@@ -277,6 +419,8 @@ static void host_bbs_state_save_locked(host_t *host)
                      post->comments[comment].text);
             serialized.comments[comment].created_at =
                 (int64_t)post->comments[comment].created_at;
+            serialized.comments[comment].edited_at =
+                (int64_t)post->comments[comment].edited_at;
             serialized.comments[comment].upvotes = post->comments[comment].upvotes;
             serialized.comments[comment].downvotes = post->comments[comment].downvotes;
         }
@@ -325,9 +469,13 @@ static void host_bbs_state_save_locked(host_t *host)
                             errno != 0 ? errno : EACCES);
     }
 
+    host_bbs_backup_rotate_locked(host);
+
     host_bbs_boards_save_locked(host);
     host_bbs_votes_save_locked(host);
     host_bbs_drafts_save_locked(host);
+    host_bbs_notifications_save_locked(host);
+    host_bbs_readmarks_save_locked(host);
 }
 
 /* ------------------------------------------------------------------ */
@@ -648,6 +796,217 @@ static void host_bbs_drafts_load(host_t *host)
     fclose(fp);
 }
 
+/* ------------------------------------------------------------------ */
+/* Notification queue (text sidecar, one entry per line)              */
+/* ------------------------------------------------------------------ */
+
+static void host_bbs_notifications_save_locked(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "notifications.dat", path,
+                     sizeof(path));
+    char temp_path[PATH_MAX + 16];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
+
+    int fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        return;
+    }
+    FILE *fp = fdopen(fd, "wb");
+    if (fp == nullptr) {
+        close(fd);
+        return;
+    }
+
+    for (size_t i = 0U; i < host->bbs_notification_count; ++i) {
+        const bbs_notification_t *n = &host->bbs_notifications[i];
+        fprintf(fp, "%d|%s|%s|%" PRIu64 "|%d|%lld\n", (int)n->kind, n->to,
+                n->from, n->post_id, (int)n->comment_idx,
+                (long long)n->created_at);
+    }
+
+    fflush(fp);
+    fsync(fd);
+    fclose(fp);
+    chmod(temp_path, S_IRUSR | S_IWUSR);
+    rename(temp_path, path);
+    chmod(path, S_IRUSR | S_IWUSR);
+}
+
+static void host_bbs_notifications_load(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    if (host->bbs_notifications == nullptr) {
+        host->bbs_notifications =
+            sshc_gc_calloc(SSH_CHATTER_BBS_MAX_NOTIFICATIONS,
+                           sizeof(bbs_notification_t));
+        if (host->bbs_notifications == nullptr) {
+            return;
+        }
+        host->bbs_notification_capacity = SSH_CHATTER_BBS_MAX_NOTIFICATIONS;
+        host->bbs_notification_count = 0U;
+    }
+
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "notifications.dat", path,
+                     sizeof(path));
+    if (!host_bbs_file_exists(path)) {
+        return;
+    }
+    FILE *fp = fopen(path, "rb");
+    if (fp == nullptr) {
+        return;
+    }
+
+    // Read all lines, then keep the newest cap: on overflow the oldest
+    // entries are dropped.
+    bbs_notification_t incoming[SSH_CHATTER_BBS_MAX_NOTIFICATIONS];
+    size_t incoming_count = 0U;
+    char line[256];
+    while (fgets(line, sizeof(line), fp) != nullptr) {
+        char *fields[6] = {nullptr, nullptr, nullptr, nullptr, nullptr,
+                           nullptr};
+        char *cursor = line;
+        size_t field_count = 0U;
+        while (field_count < 6U) {
+            fields[field_count++] = cursor;
+            char *sep = strchr(cursor, '|');
+            if (sep == nullptr) {
+                break;
+            }
+            *sep = '\0';
+            cursor = sep + 1;
+        }
+        if (field_count < 6U || fields[0] == nullptr || fields[1] == nullptr ||
+            fields[2] == nullptr || fields[3] == nullptr ||
+            fields[4] == nullptr || fields[5] == nullptr) {
+            continue;
+        }
+        bbs_notification_t entry = {0};
+        entry.kind = (int32_t)strtol(fields[0], nullptr, 10);
+        snprintf(entry.to, sizeof(entry.to), "%s", fields[1]);
+        snprintf(entry.from, sizeof(entry.from), "%s", fields[2]);
+        entry.post_id = (uint64_t)strtoull(fields[3], nullptr, 10);
+        entry.comment_idx = (int32_t)strtol(fields[4], nullptr, 10);
+        entry.created_at = (time_t)strtoll(fields[5], nullptr, 10);
+        if (incoming_count >= SSH_CHATTER_BBS_MAX_NOTIFICATIONS) {
+            memmove(incoming, incoming + 1,
+                    (incoming_count - 1U) * sizeof(incoming[0]));
+            --incoming_count;
+        }
+        incoming[incoming_count++] = entry;
+    }
+    fclose(fp);
+
+    host->bbs_notification_count = 0U;
+    for (size_t i = 0U; i < incoming_count; ++i) {
+        host->bbs_notifications[host->bbs_notification_count++] = incoming[i];
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Read marks (text sidecar, one entry per line)                      */
+/* ------------------------------------------------------------------ */
+
+static void host_bbs_readmarks_save_locked(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "readmark.dat", path,
+                     sizeof(path));
+    char temp_path[PATH_MAX + 16];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
+
+    int fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        return;
+    }
+    FILE *fp = fdopen(fd, "wb");
+    if (fp == nullptr) {
+        close(fd);
+        return;
+    }
+
+    time_t now = time(nullptr);
+    for (size_t i = 0U; i < host->bbs_read_mark_count; ++i) {
+        const bbs_read_mark_t *mark = &host->bbs_read_marks[i];
+        // Prune stamps older than 30 days on save.
+        if (mark->last_read_at > 0 && now - mark->last_read_at >
+                                          (time_t)(30 * 24 * 60 * 60)) {
+            continue;
+        }
+        fprintf(fp, "%s|%lld\n", mark->username,
+                (long long)mark->last_read_at);
+    }
+
+    fflush(fp);
+    fsync(fd);
+    fclose(fp);
+    chmod(temp_path, S_IRUSR | S_IWUSR);
+    rename(temp_path, path);
+    chmod(path, S_IRUSR | S_IWUSR);
+}
+
+static void host_bbs_readmarks_load(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    if (host->bbs_read_marks == nullptr) {
+        host->bbs_read_marks = sshc_gc_calloc(SSH_CHATTER_BBS_MAX_READMARKS,
+                                              sizeof(bbs_read_mark_t));
+        if (host->bbs_read_marks == nullptr) {
+            return;
+        }
+        host->bbs_read_mark_capacity = SSH_CHATTER_BBS_MAX_READMARKS;
+        host->bbs_read_mark_count = 0U;
+    }
+
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "readmark.dat", path,
+                     sizeof(path));
+    if (!host_bbs_file_exists(path)) {
+        return;
+    }
+    FILE *fp = fopen(path, "rb");
+    if (fp == nullptr) {
+        return;
+    }
+
+    bbs_read_mark_t incoming[SSH_CHATTER_BBS_MAX_READMARKS];
+    size_t incoming_count = 0U;
+    char line[128];
+    while (fgets(line, sizeof(line), fp) != nullptr) {
+        char *sep = strchr(line, '|');
+        if (sep == nullptr) {
+            continue;
+        }
+        *sep = '\0';
+        bbs_read_mark_t entry = {0};
+        snprintf(entry.username, sizeof(entry.username), "%s", line);
+        entry.last_read_at = (time_t)strtoll(sep + 1, nullptr, 10);
+        if (incoming_count >= SSH_CHATTER_BBS_MAX_READMARKS) {
+            memmove(incoming, incoming + 1,
+                    (incoming_count - 1U) * sizeof(incoming[0]));
+            --incoming_count;
+        }
+        incoming[incoming_count++] = entry;
+    }
+    fclose(fp);
+
+    host->bbs_read_mark_count = 0U;
+    for (size_t i = 0U; i < incoming_count; ++i) {
+        host->bbs_read_marks[host->bbs_read_mark_count++] = incoming[i];
+    }
+}
+
 static void host_bbs_state_load(host_t *host)
 {
     if (host == nullptr) {
@@ -726,7 +1085,8 @@ static void host_bbs_state_load(host_t *host)
         return;
     }
 
-    if (header.version != BBS_STATE_VERSION) {
+    if (header.version != BBS_STATE_VERSION &&
+        header.version != BBS_STATE_VERSION_V1) {
         memset(mapped, 0, mapped_len);
         munmap(mapped, mapped_len);
         host->bbs_cache_loaded = true;
@@ -755,6 +1115,7 @@ static void host_bbs_state_load(host_t *host)
             host->bbs_posts[idx].comments[comment].author[0] = '\0';
             host->bbs_posts[idx].comments[comment].text[0] = '\0';
             host->bbs_posts[idx].comments[comment].created_at = 0;
+            host->bbs_posts[idx].comments[comment].edited_at = 0;
             host->bbs_posts[idx].comments[comment].upvotes = 0;
             host->bbs_posts[idx].comments[comment].downvotes = 0;
         }
@@ -771,13 +1132,25 @@ static void host_bbs_state_load(host_t *host)
 
     for (uint32_t idx = 0U; idx < header.post_count; ++idx) {
         bbs_state_post_entry_disk_t serialized = {0};
-        if (remaining < sizeof(serialized)) {
-            success = false;
-            break;
+        if (header.version == BBS_STATE_VERSION_V1) {
+            bbs_state_post_entry_disk_v1_t legacy = {0};
+            if (remaining < sizeof(legacy)) {
+                success = false;
+                break;
+            }
+            memcpy(&legacy, cursor, sizeof(legacy));
+            cursor += sizeof(legacy);
+            remaining -= sizeof(legacy);
+            bbs_state_post_entry_from_v1(&serialized, &legacy);
+        } else {
+            if (remaining < sizeof(serialized)) {
+                success = false;
+                break;
+            }
+            memcpy(&serialized, cursor, sizeof(serialized));
+            cursor += sizeof(serialized);
+            remaining -= sizeof(serialized);
         }
-        memcpy(&serialized, cursor, sizeof(serialized));
-        cursor += sizeof(serialized);
-        remaining -= sizeof(serialized);
 
         serialized.author[sizeof(serialized.author) - 1U] = '\0';
         serialized.title[sizeof(serialized.title) - 1U] = '\0';
@@ -860,6 +1233,8 @@ static void host_bbs_state_load(host_t *host)
                      serialized.comments[comment].text);
             post->comments[comment].created_at =
                  (time_t)serialized.comments[comment].created_at;
+            post->comments[comment].edited_at =
+                (time_t)serialized.comments[comment].edited_at;
             post->comments[comment].upvotes = serialized.comments[comment].upvotes;
             post->comments[comment].downvotes = serialized.comments[comment].downvotes;
             host_strip_column_reset(post->comments[comment].author);
@@ -893,6 +1268,7 @@ static void host_bbs_state_load(host_t *host)
                 host->bbs_posts[idx].comments[comment].author[0] = '\0';
                 host->bbs_posts[idx].comments[comment].text[0] = '\0';
                 host->bbs_posts[idx].comments[comment].created_at = 0;
+                host->bbs_posts[idx].comments[comment].edited_at = 0;
                 host->bbs_posts[idx].comments[comment].upvotes = 0;
                 host->bbs_posts[idx].comments[comment].downvotes = 0;
             }

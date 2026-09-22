@@ -22,7 +22,7 @@
 #include <uchardet.h>
 #endif
 
-/* Forward declaration of UTF-8 encoding function from host_runtime.c */
+/* Static helper: encode a single Unicode codepoint as UTF-8 */
 static size_t session_encode_utf8_codepoint(uint32_t codepoint, char *output,
                                             size_t capacity)
 {
@@ -172,10 +172,86 @@ static size_t session_codepage_iconv_chunk(session_codepage_t codepage,
     }
 
     if (written > capacity) {
-        written = capacity;
+        /* Emit a single replacement char rather than split a UTF-8 sequence */
+        if (capacity < 1U) {
+            return 0U;
+        }
+        output[0] = '?';
+        return 1U;
     }
     memcpy(output, utf8_buffer, written);
     return written;
+}
+
+/* Stateful DBCS (double-byte) conversion for CP949/CP932/CP936.
+ * Never discards input bytes: when a pending lead byte is followed by an
+ * invalid trail byte, the pair is replaced with '?' and the second byte is
+ * reprocessed from the single-byte state, so a lead byte in trail position
+ * (legal in CP949/CP936/Shift-JIS) is still attempted via iconv first. */
+static size_t session_codepage_dbcs_to_utf8(session_codepage_t codepage,
+                                            session_codepage_context_t *context,
+                                            unsigned char byte, char *output,
+                                            size_t capacity)
+{
+    if (context == nullptr || output == nullptr || capacity == 0U) {
+        return 0U;
+    }
+
+    bool is_lead;
+    switch (codepage) {
+    case SESSION_CODEPAGE_CP932: /* Shift-JIS lead ranges */
+        is_lead = (byte >= 0x81U && byte <= 0x9FU) ||
+                  (byte >= 0xE0U && byte <= 0xFCU);
+        break;
+    case SESSION_CODEPAGE_CP949:
+    case SESSION_CODEPAGE_CP936:
+    default:
+        is_lead = (byte >= 0x81U && byte <= 0xFEU);
+        break;
+    }
+
+    if (context->state == 0) {
+        if (byte < 0x80U) {
+            output[0] = (char)byte;
+            return 1U;
+        }
+        if (is_lead) {
+            context->lead_byte = byte;
+            context->state = 1;
+            return 0U;
+        }
+
+        /* Single high byte (e.g. CP932 half-width katakana) */
+        unsigned char single[1] = {byte};
+        size_t produced = session_codepage_iconv_chunk(codepage, single, 1U,
+                                                       output, capacity);
+        if (produced == 0U) {
+            output[0] = '?';
+            produced = 1U;
+        }
+        return produced;
+    }
+
+    /* state 1: a lead byte is pending; try the pair before judging the
+     * trail byte, since a trail may legally fall in the lead range. */
+    unsigned char sequence[2] = {context->lead_byte, byte};
+    context->state = 0;
+    context->lead_byte = 0;
+
+    size_t used = session_codepage_iconv_chunk(codepage, sequence, 2U, output,
+                                               capacity);
+    if (used > 0U) {
+        return used;
+    }
+
+    /* Invalid pair: substitute '?' and reprocess this byte from state 0 */
+    if (used < capacity) {
+        output[used] = '?';
+        used += 1U;
+    }
+    size_t rest = session_codepage_dbcs_to_utf8(codepage, context, byte,
+                                                output + used, capacity - used);
+    return used + rest;
 }
 
 size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
@@ -187,9 +263,21 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
         return 0U;
     }
 
-    /* ASCII passthrough for all code pages */
+    /* Multi-byte codepages go through the stateful DBCS helper before any
+     * ASCII handling, so a pending lead byte is never reset silently. */
+    switch (codepage) {
+    case SESSION_CODEPAGE_CP949:
+    case SESSION_CODEPAGE_CP932:
+    case SESSION_CODEPAGE_CP936:
+        return session_codepage_dbcs_to_utf8(codepage, context, byte, output,
+                                             capacity);
+    default:
+        break;
+    }
+
+    /* ASCII passthrough for single-byte-table, UTF-8, and default paths.
+     * Reset state on ASCII byte - prevents incomplete multi-byte corruption */
     if (byte < 0x80U) {
-        /* Reset state on ASCII byte - prevents incomplete multi-byte corruption */
         context->state = 0;
         context->lead_byte = 0;
         output[0] = (char)byte;
@@ -201,135 +289,6 @@ size_t session_codepage_byte_to_utf8(session_codepage_t codepage,
     bool valid_sequence = false;
 
     switch (codepage) {
-    case SESSION_CODEPAGE_CP949: {
-        const bool is_lead = (byte >= 0x81U && byte <= 0xFEU);
-        const bool is_trail = (byte >= 0x41U && byte <= 0xFEU && byte != 0x7FU);
-
-        if (context->state == 0) {
-            if (is_lead) {
-                context->lead_byte = byte;
-                context->state = 1;
-                return 0U;
-            }
-
-            unsigned char single[1] = {byte};
-            produced = session_codepage_iconv_chunk(codepage, single, 1U,
-                                                    output, capacity);
-            if (produced == 0U && capacity > 0U) {
-                output[0] = '?';
-                produced = 1U;
-            }
-            context->state = 0;
-            context->lead_byte = 0;
-            return produced;
-        }
-
-        unsigned char sequence[2] = {context->lead_byte, byte};
-        context->state = 0;
-        context->lead_byte = 0;
-
-        if (is_lead || !is_trail) {
-            if (capacity > 0U) {
-                output[0] = '?';
-                return 1U;
-            }
-            return 0U;
-        }
-
-        produced = session_codepage_iconv_chunk(codepage, sequence, 2U, output,
-                                                capacity);
-        if (produced == 0U && capacity > 0U) {
-            output[0] = '?';
-            produced = 1U;
-        }
-        return produced;
-    }
-
-    case SESSION_CODEPAGE_CP932: { /* Japanese Shift-JIS */
-        const bool is_lead = (byte >= 0x81U && byte <= 0x9FU) ||
-                             (byte >= 0xE0U && byte <= 0xFCU);
-        const bool is_trail = (byte >= 0x40U && byte <= 0xFCU && byte != 0x7FU);
-
-        if (context->state == 0) {
-            if (is_lead) {
-                context->lead_byte = byte;
-                context->state = 1;
-                return 0U;
-            }
-
-            unsigned char single[1] = {byte};
-            produced = session_codepage_iconv_chunk(codepage, single, 1U,
-                                                    output, capacity);
-            if (produced == 0U && capacity > 0U) {
-                output[0] = '?';
-                produced = 1U;
-            }
-            return produced;
-        }
-
-        unsigned char sequence[2] = {context->lead_byte, byte};
-        context->state = 0;
-        context->lead_byte = 0;
-
-        if (!is_trail) {
-            if (capacity > 0U) {
-                output[0] = '?';
-                produced = 1U;
-            }
-            return produced;
-        }
-
-        produced = session_codepage_iconv_chunk(codepage, sequence, 2U, output,
-                                                capacity);
-        if (produced == 0U && capacity > 0U) {
-            output[0] = '?';
-            produced = 1U;
-        }
-        return produced;
-    }
-
-    case SESSION_CODEPAGE_CP936: { /* Simplified Chinese GBK */
-        const bool is_lead = (byte >= 0x81U && byte <= 0xFEU);
-        const bool is_trail = (byte >= 0x40U && byte <= 0xFEU && byte != 0x7FU);
-
-        if (context->state == 0) {
-            if (is_lead) {
-                context->lead_byte = byte;
-                context->state = 1;
-                return 0U;
-            }
-
-            unsigned char single[1] = {byte};
-            produced = session_codepage_iconv_chunk(codepage, single, 1U,
-                                                    output, capacity);
-            if (produced == 0U && capacity > 0U) {
-                output[0] = '?';
-                produced = 1U;
-            }
-            return produced;
-        }
-
-        unsigned char sequence[2] = {context->lead_byte, byte};
-        context->state = 0;
-        context->lead_byte = 0;
-
-        if (!is_trail) {
-            if (capacity > 0U) {
-                output[0] = '?';
-                produced = 1U;
-            }
-            return produced;
-        }
-
-        produced = session_codepage_iconv_chunk(codepage, sequence, 2U, output,
-                                                capacity);
-        if (produced == 0U && capacity > 0U) {
-            output[0] = '?';
-            produced = 1U;
-        }
-        return produced;
-    }
-
     case SESSION_CODEPAGE_CP437:
     case SESSION_CODEPAGE_CP850:
     case SESSION_CODEPAGE_CP852:
@@ -501,6 +460,19 @@ static bool session_iconv_strip_options(const char *name, char *output,
     return true;
 }
 
+static iconv_t session_iconv_try_charsets(const char *to,
+                                          const char *const *names,
+                                          size_t count)
+{
+    for (size_t idx = 0; idx < count; ++idx) {
+        iconv_t descriptor = iconv_open(to, names[idx]);
+        if (descriptor != (iconv_t)(-1)) {
+            return descriptor;
+        }
+    }
+    return (iconv_t)(-1);
+}
+
 static iconv_t session_iconv_open_with_fallback(const char *to,
                                                 const char *from)
 {
@@ -516,15 +488,34 @@ static iconv_t session_iconv_open_with_fallback(const char *to,
             return descriptor;
         }
 
+        const char *const *fallbacks = nullptr;
+        size_t fallback_count = 0U;
         if (strcasecmp(base, "CP949") == 0) {
-            static const char *const kCp949Fallbacks[] = {"MS949", "EUC-KR"};
-            for (size_t idx = 0;
-                 idx < (sizeof(kCp949Fallbacks) / sizeof(kCp949Fallbacks[0]));
-                 ++idx) {
-                descriptor = iconv_open(to, kCp949Fallbacks[idx]);
-                if (descriptor != (iconv_t)(-1)) {
-                    return descriptor;
-                }
+            static const char *const kCp949Fallbacks[] = {"MS949", "EUC-KR",
+                                                          "ISO-2022-KR"};
+            fallbacks = kCp949Fallbacks;
+            fallback_count =
+                sizeof(kCp949Fallbacks) / sizeof(kCp949Fallbacks[0]);
+        } else if (strcasecmp(base, "CP932") == 0) {
+            /* SJIS aliases first; ISO-2022-JP is a different stateful encoding */
+            static const char *const kCp932Fallbacks[] = {"SJIS", "SHIFT_JIS",
+                                                          "ISO-2022-JP"};
+            fallbacks = kCp932Fallbacks;
+            fallback_count =
+                sizeof(kCp932Fallbacks) / sizeof(kCp932Fallbacks[0]);
+        } else if (strcasecmp(base, "CP936") == 0) {
+            /* GB18030 is a strict superset of GBK, covering 4-byte input */
+            static const char *const kCp936Fallbacks[] = {"GBK", "GB18030"};
+            fallbacks = kCp936Fallbacks;
+            fallback_count =
+                sizeof(kCp936Fallbacks) / sizeof(kCp936Fallbacks[0]);
+        }
+
+        if (fallbacks != nullptr) {
+            descriptor = session_iconv_try_charsets(to, fallbacks,
+                                                    fallback_count);
+            if (descriptor != (iconv_t)(-1)) {
+                return descriptor;
             }
         }
     }
@@ -599,6 +590,12 @@ size_t session_codepage_to_utf8(session_codepage_t codepage,
     iconv_close(descriptor);
 
     if (result == (size_t)-1) {
+        size_t produced = output_capacity - output_remaining;
+        if (produced > 0U) {
+            /* Keep partial results: covers E2BIG truncation and EILSEQ
+             * occurring after already-converted characters. */
+            return produced;
+        }
         if (is_multibyte_codepage) {
             return 0U; /* iconv failed for multi-byte, conversion impossible */
         }
@@ -621,28 +618,37 @@ session_codepage_t session_codepage_detect_auto(const unsigned char *input,
         return SESSION_CODEPAGE_UTF8;
     }
 
-    /* Fast UTF-8 validation */
+    /* Fast UTF-8 validation (rejects overlongs, surrogates, > U+10FFFF) */
     size_t i = 0;
-    while (i < input_length) {
-        if ((input[i] & 0x80) == 0) {
+    bool valid = true;
+    while (i < input_length && valid) {
+        const unsigned char lead = input[i];
+        if (lead < 0x80U) {
             ++i;
-        } else if ((input[i] & 0xE0) == 0xC0 && i + 1 < input_length &&
-                   (input[i + 1] & 0xC0) == 0x80) {
-            i += 2;
-        } else if ((input[i] & 0xF0) == 0xE0 && i + 2 < input_length &&
-                   (input[i + 1] & 0xC0) == 0x80 &&
-                   (input[i + 2] & 0xC0) == 0x80) {
-            i += 3;
-        } else if ((input[i] & 0xF8) == 0xF0 && i + 3 < input_length &&
-                   (input[i + 1] & 0xC0) == 0x80 &&
-                   (input[i + 2] & 0xC0) == 0x80 &&
-                   (input[i + 3] & 0xC0) == 0x80) {
-            i += 4;
+        } else if (lead >= 0xC2U && lead <= 0xDFU) {
+            valid = (i + 1U < input_length && input[i + 1U] >= 0x80U &&
+                     input[i + 1U] <= 0xBFU);
+            i += 2U;
+        } else if (lead >= 0xE0U && lead <= 0xEFU) {
+            const unsigned char lo = (lead == 0xE0U) ? 0xA0U : 0x80U;
+            const unsigned char hi = (lead == 0xEDU) ? 0x9FU : 0xBFU;
+            valid = (i + 2U < input_length && input[i + 1U] >= lo &&
+                     input[i + 1U] <= hi && input[i + 2U] >= 0x80U &&
+                     input[i + 2U] <= 0xBFU);
+            i += 3U;
+        } else if (lead >= 0xF0U && lead <= 0xF4U) {
+            const unsigned char lo = (lead == 0xF0U) ? 0x90U : 0x80U;
+            const unsigned char hi = (lead == 0xF4U) ? 0x8FU : 0xBFU;
+            valid = (i + 3U < input_length && input[i + 1U] >= lo &&
+                     input[i + 1U] <= hi && input[i + 2U] >= 0x80U &&
+                     input[i + 2U] <= 0xBFU && input[i + 3U] >= 0x80U &&
+                     input[i + 3U] <= 0xBFU);
+            i += 4U;
         } else {
-            break;
+            valid = false;
         }
     }
-    if (i == input_length) {
+    if (valid && i == input_length) {
         return SESSION_CODEPAGE_UTF8;
     }
 

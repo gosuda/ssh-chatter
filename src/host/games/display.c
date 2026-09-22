@@ -1762,6 +1762,18 @@ static void session_translate_scope_send_usage(session_ctx_t *ctx)
         usage_format_head = "Использование: ";
         usage_format_tail = "область-перевода <чат|чат-без-истории|все>";
         break;
+    case SESSION_UI_LANGUAGE_DE:
+        usage_format_head = "Nutzung: ";
+        usage_format_tail = "übersetzungsbereich <chat|chat-ohne-verlauf|alle>";
+        break;
+    case SESSION_UI_LANGUAGE_FR:
+        usage_format_head = "Utilisation : ";
+        usage_format_tail = "portée-traduction <chat|chat-sans-historique|tout>";
+        break;
+    case SESSION_UI_LANGUAGE_PL:
+        usage_format_head = "Użycie: ";
+        usage_format_tail = "zakres-tłumaczenia <czat|czat-bez-historii|wszystko>";
+        break;
     default:
         break;
     }

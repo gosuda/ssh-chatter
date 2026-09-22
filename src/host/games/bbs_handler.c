@@ -21,12 +21,14 @@ static void session_bbs_print_help(session_ctx_t *ctx)
 {
     session_send_system_line(ctx, "--------------------------------------------------");
     session_send_system_line(ctx, "BBS Subcommands:");
-    session_send_system_line(ctx, "  list [all|hot|top|new] - List posts");
+    session_send_system_line(ctx, "  list [all|hot|top|new] [page] - List posts");
     session_send_system_line(ctx, "  read <id>              - Read a post");
     session_send_system_line(ctx, "  topic read <tag>       - List posts by tag");
     session_send_system_line(ctx, "  post <title> [tags...] - Create a post");
     session_send_system_line(ctx, "  edit <id>              - Edit a post");
-    session_send_system_line(ctx, "  comment <id>|<text>    - Add a comment");
+    session_send_system_line(ctx, "  comment <id>|<text>    - Add a comment (:N quotes, @nick mentions)");
+    session_send_system_line(ctx, "  cmtedit <id> <idx> <text> - Edit a comment");
+    session_send_system_line(ctx, "  cmtdel <id> <idx>      - Delete a comment");
     session_send_system_line(ctx, "  upvote <id>            - Upvote a post");
     session_send_system_line(ctx, "  downvote <id>          - Downvote a post");
     session_send_system_line(ctx, "  cmtvote <id> <idx> up|down - Vote on a comment");
@@ -182,6 +184,10 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         session_bbs_begin_edit(ctx, id);
     } else if (strcmp(canonical_command, "comment") == 0) {
         session_bbs_add_comment(ctx, rest);
+    } else if (strcmp(canonical_command, "cmtedit") == 0) {
+        session_bbs_cmtedit(ctx, rest);
+    } else if (strcmp(canonical_command, "cmtdel") == 0) {
+        session_bbs_cmtdel(ctx, rest);
     } else if (strcmp(canonical_command, "regen") == 0) {
         if (rest == nullptr || rest[0] == '\0') {
             session_bbs_send_usage(ctx, "regen", "<id>");

@@ -1704,6 +1704,8 @@ static void *session_thread(void *arg)
 
             if (ch == '\r' || ch == '\n') {
                 session_apply_background_fill(ctx);
+                /* Drop any pending half of a multibyte sequence at line end */
+                ctx->codepage_ctx = (session_codepage_context_t){0};
                 const bool composing_draft =
                     ctx->bbs_post_pending || ctx->asciiart_pending;
                 if (ctx->wall_active) {
@@ -1766,6 +1768,8 @@ static void *session_thread(void *arg)
                 }
                 /* Reset multi-byte buffer on backspace */
                 ctx->multibyte_input_length = 0U;
+                /* Drop any pending half of a multibyte sequence on backspace */
+                ctx->codepage_ctx = (session_codepage_context_t){0};
                 continue;
             }
 

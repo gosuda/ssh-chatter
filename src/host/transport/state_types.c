@@ -330,7 +330,8 @@ typedef struct host_state_grant_entry {
 } host_state_grant_entry_t;
 
 static const uint32_t BBS_STATE_MAGIC = 0x42425332U; /* 'BBS2' */
-static const uint32_t BBS_STATE_VERSION = 1U;
+static const uint32_t BBS_STATE_VERSION_V1 = 1U;
+static const uint32_t BBS_STATE_VERSION = 2U;
 
 typedef struct bbs_state_header {
     uint32_t magic;
@@ -344,9 +345,37 @@ typedef struct bbs_state_comment_entry {
     char author[SSH_CHATTER_USERNAME_LEN];
     char text[SSH_CHATTER_BBS_COMMENT_LEN];
     int64_t created_at;
+    int64_t edited_at; /* 0 = never edited */
     int32_t upvotes;
     int32_t downvotes;
 } bbs_state_comment_entry_t;
+
+/* Legacy on-disk layouts (version 1) without the per-comment edited_at
+ * field.  Kept so version 1 state files keep loading; converted on read. */
+typedef struct bbs_state_comment_entry_v1 {
+    char author[SSH_CHATTER_USERNAME_LEN];
+    char text[SSH_CHATTER_BBS_COMMENT_LEN];
+    int64_t created_at;
+    int32_t upvotes;
+    int32_t downvotes;
+} bbs_state_comment_entry_v1_t;
+
+typedef struct bbs_state_post_entry_disk_v1 {
+    uint64_t id;
+    uint16_t board_id;
+    uint16_t reserved;
+    int64_t created_at;
+    int64_t bumped_at;
+    int32_t upvotes;
+    int32_t downvotes;
+    uint32_t tag_count;
+    uint32_t comment_count;
+    char author[SSH_CHATTER_USERNAME_LEN];
+    char title[SSH_CHATTER_BBS_TITLE_LEN];
+    char body[SSH_CHATTER_BBS_BODY_LEN];
+    char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
+    bbs_state_comment_entry_v1_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
+} bbs_state_post_entry_disk_v1_t;
 
 typedef struct bbs_state_post_entry_disk {
     uint64_t id;
@@ -364,6 +393,46 @@ typedef struct bbs_state_post_entry_disk {
     char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
     bbs_state_comment_entry_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
 } bbs_state_post_entry_disk_t;
+
+/* Convert a legacy version 1 entry in-place into the current layout.  All
+ * fields map one-to-one; the added per-comment edited_at defaults to 0. */
+static void
+bbs_state_post_entry_from_v1(bbs_state_post_entry_disk_t *dst,
+                             const bbs_state_post_entry_disk_v1_t *src)
+{
+    if (dst == nullptr || src == nullptr) {
+        return;
+    }
+    memset(dst, 0, sizeof(*dst));
+    dst->id = src->id;
+    dst->board_id = src->board_id;
+    dst->reserved = src->reserved;
+    dst->created_at = src->created_at;
+    dst->bumped_at = src->bumped_at;
+    dst->upvotes = src->upvotes;
+    dst->downvotes = src->downvotes;
+    dst->tag_count = src->tag_count;
+    dst->comment_count = src->comment_count;
+    snprintf(dst->author, sizeof(dst->author), "%s", src->author);
+    snprintf(dst->title, sizeof(dst->title), "%s", src->title);
+    snprintf(dst->body, sizeof(dst->body), "%s", src->body);
+    for (size_t tag = 0U; tag < SSH_CHATTER_BBS_MAX_TAGS; ++tag) {
+        snprintf(dst->tags[tag], sizeof(dst->tags[tag]), "%s", src->tags[tag]);
+    }
+    for (size_t comment = 0U; comment < SSH_CHATTER_BBS_MAX_COMMENTS;
+         ++comment) {
+        snprintf(dst->comments[comment].author,
+                 sizeof(dst->comments[comment].author), "%s",
+                 src->comments[comment].author);
+        snprintf(dst->comments[comment].text,
+                 sizeof(dst->comments[comment].text), "%s",
+                 src->comments[comment].text);
+        dst->comments[comment].created_at = src->comments[comment].created_at;
+        dst->comments[comment].edited_at = 0;
+        dst->comments[comment].upvotes = src->comments[comment].upvotes;
+        dst->comments[comment].downvotes = src->comments[comment].downvotes;
+    }
+}
 
 typedef struct bbs_state_post_entry {
     uint64_t id;

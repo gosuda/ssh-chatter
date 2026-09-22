@@ -44,7 +44,7 @@ typedef struct session_codepage_context {
  * @param codepage The source code page
  * @param context Pointer to the codepage context (must be initialized to {0,0} for new conversions)
  * @param byte The byte to convert
- * @param output Buffer to store UTF-8 output (must be at least 4 bytes)
+ * @param output Buffer to store UTF-8 output (must be at least 8 bytes)
  * @param capacity Size of output buffer
  * @return Number of bytes written to output, or 0 on error
  */

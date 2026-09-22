@@ -65,7 +65,7 @@
 #define SSH_CHATTER_POLL_LABEL_LEN 32
 #define SSH_CHATTER_MAX_NAMED_POLLS 16
 #define SSH_CHATTER_MAX_NAMED_VOTERS 256
-#define SSH_CHATTER_BBS_MAX_POSTS 128
+#define SSH_CHATTER_BBS_MAX_POSTS 256
 #define SSH_CHATTER_BBS_TITLE_LEN 512
 #define SSH_CHATTER_BBS_BODY_LEN 40960
 #define SSH_CHATTER_BBS_TAG_LEN 24
@@ -76,6 +76,9 @@
 #define SSH_CHATTER_BBS_MAX_BOARDS 16
 #define SSH_CHATTER_BBS_MAX_VOTES 8192
 #define SSH_CHATTER_BBS_MAX_DRAFTS_PER_USER 8
+#define SSH_CHATTER_BBS_MAX_RATE_LIMITS 128
+#define SSH_CHATTER_BBS_MAX_NOTIFICATIONS 256
+#define SSH_CHATTER_BBS_MAX_READMARKS 512
 #define SSH_CHATTER_RSS_MAX_FEEDS 32
 #define SSH_CHATTER_RSS_TAG_LEN 32
 #define SSH_CHATTER_RSS_URL_LEN 1024
@@ -1005,6 +1008,7 @@ typedef struct bbs_comment {
     char author[SSH_CHATTER_USERNAME_LEN];
     char text[SSH_CHATTER_BBS_COMMENT_LEN];
     time_t created_at;
+    time_t edited_at; /* 0 = never edited */
     int32_t upvotes;
     int32_t downvotes;
 } bbs_comment_t;
@@ -1040,6 +1044,29 @@ typedef struct bbs_vote {
     int8_t vote_type; /* +1 or -1 */
     time_t created_at;
 } bbs_vote_t;
+
+/* Per-user anti-flood tracking (in-RAM only). */
+typedef struct bbs_rate_limit_entry {
+    char username[SSH_CHATTER_USERNAME_LEN];
+    time_t last_comment_at;
+    time_t last_post_at;
+} bbs_rate_limit_entry_t;
+
+/* Notification queue entry: kind 0 = reply, 1 = mention. */
+typedef struct bbs_notification {
+    int32_t kind;
+    char to[SSH_CHATTER_USERNAME_LEN];
+    char from[SSH_CHATTER_USERNAME_LEN];
+    uint64_t post_id;
+    int32_t comment_idx; /* -1 for post-level mentions */
+    time_t created_at;
+} bbs_notification_t;
+
+/* Per-user read stamp for the BBS dashboard. */
+typedef struct bbs_read_mark {
+    char username[SSH_CHATTER_USERNAME_LEN];
+    time_t last_read_at;
+} bbs_read_mark_t;
 
 typedef struct bbs_draft {
     bool in_use;
@@ -1223,6 +1250,18 @@ typedef struct host {
     bbs_draft_t *bbs_drafts;
     size_t bbs_draft_count;
     size_t bbs_draft_capacity;
+    _Atomic bool bbs_comment_edit_enabled;
+    _Atomic bool bbs_comment_delete_enabled;
+    struct {
+        bbs_rate_limit_entry_t entries[SSH_CHATTER_BBS_MAX_RATE_LIMITS];
+        size_t count;
+    } bbs_rate_limits;
+    bbs_notification_t *bbs_notifications;
+    size_t bbs_notification_count;
+    size_t bbs_notification_capacity;
+    bbs_read_mark_t *bbs_read_marks;
+    size_t bbs_read_mark_count;
+    size_t bbs_read_mark_capacity;
     ascii_pixel_t *wall;
     rss_feed_t *rss_feeds;
     size_t rss_feed_count;

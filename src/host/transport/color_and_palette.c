@@ -1813,6 +1813,8 @@ static void session_bbs_capture_body_text(session_ctx_t *ctx, const char *text);
 static void session_bbs_capture_body_line(session_ctx_t *ctx, const char *line);
 static bool session_bbs_capture_continue(const session_ctx_t *ctx);
 static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments);
+static void session_bbs_cmtedit(session_ctx_t *ctx, const char *arguments);
+static void session_bbs_cmtdel(session_ctx_t *ctx, const char *arguments);
 static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id);
 static void session_bbs_delete(session_ctx_t *ctx, uint64_t id);
 static void session_bbs_reset_pending_post(session_ctx_t *ctx);

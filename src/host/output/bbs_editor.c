@@ -83,6 +83,85 @@ static void session_bbs_prepare_canvas(session_ctx_t *ctx)
     session_apply_background_fill(ctx);
 }
 
+static const char *session_bbs_comment_edited_marker(session_ui_language_t lang)
+{
+    switch (lang) {
+    case SESSION_UI_LANGUAGE_KO: return "(수정됨)";
+    case SESSION_UI_LANGUAGE_JP: return "(編集済み)";
+    case SESSION_UI_LANGUAGE_ZH: return "(已编辑)";
+    case SESSION_UI_LANGUAGE_RU: return "(изменено)";
+    case SESSION_UI_LANGUAGE_DE: return "(bearbeitet)";
+    case SESSION_UI_LANGUAGE_FR: return "(modifié)";
+    case SESSION_UI_LANGUAGE_PL: return "(edytowano)";
+    case SESSION_UI_LANGUAGE_EN:
+    default: return "(edited)";
+    }
+}
+
+// Expand ":N" quote tokens in a comment's text at render time.  A token is
+// ':' followed by 1-8 decimal digits, bounded by start/whitespace/punctuation
+// before and whitespace/punctuation/end after, with N < comment_count and
+// N != self_idx.  Each token becomes " [N> <excerpt>]" where the excerpt is
+// the first 32 bytes of comment N's raw text, single-line.  Out-of-range or
+// malformed tokens are left untouched.
+static void session_bbs_render_comment_text(session_ctx_t *ctx,
+                                            const bbs_post_t *post,
+                                            size_t self_idx)
+{
+    if (ctx == nullptr || post == nullptr || post->comments == nullptr ||
+        self_idx >= post->comment_count) {
+        return;
+    }
+    const char *text = post->comments[self_idx].text;
+
+    // Worst case: every ":N" token (min 2 input chars) grows to
+    // " [N> " + 32-byte excerpt + "]"; 24x the input length is a safe bound.
+    char expanded[SSH_CHATTER_BBS_COMMENT_LEN * 24U];
+    size_t out = 0U;
+
+    for (size_t i = 0U; text[i] != '\0' && out < sizeof(expanded) - 64U;) {
+        if (text[i] == ':') {
+            size_t j = i + 1U;
+            size_t digits = 0U;
+            unsigned long target = 0UL;
+            while (digits < 8U && text[j] != '\0' &&
+                   text[j] >= '0' && text[j] <= '9') {
+                target = target * 10UL + (unsigned long)(text[j] - '0');
+                ++j;
+                ++digits;
+            }
+            char after = text[j];
+            bool after_ok =
+                after == '\0' || isspace((unsigned char)after) ||
+                ispunct((unsigned char)after);
+            bool before_ok =
+                i == 0U || isspace((unsigned char)text[i - 1U]) ||
+                ispunct((unsigned char)text[i - 1U]);
+            if (digits > 0U && after_ok && before_ok &&
+                target < post->comment_count && target != self_idx) {
+                const bbs_comment_t *quoted = &post->comments[target];
+                int written = snprintf(expanded + out, sizeof(expanded) - out,
+                                       " [%lu> ", target);
+                if (written > 0) {
+                    out += (size_t)written;
+                }
+                size_t excerpt = 0U;
+                while (excerpt < 32U && quoted->text[excerpt] != '\0' &&
+                       quoted->text[excerpt] != '\n') {
+                    expanded[out++] = quoted->text[excerpt++];
+                }
+                expanded[out++] = ']';
+                i = j;
+                continue;
+            }
+        }
+        expanded[out++] = text[i++];
+    }
+    expanded[out] = '\0';
+
+    session_send_bbs_body_text(ctx, expanded);
+}
+
 static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
                                     const char *notice, bool reset_scroll)
 {
@@ -160,17 +239,24 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
             }
 
             char comment_author_line[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(comment_author_line, sizeof(comment_author_line), "Comment by: %s", comment->author);
+            snprintf(comment_author_line, sizeof(comment_author_line),
+                     "[%zu] Comment by: %s", idx, comment->author);
 
             char comment_created_line[SSH_CHATTER_MESSAGE_LIMIT];
             time_t comment_created = (time_t)comment->created_at;
             struct tm comment_created_tm;
             localtime_r(&comment_created, &comment_created_tm);
             strftime(comment_created_line, sizeof(comment_created_line), "At: %Y-%m-%d %H:%M:%S", &comment_created_tm);
+            if (comment->edited_at != 0) {
+                size_t used = strlen(comment_created_line);
+                snprintf(comment_created_line + used,
+                         sizeof(comment_created_line) - used, " %s",
+                         session_bbs_comment_edited_marker(ctx->ui_language));
+            }
 
             session_send_system_line(ctx, comment_author_line);
             session_send_system_line(ctx, comment_created_line);
-            session_send_bbs_body_text(ctx, comment->text);
+            session_bbs_render_comment_text(ctx, post, idx);
             session_send_plain_line(ctx, ""); // Empty line for spacing between comments
         }
     }

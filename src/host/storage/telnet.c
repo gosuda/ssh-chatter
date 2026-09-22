@@ -787,6 +787,8 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
             if (byte == '\r') {
                 ignore_next_newline = true;
             }
+            /* Drop any pending half of a multibyte sequence at line end */
+            ctx->codepage_ctx = (session_codepage_context_t){0};
             break;
         }
 
@@ -803,6 +805,8 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
             }
             /* Also reset multi-byte buffer on backspace */
             ctx->multibyte_input_length = 0U;
+            /* Drop any pending half of a multibyte sequence on backspace */
+            ctx->codepage_ctx = (session_codepage_context_t){0};
             if (raw_len > 0U) {
                 raw_len--;
             }

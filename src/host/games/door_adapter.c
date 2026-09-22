@@ -29,6 +29,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "Доступные DOOR игры:";
                 case SESSION_UI_LANGUAGE_DE: return "Verfügbare DOOR-Spiele:";
                 case SESSION_UI_LANGUAGE_FR: return "Jeux DOOR disponibles :";
+                case SESSION_UI_LANGUAGE_PL: return "Dostępne gry DOOR:";
                 default: return "Available DOOR games:";
             }
         case DOORGAME_MSG_LAUNCH_HINT:
@@ -39,6 +40,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "Запуск: `/bbs door <name>`. Выход: Ctrl-].";
                 case SESSION_UI_LANGUAGE_DE: return "Starten mit `/bbs door <name>`. Ctrl-] beendet das Spiel.";
                 case SESSION_UI_LANGUAGE_FR: return "Lancez avec `/bbs door <name>`. Ctrl-] pour quitter.";
+                case SESSION_UI_LANGUAGE_PL: return "Uruchamiaj za pomocą `/bbs door <name>`. Ctrl-], aby zakończyć grę.";
                 default: return "Launch with `/bbs door <name>`. Press Ctrl-] to exit a running game.";
             }
         case DOORGAME_MSG_NO_DOORS:
@@ -49,6 +51,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "DOOR игры не настроены. Оператор: установите CHATTER_DOOR_1=name:dosbox_conf[:desc].";
                 case SESSION_UI_LANGUAGE_DE: return "Keine DOOR-Spiele konfiguriert. Operator: CHATTER_DOOR_1=name:dosbox_conf[:desc] setzen.";
                 case SESSION_UI_LANGUAGE_FR: return "Aucun jeu DOOR configuré. Opérateur : définissez CHATTER_DOOR_1=name:dosbox_conf[:desc].";
+                case SESSION_UI_LANGUAGE_PL: return "Brak skonfigurowanych gier DOOR. Operator: ustaw CHATTER_DOOR_1=name:dosbox_conf[:desc] (i _2, _3 ...).";
                 default: return "No DOOR games configured. Operators: set CHATTER_DOOR_1=name:dosbox_conf[:desc] (and _2, _3 ...) to register doors.";
             }
         case DOORGAME_MSG_LAUNCHING:
@@ -59,6 +62,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] запуск '%s' (Ctrl-] для выхода, макс. %dс).";
                 case SESSION_UI_LANGUAGE_DE: return "[door] starte '%s' (Ctrl-] zum Beenden, max. %ds).";
                 case SESSION_UI_LANGUAGE_FR: return "[door] lancement de '%s' (Ctrl-] pour quitter, max. %ds).";
+                case SESSION_UI_LANGUAGE_PL: return "[door] uruchamianie '%s' (Ctrl-], aby zakończyć, maks. %ds).";
                 default: return "[door] launching '%s' (Ctrl-] to exit, %ds max).";
             }
         case DOORGAME_MSG_WAITING:
@@ -69,6 +73,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] ожидание подключения DOSBox...";
                 case SESSION_UI_LANGUAGE_DE: return "[door] warte auf DOSBox-Verbindung...";
                 case SESSION_UI_LANGUAGE_FR: return "[door] attente de la connexion DOSBox...";
+                case SESSION_UI_LANGUAGE_PL: return "[door] oczekiwanie na połączenie DOSBox...";
                 default: return "[door] waiting for DOSBox to connect...";
             }
         case DOORGAME_MSG_CONNECTED:
@@ -79,6 +84,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] подключено. Ctrl-] для выхода.";
                 case SESSION_UI_LANGUAGE_DE: return "[door] verbunden. Ctrl-] zum Beenden.";
                 case SESSION_UI_LANGUAGE_FR: return "[door] connecté. Ctrl-] pour quitter.";
+                case SESSION_UI_LANGUAGE_PL: return "[door] połączono. Naciśnij Ctrl-], aby zakończyć.";
                 default: return "[door] connected. Press Ctrl-] to exit.";
             }
         case DOORGAME_MSG_TIMEOUT:
@@ -89,6 +95,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] DOSBox не подключился вовремя. Проверьте установку и конфигурацию.";
                 case SESSION_UI_LANGUAGE_DE: return "[door] DOSBox hat sich nicht rechtzeitig verbunden. Überprüfen Sie Installation und Konfiguration.";
                 case SESSION_UI_LANGUAGE_FR: return "[door] DOSBox ne s'est pas connecté à temps. Vérifiez l'installation et la configuration.";
+                case SESSION_UI_LANGUAGE_PL: return "[door] DOSBox nie połączył się w czasie. Sprawdź, czy dosbox jest zainstalowany i konfiguracja jest prawidłowa.";
                 default: return "[door] DOSBox did not connect in time. Verify dosbox is installed and the configuration is valid.";
             }
         case DOORGAME_MSG_FAILED_LAUNCH:
@@ -99,6 +106,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] не удалось запустить dosbox. Проверьте путь и наличие в PATH.";
                 case SESSION_UI_LANGUAGE_DE: return "[door] dosbox konnte nicht gestartet werden. Prüfen Sie den Pfad und PATH.";
                 case SESSION_UI_LANGUAGE_FR: return "[door] échec du lancement de dosbox. Vérifiez le chemin et la variable PATH.";
+                case SESSION_UI_LANGUAGE_PL: return "[door] nie udało się uruchomić dosbox. Sprawdź ścieżkę konfiguracji i PATH.";
                 default: return "[door] failed to launch dosbox. Verify the conf path exists and dosbox is on PATH.";
             }
         case DOORGAME_MSG_SESSION_ENDED:
@@ -109,6 +117,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] сессия завершена.";
                 case SESSION_UI_LANGUAGE_DE: return "[door] Sitzung beendet.";
                 case SESSION_UI_LANGUAGE_FR: return "[door] session terminée.";
+                case SESSION_UI_LANGUAGE_PL: return "[door] sesja zakończona.";
                 default: return "[door] session ended.";
             }
         case DOORGAME_MSG_ENDED_IMMEDIATELY:
@@ -119,6 +128,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] сессия завершилась сразу. Проверьте установку dosbox и наличие файлов.";
                 case SESSION_UI_LANGUAGE_DE: return "[door] Sitzung sofort beendet. Prüfen Sie, ob dosbox installiert und die Spieldateien vorhanden sind.";
                 case SESSION_UI_LANGUAGE_FR: return "[door] session terminée immédiatement. Vérifiez l'installation de dosbox et les fichiers de jeu.";
+                case SESSION_UI_LANGUAGE_PL: return "[door] sesja zakończyła się natychmiast. Sprawdź, czy 'dosbox' jest zainstalowany i pliki gry istnieją w podanej ścieżce.";
                 default: return "[door] session ended immediately. Verify that 'dosbox' is installed and the conf/game files exist at the configured path.";
             }
         case DOORGAME_MSG_ESCAPE:
@@ -129,6 +139,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] обнаружена escape-последовательность, завершение игры.";
                 case SESSION_UI_LANGUAGE_DE: return "[door] Escape-Sequenz erkannt, Spiel wird beendet.";
                 case SESSION_UI_LANGUAGE_FR: return "[door] séquence d'échappement détectée, fin du jeu.";
+                case SESSION_UI_LANGUAGE_PL: return "[door] wykryto sekwencję ucieczki, kończenie gry.";
                 default: return "[door] escape sequence detected, ending door game.";
             }
         case DOORGAME_MSG_MAX_RUNTIME:
@@ -139,6 +150,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] достигнут максимальный runtime, завершение игры.";
                 case SESSION_UI_LANGUAGE_DE: return "[door] maximale Laufzeit erreicht, Spiel wird beendet.";
                 case SESSION_UI_LANGUAGE_FR: return "[door] durée maximale atteinte, fin du jeu.";
+                case SESSION_UI_LANGUAGE_PL: return "[door] osiągnięto maksymalny czas działania, kończenie gry.";
                 default: return "[door] maximum runtime reached, terminating door game.";
             }
         case DOORGAME_MSG_TOO_MANY:
@@ -149,6 +161,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] слишком много активных сессий. Попробуйте позже.";
                 case SESSION_UI_LANGUAGE_DE: return "[door] zu viele aktive Sitzungen. Versuchen Sie es später erneut.";
                 case SESSION_UI_LANGUAGE_FR: return "[door] trop de sessions actives. Réessayez plus tard.";
+                case SESSION_UI_LANGUAGE_PL: return "[door] za dużo aktywnych sesji door. Spróbuj ponownie później.";
                 default: return "[door] too many active door sessions. Try again later.";
             }
         case DOORGAME_MSG_ONLY_OPS_LOCK:
@@ -159,6 +172,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "Только операторы могут блокировать/разблокировать DOOR игры.";
                 case SESSION_UI_LANGUAGE_DE: return "Nur Operatoren können DOOR-Spiele sperren/entsperren.";
                 case SESSION_UI_LANGUAGE_FR: return "Seuls les opérateurs peuvent verrouiller/déverrouiller les jeux DOOR.";
+                case SESSION_UI_LANGUAGE_PL: return "Tylko operatorzy mogą blokować i odblokowywać gry DOOR.";
                 default: return "Only operators may lock or unlock door games.";
             }
         case DOORGAME_MSG_GAME_LOCKED:
@@ -169,6 +183,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] эта игра заблокирована оператором.";
                 case SESSION_UI_LANGUAGE_DE: return "[door] dieses Spiel ist derzeit vom Operator gesperrt.";
                 case SESSION_UI_LANGUAGE_FR: return "[door] ce jeu est actuellement verrouillé par l'opérateur.";
+                case SESSION_UI_LANGUAGE_PL: return "[door] ta gra jest obecnie zablokowana przez operatora.";
                 default: return "[door] This game is currently locked by the operator.";
             }
         case DOORGAME_MSG_SETGAMELOCK_USAGE:
@@ -179,6 +194,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "Использование: /bbs setgamelock <game_name>";
                 case SESSION_UI_LANGUAGE_DE: return "Nutzung: /bbs setgamelock <game_name>";
                 case SESSION_UI_LANGUAGE_FR: return "Utilisation : /bbs setgamelock <game_name>";
+                case SESSION_UI_LANGUAGE_PL: return "Użycie: /bbs setgamelock <game_name>";
                 default: return "Usage: /bbs setgamelock <game_name>";
             }
         case DOORGAME_MSG_NOW_LOCKED:
@@ -189,6 +205,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] '%s' заблокирована.";
                 case SESSION_UI_LANGUAGE_DE: return "[door] '%s' ist jetzt GESPERRT.";
                 case SESSION_UI_LANGUAGE_FR: return "[door] '%s' est maintenant VERROUILLÉ.";
+                case SESSION_UI_LANGUAGE_PL: return "[door] '%s' jest teraz ZABLOKOWANA.";
                 default: return "[door] '%s' is now LOCKED.";
             }
         case DOORGAME_MSG_NOW_UNLOCKED:
@@ -199,6 +216,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return "[door] '%s' разблокирована.";
                 case SESSION_UI_LANGUAGE_DE: return "[door] '%s' ist jetzt ENTSPERRT.";
                 case SESSION_UI_LANGUAGE_FR: return "[door] '%s' est maintenant DÉVERROUILLÉ.";
+                case SESSION_UI_LANGUAGE_PL: return "[door] '%s' jest teraz ODBLOKOWANA.";
                 default: return "[door] '%s' is now UNLOCKED.";
             }
         case DOORGAME_MSG_LIST_LOCKED:
@@ -209,6 +227,7 @@ static const char *door_localized(session_ctx_t *ctx, int msg_id)
                 case SESSION_UI_LANGUAGE_RU: return " [ЗАБЛОКИРОВАНО]";
                 case SESSION_UI_LANGUAGE_DE: return " [GESPERRT]";
                 case SESSION_UI_LANGUAGE_FR: return " [VERROUILLÉ]";
+                case SESSION_UI_LANGUAGE_PL: return " [ZABLOKOWANO]";
                 default: return " [LOCKED]";
             }
         default:

@@ -402,6 +402,24 @@ void host_init(host_t *host, auth_profile_t *auth)
             atomic_store(&host->chat_archive_enabled, true);
         }
     }
+    atomic_store(&host->bbs_comment_edit_enabled, true);
+    const char *bbs_comment_edit_env = getenv("CHATTER_BBS_COMMENT_EDIT");
+    if (bbs_comment_edit_env != nullptr && bbs_comment_edit_env[0] != '\0') {
+        if (strcasecmp(bbs_comment_edit_env, "no") == 0 ||
+            strcasecmp(bbs_comment_edit_env, "false") == 0 ||
+            strcmp(bbs_comment_edit_env, "0") == 0) {
+            atomic_store(&host->bbs_comment_edit_enabled, false);
+        }
+    }
+    atomic_store(&host->bbs_comment_delete_enabled, true);
+    const char *bbs_comment_delete_env = getenv("CHATTER_BBS_COMMENT_DELETE");
+    if (bbs_comment_delete_env != nullptr && bbs_comment_delete_env[0] != '\0') {
+        if (strcasecmp(bbs_comment_delete_env, "no") == 0 ||
+            strcasecmp(bbs_comment_delete_env, "false") == 0 ||
+            strcmp(bbs_comment_delete_env, "0") == 0) {
+            atomic_store(&host->bbs_comment_delete_enabled, false);
+        }
+    }
     host_security_configure(host);
     host_version_ip_rules_init(host);
     host->protected_ips = nullptr;

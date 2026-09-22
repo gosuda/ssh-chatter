@@ -90,6 +90,11 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
         return;
     }
 
+    /* Mark the post as being viewed so commands like "comment <text>" can
+     * omit the id and target this post. */
+    ctx->bbs_view_active = true;
+    ctx->bbs_view_post_id = post->id;
+
     // Start buffering to send entire post in one flush
     session_output_buffer_start(ctx);
 

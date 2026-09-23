@@ -1363,9 +1363,13 @@ static void host_bbs_notification_enqueue_locked(host_t *host, int32_t kind,
     }
     if (host->bbs_notifications == nullptr ||
         host->bbs_notification_capacity == 0U) {
+        // Host-lifetime block: allocate in the host memory context, never
+        // in the calling session's context (freed at session end).
+        sshc_memory_context_t *scope = host_memory_scope_push(host);
         host->bbs_notifications =
             sshc_gc_calloc(SSH_CHATTER_BBS_MAX_NOTIFICATIONS,
                            sizeof(bbs_notification_t));
+        host_memory_scope_pop(scope);
         if (host->bbs_notifications == nullptr) {
             return;
         }
@@ -1505,8 +1509,12 @@ static bool host_bbs_report_enqueue_locked(host_t *host, uint64_t post_id,
         return false;
     }
     if (host->bbs_reports == nullptr || host->bbs_report_capacity == 0U) {
+        // Host-lifetime block: allocate in the host memory context, never
+        // in the calling session's context (freed at session end).
+        sshc_memory_context_t *scope = host_memory_scope_push(host);
         host->bbs_reports =
             sshc_gc_calloc(SSH_CHATTER_BBS_MAX_REPORTS, sizeof(bbs_report_t));
+        host_memory_scope_pop(scope);
         if (host->bbs_reports == nullptr) {
             return false;
         }
@@ -1621,8 +1629,12 @@ static void host_bbs_mute_set_locked(host_t *host, const char *username,
         return;
     }
     if (host->bbs_mutes == nullptr || host->bbs_mute_capacity == 0U) {
+        // Host-lifetime block: allocate in the host memory context, never
+        // in the calling session's context (freed at session end).
+        sshc_memory_context_t *scope = host_memory_scope_push(host);
         host->bbs_mutes =
             sshc_gc_calloc(SSH_CHATTER_BBS_MAX_MUTES, sizeof(bbs_mute_t));
+        host_memory_scope_pop(scope);
         if (host->bbs_mutes == nullptr) {
             return;
         }

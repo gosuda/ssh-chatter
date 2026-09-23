@@ -1361,8 +1361,12 @@ static void host_bbs_modlog_append_locked(host_t *host, const char *actor,
         return;
     }
     if (host->bbs_modlog == nullptr || host->bbs_modlog_capacity == 0U) {
+        // Host-lifetime block: allocate in the host memory context, never
+        // in the calling session's context (freed at session end).
+        sshc_memory_context_t *scope = host_memory_scope_push(host);
         host->bbs_modlog = sshc_gc_calloc(SSH_CHATTER_BBS_MAX_MODLOG,
                                           sizeof(bbs_modlog_entry_t));
+        host_memory_scope_pop(scope);
         if (host->bbs_modlog == nullptr) {
             return;
         }
@@ -1529,8 +1533,12 @@ static void host_ipaudit_record_connect_locked(host_t *host,
         return;
     }
     if (host->bbs_ipaudit == nullptr || host->bbs_ipaudit_capacity == 0U) {
+        // Host-lifetime block: allocate in the host memory context, never
+        // in the calling session's context (freed at session end).
+        sshc_memory_context_t *scope = host_memory_scope_push(host);
         host->bbs_ipaudit = sshc_gc_calloc(SSH_CHATTER_BBS_MAX_IPAUDIT,
                                            sizeof(bbs_ipaudit_entry_t));
+        host_memory_scope_pop(scope);
         if (host->bbs_ipaudit == nullptr) {
             return;
         }

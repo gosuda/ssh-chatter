@@ -775,6 +775,11 @@ static const char *session_bbs_localize(session_ui_language_t lang, const char *
 #define session_bbs_render_editor(ctx, status) session_bbs_render_editor((ctx), session_bbs_localize((ctx)->ui_language, (status)))
 #define session_bbs_render_post(ctx, post, status, is_new) session_bbs_render_post((ctx), (post), session_bbs_localize((ctx)->ui_language, (status)), (is_new))
 
+/* Post ids are small sequential counters; anything larger means a corrupted
+ * or repurposed field (a wild pointer reinterpreted as an id walked off the
+ * post arena in the 2026-09-23 SEGV). Reject such ids at every entry. */
+#define SSH_CHATTER_BBS_ID_SANE_MAX (1ULL << 40)
+
 static void bbs_format_time(time_t value, char *buffer, size_t length)
 {
     if (buffer == nullptr || length == 0U) {
@@ -1177,7 +1182,8 @@ static bool session_bbs_load_post_from_state(host_t *host, uint64_t id,
 
 static bool session_bbs_load_post(host_t *host, uint64_t id, bbs_post_t *post)
 {
-    if (host == nullptr || post == nullptr || id == 0U) {
+    if (host == nullptr || post == nullptr || id == 0U ||
+        id > SSH_CHATTER_BBS_ID_SANE_MAX) {
         return false;
     }
 
@@ -1211,7 +1217,20 @@ static bool session_bbs_load_post(host_t *host, uint64_t id, bbs_post_t *post)
 // Return a post by identifier while the host lock is held.
 static bbs_post_t *host_find_bbs_post_locked(host_t *host, uint64_t id)
 {
-    if (!host_bbs_storage_ready(host) || id == 0U) {
+    if (!host_bbs_storage_ready(host) || id == 0U || id > SSH_CHATTER_BBS_ID_SANE_MAX) {
+        return nullptr;
+    }
+    /* Defensive: a session thread can outlive a torn-down or corrupted host
+     * (observed as a SEGV iterating an unmapped bbs_posts slot on
+     * 2026-09-23). Bail out instead of trusting the raw capacity. */
+    if (host->bbs_posts == nullptr ||
+        host->bbs_post_capacity > SSH_CHATTER_BBS_MAX_POSTS) {
+        static _Atomic bool logged = false;
+        if (!atomic_exchange(&logged, true)) {
+            fprintf(stderr,
+                    "[bbs] refusing post lookup: corrupt capacity %zu\n",
+                    host->bbs_post_capacity);
+        }
         return nullptr;
     }
     for (size_t idx = 0U; idx < host->bbs_post_capacity; ++idx) {

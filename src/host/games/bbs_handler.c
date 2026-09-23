@@ -32,6 +32,14 @@ static void session_bbs_print_help(session_ctx_t *ctx)
     session_send_system_line(ctx, "  upvote <id>            - Upvote a post");
     session_send_system_line(ctx, "  downvote <id>          - Downvote a post");
     session_send_system_line(ctx, "  cmtvote <id> <idx> up|down - Vote on a comment");
+    session_send_system_line(ctx, "  report <id> [reason]   - Report a post");
+    session_send_system_line(ctx, "  hide|unhide <id>       - Hide/unhide a post (op)");
+    session_send_system_line(ctx, "  pin|unpin <id>         - Pin/unpin a post (op)");
+    session_send_system_line(ctx, "  mute|unmute <user>     - Mute/unmute a user (op)");
+    session_send_system_line(ctx, "  mutes                  - List active mutes (op)");
+    session_send_system_line(ctx, "  reports [all]          - List reports (op)");
+    session_send_system_line(ctx, "  modlog                 - Moderation action log (op)");
+    session_send_system_line(ctx, "  ipaudit <user>|ip <a>  - IP audit, 5-day retention (op)");
     session_send_system_line(ctx, "  regen <id>             - Regenerate a post");
     session_send_system_line(ctx, "  delete <id>            - Delete a post");
     session_send_system_line(ctx, "  search <keyword>       - Search posts");
@@ -225,6 +233,52 @@ static void session_handle_bbs(session_ctx_t *ctx, const char *arguments)
         session_bbs_downvote(ctx, id);
     } else if (strcmp(canonical_command, "cmtvote") == 0) {
         session_bbs_cmtvote(ctx, rest);
+    } else if (strcmp(canonical_command, "report") == 0) {
+        session_bbs_report(ctx, rest);
+    } else if (strcmp(canonical_command, "reports") == 0) {
+        session_bbs_reports(ctx, rest);
+    } else if (strcmp(canonical_command, "hide") == 0) {
+        if (rest == nullptr || rest[0] == '\0') {
+            session_bbs_send_usage(ctx, "hide", "<id>");
+            return;
+        }
+        session_bbs_set_mod_flag(ctx, (uint64_t)strtoull(rest, nullptr, 10),
+                                 SSH_CHATTER_BBS_MOD_FLAG_HIDDEN, true, "hide",
+                                 "Post hidden.");
+    } else if (strcmp(canonical_command, "unhide") == 0) {
+        if (rest == nullptr || rest[0] == '\0') {
+            session_bbs_send_usage(ctx, "unhide", "<id>");
+            return;
+        }
+        session_bbs_set_mod_flag(ctx, (uint64_t)strtoull(rest, nullptr, 10),
+                                 SSH_CHATTER_BBS_MOD_FLAG_HIDDEN, false,
+                                 "unhide", "Post unhidden.");
+    } else if (strcmp(canonical_command, "pin") == 0) {
+        if (rest == nullptr || rest[0] == '\0') {
+            session_bbs_send_usage(ctx, "pin", "<id>");
+            return;
+        }
+        session_bbs_set_mod_flag(ctx, (uint64_t)strtoull(rest, nullptr, 10),
+                                 SSH_CHATTER_BBS_MOD_FLAG_PINNED, true, "pin",
+                                 "Post pinned.");
+    } else if (strcmp(canonical_command, "unpin") == 0) {
+        if (rest == nullptr || rest[0] == '\0') {
+            session_bbs_send_usage(ctx, "unpin", "<id>");
+            return;
+        }
+        session_bbs_set_mod_flag(ctx, (uint64_t)strtoull(rest, nullptr, 10),
+                                 SSH_CHATTER_BBS_MOD_FLAG_PINNED, false,
+                                 "unpin", "Post unpinned.");
+    } else if (strcmp(canonical_command, "mute") == 0) {
+        session_bbs_mute(ctx, rest);
+    } else if (strcmp(canonical_command, "unmute") == 0) {
+        session_bbs_unmute(ctx, rest);
+    } else if (strcmp(canonical_command, "mutes") == 0) {
+        session_bbs_mutes(ctx);
+    } else if (strcmp(canonical_command, "modlog") == 0) {
+        session_bbs_modlog(ctx);
+    } else if (strcmp(canonical_command, "ipaudit") == 0) {
+        session_bbs_ipaudit(ctx, rest);
     } else if (strcmp(canonical_command, "profile") == 0) {
         session_bbs_profile(ctx, rest);
     } else if (strcmp(canonical_command, "set-profile") == 0) {

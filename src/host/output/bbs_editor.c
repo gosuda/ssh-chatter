@@ -174,6 +174,11 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
     ctx->bbs_view_active = true;
     ctx->bbs_view_post_id = post->id;
 
+    bool viewer_is_operator =
+        ctx->user.is_operator || ctx->user.is_lan_operator;
+    bool post_hidden =
+        (post->mod_flags & SSH_CHATTER_BBS_MOD_FLAG_HIDDEN) != 0U;
+
     // Start buffering to send entire post in one flush
     session_output_buffer_start(ctx);
 
@@ -181,6 +186,24 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
 
     if (reset_scroll) {
         ctx->bbs_view_scroll_offset = 0U;
+    }
+
+    if (post_hidden && !viewer_is_operator) {
+        // Hidden posts show only a minimal shell to regular users.
+        char removed_line[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(removed_line, sizeof(removed_line), "#%" PRIu64, post->id);
+        session_send_plain_line(ctx, removed_line);
+        session_send_system_line(ctx, "This post has been removed.");
+        session_render_prompt(ctx, true);
+        session_output_buffer_stop(ctx);
+        return;
+    }
+
+    if (post_hidden || (post->mod_flags & SSH_CHATTER_BBS_MOD_FLAG_PINNED) !=
+                           0U) {
+        session_send_system_line(
+            ctx, post_hidden ? "\033[1;31m[hidden]\033[0m"
+                             : "\033[1;33m[pinned]\033[0m");
     }
 
     char title_line[SSH_CHATTER_MESSAGE_LIMIT];

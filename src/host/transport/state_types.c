@@ -331,7 +331,8 @@ typedef struct host_state_grant_entry {
 
 static const uint32_t BBS_STATE_MAGIC = 0x42425332U; /* 'BBS2' */
 static const uint32_t BBS_STATE_VERSION_V1 = 1U;
-static const uint32_t BBS_STATE_VERSION = 2U;
+static const uint32_t BBS_STATE_VERSION_V2 = 2U;
+static const uint32_t BBS_STATE_VERSION = 3U;
 
 typedef struct bbs_state_header {
     uint32_t magic;
@@ -377,10 +378,15 @@ typedef struct bbs_state_post_entry_disk_v1 {
     bbs_state_comment_entry_v1_t comments[SSH_CHATTER_BBS_MAX_COMMENTS];
 } bbs_state_post_entry_disk_v1_t;
 
+/* Version 3: the low byte of the former uint16_t "reserved" field carries
+ * the moderation flags (bit0 = hidden, bit1 = pinned).  The struct layout is
+ * identical to version 2, so version 2 files load unchanged with
+ * mod_flags == 0. */
 typedef struct bbs_state_post_entry_disk {
     uint64_t id;
     uint16_t board_id;
-    uint16_t reserved;
+    uint8_t mod_flags;
+    uint8_t reserved;
     int64_t created_at;
     int64_t bumped_at;
     int32_t upvotes;
@@ -406,7 +412,8 @@ bbs_state_post_entry_from_v1(bbs_state_post_entry_disk_t *dst,
     memset(dst, 0, sizeof(*dst));
     dst->id = src->id;
     dst->board_id = src->board_id;
-    dst->reserved = src->reserved;
+    dst->mod_flags = 0;
+    dst->reserved = (uint8_t)src->reserved;
     dst->created_at = src->created_at;
     dst->bumped_at = src->bumped_at;
     dst->upvotes = src->upvotes;
@@ -437,7 +444,8 @@ bbs_state_post_entry_from_v1(bbs_state_post_entry_disk_t *dst,
 typedef struct bbs_state_post_entry {
     uint64_t id;
     uint16_t board_id;
-    uint16_t reserved;
+    uint8_t mod_flags;
+    uint8_t reserved;
     int64_t created_at;
     int64_t bumped_at;
     int32_t upvotes;

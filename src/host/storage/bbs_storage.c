@@ -161,11 +161,20 @@ static void host_bbs_votes_save_locked(host_t *host);
 static void host_bbs_drafts_save_locked(host_t *host);
 static void host_bbs_notifications_save_locked(host_t *host);
 static void host_bbs_readmarks_save_locked(host_t *host);
+static void host_bbs_reports_save_locked(host_t *host);
+static void host_bbs_mutes_save_locked(host_t *host);
+static void host_bbs_modlog_save_locked(host_t *host);
+static void host_bbs_ipaudit_save_locked(host_t *host);
+static void host_ipaudit_sweep_locked(host_t *host, time_t now);
 static void host_bbs_boards_load(host_t *host);
 static void host_bbs_votes_load(host_t *host);
 static void host_bbs_drafts_load(host_t *host);
 static void host_bbs_notifications_load(host_t *host);
 static void host_bbs_readmarks_load(host_t *host);
+static void host_bbs_reports_load(host_t *host);
+static void host_bbs_mutes_load(host_t *host);
+static void host_bbs_modlog_load(host_t *host);
+static void host_bbs_ipaudit_load(host_t *host);
 
 /* The boards/votes/drafts arrays are host-owned, but the loaders run on
  * session threads where the current memory context may belong to the
@@ -181,6 +190,10 @@ static void host_bbs_aux_loads(host_t *host)
     host_bbs_drafts_load(host);
     host_bbs_notifications_load(host);
     host_bbs_readmarks_load(host);
+    host_bbs_reports_load(host);
+    host_bbs_mutes_load(host);
+    host_bbs_modlog_load(host);
+    host_bbs_ipaudit_load(host);
     sshc_memory_context_pop(prev_ctx);
 }
 
@@ -386,6 +399,7 @@ static void host_bbs_state_save_locked(host_t *host)
         bbs_state_post_entry_disk_t serialized = {0};
         serialized.id = post->id;
         serialized.board_id = post->board_id;
+        serialized.mod_flags = post->mod_flags;
         serialized.created_at = (int64_t)post->created_at;
         serialized.bumped_at = (int64_t)post->bumped_at;
         serialized.upvotes = post->upvotes;
@@ -476,6 +490,11 @@ static void host_bbs_state_save_locked(host_t *host)
     host_bbs_drafts_save_locked(host);
     host_bbs_notifications_save_locked(host);
     host_bbs_readmarks_save_locked(host);
+    host_bbs_reports_save_locked(host);
+    host_bbs_mutes_save_locked(host);
+    host_bbs_modlog_save_locked(host);
+    host_ipaudit_sweep_locked(host, time(nullptr));
+    host_bbs_ipaudit_save_locked(host);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1007,6 +1026,555 @@ static void host_bbs_readmarks_load(host_t *host)
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Moderation reports (text sidecar)                                  */
+/* ------------------------------------------------------------------ */
+
+static void host_bbs_reports_save_locked(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "reports.dat", path,
+                     sizeof(path));
+    char temp_path[PATH_MAX + 16];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
+
+    int fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        return;
+    }
+    FILE *fp = fdopen(fd, "wb");
+    if (fp == nullptr) {
+        close(fd);
+        return;
+    }
+
+    for (size_t i = 0U; i < host->bbs_report_count; ++i) {
+        const bbs_report_t *report = &host->bbs_reports[i];
+        fprintf(fp, "%" PRIu64 "|%s|%lld|%d|%s\n", report->post_id,
+                report->reporter, (long long)report->created_at,
+                (int)report->status, report->reason);
+    }
+
+    fflush(fp);
+    fsync(fd);
+    fclose(fp);
+    chmod(temp_path, S_IRUSR | S_IWUSR);
+    rename(temp_path, path);
+    chmod(path, S_IRUSR | S_IWUSR);
+}
+
+static void host_bbs_reports_load(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    if (host->bbs_reports == nullptr) {
+        host->bbs_reports =
+            sshc_gc_calloc(SSH_CHATTER_BBS_MAX_REPORTS, sizeof(bbs_report_t));
+        if (host->bbs_reports == nullptr) {
+            return;
+        }
+        host->bbs_report_capacity = SSH_CHATTER_BBS_MAX_REPORTS;
+        host->bbs_report_count = 0U;
+    }
+
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "reports.dat", path,
+                     sizeof(path));
+    if (!host_bbs_file_exists(path)) {
+        return;
+    }
+    FILE *fp = fopen(path, "rb");
+    if (fp == nullptr) {
+        return;
+    }
+
+    bbs_report_t incoming[SSH_CHATTER_BBS_MAX_REPORTS];
+    size_t incoming_count = 0U;
+    char line[512];
+    while (fgets(line, sizeof(line), fp) != nullptr) {
+        line[strcspn(line, "\r\n")] = '\0';
+        char *fields[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};
+        char *cursor = line;
+        size_t field_count = 0U;
+        while (field_count < 5U) {
+            fields[field_count++] = cursor;
+            char *sep = strchr(cursor, '|');
+            if (sep == nullptr) {
+                break;
+            }
+            *sep = '\0';
+            cursor = sep + 1;
+        }
+        if (field_count < 4U || fields[0] == nullptr ||
+            fields[1] == nullptr || fields[2] == nullptr ||
+            fields[3] == nullptr) {
+            continue;
+        }
+        bbs_report_t entry = {0};
+        entry.post_id = (uint64_t)strtoull(fields[0], nullptr, 10);
+        snprintf(entry.reporter, sizeof(entry.reporter), "%s", fields[1]);
+        entry.created_at = (time_t)strtoll(fields[2], nullptr, 10);
+        entry.status = (int32_t)strtol(fields[3], nullptr, 10);
+        if (fields[4] != nullptr) {
+            snprintf(entry.reason, sizeof(entry.reason), "%s", fields[4]);
+        }
+        if (incoming_count >= SSH_CHATTER_BBS_MAX_REPORTS) {
+            memmove(incoming, incoming + 1,
+                    (incoming_count - 1U) * sizeof(incoming[0]));
+            --incoming_count;
+        }
+        incoming[incoming_count++] = entry;
+    }
+    fclose(fp);
+
+    host->bbs_report_count = 0U;
+    for (size_t i = 0U; i < incoming_count; ++i) {
+        host->bbs_reports[host->bbs_report_count++] = incoming[i];
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Mutes (text sidecar)                                               */
+/* ------------------------------------------------------------------ */
+
+static void host_bbs_mutes_save_locked(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "mutes.dat", path,
+                     sizeof(path));
+    char temp_path[PATH_MAX + 16];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
+
+    int fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        return;
+    }
+    FILE *fp = fdopen(fd, "wb");
+    if (fp == nullptr) {
+        close(fd);
+        return;
+    }
+
+    for (size_t i = 0U; i < host->bbs_mute_count; ++i) {
+        const bbs_mute_t *mute = &host->bbs_mutes[i];
+        fprintf(fp, "%s|%lld|%s|%lld\n", mute->username,
+                (long long)mute->until, mute->muted_by,
+                (long long)mute->created_at);
+    }
+
+    fflush(fp);
+    fsync(fd);
+    fclose(fp);
+    chmod(temp_path, S_IRUSR | S_IWUSR);
+    rename(temp_path, path);
+    chmod(path, S_IRUSR | S_IWUSR);
+}
+
+static void host_bbs_mutes_load(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    if (host->bbs_mutes == nullptr) {
+        host->bbs_mutes =
+            sshc_gc_calloc(SSH_CHATTER_BBS_MAX_MUTES, sizeof(bbs_mute_t));
+        if (host->bbs_mutes == nullptr) {
+            return;
+        }
+        host->bbs_mute_capacity = SSH_CHATTER_BBS_MAX_MUTES;
+        host->bbs_mute_count = 0U;
+    }
+
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "mutes.dat", path,
+                     sizeof(path));
+    if (!host_bbs_file_exists(path)) {
+        return;
+    }
+    FILE *fp = fopen(path, "rb");
+    if (fp == nullptr) {
+        return;
+    }
+
+    bbs_mute_t incoming[SSH_CHATTER_BBS_MAX_MUTES];
+    size_t incoming_count = 0U;
+    char line[256];
+    while (fgets(line, sizeof(line), fp) != nullptr) {
+        char *fields[4] = {nullptr, nullptr, nullptr, nullptr};
+        char *cursor = line;
+        size_t field_count = 0U;
+        while (field_count < 4U) {
+            fields[field_count++] = cursor;
+            char *sep = strchr(cursor, '|');
+            if (sep == nullptr) {
+                break;
+            }
+            *sep = '\0';
+            cursor = sep + 1;
+        }
+        if (field_count < 4U || fields[0] == nullptr ||
+            fields[1] == nullptr || fields[2] == nullptr ||
+            fields[3] == nullptr) {
+            continue;
+        }
+        bbs_mute_t entry = {0};
+        snprintf(entry.username, sizeof(entry.username), "%s", fields[0]);
+        entry.until = (time_t)strtoll(fields[1], nullptr, 10);
+        snprintf(entry.muted_by, sizeof(entry.muted_by), "%s", fields[2]);
+        entry.created_at = (time_t)strtoll(fields[3], nullptr, 10);
+        if (incoming_count >= SSH_CHATTER_BBS_MAX_MUTES) {
+            memmove(incoming, incoming + 1,
+                    (incoming_count - 1U) * sizeof(incoming[0]));
+            --incoming_count;
+        }
+        incoming[incoming_count++] = entry;
+    }
+    fclose(fp);
+
+    host->bbs_mute_count = 0U;
+    for (size_t i = 0U; i < incoming_count; ++i) {
+        host->bbs_mutes[host->bbs_mute_count++] = incoming[i];
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Moderation action log (text sidecar)                               */
+/* ------------------------------------------------------------------ */
+
+static void host_bbs_modlog_save_locked(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "modlog.dat", path,
+                     sizeof(path));
+    char temp_path[PATH_MAX + 16];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
+
+    int fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        return;
+    }
+    FILE *fp = fdopen(fd, "wb");
+    if (fp == nullptr) {
+        close(fd);
+        return;
+    }
+
+    for (size_t i = 0U; i < host->bbs_modlog_count; ++i) {
+        const bbs_modlog_entry_t *entry = &host->bbs_modlog[i];
+        fprintf(fp, "%lld|%s|%s|%s\n", (long long)entry->created_at,
+                entry->actor, entry->action, entry->target);
+    }
+
+    fflush(fp);
+    fsync(fd);
+    fclose(fp);
+    chmod(temp_path, S_IRUSR | S_IWUSR);
+    rename(temp_path, path);
+    chmod(path, S_IRUSR | S_IWUSR);
+}
+
+static void host_bbs_modlog_load(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    if (host->bbs_modlog == nullptr) {
+        host->bbs_modlog = sshc_gc_calloc(SSH_CHATTER_BBS_MAX_MODLOG,
+                                          sizeof(bbs_modlog_entry_t));
+        if (host->bbs_modlog == nullptr) {
+            return;
+        }
+        host->bbs_modlog_capacity = SSH_CHATTER_BBS_MAX_MODLOG;
+        host->bbs_modlog_count = 0U;
+    }
+
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "modlog.dat", path,
+                     sizeof(path));
+    if (!host_bbs_file_exists(path)) {
+        return;
+    }
+    FILE *fp = fopen(path, "rb");
+    if (fp == nullptr) {
+        return;
+    }
+
+    bbs_modlog_entry_t incoming[SSH_CHATTER_BBS_MAX_MODLOG];
+    size_t incoming_count = 0U;
+    char line[256];
+    while (fgets(line, sizeof(line), fp) != nullptr) {
+        line[strcspn(line, "\r\n")] = '\0';
+        char *fields[4] = {nullptr, nullptr, nullptr, nullptr};
+        char *cursor = line;
+        size_t field_count = 0U;
+        while (field_count < 4U) {
+            fields[field_count++] = cursor;
+            char *sep = strchr(cursor, '|');
+            if (sep == nullptr) {
+                break;
+            }
+            *sep = '\0';
+            cursor = sep + 1;
+        }
+        if (field_count < 4U || fields[0] == nullptr ||
+            fields[1] == nullptr || fields[2] == nullptr ||
+            fields[3] == nullptr) {
+            continue;
+        }
+        bbs_modlog_entry_t entry = {0};
+        entry.created_at = (time_t)strtoll(fields[0], nullptr, 10);
+        snprintf(entry.actor, sizeof(entry.actor), "%s", fields[1]);
+        snprintf(entry.action, sizeof(entry.action), "%s", fields[2]);
+        snprintf(entry.target, sizeof(entry.target), "%s", fields[3]);
+        if (incoming_count >= SSH_CHATTER_BBS_MAX_MODLOG) {
+            memmove(incoming, incoming + 1,
+                    (incoming_count - 1U) * sizeof(incoming[0]));
+            --incoming_count;
+        }
+        incoming[incoming_count++] = entry;
+    }
+    fclose(fp);
+
+    host->bbs_modlog_count = 0U;
+    for (size_t i = 0U; i < incoming_count; ++i) {
+        host->bbs_modlog[host->bbs_modlog_count++] = incoming[i];
+    }
+}
+
+// Append one moderation action log entry.  Callers must hold host->lock.
+static void host_bbs_modlog_append_locked(host_t *host, const char *actor,
+                                          const char *action,
+                                          const char *target)
+{
+    if (host == nullptr || actor == nullptr || action == nullptr ||
+        target == nullptr) {
+        return;
+    }
+    if (host->bbs_modlog == nullptr || host->bbs_modlog_capacity == 0U) {
+        host->bbs_modlog = sshc_gc_calloc(SSH_CHATTER_BBS_MAX_MODLOG,
+                                          sizeof(bbs_modlog_entry_t));
+        if (host->bbs_modlog == nullptr) {
+            return;
+        }
+        host->bbs_modlog_capacity = SSH_CHATTER_BBS_MAX_MODLOG;
+        host->bbs_modlog_count = 0U;
+    }
+    if (host->bbs_modlog_count >= host->bbs_modlog_capacity) {
+        memmove(host->bbs_modlog, host->bbs_modlog + 1,
+                (host->bbs_modlog_count - 1U) * sizeof(*host->bbs_modlog));
+        --host->bbs_modlog_count;
+    }
+
+    bbs_modlog_entry_t *entry =
+        &host->bbs_modlog[host->bbs_modlog_count++];
+    memset(entry, 0, sizeof(*entry));
+    entry->created_at = time(nullptr);
+    snprintf(entry->actor, sizeof(entry->actor), "%s", actor);
+    snprintf(entry->action, sizeof(entry->action), "%s", action);
+    snprintf(entry->target, sizeof(entry->target), "%s", target);
+}
+
+/* ------------------------------------------------------------------ */
+/* IP audit log (text sidecar, 5-day retention, never backed up)      */
+/* ------------------------------------------------------------------ */
+
+// Destroy entries past the retention window: disconnected entries aged
+// 5 days, and still-connected entries whose connect time is 5 days old
+// (stale/crashed sessions).  Callers must hold host->lock.
+static void host_ipaudit_sweep_locked(host_t *host, time_t now)
+{
+    if (host == nullptr || host->bbs_ipaudit == nullptr || now <= 0) {
+        return;
+    }
+    size_t write_idx = 0U;
+    for (size_t idx = 0U; idx < host->bbs_ipaudit_count; ++idx) {
+        bbs_ipaudit_entry_t *entry = &host->bbs_ipaudit[idx];
+        time_t anchor = entry->disconnect_epoch > 0
+                            ? entry->disconnect_epoch
+                            : entry->connect_epoch;
+        if (anchor > 0 && now - anchor >
+                              (time_t)SSH_CHATTER_IPAUDIT_RETENTION_SECONDS) {
+            continue;
+        }
+        host->bbs_ipaudit[write_idx++] = *entry;
+    }
+    host->bbs_ipaudit_count = write_idx;
+}
+
+static void host_bbs_ipaudit_save_locked(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "ipaudit.dat", path,
+                     sizeof(path));
+    char temp_path[PATH_MAX + 16];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
+
+    int fd = open(temp_path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (fd < 0) {
+        return;
+    }
+    FILE *fp = fdopen(fd, "wb");
+    if (fp == nullptr) {
+        close(fd);
+        return;
+    }
+
+    for (size_t i = 0U; i < host->bbs_ipaudit_count; ++i) {
+        const bbs_ipaudit_entry_t *entry = &host->bbs_ipaudit[i];
+        fprintf(fp, "%s|%s|%lld|%lld\n", entry->username, entry->ip,
+                (long long)entry->connect_epoch,
+                (long long)entry->disconnect_epoch);
+    }
+
+    fflush(fp);
+    fsync(fd);
+    fclose(fp);
+    chmod(temp_path, S_IRUSR | S_IWUSR);
+    rename(temp_path, path);
+    chmod(path, S_IRUSR | S_IWUSR);
+}
+
+static void host_bbs_ipaudit_load(host_t *host)
+{
+    if (host == nullptr || host->bbs_state_file_path[0] == '\0') {
+        return;
+    }
+    if (host->bbs_ipaudit == nullptr) {
+        host->bbs_ipaudit = sshc_gc_calloc(SSH_CHATTER_BBS_MAX_IPAUDIT,
+                                           sizeof(bbs_ipaudit_entry_t));
+        if (host->bbs_ipaudit == nullptr) {
+            return;
+        }
+        host->bbs_ipaudit_capacity = SSH_CHATTER_BBS_MAX_IPAUDIT;
+        host->bbs_ipaudit_count = 0U;
+    }
+
+    char path[PATH_MAX];
+    host_bbs_v2_path(host->bbs_state_file_path, "ipaudit.dat", path,
+                     sizeof(path));
+    if (!host_bbs_file_exists(path)) {
+        return;
+    }
+    FILE *fp = fopen(path, "rb");
+    if (fp == nullptr) {
+        return;
+    }
+
+    bbs_ipaudit_entry_t incoming[SSH_CHATTER_BBS_MAX_IPAUDIT];
+    size_t incoming_count = 0U;
+    char line[256];
+    while (fgets(line, sizeof(line), fp) != nullptr) {
+        char *fields[4] = {nullptr, nullptr, nullptr, nullptr};
+        char *cursor = line;
+        size_t field_count = 0U;
+        while (field_count < 4U) {
+            fields[field_count++] = cursor;
+            char *sep = strchr(cursor, '|');
+            if (sep == nullptr) {
+                break;
+            }
+            *sep = '\0';
+            cursor = sep + 1;
+        }
+        if (field_count < 4U || fields[0] == nullptr ||
+            fields[1] == nullptr || fields[2] == nullptr ||
+            fields[3] == nullptr) {
+            continue;
+        }
+        bbs_ipaudit_entry_t entry = {0};
+        snprintf(entry.username, sizeof(entry.username), "%s", fields[0]);
+        snprintf(entry.ip, sizeof(entry.ip), "%s", fields[1]);
+        entry.connect_epoch = (time_t)strtoll(fields[2], nullptr, 10);
+        entry.disconnect_epoch = (time_t)strtoll(fields[3], nullptr, 10);
+        if (incoming_count >= SSH_CHATTER_BBS_MAX_IPAUDIT) {
+            memmove(incoming, incoming + 1,
+                    (incoming_count - 1U) * sizeof(incoming[0]));
+            --incoming_count;
+        }
+        incoming[incoming_count++] = entry;
+    }
+    fclose(fp);
+
+    host->bbs_ipaudit_count = 0U;
+    for (size_t i = 0U; i < incoming_count; ++i) {
+        host->bbs_ipaudit[host->bbs_ipaudit_count++] = incoming[i];
+    }
+    // Enforce retention on load as well.
+    host_ipaudit_sweep_locked(host, time(nullptr));
+}
+
+// Record a connect for an authenticated user.  Callers must hold host->lock.
+static void host_ipaudit_record_connect_locked(host_t *host,
+                                               const char *username,
+                                               const char *ip)
+{
+    if (host == nullptr || username == nullptr || username[0] == '\0' ||
+        ip == nullptr || ip[0] == '\0') {
+        return;
+    }
+    if (!host_bbs_storage_ready(host)) {
+        return;
+    }
+    if (host->bbs_ipaudit == nullptr || host->bbs_ipaudit_capacity == 0U) {
+        host->bbs_ipaudit = sshc_gc_calloc(SSH_CHATTER_BBS_MAX_IPAUDIT,
+                                           sizeof(bbs_ipaudit_entry_t));
+        if (host->bbs_ipaudit == nullptr) {
+            return;
+        }
+        host->bbs_ipaudit_capacity = SSH_CHATTER_BBS_MAX_IPAUDIT;
+        host->bbs_ipaudit_count = 0U;
+    }
+    if (host->bbs_ipaudit_count >= host->bbs_ipaudit_capacity) {
+        memmove(host->bbs_ipaudit, host->bbs_ipaudit + 1,
+                (host->bbs_ipaudit_count - 1U) *
+                    sizeof(*host->bbs_ipaudit));
+        --host->bbs_ipaudit_count;
+    }
+
+    bbs_ipaudit_entry_t *entry =
+        &host->bbs_ipaudit[host->bbs_ipaudit_count++];
+    memset(entry, 0, sizeof(*entry));
+    snprintf(entry->username, sizeof(entry->username), "%s", username);
+    snprintf(entry->ip, sizeof(entry->ip), "%s", ip);
+    entry->connect_epoch = time(nullptr);
+    entry->disconnect_epoch = 0;
+}
+
+// Stamp the disconnect time on the newest matching open entry.
+// Callers must hold host->lock.
+static void host_ipaudit_record_disconnect_locked(host_t *host,
+                                                  const char *username,
+                                                  const char *ip)
+{
+    if (host == nullptr || host->bbs_ipaudit == nullptr ||
+        username == nullptr || ip == nullptr) {
+        return;
+    }
+    for (size_t idx = host->bbs_ipaudit_count; idx > 0U; --idx) {
+        bbs_ipaudit_entry_t *entry = &host->bbs_ipaudit[idx - 1U];
+        if (entry->disconnect_epoch == 0 &&
+            strncmp(entry->username, username, SSH_CHATTER_USERNAME_LEN) ==
+                0 &&
+            strncmp(entry->ip, ip, SSH_CHATTER_IP_LEN) == 0) {
+            entry->disconnect_epoch = time(nullptr);
+            break;
+        }
+    }
+}
+
 static void host_bbs_state_load(host_t *host)
 {
     if (host == nullptr) {
@@ -1086,6 +1654,7 @@ static void host_bbs_state_load(host_t *host)
     }
 
     if (header.version != BBS_STATE_VERSION &&
+        header.version != BBS_STATE_VERSION_V2 &&
         header.version != BBS_STATE_VERSION_V1) {
         memset(mapped, 0, mapped_len);
         munmap(mapped, mapped_len);
@@ -1197,6 +1766,7 @@ static void host_bbs_state_load(host_t *host)
         post->in_use = true;
         post->id = serialized.id;
         post->board_id = serialized.board_id;
+        post->mod_flags = serialized.mod_flags;
         post->created_at = (time_t)serialized.created_at;
         post->bumped_at = (time_t)serialized.bumped_at;
         post->upvotes = serialized.upvotes;

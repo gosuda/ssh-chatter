@@ -232,6 +232,160 @@ static const session_bbs_subcommand_alias_t kSessionBbsSubcommands[] = {
             },
     },
     {
+        .canonical = "report",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "report",
+                [SESSION_UI_LANGUAGE_KO] = "신고",
+                [SESSION_UI_LANGUAGE_JP] = "通報",
+                [SESSION_UI_LANGUAGE_ZH] = "举报",
+                [SESSION_UI_LANGUAGE_RU] = "жалоба",
+                [SESSION_UI_LANGUAGE_DE] = "melden",
+                [SESSION_UI_LANGUAGE_FR] = "signaler",
+                [SESSION_UI_LANGUAGE_PL] = "zglos",
+            },
+    },
+    {
+        .canonical = "reports",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "reports",
+                [SESSION_UI_LANGUAGE_KO] = "신고목록",
+                [SESSION_UI_LANGUAGE_JP] = "通報一覧",
+                [SESSION_UI_LANGUAGE_ZH] = "举报列表",
+                [SESSION_UI_LANGUAGE_RU] = "жалобы",
+                [SESSION_UI_LANGUAGE_DE] = "meldungen",
+                [SESSION_UI_LANGUAGE_FR] = "signalements",
+                [SESSION_UI_LANGUAGE_PL] = "zgloszenia",
+            },
+    },
+    {
+        .canonical = "hide",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "hide",
+                [SESSION_UI_LANGUAGE_KO] = "숨김",
+                [SESSION_UI_LANGUAGE_JP] = "非表示",
+                [SESSION_UI_LANGUAGE_ZH] = "隐藏",
+                [SESSION_UI_LANGUAGE_RU] = "скрыть",
+                [SESSION_UI_LANGUAGE_DE] = "verbergen",
+                [SESSION_UI_LANGUAGE_FR] = "masquer",
+                [SESSION_UI_LANGUAGE_PL] = "ukryj",
+            },
+    },
+    {
+        .canonical = "unhide",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "unhide",
+                [SESSION_UI_LANGUAGE_KO] = "숨김해제",
+                [SESSION_UI_LANGUAGE_JP] = "表示復帰",
+                [SESSION_UI_LANGUAGE_ZH] = "取消隐藏",
+                [SESSION_UI_LANGUAGE_RU] = "показать",
+                [SESSION_UI_LANGUAGE_DE] = "einblenden",
+                [SESSION_UI_LANGUAGE_FR] = "afficher",
+                [SESSION_UI_LANGUAGE_PL] = "pokaz",
+            },
+    },
+    {
+        .canonical = "pin",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "pin",
+                [SESSION_UI_LANGUAGE_KO] = "고정",
+                [SESSION_UI_LANGUAGE_JP] = "固定",
+                [SESSION_UI_LANGUAGE_ZH] = "置顶",
+                [SESSION_UI_LANGUAGE_RU] = "закрепить",
+                [SESSION_UI_LANGUAGE_DE] = "anheften",
+                [SESSION_UI_LANGUAGE_FR] = "epingler",
+                [SESSION_UI_LANGUAGE_PL] = "przypnij",
+            },
+    },
+    {
+        .canonical = "unpin",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "unpin",
+                [SESSION_UI_LANGUAGE_KO] = "고정해제",
+                [SESSION_UI_LANGUAGE_JP] = "固定解除",
+                [SESSION_UI_LANGUAGE_ZH] = "取消置顶",
+                [SESSION_UI_LANGUAGE_RU] = "открепить",
+                [SESSION_UI_LANGUAGE_DE] = "loesen",
+                [SESSION_UI_LANGUAGE_FR] = "desepingler",
+                [SESSION_UI_LANGUAGE_PL] = "odepnij",
+            },
+    },
+    {
+        .canonical = "mute",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "mute",
+                [SESSION_UI_LANGUAGE_KO] = "차단",
+                [SESSION_UI_LANGUAGE_JP] = "発言禁止",
+                [SESSION_UI_LANGUAGE_ZH] = "禁言",
+                [SESSION_UI_LANGUAGE_RU] = "мут",
+                [SESSION_UI_LANGUAGE_DE] = "stummschalten",
+                [SESSION_UI_LANGUAGE_FR] = "réduire-au-silence",
+                [SESSION_UI_LANGUAGE_PL] = "wycisz",
+            },
+    },
+    {
+        .canonical = "unmute",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "unmute",
+                [SESSION_UI_LANGUAGE_KO] = "차단해제",
+                [SESSION_UI_LANGUAGE_JP] = "解除",
+                [SESSION_UI_LANGUAGE_ZH] = "解除禁言",
+                [SESSION_UI_LANGUAGE_RU] = "размут",
+                [SESSION_UI_LANGUAGE_DE] = "entstummen",
+                [SESSION_UI_LANGUAGE_FR] = "reactiver",
+                [SESSION_UI_LANGUAGE_PL] = "odcisz",
+            },
+    },
+    {
+        .canonical = "mutes",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "mutes",
+                [SESSION_UI_LANGUAGE_KO] = "차단목록",
+                [SESSION_UI_LANGUAGE_JP] = "禁止一覧",
+                [SESSION_UI_LANGUAGE_ZH] = "禁言列表",
+                [SESSION_UI_LANGUAGE_RU] = "муты",
+                [SESSION_UI_LANGUAGE_DE] = "stummliste",
+                [SESSION_UI_LANGUAGE_FR] = "sanctions",
+                [SESSION_UI_LANGUAGE_PL] = "wyciszenia",
+            },
+    },
+    {
+        .canonical = "modlog",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "modlog",
+                [SESSION_UI_LANGUAGE_KO] = "운영기록",
+                [SESSION_UI_LANGUAGE_JP] = "管理ログ",
+                [SESSION_UI_LANGUAGE_ZH] = "管理日志",
+                [SESSION_UI_LANGUAGE_RU] = "журнал",
+                [SESSION_UI_LANGUAGE_DE] = "modlog",
+                [SESSION_UI_LANGUAGE_FR] = "journal",
+                [SESSION_UI_LANGUAGE_PL] = "dziennik",
+            },
+    },
+    {
+        .canonical = "ipaudit",
+        .localized =
+            {
+                [SESSION_UI_LANGUAGE_EN] = "ipaudit",
+                [SESSION_UI_LANGUAGE_KO] = "ip조회",
+                [SESSION_UI_LANGUAGE_JP] = "ip照会",
+                [SESSION_UI_LANGUAGE_ZH] = "ip查询",
+                [SESSION_UI_LANGUAGE_RU] = "ip-аудит",
+                [SESSION_UI_LANGUAGE_DE] = "ip-abfrage",
+                [SESSION_UI_LANGUAGE_FR] = "audit-ip",
+                [SESSION_UI_LANGUAGE_PL] = "ip-audyt",
+            },
+    },
+    {
         .canonical = "profile",
         .localized =
             {

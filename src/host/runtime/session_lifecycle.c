@@ -189,6 +189,15 @@ static void session_cleanup(session_ctx_t *ctx)
         return;
     }
 
+    // Stamp the IP audit disconnect time while user/ip are still valid.
+    if (ctx->user.name[0] != '\0' && ctx->client_ip[0] != '\0' &&
+        ctx->owner != nullptr && ctx->user.is_authenticated) {
+        ttak_mutex_lock(&ctx->owner->lock);
+        host_ipaudit_record_disconnect_locked(ctx->owner, ctx->user.name,
+                                              ctx->client_ip);
+        ttak_mutex_unlock(&ctx->owner->lock);
+    }
+
     /* Release per-session RSS snapshot cache after the session has already
      * stopped claiming runtime resources. */
     session_rss_clear(ctx);
@@ -835,6 +844,13 @@ static void *session_thread(void *arg)
             }
             authenticated = true;
             ctx->user.is_authenticated = true;
+            if (ctx->user.name[0] != '\0' && ctx->client_ip[0] != '\0' &&
+                ctx->owner != nullptr) {
+                ttak_mutex_lock(&ctx->owner->lock);
+                host_ipaudit_record_connect_locked(ctx->owner, ctx->user.name,
+                                                   ctx->client_ip);
+                ttak_mutex_unlock(&ctx->owner->lock);
+            }
         }
 
         if (session_accept_channel(ctx) != 0) {

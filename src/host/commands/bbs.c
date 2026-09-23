@@ -94,6 +94,22 @@ static const char *session_bbs_localize(session_ui_language_t lang, const char *
         if (strcmp(msg, "%s replied to your post #%llu.") == 0) return "%s님이 회원님의 게시물 #%llu에 댓글을 달았습니다.";
         if (strcmp(msg, "%s mentioned you in post #%llu.") == 0) return "%s님이 게시물 #%llu에서 회원님을 언급했습니다.";
         if (strcmp(msg, "%llu new posts since your last visit.") == 0) return "지난 방문 이후 새 게시물 %llu개.";
+        if (strcmp(msg, "You have already reported this post.") == 0) return "이미 이 게시물을 신고하셨습니다.";
+        if (strcmp(msg, "Report submitted. Thank you.") == 0) return "신고가 접수되었습니다. 감사합니다.";
+        if (strcmp(msg, "%llu open report(s).") == 0) return "%llu건의 열린 신고.";
+        if (strcmp(msg, "No open reports.") == 0) return "열린 신고가 없습니다.";
+        if (strcmp(msg, "Post hidden.") == 0) return "게시물이 숨겨졌습니다.";
+        if (strcmp(msg, "Post unhidden.") == 0) return "게시물 숨김이 해제되었습니다.";
+        if (strcmp(msg, "Post pinned.") == 0) return "게시물이 고정되었습니다.";
+        if (strcmp(msg, "Post unpinned.") == 0) return "게시물 고정이 해제되었습니다.";
+        if (strcmp(msg, "Only operators may use this command.") == 0) return "운영자만 이 명령을 사용할 수 있습니다.";
+        if (strcmp(msg, "You are muted and cannot post right now.") == 0) return "현재 음소거 상태로 게시할 수 없습니다.";
+        if (strcmp(msg, "Operators cannot be muted.") == 0) return "운영자는 음소거할 수 없습니다.";
+        if (strcmp(msg, "No such user.") == 0) return "해당 사용자가 없습니다.";
+        if (strcmp(msg, "User muted.") == 0) return "사용자가 음소거되었습니다.";
+        if (strcmp(msg, "User unmuted.") == 0) return "사용자 음소거가 해제되었습니다.";
+        if (strcmp(msg, "No active mutes.") == 0) return "활성 음소거가 없습니다.";
+        if (strcmp(msg, "No records found.") == 0) return "기록이 없습니다.";
         break;
     case SESSION_UI_LANGUAGE_JP:
         if (strcmp(msg, "That post is no longer available.") == 0) return "その投稿は利用できなくなりました。";
@@ -187,6 +203,22 @@ static const char *session_bbs_localize(session_ui_language_t lang, const char *
         if (strcmp(msg, "%s replied to your post #%llu.") == 0) return "%s があなたの投稿 #%llu にコメントしました。";
         if (strcmp(msg, "%s mentioned you in post #%llu.") == 0) return "%s が投稿 #%llu であなたを言及しました。";
         if (strcmp(msg, "%llu new posts since your last visit.") == 0) return "前回の訪問以降に新着投稿 %llu 件。";
+        if (strcmp(msg, "You have already reported this post.") == 0) return "この投稿は既に報告済みです。";
+        if (strcmp(msg, "Report submitted. Thank you.") == 0) return "報告を受け付けました。ありがとうございます。";
+        if (strcmp(msg, "%llu open report(s).") == 0) return "未対応の報告: %llu 件。";
+        if (strcmp(msg, "No open reports.") == 0) return "未対応の報告はありません。";
+        if (strcmp(msg, "Post hidden.") == 0) return "投稿を非表示にしました。";
+        if (strcmp(msg, "Post unhidden.") == 0) return "投稿の非表示を解除しました。";
+        if (strcmp(msg, "Post pinned.") == 0) return "投稿を固定しました。";
+        if (strcmp(msg, "Post unpinned.") == 0) return "投稿の固定を解除しました。";
+        if (strcmp(msg, "Only operators may use this command.") == 0) return "このコマンドはオペレーターのみ使用できます。";
+        if (strcmp(msg, "You are muted and cannot post right now.") == 0) return "発言禁止のため現在投稿できません。";
+        if (strcmp(msg, "Operators cannot be muted.") == 0) return "オペレーターは発言禁止にできません。";
+        if (strcmp(msg, "No such user.") == 0) return "そのユーザーは存在しません。";
+        if (strcmp(msg, "User muted.") == 0) return "ユーザーを発言禁止にしました。";
+        if (strcmp(msg, "User unmuted.") == 0) return "ユーザーの発言禁止を解除しました。";
+        if (strcmp(msg, "No active mutes.") == 0) return "アクティブな発言禁止はありません。";
+        if (strcmp(msg, "No records found.") == 0) return "記録が見つかりません。";
         break;
     case SESSION_UI_LANGUAGE_ZH:
         if (strcmp(msg, "That post is no longer available.") == 0) return "该帖子已不可用。";
@@ -280,6 +312,22 @@ static const char *session_bbs_localize(session_ui_language_t lang, const char *
         if (strcmp(msg, "%s replied to your post #%llu.") == 0) return "%s 回复了您的帖子 #%llu。";
         if (strcmp(msg, "%s mentioned you in post #%llu.") == 0) return "%s 在帖子 #%llu 中提到了您。";
         if (strcmp(msg, "%llu new posts since your last visit.") == 0) return "自您上次访问以来有 %llu 条新帖子。";
+        if (strcmp(msg, "You have already reported this post.") == 0) return "您已举报过此帖子。";
+        if (strcmp(msg, "Report submitted. Thank you.") == 0) return "举报已提交，谢谢。";
+        if (strcmp(msg, "%llu open report(s).") == 0) return "%llu 条待处理举报。";
+        if (strcmp(msg, "No open reports.") == 0) return "没有待处理的举报。";
+        if (strcmp(msg, "Post hidden.") == 0) return "帖子已隐藏。";
+        if (strcmp(msg, "Post unhidden.") == 0) return "帖子已取消隐藏。";
+        if (strcmp(msg, "Post pinned.") == 0) return "帖子已置顶。";
+        if (strcmp(msg, "Post unpinned.") == 0) return "帖子已取消置顶。";
+        if (strcmp(msg, "Only operators may use this command.") == 0) return "只有管理员可以使用此命令。";
+        if (strcmp(msg, "You are muted and cannot post right now.") == 0) return "您已被禁言，暂时无法发布。";
+        if (strcmp(msg, "Operators cannot be muted.") == 0) return "不能禁言管理员。";
+        if (strcmp(msg, "No such user.") == 0) return "没有该用户。";
+        if (strcmp(msg, "User muted.") == 0) return "用户已被禁言。";
+        if (strcmp(msg, "User unmuted.") == 0) return "用户已被解除禁言。";
+        if (strcmp(msg, "No active mutes.") == 0) return "没有生效中的禁言。";
+        if (strcmp(msg, "No records found.") == 0) return "没有找到记录。";
         break;
     case SESSION_UI_LANGUAGE_RU:
         if (strcmp(msg, "That post is no longer available.") == 0) return "Этот пост больше недоступен.";
@@ -373,6 +421,22 @@ static const char *session_bbs_localize(session_ui_language_t lang, const char *
         if (strcmp(msg, "%s replied to your post #%llu.") == 0) return "%s ответил на ваш пост #%llu.";
         if (strcmp(msg, "%s mentioned you in post #%llu.") == 0) return "%s упомянул вас в посте #%llu.";
         if (strcmp(msg, "%llu new posts since your last visit.") == 0) return "С момента вашего последнего визита новых постов: %llu.";
+        if (strcmp(msg, "You have already reported this post.") == 0) return "Вы уже жаловались на этот пост.";
+        if (strcmp(msg, "Report submitted. Thank you.") == 0) return "Жалоба отправлена. Спасибо.";
+        if (strcmp(msg, "%llu open report(s).") == 0) return "Открыто жалоб: %llu.";
+        if (strcmp(msg, "No open reports.") == 0) return "Открытых жалоб нет.";
+        if (strcmp(msg, "Post hidden.") == 0) return "Пост скрыт.";
+        if (strcmp(msg, "Post unhidden.") == 0) return "Пост снова виден.";
+        if (strcmp(msg, "Post pinned.") == 0) return "Пост закреплён.";
+        if (strcmp(msg, "Post unpinned.") == 0) return "Пост откреплён.";
+        if (strcmp(msg, "Only operators may use this command.") == 0) return "Только операторы могут использовать эту команду.";
+        if (strcmp(msg, "You are muted and cannot post right now.") == 0) return "У вас мут, сейчас нельзя публиковать.";
+        if (strcmp(msg, "Operators cannot be muted.") == 0) return "Операторов нельзя мутить.";
+        if (strcmp(msg, "No such user.") == 0) return "Такого пользователя нет.";
+        if (strcmp(msg, "User muted.") == 0) return "Пользователь замьючен.";
+        if (strcmp(msg, "User unmuted.") == 0) return "Мут пользователя снят.";
+        if (strcmp(msg, "No active mutes.") == 0) return "Активных мутов нет.";
+        if (strcmp(msg, "No records found.") == 0) return "Записей не найдено.";
         break;
     case SESSION_UI_LANGUAGE_DE:
         if (strcmp(msg, "That post is no longer available.") == 0) return "Dieser Beitrag ist nicht mehr verfügbar.";
@@ -466,6 +530,22 @@ static const char *session_bbs_localize(session_ui_language_t lang, const char *
         if (strcmp(msg, "%s replied to your post #%llu.") == 0) return "%s hat auf Ihren Beitrag #%llu geantwortet.";
         if (strcmp(msg, "%s mentioned you in post #%llu.") == 0) return "%s hat Sie in Beitrag #%llu erwähnt.";
         if (strcmp(msg, "%llu new posts since your last visit.") == 0) return "%llu neue Beiträge seit Ihrem letzten Besuch.";
+        if (strcmp(msg, "You have already reported this post.") == 0) return "Sie haben diesen Beitrag bereits gemeldet.";
+        if (strcmp(msg, "Report submitted. Thank you.") == 0) return "Meldung gesendet. Danke.";
+        if (strcmp(msg, "%llu open report(s).") == 0) return "%llu offene Meldungen.";
+        if (strcmp(msg, "No open reports.") == 0) return "Keine offenen Meldungen.";
+        if (strcmp(msg, "Post hidden.") == 0) return "Beitrag versteckt.";
+        if (strcmp(msg, "Post unhidden.") == 0) return "Beitrag wieder sichtbar.";
+        if (strcmp(msg, "Post pinned.") == 0) return "Beitrag angeheftet.";
+        if (strcmp(msg, "Post unpinned.") == 0) return "Beitrag nicht mehr angeheftet.";
+        if (strcmp(msg, "Only operators may use this command.") == 0) return "Nur Operatoren können diesen Befehl verwenden.";
+        if (strcmp(msg, "You are muted and cannot post right now.") == 0) return "Sie sind stummgeschaltet und können derzeit nicht posten.";
+        if (strcmp(msg, "Operators cannot be muted.") == 0) return "Operatoren können nicht stummgeschaltet werden.";
+        if (strcmp(msg, "No such user.") == 0) return "Benutzer nicht gefunden.";
+        if (strcmp(msg, "User muted.") == 0) return "Benutzer stummgeschaltet.";
+        if (strcmp(msg, "User unmuted.") == 0) return "Benutzer nicht mehr stummgeschaltet.";
+        if (strcmp(msg, "No active mutes.") == 0) return "Keine aktiven Stummschaltungen.";
+        if (strcmp(msg, "No records found.") == 0) return "Keine Einträge gefunden.";
         break;
     case SESSION_UI_LANGUAGE_FR:
         if (strcmp(msg, "That post is no longer available.") == 0) return "Ce message n'est plus disponible.";
@@ -559,6 +639,22 @@ static const char *session_bbs_localize(session_ui_language_t lang, const char *
         if (strcmp(msg, "%s replied to your post #%llu.") == 0) return "%s a répondu à votre message #%llu.";
         if (strcmp(msg, "%s mentioned you in post #%llu.") == 0) return "%s vous a mentionné dans le message #%llu.";
         if (strcmp(msg, "%llu new posts since your last visit.") == 0) return "%llu nouveaux messages depuis votre dernière visite.";
+        if (strcmp(msg, "You have already reported this post.") == 0) return "Vous avez déjà signalé ce message.";
+        if (strcmp(msg, "Report submitted. Thank you.") == 0) return "Signalement envoyé. Merci.";
+        if (strcmp(msg, "%llu open report(s).") == 0) return "%llu signalement(s) ouvert(s).";
+        if (strcmp(msg, "No open reports.") == 0) return "Aucun signalement ouvert.";
+        if (strcmp(msg, "Post hidden.") == 0) return "Message masqué.";
+        if (strcmp(msg, "Post unhidden.") == 0) return "Message réaffiché.";
+        if (strcmp(msg, "Post pinned.") == 0) return "Message épinglé.";
+        if (strcmp(msg, "Post unpinned.") == 0) return "Message désépinglé.";
+        if (strcmp(msg, "Only operators may use this command.") == 0) return "Seuls les opérateurs peuvent utiliser cette commande.";
+        if (strcmp(msg, "You are muted and cannot post right now.") == 0) return "Vous êtes réduit au silence et ne pouvez pas publier.";
+        if (strcmp(msg, "Operators cannot be muted.") == 0) return "Les opérateurs ne peuvent pas être réduits au silence.";
+        if (strcmp(msg, "No such user.") == 0) return "Utilisateur introuvable.";
+        if (strcmp(msg, "User muted.") == 0) return "Utilisateur réduit au silence.";
+        if (strcmp(msg, "User unmuted.") == 0) return "Utilisateur autorisé à nouveau.";
+        if (strcmp(msg, "No active mutes.") == 0) return "Aucune sanction active.";
+        if (strcmp(msg, "No records found.") == 0) return "Aucun enregistrement trouvé.";
         break;
     case SESSION_UI_LANGUAGE_PL:
         if (strcmp(msg, "That post is no longer available.") == 0) return "Ten post nie jest już dostępny.";
@@ -652,6 +748,22 @@ static const char *session_bbs_localize(session_ui_language_t lang, const char *
         if (strcmp(msg, "%s replied to your post #%llu.") == 0) return "%s odpowiedział na twój post #%llu.";
         if (strcmp(msg, "%s mentioned you in post #%llu.") == 0) return "%s wspomniał o tobie w poście #%llu.";
         if (strcmp(msg, "%llu new posts since your last visit.") == 0) return "%llu nowych postów od ostatniej wizyty.";
+        if (strcmp(msg, "You have already reported this post.") == 0) return "Już zgłosiłeś ten post.";
+        if (strcmp(msg, "Report submitted. Thank you.") == 0) return "Zgłoszenie wysłane. Dziękujemy.";
+        if (strcmp(msg, "%llu open report(s).") == 0) return "%llu otwartych zgłoszeń.";
+        if (strcmp(msg, "No open reports.") == 0) return "Brak otwartych zgłoszeń.";
+        if (strcmp(msg, "Post hidden.") == 0) return "Post ukryty.";
+        if (strcmp(msg, "Post unhidden.") == 0) return "Post pokazany ponownie.";
+        if (strcmp(msg, "Post pinned.") == 0) return "Post przypięty.";
+        if (strcmp(msg, "Post unpinned.") == 0) return "Post odpięty.";
+        if (strcmp(msg, "Only operators may use this command.") == 0) return "Tylko operatorzy mogą używać tej komendy.";
+        if (strcmp(msg, "You are muted and cannot post right now.") == 0) return "Masz wyciszenie i nie możesz teraz publikować.";
+        if (strcmp(msg, "Operators cannot be muted.") == 0) return "Operatorów nie można wyciszyć.";
+        if (strcmp(msg, "No such user.") == 0) return "Nie ma takiego użytkownika.";
+        if (strcmp(msg, "User muted.") == 0) return "Użytkownik wyciszony.";
+        if (strcmp(msg, "User unmuted.") == 0) return "Wyciszenie użytkownika zniesione.";
+        if (strcmp(msg, "No active mutes.") == 0) return "Brak aktywnych wyciszeń.";
+        if (strcmp(msg, "No records found.") == 0) return "Brak wpisów.";
         break;
     default:
         break;
@@ -699,6 +811,7 @@ static bool bbs_post_has_required_fields(const bbs_post_t *post)
 typedef struct bbs_listing {
     uint64_t id;
     uint16_t board_id;
+    uint8_t mod_flags;
     char title[SSH_CHATTER_BBS_TITLE_LEN];
     char author[SSH_CHATTER_USERNAME_LEN];
     char tags[SSH_CHATTER_BBS_MAX_TAGS][SSH_CHATTER_BBS_TAG_LEN];
@@ -863,6 +976,7 @@ static bool session_bbs_map_state_file(host_t *host, unsigned char **mapped,
     memcpy(header, *mapped, sizeof(*header));
     if (header->magic != BBS_STATE_MAGIC ||
         (header->version != BBS_STATE_VERSION &&
+         header->version != BBS_STATE_VERSION_V2 &&
          header->version != BBS_STATE_VERSION_V1)) {
         munmap(*mapped, *mapped_len);
         *mapped = nullptr;
@@ -921,6 +1035,7 @@ static bool session_bbs_collect_listings_from_state(host_t *host,
         memset(entry, 0, sizeof(*entry));
         entry->id = serialized.id;
         entry->board_id = serialized.board_id;
+        entry->mod_flags = serialized.mod_flags;
         entry->tag_count = serialized.tag_count;
         entry->created_at = (time_t)serialized.created_at;
         entry->bumped_at = (time_t)serialized.bumped_at;
@@ -963,6 +1078,7 @@ static bool session_bbs_collect_listings(host_t *host, bbs_listing_t *listings,
             memset(entry, 0, sizeof(*entry));
             entry->id = post->id;
             entry->board_id = post->board_id;
+            entry->mod_flags = post->mod_flags;
             entry->tag_count = post->tag_count;
             entry->created_at = post->created_at;
             entry->bumped_at = post->bumped_at;
@@ -1154,6 +1270,7 @@ static void host_reset_bbs_post(bbs_post_t *post)
 
     post->in_use = false;
     post->id = 0U;
+    post->mod_flags = 0U;
     post->author[0] = '\0';
     post->title[0] = '\0';
     post->body[0] = '\0';
@@ -1370,6 +1487,195 @@ session_bbs_notify_mentions_locked(host_t *host, const char *text,
         host_bbs_notification_enqueue_locked(host, 1, names[idx], actor,
                                              post_id, comment_idx);
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* Moderation: reports, mutes, mute enforcement                       */
+/* ------------------------------------------------------------------ */
+
+// Enqueue a report.  Returns false when the same reporter already has an
+// open report for the post.  On overflow the oldest resolved/dismissed
+// report is dropped first, otherwise the oldest overall.  Callers must
+// hold host->lock.
+static bool host_bbs_report_enqueue_locked(host_t *host, uint64_t post_id,
+                                           const char *reporter,
+                                           const char *reason)
+{
+    if (host == nullptr || reporter == nullptr || reporter[0] == '\0') {
+        return false;
+    }
+    if (host->bbs_reports == nullptr || host->bbs_report_capacity == 0U) {
+        host->bbs_reports =
+            sshc_gc_calloc(SSH_CHATTER_BBS_MAX_REPORTS, sizeof(bbs_report_t));
+        if (host->bbs_reports == nullptr) {
+            return false;
+        }
+        host->bbs_report_capacity = SSH_CHATTER_BBS_MAX_REPORTS;
+        host->bbs_report_count = 0U;
+    }
+
+    for (size_t idx = 0U; idx < host->bbs_report_count; ++idx) {
+        if (host->bbs_reports[idx].post_id == post_id &&
+            host->bbs_reports[idx].status == 0 &&
+            strncmp(host->bbs_reports[idx].reporter, reporter,
+                    SSH_CHATTER_USERNAME_LEN) == 0) {
+            return false;
+        }
+    }
+
+    if (host->bbs_report_count >= host->bbs_report_capacity) {
+        size_t victim = 0U;
+        for (size_t idx = 0U; idx < host->bbs_report_count; ++idx) {
+            if (host->bbs_reports[idx].status != 0) {
+                victim = idx;
+                break;
+            }
+        }
+        memmove(&host->bbs_reports[victim], &host->bbs_reports[victim + 1U],
+                (host->bbs_report_count - victim - 1U) *
+                    sizeof(*host->bbs_reports));
+        --host->bbs_report_count;
+    }
+
+    bbs_report_t *report = &host->bbs_reports[host->bbs_report_count++];
+    memset(report, 0, sizeof(*report));
+    report->post_id = post_id;
+    snprintf(report->reporter, sizeof(report->reporter), "%s", reporter);
+    snprintf(report->reason, sizeof(report->reason), "%s",
+             reason != nullptr ? reason : "");
+    report->status = 0;
+    report->created_at = time(nullptr);
+    return true;
+}
+
+// Mark every open report for a post resolved (hide/unhide side effect).
+// Callers must hold host->lock.
+static void
+host_bbs_reports_resolve_for_post_locked(host_t *host, uint64_t post_id)
+{
+    if (host == nullptr || host->bbs_reports == nullptr) {
+        return;
+    }
+    for (size_t idx = 0U; idx < host->bbs_report_count; ++idx) {
+        if (host->bbs_reports[idx].post_id == post_id &&
+            host->bbs_reports[idx].status == 0) {
+            host->bbs_reports[idx].status = 1;
+        }
+    }
+}
+
+static bbs_mute_t *host_bbs_mute_find_locked(host_t *host,
+                                             const char *username)
+{
+    if (host == nullptr || host->bbs_mutes == nullptr || username == nullptr) {
+        return nullptr;
+    }
+    for (size_t idx = 0U; idx < host->bbs_mute_count; ++idx) {
+        if (strncmp(host->bbs_mutes[idx].username, username,
+                    SSH_CHATTER_USERNAME_LEN) == 0) {
+            return &host->bbs_mutes[idx];
+        }
+    }
+    return nullptr;
+}
+
+// A mute is active when until == 0 (permanent) or not yet expired.
+static bool host_bbs_mute_active_locked(host_t *host, const char *username,
+                                        time_t now)
+{
+    const bbs_mute_t *mute = host_bbs_mute_find_locked(host, username);
+    if (mute == nullptr) {
+        return false;
+    }
+    return mute->until == 0 || now < mute->until;
+}
+
+// Returns false when the target is a currently connected operator.
+static bool host_bbs_mute_target_is_operator(host_t *host,
+                                             const char *username)
+{
+    if (host == nullptr || username == nullptr) {
+        return false;
+    }
+    bool found = false;
+    ttak_mutex_lock(&host->room.lock);
+    for (size_t idx = 0U; idx < host->room.member_count; ++idx) {
+        session_ctx_t *member = host->room.members[idx];
+        if (member != nullptr &&
+            strncmp(member->user.name, username, SSH_CHATTER_USERNAME_LEN) ==
+                0 &&
+            (member->user.is_operator || member->user.is_lan_operator)) {
+            found = true;
+            break;
+        }
+    }
+    ttak_mutex_unlock(&host->room.lock);
+    return found;
+}
+
+// Add or replace a mute entry.  Callers must hold host->lock.
+static void host_bbs_mute_set_locked(host_t *host, const char *username,
+                                     time_t until, const char *muted_by)
+{
+    if (host == nullptr || username == nullptr || username[0] == '\0') {
+        return;
+    }
+    if (host->bbs_mutes == nullptr || host->bbs_mute_capacity == 0U) {
+        host->bbs_mutes =
+            sshc_gc_calloc(SSH_CHATTER_BBS_MAX_MUTES, sizeof(bbs_mute_t));
+        if (host->bbs_mutes == nullptr) {
+            return;
+        }
+        host->bbs_mute_capacity = SSH_CHATTER_BBS_MAX_MUTES;
+        host->bbs_mute_count = 0U;
+    }
+
+    bbs_mute_t *mute = host_bbs_mute_find_locked(host, username);
+    if (mute == nullptr) {
+        if (host->bbs_mute_count >= host->bbs_mute_capacity) {
+            memmove(host->bbs_mutes, host->bbs_mutes + 1,
+                    (host->bbs_mute_count - 1U) * sizeof(*host->bbs_mutes));
+            --host->bbs_mute_count;
+        }
+        mute = &host->bbs_mutes[host->bbs_mute_count++];
+        memset(mute, 0, sizeof(*mute));
+        snprintf(mute->username, sizeof(mute->username), "%s", username);
+    }
+    mute->until = until;
+    snprintf(mute->muted_by, sizeof(mute->muted_by), "%s",
+             muted_by != nullptr ? muted_by : "");
+    mute->created_at = time(nullptr);
+}
+
+static bool host_bbs_mute_remove_locked(host_t *host, const char *username)
+{
+    if (host == nullptr || host->bbs_mutes == nullptr || username == nullptr) {
+        return false;
+    }
+    for (size_t idx = 0U; idx < host->bbs_mute_count; ++idx) {
+        if (strncmp(host->bbs_mutes[idx].username, username,
+                    SSH_CHATTER_USERNAME_LEN) == 0) {
+            memmove(&host->bbs_mutes[idx], &host->bbs_mutes[idx + 1U],
+                    (host->bbs_mute_count - idx - 1U) *
+                        sizeof(*host->bbs_mutes));
+            --host->bbs_mute_count;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Reject muted users before they can comment or post.  Callers must hold
+// host->lock; returns true when the user is muted (and not an operator).
+static bool session_bbs_mute_blocks_locked(session_ctx_t *ctx, host_t *host)
+{
+    if (ctx == nullptr || host == nullptr) {
+        return false;
+    }
+    if (ctx->user.is_operator || ctx->user.is_lan_operator) {
+        return false;
+    }
+    return host_bbs_mute_active_locked(host, ctx->user.name, time(nullptr));
 }
 
 static void host_clear_bbs_post_locked(host_t *host, bbs_post_t *post)
@@ -1610,7 +1916,10 @@ static void session_bbs_show_dashboard(session_ctx_t *ctx)
              "comment <id>|<text> (:N quotes, @nick mentions), "
              "cmtedit <id> <idx> <text>, cmtdel <id> <idx>, "
              "upvote <id>, downvote <id>, cmtvote <id> <idx> up|down, "
-             "regen <id>, delete <id>, search <keyword>, board <id>, "
+             "regen <id>, delete <id>, report <id> [reason], "
+             "hide|unhide <id>, pin|unpin <id>, mute|unmute <user>, "
+             "mutes, reports [all], modlog, ipaudit <user>|ip <a>, "
+             "search <keyword>, board <id>, "
              "boards, profile, set-profile, draft <save|list|load|delete>, "
              "setavatar <name>, door [name], setgamelock <name>, exit");
     session_bbs_list(ctx, nullptr);
@@ -1642,6 +1951,21 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
         sshc_gc_free(listings);
         session_translation_pop_scope_override(ctx, previous_override);
         return;
+    }
+
+    // Hidden posts are visible to operators only (with a [hidden] marker).
+    bool viewer_is_operator =
+        ctx->user.is_operator || ctx->user.is_lan_operator;
+    if (!viewer_is_operator) {
+        size_t write_idx = 0U;
+        for (size_t read_idx = 0U; read_idx < count; ++read_idx) {
+            if ((listings[read_idx].mod_flags &
+                 SSH_CHATTER_BBS_MOD_FLAG_HIDDEN) != 0U) {
+                continue;
+            }
+            listings[write_idx++] = listings[read_idx];
+        }
+        count = write_idx;
     }
 
     // Filter by current board selection unless "/bbs list all" (or variant) is requested
@@ -1713,7 +2037,14 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
         while (position > 0U) {
             bool swap = false;
             bbs_listing_t prev = listings[position - 1U];
-            if (sort_mode == SORT_HOT) {
+            // Pinned posts always sort to the top.
+            bool prev_pinned =
+                (prev.mod_flags & SSH_CHATTER_BBS_MOD_FLAG_PINNED) != 0U;
+            bool key_pinned =
+                (key.mod_flags & SSH_CHATTER_BBS_MOD_FLAG_PINNED) != 0U;
+            if (prev_pinned != key_pinned) {
+                swap = key_pinned;
+            } else if (sort_mode == SORT_HOT) {
                 int64_t score_prev = (int64_t)(prev.upvotes - prev.downvotes) * 2 + (int64_t)prev.comment_count;
                 int64_t score_key = (int64_t)(key.upvotes - key.downvotes) * 2 + (int64_t)key.comment_count;
                 if (score_prev < score_key) {
@@ -1861,8 +2192,17 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
             }
 
             int32_t score = entry->upvotes - entry->downvotes;
-            char stats_buf[64];
-            snprintf(stats_buf, sizeof(stats_buf), "\033[1;32mScore: %d\033[0m \033[1;36mComments: %zu\033[0m", score, entry->comment_count);
+            char stats_buf[96];
+            const char *marker = "";
+            if ((entry->mod_flags & SSH_CHATTER_BBS_MOD_FLAG_HIDDEN) != 0U) {
+                marker = "\033[1;31m[hidden]\033[0m ";
+            } else if ((entry->mod_flags & SSH_CHATTER_BBS_MOD_FLAG_PINNED) !=
+                       0U) {
+                marker = "\033[1;33m[pinned]\033[0m ";
+            }
+            snprintf(stats_buf, sizeof(stats_buf),
+                     "%s\033[1;32mScore: %d\033[0m \033[1;36mComments: %zu\033[0m",
+                     marker, score, entry->comment_count);
 
             const char *author = entry->author[0] != '\0' ? entry->author : "anon";
             if (entry->tag_count == 0U) {
@@ -1971,6 +2311,19 @@ static void session_bbs_list_topic(session_ctx_t *ctx, const char *topic)
         sshc_gc_free(listings);
         session_translation_pop_scope_override(ctx, previous_override);
         return;
+    }
+
+    // Hidden posts are visible to operators only.
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        size_t write_idx = 0U;
+        for (size_t read_idx = 0U; read_idx < count; ++read_idx) {
+            if ((listings[read_idx].mod_flags &
+                 SSH_CHATTER_BBS_MOD_FLAG_HIDDEN) != 0U) {
+                continue;
+            }
+            listings[write_idx++] = listings[read_idx];
+        }
+        count = write_idx;
     }
 
     if (count == 0U) {
@@ -2115,7 +2468,15 @@ static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments)
     }
     size_t result_count = 0U;
 
+    bool viewer_is_operator =
+        ctx->user.is_operator || ctx->user.is_lan_operator;
     for (size_t idx = 0U; idx < count; ++idx) {
+        // Hidden posts never appear in search results for non-operators.
+        if (!viewer_is_operator &&
+            (listings[idx].mod_flags & SSH_CHATTER_BBS_MOD_FLAG_HIDDEN) !=
+                0U) {
+            continue;
+        }
         bbs_post_t *post = (bbs_post_t *)sshc_gc_calloc(1U, sizeof(*post));
         if (post == nullptr) {
             continue;
@@ -2162,8 +2523,17 @@ static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments)
             }
 
             int32_t score = entry->upvotes - entry->downvotes;
-            char stats_buf[64];
-            snprintf(stats_buf, sizeof(stats_buf), "\033[1;32mScore: %d\033[0m \033[1;36mComments: %zu\033[0m", score, entry->comment_count);
+            char stats_buf[96];
+            const char *marker = "";
+            if ((entry->mod_flags & SSH_CHATTER_BBS_MOD_FLAG_HIDDEN) != 0U) {
+                marker = "\033[1;31m[hidden]\033[0m ";
+            } else if ((entry->mod_flags & SSH_CHATTER_BBS_MOD_FLAG_PINNED) !=
+                       0U) {
+                marker = "\033[1;33m[pinned]\033[0m ";
+            }
+            snprintf(stats_buf, sizeof(stats_buf),
+                     "%s\033[1;32mScore: %d\033[0m \033[1;36mComments: %zu\033[0m",
+                     marker, score, entry->comment_count);
 
             const char *author = entry->author[0] != '\0' ? entry->author : "anon";
             if (entry->tag_count == 0U) {
@@ -2525,6 +2895,13 @@ static void session_bbs_commit_pending_post(session_ctx_t *ctx)
     }
 
     if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        if (session_bbs_mute_blocks_locked(ctx, host)) {
+            ttak_mutex_unlock(&host->lock);
+            session_send_system_line(
+                ctx, "You are muted and cannot post right now.");
+            session_bbs_reset_pending_post(ctx);
+            return;
+        }
         time_t now = time(nullptr);
         const bbs_rate_limit_entry_t *limit =
             host_bbs_rate_limit_find_locked(host, ctx->user.name);
@@ -3095,6 +3472,13 @@ static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
+    if (session_bbs_mute_blocks_locked(ctx, host)) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(
+            ctx, "You are muted and cannot post right now.");
+        return;
+    }
+
     if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
         time_t now = time(nullptr);
         const bbs_rate_limit_entry_t *limit =
@@ -3643,6 +4027,447 @@ static void session_bbs_cmtdel(session_ctx_t *ctx, const char *arguments)
     ttak_mutex_unlock(&host->lock);
 
     session_bbs_render_post(ctx, &snapshot, "Comment deleted.", false);
+}
+
+/* ------------------------------------------------------------------ */
+/* Moderation commands                                                */
+/* ------------------------------------------------------------------ */
+
+// Terse age rendering for report lines: "Xh" up to two days, then "Xd".
+static void session_bbs_report_age(time_t then, time_t now, char *buffer,
+                                   size_t length)
+{
+    if (buffer == nullptr || length == 0U) {
+        return;
+    }
+    long delta = (long)(now - then);
+    if (delta < 0L) {
+        delta = 0L;
+    }
+    long hours = delta / 3600L;
+    if (hours < 1L) {
+        snprintf(buffer, length, "<1h");
+    } else if (hours < 48L) {
+        snprintf(buffer, length, "%ldh", hours);
+    } else {
+        snprintf(buffer, length, "%ldd", hours / 24L);
+    }
+}
+
+static bool session_bbs_require_operator(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return false;
+    }
+    if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+        session_send_system_line(ctx, "Only operators may use this command.");
+        return false;
+    }
+    return true;
+}
+
+static void session_bbs_report(session_ctx_t *ctx, const char *arguments)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || arguments == nullptr ||
+        arguments[0] == '\0') {
+        session_bbs_send_usage(ctx, "report", "<id> [reason]");
+        return;
+    }
+
+    char *endptr = nullptr;
+    errno = 0;
+    uint64_t post_id = strtoull(arguments, &endptr, 10);
+    if (errno != 0 || endptr == nullptr || endptr == arguments ||
+        (*endptr != '\0' && *endptr != ' ')) {
+        session_bbs_send_usage(ctx, "report", "<id> [reason]");
+        return;
+    }
+    while (*endptr == ' ') ++endptr;
+    const char *reason = endptr;
+    char reason_buffer[128] = {0};
+    if (reason[0] != '\0') {
+        snprintf(reason_buffer, sizeof(reason_buffer), "%s", reason);
+        trim_whitespace_inplace(reason_buffer);
+        size_t scan_length = strnlen(reason_buffer, sizeof(reason_buffer));
+        if (scan_length > 0U &&
+            session_security_check_text(ctx, "BBS report", reason_buffer,
+                                        scan_length,
+                                        false) != HOST_SECURITY_SCAN_CLEAN) {
+            return;
+        }
+    }
+
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *post = host_find_bbs_post_locked(host, post_id);
+    if (post == nullptr || !post->in_use) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "No post exists with that identifier.");
+        return;
+    }
+    if (!host_bbs_report_enqueue_locked(host, post_id, ctx->user.name,
+                                        reason_buffer)) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(
+            ctx, "You have already reported this post.");
+        return;
+    }
+    host_bbs_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+
+    session_send_system_line(ctx, "Report submitted. Thank you.");
+}
+
+static void session_bbs_reports(session_ctx_t *ctx, const char *arguments)
+{
+    if (!session_bbs_require_operator(ctx) || ctx->owner == nullptr) {
+        return;
+    }
+    bool show_all =
+        arguments != nullptr && strcasecmp(arguments, "all") == 0;
+
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+
+    time_t now = time(nullptr);
+    size_t open_count = 0U;
+    ttak_mutex_lock(&host->lock);
+    session_bbs_prepare_canvas(ctx);
+    session_render_separator(ctx, "Reports");
+    for (size_t idx = 0U; idx < host->bbs_report_count; ++idx) {
+        const bbs_report_t *report = &host->bbs_reports[idx];
+        if (report->status != 0 && !show_all) {
+            continue;
+        }
+        if (report->status == 0) {
+            ++open_count;
+        }
+        char age[16];
+        session_bbs_report_age(report->created_at, now, age, sizeof(age));
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        if (report->reason[0] != '\0') {
+            snprintf(line, sizeof(line), "#%" PRIu64 " %s %s [%s] (%d)",
+                     report->post_id, report->reporter, age, report->reason,
+                     (int)report->status);
+        } else {
+            snprintf(line, sizeof(line), "#%" PRIu64 " %s %s (%d)",
+                     report->post_id, report->reporter, age,
+                     (int)report->status);
+        }
+        session_send_system_line(ctx, line);
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (open_count == 0U && !show_all) {
+        session_send_system_line(ctx, "No open reports.");
+        return;
+    }
+    const char *fmt = session_bbs_localize(ctx->ui_language,
+                                           "%llu open report(s).");
+    char summary[SSH_CHATTER_MESSAGE_LIMIT];
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+    snprintf(summary, sizeof(summary), fmt, (unsigned long long)open_count);
+#pragma GCC diagnostic pop
+    session_send_system_line(ctx, summary);
+}
+
+// Shared implementation for hide/unhide/pin/unpin.
+static void session_bbs_set_mod_flag(session_ctx_t *ctx, uint64_t post_id,
+                                     uint8_t flag, bool set,
+                                     const char *action,
+                                     const char *confirmation)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+    if (!session_bbs_require_operator(ctx)) {
+        return;
+    }
+    if (post_id == 0U) {
+        session_send_system_line(ctx, "Invalid post identifier.");
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    bbs_post_t *post = host_find_bbs_post_locked(host, post_id);
+    if (post == nullptr || !post->in_use) {
+        ttak_mutex_unlock(&host->lock);
+        session_send_system_line(ctx, "No post exists with that identifier.");
+        return;
+    }
+    if (set) {
+        post->mod_flags = (uint8_t)(post->mod_flags | flag);
+    } else {
+        post->mod_flags = (uint8_t)(post->mod_flags & (uint8_t)~flag);
+    }
+    if (flag == SSH_CHATTER_BBS_MOD_FLAG_HIDDEN) {
+        // Hiding or unhiding resolves all open reports for the post.
+        host_bbs_reports_resolve_for_post_locked(host, post_id);
+        host_bbs_modlog_append_locked(host, ctx->user.name, "resolve",
+                                      "reports");
+    }
+    char target[32];
+    snprintf(target, sizeof(target), "%" PRIu64, post_id);
+    host_bbs_modlog_append_locked(host, ctx->user.name, action, target);
+    host_bbs_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+
+    session_send_system_line(ctx, confirmation);
+}
+
+static void session_bbs_mute(session_ctx_t *ctx, const char *arguments)
+{
+    if (!session_bbs_require_operator(ctx) || ctx->owner == nullptr) {
+        return;
+    }
+    if (arguments == nullptr || arguments[0] == '\0') {
+        session_bbs_send_usage(ctx, "mute", "<user> [minutes]");
+        return;
+    }
+
+    char working[128];
+    snprintf(working, sizeof(working), "%s", arguments);
+    trim_whitespace_inplace(working);
+    char *space = strchr(working, ' ');
+    char *minutes_text = nullptr;
+    if (space != nullptr) {
+        *space = '\0';
+        minutes_text = space + 1;
+        while (*minutes_text == ' ') ++minutes_text;
+    }
+    if (working[0] == '\0') {
+        session_bbs_send_usage(ctx, "mute", "<user> [minutes]");
+        return;
+    }
+
+    time_t until = 0;
+    if (minutes_text != nullptr && minutes_text[0] != '\0') {
+        char *endptr = nullptr;
+        errno = 0;
+        long minutes = strtol(minutes_text, &endptr, 10);
+        if (errno != 0 || endptr == nullptr || *endptr != '\0' ||
+            minutes <= 0L || minutes > (24L * 60L * 365L)) {
+            session_bbs_send_usage(ctx, "mute", "<user> [minutes]");
+            return;
+        }
+        until = time(nullptr) + (time_t)(minutes * 60L);
+    }
+
+    host_t *host = ctx->owner;
+    if (host_bbs_mute_target_is_operator(host, working)) {
+        session_send_system_line(ctx, "Operators cannot be muted.");
+        return;
+    }
+    user_data_record_t record = {0};
+    if (!user_data_load(host->user_data_root, working, "", &record)) {
+        session_send_system_line(ctx, "No such user.");
+        return;
+    }
+
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    host_bbs_mute_set_locked(host, working, until, ctx->user.name);
+    host_bbs_modlog_append_locked(host, ctx->user.name, "mute", working);
+    host_bbs_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+
+    session_send_system_line(ctx, "User muted.");
+}
+
+static void session_bbs_unmute(session_ctx_t *ctx, const char *username)
+{
+    if (!session_bbs_require_operator(ctx) || ctx->owner == nullptr) {
+        return;
+    }
+    if (username == nullptr || username[0] == '\0') {
+        session_bbs_send_usage(ctx, "unmute", "<user>");
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    bool removed = host_bbs_mute_remove_locked(host, username);
+    if (removed) {
+        host_bbs_modlog_append_locked(host, ctx->user.name, "unmute",
+                                      username);
+        host_bbs_state_save_locked(host);
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (removed) {
+        session_send_system_line(ctx, "User unmuted.");
+    } else {
+        session_send_system_line(ctx, "No such user.");
+    }
+}
+
+static void session_bbs_mutes(session_ctx_t *ctx)
+{
+    if (!session_bbs_require_operator(ctx) || ctx->owner == nullptr) {
+        return;
+    }
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+
+    time_t now = time(nullptr);
+    size_t active = 0U;
+    ttak_mutex_lock(&host->lock);
+    session_bbs_prepare_canvas(ctx);
+    session_render_separator(ctx, "Mutes");
+    for (size_t idx = 0U; idx < host->bbs_mute_count; ++idx) {
+        const bbs_mute_t *mute = &host->bbs_mutes[idx];
+        if (mute->until != 0 && now >= mute->until) {
+            continue;
+        }
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        if (mute->until == 0) {
+            snprintf(line, sizeof(line), "%s (permanent, by %s)",
+                     mute->username, mute->muted_by);
+        } else {
+            long remaining = (long)((mute->until - now) / 60);
+            if (remaining < 1L) {
+                remaining = 1L;
+            }
+            snprintf(line, sizeof(line), "%s (%ld min left, by %s)",
+                     mute->username, remaining, mute->muted_by);
+        }
+        session_send_system_line(ctx, line);
+        ++active;
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (active == 0U) {
+        session_send_system_line(ctx, "No active mutes.");
+    }
+}
+
+static void session_bbs_modlog(session_ctx_t *ctx)
+{
+    if (!session_bbs_require_operator(ctx) || ctx->owner == nullptr) {
+        return;
+    }
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+
+    const size_t limit = 20U;
+    ttak_mutex_lock(&host->lock);
+    session_bbs_prepare_canvas(ctx);
+    session_render_separator(ctx, "Modlog");
+    size_t total = host->bbs_modlog_count;
+    size_t start = total > limit ? total - limit : 0U;
+    for (size_t idx = start; idx < total; ++idx) {
+        const bbs_modlog_entry_t *entry = &host->bbs_modlog[idx];
+        char stamp[32];
+        bbs_format_time(entry->created_at, stamp, sizeof(stamp));
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(line, sizeof(line), "%s %s %s %s", stamp, entry->actor,
+                 entry->action, entry->target);
+        session_send_system_line(ctx, line);
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (total == 0U) {
+        session_send_system_line(ctx, "No records found.");
+    }
+}
+
+static void session_bbs_ipaudit(session_ctx_t *ctx, const char *arguments)
+{
+    if (!session_bbs_require_operator(ctx) || ctx->owner == nullptr) {
+        return;
+    }
+    if (arguments == nullptr || arguments[0] == '\0') {
+        session_bbs_send_usage(ctx, "ipaudit", "<username>|ip <addr>");
+        return;
+    }
+
+    char working[128];
+    snprintf(working, sizeof(working), "%s", arguments);
+    trim_whitespace_inplace(working);
+    bool by_ip = false;
+    const char *key = working;
+    if (strncasecmp(working, "ip ", 3) == 0) {
+        by_ip = true;
+        key = working + 3;
+        while (*key == ' ') ++key;
+    }
+    if (key[0] == '\0') {
+        session_bbs_send_usage(ctx, "ipaudit", "<username>|ip <addr>");
+        return;
+    }
+
+    host_t *host = ctx->owner;
+    if (!session_bbs_ensure_live_storage(host)) {
+        session_send_system_line(ctx, "BBS storage is unavailable.");
+        return;
+    }
+
+    time_t now = time(nullptr);
+    size_t matches = 0U;
+    ttak_mutex_lock(&host->lock);
+    // Enforce retention before every lookup.
+    host_ipaudit_sweep_locked(host, now);
+    session_bbs_prepare_canvas(ctx);
+    session_render_separator(ctx, "IP Audit");
+    for (size_t idx = 0U; idx < host->bbs_ipaudit_count; ++idx) {
+        const bbs_ipaudit_entry_t *entry = &host->bbs_ipaudit[idx];
+        const char *match_field =
+            by_ip ? entry->ip : entry->username;
+        if (strcmp(match_field, key) != 0) {
+            continue;
+        }
+        char connected[32];
+        char disconnected[32];
+        bbs_format_time(entry->connect_epoch, connected, sizeof(connected));
+        if (entry->disconnect_epoch > 0) {
+            bbs_format_time(entry->disconnect_epoch, disconnected,
+                            sizeof(disconnected));
+        } else {
+            snprintf(disconnected, sizeof(disconnected), "connected");
+        }
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(line, sizeof(line), "%s %s %s -> %s", entry->username,
+                 entry->ip, connected, disconnected);
+        session_send_system_line(ctx, line);
+        ++matches;
+    }
+
+    // Every lookup is recorded in the moderation log.
+    char target[SSH_CHATTER_USERNAME_LEN + 8];
+    snprintf(target, sizeof(target), "%s:%s", by_ip ? "ip" : "user", key);
+    host_bbs_modlog_append_locked(host, ctx->user.name, "ipaudit", target);
+    host_bbs_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+
+    if (matches == 0U) {
+        session_send_system_line(ctx, "No records found.");
+    }
 }
 
 void session_bbs_profile(session_ctx_t *ctx, const char *username)

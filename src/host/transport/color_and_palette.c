@@ -1815,6 +1815,17 @@ static bool session_bbs_capture_continue(const session_ctx_t *ctx);
 static void session_bbs_add_comment(session_ctx_t *ctx, const char *arguments);
 static void session_bbs_cmtedit(session_ctx_t *ctx, const char *arguments);
 static void session_bbs_cmtdel(session_ctx_t *ctx, const char *arguments);
+static void session_bbs_report(session_ctx_t *ctx, const char *arguments);
+static void session_bbs_reports(session_ctx_t *ctx, const char *arguments);
+static void session_bbs_set_mod_flag(session_ctx_t *ctx, uint64_t post_id,
+                                     uint8_t flag, bool set,
+                                     const char *action,
+                                     const char *confirmation);
+static void session_bbs_mute(session_ctx_t *ctx, const char *arguments);
+static void session_bbs_unmute(session_ctx_t *ctx, const char *username);
+static void session_bbs_mutes(session_ctx_t *ctx);
+static void session_bbs_modlog(session_ctx_t *ctx);
+static void session_bbs_ipaudit(session_ctx_t *ctx, const char *arguments);
 static void session_bbs_regen_post(session_ctx_t *ctx, uint64_t id);
 static void session_bbs_delete(session_ctx_t *ctx, uint64_t id);
 static void session_bbs_reset_pending_post(session_ctx_t *ctx);

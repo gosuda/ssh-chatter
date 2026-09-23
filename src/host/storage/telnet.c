@@ -1192,6 +1192,13 @@ bool session_telnet_login_prompt(session_ctx_t *ctx)
 
         snprintf(ctx->user.name, sizeof(ctx->user.name), "%s", id_buffer);
         ctx->user.is_authenticated = true;
+        if (ctx->user.name[0] != '\0' && ctx->client_ip[0] != '\0' &&
+            ctx->owner != nullptr) {
+            ttak_mutex_lock(&ctx->owner->lock);
+            host_ipaudit_record_connect_locked(ctx->owner, ctx->user.name,
+                                               ctx->client_ip);
+            ttak_mutex_unlock(&ctx->owner->lock);
+        }
         return true;
     }
 

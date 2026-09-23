@@ -79,6 +79,13 @@
 #define SSH_CHATTER_BBS_MAX_RATE_LIMITS 128
 #define SSH_CHATTER_BBS_MAX_NOTIFICATIONS 256
 #define SSH_CHATTER_BBS_MAX_READMARKS 512
+#define SSH_CHATTER_BBS_MOD_FLAG_HIDDEN 0x01U
+#define SSH_CHATTER_BBS_MOD_FLAG_PINNED 0x02U
+#define SSH_CHATTER_BBS_MAX_REPORTS 256
+#define SSH_CHATTER_BBS_MAX_MUTES 256
+#define SSH_CHATTER_BBS_MAX_MODLOG 512
+#define SSH_CHATTER_BBS_MAX_IPAUDIT 512
+#define SSH_CHATTER_IPAUDIT_RETENTION_SECONDS (5 * 24 * 60 * 60)
 #define SSH_CHATTER_RSS_MAX_FEEDS 32
 #define SSH_CHATTER_RSS_TAG_LEN 32
 #define SSH_CHATTER_RSS_URL_LEN 1024
@@ -1017,6 +1024,7 @@ typedef struct bbs_post {
     bool in_use;
     uint64_t id;
     uint16_t board_id;
+    uint8_t mod_flags; /* bit0 = hidden, bit1 = pinned */
     char author[SSH_CHATTER_USERNAME_LEN];
     char title[SSH_CHATTER_BBS_TITLE_LEN];
     char body[SSH_CHATTER_BBS_BODY_LEN];
@@ -1067,6 +1075,41 @@ typedef struct bbs_read_mark {
     char username[SSH_CHATTER_USERNAME_LEN];
     time_t last_read_at;
 } bbs_read_mark_t;
+
+/* Moderation report for a post.  Status: 0 = open, 1 = resolved,
+ * 2 = dismissed. */
+typedef struct bbs_report {
+    uint64_t post_id;
+    char reporter[SSH_CHATTER_USERNAME_LEN];
+    char reason[128];
+    int32_t status;
+    time_t created_at;
+} bbs_report_t;
+
+/* Mute entry: until_epoch 0 = permanent. */
+typedef struct bbs_mute {
+    char username[SSH_CHATTER_USERNAME_LEN];
+    time_t until;
+    char muted_by[SSH_CHATTER_USERNAME_LEN];
+    time_t created_at;
+} bbs_mute_t;
+
+/* Moderation action log entry. */
+typedef struct bbs_modlog_entry {
+    time_t created_at;
+    char actor[SSH_CHATTER_USERNAME_LEN];
+    char action[24];
+    char target[SSH_CHATTER_USERNAME_LEN];
+} bbs_modlog_entry_t;
+
+/* IP audit entry.  disconnect_epoch 0 = still connected.  Entries older
+ * than SSH_CHATTER_IPAUDIT_RETENTION_SECONDS are destroyed (no backups). */
+typedef struct bbs_ipaudit_entry {
+    char username[SSH_CHATTER_USERNAME_LEN];
+    char ip[SSH_CHATTER_IP_LEN];
+    time_t connect_epoch;
+    time_t disconnect_epoch;
+} bbs_ipaudit_entry_t;
 
 typedef struct bbs_draft {
     bool in_use;
@@ -1262,6 +1305,18 @@ typedef struct host {
     bbs_read_mark_t *bbs_read_marks;
     size_t bbs_read_mark_count;
     size_t bbs_read_mark_capacity;
+    bbs_report_t *bbs_reports;
+    size_t bbs_report_count;
+    size_t bbs_report_capacity;
+    bbs_mute_t *bbs_mutes;
+    size_t bbs_mute_count;
+    size_t bbs_mute_capacity;
+    bbs_modlog_entry_t *bbs_modlog;
+    size_t bbs_modlog_count;
+    size_t bbs_modlog_capacity;
+    bbs_ipaudit_entry_t *bbs_ipaudit;
+    size_t bbs_ipaudit_count;
+    size_t bbs_ipaudit_capacity;
     ascii_pixel_t *wall;
     rss_feed_t *rss_feeds;
     size_t rss_feed_count;

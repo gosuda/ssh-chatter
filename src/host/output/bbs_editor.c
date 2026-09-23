@@ -268,6 +268,8 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
     session_send_system_line(ctx, "--------------------------------------------------");
     session_send_system_line(ctx, "[Tip] Reply to this post!");
     session_send_system_line(ctx, " - Add comment:   Type '\033[1;32mcomment <text>\033[0m' (e.g. comment Great post!)");
+    session_send_system_line(ctx, " - Vote:          '\033[1;32mupvote <id>\033[0m' / '\033[1;32mdownvote <id>\033[0m', or '\033[1;32mcmtvote <id> <idx> up|down\033[0m' for comments");
+    session_send_system_line(ctx, " - Fix comments:  '\033[1;32mcmtedit <id> <idx> <text>\033[0m' / '\033[1;32mcmtdel <id> <idx>\033[0m'");
     session_send_system_line(ctx, " - Back to list:  Type '\033[1;31mlist\033[0m' or press Enter on empty line");
     session_send_system_line(ctx, "--------------------------------------------------");
 

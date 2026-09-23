@@ -1864,10 +1864,11 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
             char stats_buf[64];
             snprintf(stats_buf, sizeof(stats_buf), "\033[1;32mScore: %d\033[0m \033[1;36mComments: %zu\033[0m", score, entry->comment_count);
 
+            const char *author = entry->author[0] != '\0' ? entry->author : "anon";
             if (entry->tag_count == 0U) {
-                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | (no tags)",
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s by %s | (no tags)",
                          stats_buf, entry->id, created_buffer, title_preview,
-                         entry->title);
+                         entry->title, author);
             } else {
                 char tag_buffer[SSH_CHATTER_MESSAGE_LIMIT];
                 size_t buffer_offset = 0U;
@@ -1888,9 +1889,9 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
                 if (tags_preview > 80) {
                     tags_preview = 80;
                 }
-                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | %.*s",
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s by %s | %.*s",
                          stats_buf, entry->id, created_buffer, title_preview, entry->title,
-                         tags_preview, tag_buffer);
+                         author, tags_preview, tag_buffer);
             }
             session_send_system_line(ctx, line);
         }
@@ -1924,6 +1925,9 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, "[Tip] Share your thoughts on the board!");
     session_send_system_line(ctx, " - Write a post:  Type '\033[1;32mpost <title>\033[0m'");
     session_send_system_line(ctx, " - Read a post:   Type '\033[1;32mread <id>\033[0m'");
+    session_send_system_line(ctx, " - Comment:       Type '\033[1;32mcomment <id>|<text>\033[0m' (:N quotes, @nick mentions)");
+    session_send_system_line(ctx, " - Vote:          Type '\033[1;32mupvote <id>\033[0m' / '\033[1;32mdownvote <id>\033[0m' ('cmtvote <id> <idx> up|down' for comments)");
+    session_send_system_line(ctx, " - Fix comments:  Type '\033[1;32mcmtedit <id> <idx> <text>\033[0m' / '\033[1;32mcmtdel <id> <idx>\033[0m'");
     session_send_system_line(ctx, "--------------------------------------------------");
     sshc_gc_free(topics);
     sshc_gc_free(listings);
@@ -2161,9 +2165,11 @@ static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments)
             char stats_buf[64];
             snprintf(stats_buf, sizeof(stats_buf), "\033[1;32mScore: %d\033[0m \033[1;36mComments: %zu\033[0m", score, entry->comment_count);
 
+            const char *author = entry->author[0] != '\0' ? entry->author : "anon";
             if (entry->tag_count == 0U) {
-                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | (no tags)",
-                         stats_buf, entry->id, created_buffer, title_preview, entry->title);
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s by %s | (no tags)",
+                         stats_buf, entry->id, created_buffer, title_preview, entry->title,
+                         author);
             } else {
                 char tag_buffer[SSH_CHATTER_MESSAGE_LIMIT];
                 size_t buffer_offset = 0U;
@@ -2184,9 +2190,9 @@ static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments)
                 if (tags_preview > 80) {
                     tags_preview = 80;
                 }
-                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | %.*s",
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s by %s | %.*s",
                          stats_buf, entry->id, created_buffer, title_preview, entry->title,
-                         tags_preview, tag_buffer);
+                         author, tags_preview, tag_buffer);
             }
             session_send_system_line(ctx, line);
         }

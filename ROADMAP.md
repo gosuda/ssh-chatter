@@ -15,24 +15,13 @@
 
 ---
 
-## v1.3 — Moderation & Operator Tools
+## Shipped — v1.3 (2026-09-23)
 
-Goal: the BBS can be operated by a small crew without reading every post.
+- Moderation pipeline: `report` queue (`reports.dat`, dedup, operator `reports`), post `hide`/`pin` flags (storage v3, layout-compatible with v2), `mute`/`unmute`/`mutes` enforced before rate limits, `modlog` action audit (operator actions and IP lookups)
+- IP audit log: connect/disconnect records with operator-only `ipaudit` lookup (queries themselves logged), entries destroyed when older than 5 days, excluded from backups
+- 11 new subcommands with 8-language aliases; list/search views show post author; tip blocks cover voting and comment editing
 
-- `report <post_id>` — users file reports into an operator queue (persistent sidecar, capped, drop-oldest)
-- Operator actions on queued/targeted posts: **hide** (soft-hide from listings, visible to operators) and **pin** (keep on top of the board; doubles as the announcement mechanism)
-- User moderation: **mute** (blocks post/comment for that user, lifts after a duration or manually)
-- All actions logged with actor, target, and timestamp
-
-## v1.3 — IP Audit Log with Automatic Expiry
-
-Goal: give operators just enough signal to fight abuse, with privacy destruction built in.
-
-- On session connect, record `{username, ip, connected_at, disconnected_at}` in a capped, append-only audit log (in-RAM ring + short-lived on-disk sidecar)
-- Operator-only command: look up the IPs a user connected from (and vice versa) for abuse investigation
-- **Expiry:** every entry is destroyed 5 days after its session ends — enforced at write time and by a periodic sweep, not just "hidden from queries". No backups of the log are kept.
-- Access is itself audit-logged (who queried what, when); LAN operators follow the same rule
-- Documented in the MOTD/admin docs: what is stored, why, and when it disappears
+---
 
 ## v1.4 — Nested Reply Threading
 
@@ -51,6 +40,16 @@ Goal: lean into the retro-terminal identity; give Syncterm/NetRunner users a nat
 - Render with 256-color/ANSI passthrough preserved end-to-end (no column stripping, no translation)
 - `@` / sauce-style metadata optional; plain `.ans` upload path for operators
 - Rate-limit exempt for operators; regular users follow the standard post throttle
+
+## v1.4 — FidoNet Connectivity (long-term)
+
+Goal: join the surviving store-and-forward network for real retro credibility — but only after the moderation pipeline is proven, because echomail imports external content.
+
+- **Phase 1 — minimal tosser**: BinkP listener (port 24554) + inbound spool; import one or two low-volume echoes into dedicated boards. Type 2+ packet parsing, MSGID dupe cache (sidecar pattern), SEEN-BY/PATH merge, FTS-5003 charset handling via the existing codepage layer
+- **Phase 2 — outbound**: export our posts as echomail (origin/tear lines, proper MSGID generation), netmail support, bundle handling
+- **Phase 3**: full node operation — node address, areafix, bounce/crash handling
+- FidoNet message bases stay in per-area append-only bases, separate from `bbs_state.dat` (never mixed with the full-rewrite state model); the tosser runs on the existing watchdog/scheduler thread pattern
+- Hard requirement: v1.3 moderation (hide/mute) must be able to act on imported mail; a half-behaving node floods peers with dupes and gets delisted by coordinators, so each phase ships complete or not at all
 
 ## v1.4 — Stability & Operations Hardening
 

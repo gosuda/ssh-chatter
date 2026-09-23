@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 /**
  * @file memory_manager.c
  * @desc Unified memory manager for SSH-Chatter using libttak for manual lifetimes
@@ -46,6 +47,9 @@
 #include <stdio.h>
 #include <ttak/ht/map.h>
 #include <signal.h>
+#include <sys/syscall.h>
+#include <ucontext.h>
+#include <unistd.h>
 
 // Global atomic counter for tracking outstanding allocations
 static _Atomic size_t sshc_allocation_counter = 0;
@@ -925,6 +929,28 @@ static void sshc_crash_signal_handler(int sig, siginfo_t *info, void *context)
 {
     if (g_sshc_safe_active) {
         siglongjmp(g_sshc_safe_jmpbuf, 1);
+    }
+    /* The re-raise below replaces the faulting ucontext with the raise(3)
+     * frame, which erases the real crash location from the core dump. Log
+     * the first-fault details before chaining so the journal always records
+     * the exact faulting instruction and address. */
+    ucontext_t *uc = (ucontext_t *)context;
+    char buf[256];
+    int n = snprintf(buf, sizeof(buf),
+                     "[crash] fatal signal %d code %d addr %p rip 0x%lx "
+                     "rsp 0x%lx tid %ld\n",
+                     sig, info->si_code, info->si_addr,
+                     (unsigned long)uc->uc_mcontext.gregs[REG_RIP],
+                     (unsigned long)uc->uc_mcontext.gregs[REG_RSP],
+                     (long)syscall(SYS_gettid));
+    if (n > 0) {
+        size_t len = (size_t)n < sizeof(buf) ? (size_t)n : sizeof(buf) - 1U;
+        ssize_t off = 0;
+        while (off < (ssize_t)len) {
+            ssize_t w = write(STDERR_FILENO, buf + off, len - (size_t)off);
+            if (w <= 0) break;
+            off += w;
+        }
     }
     struct sigaction *old_act = (sig == SIGSEGV) ? &g_old_segv_action : &g_old_bus_action;
     if (old_act->sa_flags & SA_SIGINFO) {

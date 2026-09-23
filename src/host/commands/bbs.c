@@ -1866,7 +1866,7 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
 
             const char *author = entry->author[0] != '\0' ? entry->author : "anon";
             if (entry->tag_count == 0U) {
-                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s by %s | (no tags)",
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | %s | (no tags)",
                          stats_buf, entry->id, created_buffer, title_preview,
                          entry->title, author);
             } else {
@@ -1889,7 +1889,7 @@ static void session_bbs_list(session_ctx_t *ctx, const char *arguments)
                 if (tags_preview > 80) {
                     tags_preview = 80;
                 }
-                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s by %s | %.*s",
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | %s | %.*s",
                          stats_buf, entry->id, created_buffer, title_preview, entry->title,
                          author, tags_preview, tag_buffer);
             }
@@ -2167,7 +2167,7 @@ static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments)
 
             const char *author = entry->author[0] != '\0' ? entry->author : "anon";
             if (entry->tag_count == 0U) {
-                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s by %s | (no tags)",
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | %s | (no tags)",
                          stats_buf, entry->id, created_buffer, title_preview, entry->title,
                          author);
             } else {
@@ -2190,7 +2190,7 @@ static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments)
                 if (tags_preview > 80) {
                     tags_preview = 80;
                 }
-                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s by %s | %.*s",
+                snprintf(line, sizeof(line), "%s #%" PRIu64 " [%s] %.*s | %s | %.*s",
                          stats_buf, entry->id, created_buffer, title_preview, entry->title,
                          author, tags_preview, tag_buffer);
             }

@@ -15,7 +15,14 @@
 
 ---
 
-## Shipped — v1.3 (2026-09-23)
+## Shipped — v1.3 (Lovelace, 2026-09-27)
+
+- DDial network integration: station (auxiliary) mode linked through the MagViz hub (chatter.pw on the hub user list), full MagViz command set on the dial-in listener (see docs/DDIAL.md), user ("hijack") upstream mode with account lock, reconnect cooldown, and echo dedup; bidirectional chat bridging with loop suppression
+- DDial command interop from the Chatter room: read-only whitelist (`/s`, `/s1-4`, `/sm`, `/i`, `/h`, `/ls`, `/b?`, `/ver`) forwarded raw to the linked station, replies land in the room; protocol commands stay operator-only
+- Scrollback rendering fix: history sink appends only unseen entries instead of repainting the whole visible chunk per message (duplicate-block spam), with cursor sync across own-line render, screen clears, mode exits, and scrollback return
+- Crash forensics: SIGSEGV handler logs first-fault address/RIP/TID before re-raising so core dumps keep the real crash location
+
+## Shipped — v1.2 (Liuhui, 2026-09-22)
 
 - Moderation pipeline: `report` queue (`reports.dat`, dedup, operator `reports`), post `hide`/`pin` flags (storage v3, layout-compatible with v2), `mute`/`unmute`/`mutes` enforced before rate limits, `modlog` action audit (operator actions and IP lookups)
 - IP audit log: connect/disconnect records with operator-only `ipaudit` lookup (queries themselves logged), entries destroyed when older than 5 days, excluded from backups

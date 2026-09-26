@@ -9,6 +9,7 @@
 #include "ssh_chatter/ddial_protocol.h"
 #include "ssh_chatter/host.h"
 #include "ssh_chatter/memory_manager.h"
+#include "magviz.h"
 
 
 #include <arpa/inet.h>
@@ -53,7 +54,7 @@ typedef struct ddial_session {
     char client_ip[SSH_CHATTER_IP_LEN];
     char handle[DDIAL_MAX_HANDLE_LEN];
     uint16_t slot;
-    uint8_t channel;
+    uint16_t channel; /* 1-4 linked, 5-999 station-local (magviz.h) */
     bool logged_in;
     bool should_exit;
     char input_buf[DDIAL_SESSION_INPUT_BUF];
@@ -62,10 +63,25 @@ typedef struct ddial_session {
     bool thread_initialized;
     ttak_mutex_t out_lock;
     bool out_lock_initialized;
-    char out_buf[SSH_CHATTER_MESSAGE_LIMIT * 4];
+    char out_buf[SSH_CHATTER_MESSAGE_LIMIT * 8];
     size_t out_len;
+    /* Output pacing: one paced region (for /300-style messages) plus the
+     * session-wide /baud limit.  Offsets are relative to out_buf. */
+    size_t pace_start;
+    size_t pace_len;
+    uint32_t pace_cps;
+    struct timespec pace_last;
+    struct timespec baud_last;
     struct timespec last_activity;
+    ddial_mv_session_t mv;
 } ddial_session_t;
+
+/* MagViz command layer (magviz.c, same translation unit). */
+static void ddial_session_process_line(ddial_session_t *sess, const char *line);
+static bool ddial_mv_dispatch(ddial_session_t *sess, const char *line);
+static void ddial_mv_login_line(ddial_session_t *sess, const char *line);
+static void ddial_mv_on_logout(ddial_session_t *sess);
+static void ddial_mv_tick(ddial_session_t *sess);
 
 static void ddial_session_write_raw(ddial_session_t *sess, const char *data,
                                     size_t len)
@@ -83,6 +99,51 @@ static void ddial_session_write_raw(ddial_session_t *sess, const char *data,
         sess->out_len += len;
     }
     ttak_mutex_unlock(&sess->out_lock);
+}
+
+/* Append data that must trickle out at baud bits/second (10 bits/char). */
+static void ddial_session_write_paced(ddial_session_t *sess, const char *data,
+                                      size_t len, uint16_t baud)
+{
+    if (sess == nullptr || data == nullptr || len == 0U) {
+        return;
+    }
+    ttak_mutex_lock(&sess->out_lock);
+    size_t start = sess->out_len;
+    size_t space = sizeof(sess->out_buf) - sess->out_len;
+    if (len > space) {
+        len = space;
+    }
+    if (len > 0U) {
+        memcpy(sess->out_buf + sess->out_len, data, len);
+        sess->out_len += len;
+        uint32_t cps = baud >= 10U ? (uint32_t)baud / 10U : 1U;
+        if (sess->pace_len == 0U) {
+            sess->pace_start = start;
+            sess->pace_cps = cps;
+            clock_gettime(CLOCK_MONOTONIC, &sess->pace_last);
+        } else if (cps < sess->pace_cps) {
+            sess->pace_cps = cps;
+        }
+        sess->pace_len = sess->out_len - sess->pace_start;
+    }
+    ttak_mutex_unlock(&sess->out_lock);
+}
+
+/* Bytes allowed since *last at cps; advances *last when budget is used. */
+static size_t ddial_session_budget(struct timespec *last, uint32_t cps,
+                                   const struct timespec *now)
+{
+    long ms = (long)(now->tv_sec - last->tv_sec) * 1000L +
+              (now->tv_nsec - last->tv_nsec) / 1000000L;
+    if (ms < 0) {
+        ms = 0;
+    }
+    size_t budget = (size_t)((uint64_t)cps * (uint64_t)ms / 1000U);
+    if (budget > 0U) {
+        *last = *now;
+    }
+    return budget;
 }
 
 static void ddial_session_write_line(ddial_session_t *sess, const char *text)
@@ -103,10 +164,33 @@ static void ddial_session_flush(ddial_session_t *sess)
         return;
     }
     ttak_mutex_lock(&sess->out_lock);
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
     size_t total = sess->out_len;
+    if (total == 0U) {
+        sess->baud_last = now;
+        sess->pace_last = now;
+    }
+    size_t limit = total;
+    if (sess->pace_len > 0U) {
+        if (sess->pace_start > 0U) {
+            limit = sess->pace_start;
+        } else {
+            size_t budget =
+                ddial_session_budget(&sess->pace_last, sess->pace_cps, &now);
+            limit = budget < sess->pace_len ? budget : sess->pace_len;
+        }
+    }
+    if (sess->mv.baud != 0U && limit > 0U) {
+        size_t budget = ddial_session_budget(
+            &sess->baud_last, (uint32_t)sess->mv.baud / 10U, &now);
+        if (budget < limit) {
+            limit = budget;
+        }
+    }
     size_t sent = 0U;
-    while (sent < total) {
-        ssize_t n = send(sess->fd, sess->out_buf + sent, total - sent,
+    while (sent < limit) {
+        ssize_t n = send(sess->fd, sess->out_buf + sent, limit - sent,
                          MSG_NOSIGNAL);
         if (n < 0) {
             if (errno == EINTR) {
@@ -123,6 +207,16 @@ static void ddial_session_flush(ddial_session_t *sess)
         memmove(sess->out_buf, sess->out_buf + sent, sess->out_len - sent);
     }
     sess->out_len -= sent;
+    if (sess->pace_len > 0U) {
+        if (sent <= sess->pace_start) {
+            sess->pace_start -= sent;
+        } else {
+            size_t consumed = sent - sess->pace_start;
+            sess->pace_start = 0U;
+            sess->pace_len =
+                consumed >= sess->pace_len ? 0U : sess->pace_len - consumed;
+        }
+    }
     ttak_mutex_unlock(&sess->out_lock);
 }
 
@@ -147,67 +241,10 @@ static void ddial_session_send_welcome(ddial_session_t *sess)
         sess, "Enter your handle (or key, then handle on next line):");
 }
 
-static bool ddial_session_set_handle(ddial_session_t *sess, const char *name)
-{
-    if (sess == nullptr || name == nullptr || name[0] == '\0') {
-        return false;
-    }
-    /* The wire spec forbids '^' ')' '}' CR LF in handles and caps them at
-     * 25 chars; sanitize before storing so outbound lines stay legal. */
-    char clean[DDIAL_MAX_HANDLE_LEN];
-    if (ddial_sanitize_handle(name, strlen(name), clean, sizeof(clean)) ==
-            0U ||
-        clean[0] == '\0') {
-        return false;
-    }
-    snprintf(sess->handle, sizeof(sess->handle), "%s", clean);
-    return true;
-}
-
-static void ddial_session_do_who(ddial_session_t *sess)
-{
-    if (sess == nullptr || sess->owner == nullptr) {
-        return;
-    }
-    ddial_session_write_line(sess, "Current users:");
-    host_ddial_write_who(sess);
-}
-
-static void ddial_session_do_help(ddial_session_t *sess)
-{
-    if (sess == nullptr) {
-        return;
-    }
-    ddial_session_write_line(sess, "Commands:");
-    ddial_session_write_line(sess, "/C<message>  - chat to current channel");
-    ddial_session_write_line(sess, "/P<user> <msg> - private message");
-    ddial_session_write_line(sess, "/J<n>        - join channel 1-4");
-    ddial_session_write_line(sess, "/W           - who's online");
-    ddial_session_write_line(sess, "/Q           - quit");
-}
-
-/* Share a dial-in user's public line with the rest of the station: the
- * Chatter room (as a system history entry, so chat_room_broadcast_entry does
- * not loop it back into DDial) and the upstream Station Link. */
-static void ddial_session_share_chat(ddial_session_t *sess,
-                                     const char *formatted, const char *body)
-{
-    host_t *host = sess->owner;
-    char display_line[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(display_line, sizeof(display_line), "%s", formatted);
-    size_t len = strlen(display_line);
-    while (len > 0U && (display_line[len - 1U] == '\r' ||
-                        display_line[len - 1U] == '\n')) {
-        display_line[--len] = '\0';
-    }
-    if (len > 0U) {
-        chat_history_entry_t stored = {0};
-        if (host_history_record_system(host, display_line, &stored)) {
-            chat_room_broadcast_entry(&host->room, &stored, nullptr);
-        }
-    }
-    host_ddial_client_send_channel(host, sess->handle, sess->channel, body);
-}
+/* Forward declaration: mv_public_chat lives in magviz.c. */
+typedef struct mv_chat_opts mv_chat_opts_t;
+static void mv_public_chat(ddial_session_t *sess, uint16_t channel,
+                           const char *raw, const mv_chat_opts_t *opts);
 
 static void ddial_session_process_line(ddial_session_t *sess, const char *line)
 {
@@ -216,23 +253,13 @@ static void ddial_session_process_line(ddial_session_t *sess, const char *line)
     }
 
     if (!sess->logged_in) {
-        /* First non-empty line is treated as handle (or key if it looks like
-         * one). For simplicity accept any non-empty text as handle. */
-        if (ddial_session_set_handle(sess, line)) {
-            sess->logged_in = true;
-            sess->channel = DDIAL_DEFAULT_CHANNEL;
-            char greeting[128];
-            snprintf(greeting, sizeof(greeting),
-                     "Welcome, %s. You are on channel %u.", sess->handle,
-                     (unsigned int)sess->channel);
-            ddial_session_write_line(sess, greeting);
-            /* Announce the login to the linked station, if any. */
-            host_ddial_client_send_login(sess->owner, sess->slot,
-                                         sess->channel, DDIAL_TIER_GUEST,
-                                         sess->handle, 0U);
-        } else {
-            ddial_session_write_line(sess, "Invalid handle. Try again.");
-        }
+        ddial_mv_login_line(sess, line);
+        return;
+    }
+
+    /* The MagViz layer owns almost every command; it declines only the
+     * classic DDial spellings it does not override (e.g. /C<text>). */
+    if (ddial_mv_dispatch(sess, line)) {
         return;
     }
 
@@ -241,67 +268,16 @@ static void ddial_session_process_line(ddial_session_t *sess, const char *line)
 
     switch (cmd) {
     case DDIAL_CMD_CHAT:
-        if (msg.body[0] != '\0' && sess->owner != nullptr) {
-            char formatted[SSH_CHATTER_MESSAGE_LIMIT];
-            if (ddial_format_chat(formatted, sizeof(formatted), sess->slot,
-                                  sess->channel, DDIAL_TIER_GUEST,
-                                  sess->handle, msg.body)) {
-                host_ddial_broadcast_to_sessions(sess->owner, formatted);
-                ddial_session_share_chat(sess, formatted, msg.body);
-            }
-        }
-        break;
-    case DDIAL_CMD_UNKNOWN:
-        ddial_session_write_line(sess, "Unknown command. Type /H for help.");
-        break;
-    case DDIAL_CMD_PRIVATE: {
-        char *end = nullptr;
-        unsigned long target = strtoul(msg.handle, &end, 10);
-        if (msg.handle[0] == '\0' || end == msg.handle || *end != '\0' ||
-            target == 0U || target > UINT16_MAX || msg.body[0] == '\0' ||
-            !host_ddial_send_private(sess->owner, (uint16_t)target,
-                                     sess->slot, sess->handle, msg.body)) {
-            ddial_session_write_line(sess, "Private message delivery failed.");
-        }
-        break;
-    }
-    case DDIAL_CMD_JOIN:
-        if (msg.channel >= DDIAL_MIN_CHANNEL &&
-            msg.channel <= DDIAL_MAX_CHANNEL) {
-            sess->channel = msg.channel;
-            char note[64];
-            snprintf(note, sizeof(note), "Joined channel %u.",
-                     (unsigned int)sess->channel);
-            ddial_session_write_line(sess, note);
-        }
-        break;
-    case DDIAL_CMD_WHO:
-        ddial_session_do_who(sess);
+        mv_public_chat(sess, sess->channel, msg.body, nullptr);
         break;
     case DDIAL_CMD_HELP:
-        ddial_session_do_help(sess);
+        ddial_mv_dispatch(sess, "/i");
         break;
     case DDIAL_CMD_QUIT:
         sess->should_exit = true;
         break;
-    case DDIAL_CMD_MAIL:
-        ddial_session_write_line(
-            sess, "Mail not yet implemented on DDial port.");
-        break;
-    case DDIAL_CMD_TIME:
-    case DDIAL_CMD_USERS:
-    case DDIAL_CMD_STATS:
-    case DDIAL_CMD_NEWS:
-    case DDIAL_CMD_INFO:
-    case DDIAL_CMD_VERSION:
-    case DDIAL_CMD_BELL:
-    case DDIAL_CMD_DUPLEX:
-    case DDIAL_CMD_LINK:
-        ddial_session_write_line(sess, "Command acknowledged (stub).");
-        break;
     default:
-        ddial_session_write_line(
-            sess, "Unknown command. Type /H for help.");
+        ddial_session_write_line(sess, "Unknown command. Type /i for help.");
         break;
     }
 }
@@ -377,6 +353,9 @@ static void *ddial_session_thread(void *arg)
                 break;
             }
 
+            if (sess->logged_in) {
+                ddial_mv_tick(sess);
+            }
             ddial_session_flush(sess);
 
             if (rc == 0) {
@@ -416,10 +395,21 @@ static void *ddial_session_thread(void *arg)
 
     sess->should_exit = true;
     if (sess->logged_in && sess->handle[0] != '\0') {
+        SSHC_SAFE_BLOCK_BEGIN() {
+            ddial_mv_on_logout(sess);
+        } SSHC_SAFE_BLOCK_END({});
         /* Announce the logout to the linked station, if any. */
-        host_ddial_client_send_logout(sess->owner, sess->slot, sess->channel,
-                                      DDIAL_TIER_GUEST, sess->handle, 0U);
+        host_ddial_client_send_logout(
+            sess->owner, sess->slot,
+            (uint8_t)(sess->channel <= DDIAL_MAX_CHANNEL ? sess->channel
+                                                         : DDIAL_DEFAULT_CHANNEL),
+            sess->mv.member_no != 0U ? DDIAL_TIER_PASSWORD : DDIAL_TIER_GUEST,
+            sess->handle, (uint16_t)sess->mv.member_no);
     }
+    /* Drain what is left (goodbye lines) without honouring pacing. */
+    sess->pace_len = 0U;
+    sess->mv.baud = 0U;
+    ddial_session_flush(sess);
     if (sess->fd >= 0) {
         close(sess->fd);
         sess->fd = -1;

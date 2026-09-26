@@ -1071,16 +1071,28 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
     char action[32];
     const char *rest = session_consume_token(arguments, action, sizeof(action));
 
+    /* Reconnect storms can make an upstream ddial see the account log in
+     * twice, which disables it; only operators may drive the relay. */
+    if ((strcasecmp(action, "connect") == 0 ||
+         strcasecmp(action, "disconnect") == 0 ||
+         strcasecmp(action, "reconnect") == 0) &&
+        !ctx->user.is_operator) {
+        session_send_system_line(ctx, "Only operators can change the DDial "
+                                      "relay connection.");
+        return;
+    }
+
     if (strcasecmp(action, "status") == 0) {
         char status[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(status, sizeof(status),
-                 "DDial relay: %s | Host: %s:%d",
+                 "DDial relay: %s | Host: %s:%d | Mode: %s%s",
                  relay->enabled && relay->connected
                      ? "\033[1;32mconnected\033[0m"
                      : relay->enabled ? "\033[1;33mconnecting\033[0m"
                                       : "\033[1;31moffline\033[0m",
                  relay->host[0] != '\0' ? relay->host : "(none)",
-                 relay->port);
+                 relay->port, relay->user_mode ? "user" : "station",
+                 relay->locked_out ? " | LOCKED OUT (duplicate login)" : "");
         session_send_system_line(ctx, status);
         return;
     }

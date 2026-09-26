@@ -22,6 +22,23 @@
  *   - Other traffic (remote chat, system messages, /SP station lists, linked
  *     station names, node lists) arrives as raw lines.
  *
+ * Two modes (CHATTER_DDIAL_MODE):
+ *   station (default)  The account is a Station Link: outbound chat uses the
+ *                      full "#slot[T1:handle) msg" wire form, and login /
+ *                      logout / }}} station broadcasts are sent for local
+ *                      users.
+ *   user ("hijack")    The account is an ordinary DDial user.  Everything we
+ *                      type is shown by the remote as "#N[T1:ourhandle) ...",
+ *                      so outbound chat is sent as "speaker: msg", link-only
+ *                      traffic is never sent, and the remote's echo of our
+ *                      own lines is dropped instead of re-entering Chatter.
+ *                      Old ddials disable an account that logs in twice
+ *                      (easy over telnet), so this mode also holds a
+ *                      process-wide account lock, persists the last hang-up
+ *                      time across restarts and waits out a re-login
+ *                      cooldown, says /Q before hanging up, and stops
+ *                      reconnecting if the remote reports a duplicate login.
+ *
  * Inbound lines are sanitized to remove terminal escape sequences, normalized
  * to a clean ddial.dat-style form, committed to the Chatter history buffer,
  * and then rendered through the normal history broadcast path.  This prevents
@@ -41,7 +58,9 @@
 #include <poll.h>
 #include <pthread.h>
 #include <string.h>
+#include <fcntl.h>
 #include <strings.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <time.h>
@@ -62,6 +81,11 @@
 /* How long to watch for a login success/failure marker after the password
  * has been sent. */
 #define DDIAL_CLIENT_AUTH_RESULT_TIMEOUT_MS 10000
+/* User mode: minimum quiet time between hanging up and dialing back in, so
+ * the remote has dropped the old session before we log in again. */
+#define DDIAL_CLIENT_USER_RELOGIN_COOLDOWN_SEC 120U
+/* User mode: how long an outbound line is remembered for echo matching. */
+#define DDIAL_CLIENT_ECHO_WINDOW_SEC 90
 
 enum {
     DDIAL_TELNET_DATA = 0,
@@ -107,7 +131,19 @@ typedef struct ddial_client {
     unsigned int reconnect_attempts;
     struct timespec last_disconnect_time;
     struct timespec last_broadcast_time;
+    /* User-account ("hijack") mode, CHATTER_DDIAL_MODE=user: the relay is a
+     * plain user on the remote DDial, not a Station Link.  See client.c. */
+    bool user_mode;
+    bool locked_out;
+    int account_lock_fd;
+    unsigned int relogin_cooldown_sec;
+    char recent_sent[8][256];
+    struct timespec recent_sent_at[8];
+    size_t recent_sent_head;
 } ddial_client_t;
+
+_Static_assert(sizeof(ddial_client_t) == sizeof(ddial_relay_t),
+               "ddial_client_t must mirror ddial_relay_t");
 
 static ssize_t ddial_client_send_all(int fd, const char *buf, size_t len)
 {
@@ -164,6 +200,223 @@ static void ddial_client_maybe_keepalive(ddial_client_t *client)
 
 
 
+/* ---- user ("hijack") mode helpers ------------------------------------- */
+
+/* True for lines that carry user-authored text (public, dual-channel,
+ * link-prefixed or private chat).  Such lines must never be interpreted as
+ * server status: someone typing "bye" is not a disconnect. */
+static bool ddial_client_line_is_chat_content(const char *line)
+{
+    const char *p = line;
+    /* The "-->" input prompt is not newline-terminated, so the next line
+     * can arrive glued to it. */
+    for (;;) {
+        while (*p == ' ') {
+            ++p;
+        }
+        if (strncmp(p, "-->", 3U) != 0) {
+            break;
+        }
+        p += 3;
+    }
+    while (isdigit((unsigned char)*p)) {
+        ++p; /* link prefix such as 99#2[... */
+    }
+    if (*p == '~') {
+        ++p;
+    }
+    if (*p == 'P' || *p == 'p') {
+        ++p;
+    }
+    if (*p != '#') {
+        return false;
+    }
+    ++p;
+    if (!isdigit((unsigned char)*p)) {
+        return false;
+    }
+    while (isdigit((unsigned char)*p)) {
+        ++p;
+    }
+    return (*p == '[' || *p == '(' || *p == '<') && strchr(p, ')') != nullptr;
+}
+
+static bool ddial_client_line_looks_like_lockout(const char *line)
+{
+    static const char *needles[] = {
+        "already logged",  "already on line", "already online",
+        "logged in twice", "account disabled", "account locked",
+        "account in use",  "is in use",       "duplicate login",
+    };
+    for (size_t i = 0U; i < sizeof(needles) / sizeof(needles[0]); ++i) {
+        if (strcasestr(line, needles[i]) != nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void ddial_client_echo_key(const char *text, char *out, size_t cap)
+{
+    /* Compare echoes loosely: case-folded alphanumerics only, because the
+     * remote may trim, recode or re-space what we sent. */
+    size_t n = 0U;
+    for (const char *p = text; *p != '\0' && n + 1U < cap; ++p) {
+        if (isalnum((unsigned char)*p)) {
+            out[n++] = (char)tolower((unsigned char)*p);
+        }
+    }
+    out[n] = '\0';
+}
+
+/* Must be called with client->lock held. */
+static void ddial_client_remember_sent(ddial_client_t *client,
+                                       const char *text)
+{
+    size_t slot = client->recent_sent_head % 8U;
+    ddial_client_echo_key(text, client->recent_sent[slot],
+                          sizeof(client->recent_sent[slot]));
+    clock_gettime(CLOCK_MONOTONIC, &client->recent_sent_at[slot]);
+    client->recent_sent_head = (client->recent_sent_head + 1U) % 8U;
+}
+
+/* Must be called with client->lock held.  Consumes the match. */
+static bool ddial_client_is_recent_echo(ddial_client_t *client,
+                                        const char *text)
+{
+    char key[256];
+    ddial_client_echo_key(text, key, sizeof(key));
+    if (key[0] == '\0') {
+        return false;
+    }
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    for (size_t i = 0U; i < 8U; ++i) {
+        if (client->recent_sent[i][0] == '\0' ||
+            now.tv_sec - client->recent_sent_at[i].tv_sec >
+                DDIAL_CLIENT_ECHO_WINDOW_SEC) {
+            continue;
+        }
+        if (strcmp(client->recent_sent[i], key) == 0) {
+            client->recent_sent[i][0] = '\0';
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The account lock file lives beside the other state files and holds
+ * "active <epoch>" while connected or "closed <epoch>" after hang-up.  An
+ * exclusive flock keeps a second ssh-chatter (restart overlap, a test run)
+ * from dialing the same account. */
+static bool ddial_client_account_lock(ddial_client_t *client, host_t *host)
+{
+    if (client->account_lock_fd >= 0) {
+        return true;
+    }
+    const char *dir = getenv("CHATTER_DDIAL_LOCK_DIR");
+    if (dir == nullptr || dir[0] == '\0') {
+        dir = host->user_data_root[0] != '\0' ? host->user_data_root : "/tmp";
+    }
+    char name[300];
+    size_t n = 0U;
+    for (const char *p = client->host; *p != '\0' && n + 1U < 256U; ++p) {
+        name[n++] = isalnum((unsigned char)*p) ? *p : '_';
+    }
+    name[n] = '\0';
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/ddial-account-%s-%d.lock", dir, name,
+             client->port);
+    int fd = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+    if (fd < 0) {
+        printf("[ddial] cannot open account lock %s: %s\n", path,
+               strerror(errno));
+        return false;
+    }
+    if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+        close(fd);
+        return false;
+    }
+    client->account_lock_fd = fd;
+    return true;
+}
+
+static void ddial_client_account_mark(ddial_client_t *client, bool active)
+{
+    if (!client->user_mode || client->account_lock_fd < 0) {
+        return;
+    }
+    char buf[64];
+    int len = snprintf(buf, sizeof(buf), "%s %lld\n",
+                       active ? "active" : "closed", (long long)time(nullptr));
+    if (len > 0 && ftruncate(client->account_lock_fd, 0) == 0) {
+        if (pwrite(client->account_lock_fd, buf, (size_t)len, 0) == len) {
+            (void)fsync(client->account_lock_fd);
+        }
+    }
+}
+
+/* Seconds left before it is safe to dial in again. */
+static unsigned int ddial_client_cooldown_remaining(ddial_client_t *client)
+{
+    if (!client->user_mode) {
+        return 0U;
+    }
+    unsigned int cooldown = client->relogin_cooldown_sec;
+    long since = -1;
+
+    if (client->last_disconnect_time.tv_sec != 0) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        since = (long)(now.tv_sec - client->last_disconnect_time.tv_sec);
+    }
+    if (client->account_lock_fd >= 0) {
+        char buf[64] = {0};
+        ssize_t got = pread(client->account_lock_fd, buf, sizeof(buf) - 1U, 0);
+        char state[16] = "";
+        long long when = 0;
+        if (got > 0 && sscanf(buf, "%15s %lld", state, &when) == 2) {
+            if (strcmp(state, "active") == 0 && !client->connected) {
+                /* We hold the lock, so the process that wrote "active" died
+                 * while connected and the remote may still hold its
+                 * session.  Start one full cooldown from now. */
+                ddial_client_account_mark(client, false);
+                when = (long long)time(nullptr);
+            }
+            long wall = (long)(time(nullptr) - (time_t)when);
+            if (since < 0 || wall < since) {
+                since = wall;
+            }
+        }
+    }
+    if (since < 0 || since >= (long)cooldown) {
+        return 0U;
+    }
+    return cooldown - (unsigned int)since;
+}
+
+/* Say goodbye so the remote logs the account out instead of waiting for a
+ * carrier timeout.  Must be called with client->lock held. */
+static void ddial_client_graceful_quit_locked(ddial_client_t *client)
+{
+    if (client->user_mode && client->connected && client->upstream_fd >= 0 &&
+        atomic_load(&client->auth_state) == DDIAL_AUTH_APPROVED) {
+        (void)ddial_client_send_all(client->upstream_fd, "/Q\r\n", 4U);
+        struct timespec pause = {.tv_sec = 0, .tv_nsec = 300000000L};
+        nanosleep(&pause, nullptr);
+    }
+}
+
+/* Sleep in one-second steps so a stop request is honoured promptly. */
+static void ddial_client_sleep_interruptible(ddial_client_t *client,
+                                             unsigned int seconds)
+{
+    for (unsigned int i = 0U; i < seconds && !atomic_load(&client->stop);
+         ++i) {
+        sleep(1U);
+    }
+}
+
 static void ddial_client_disconnect(ddial_client_t *client)
 {
     if (client == nullptr) {
@@ -173,6 +426,7 @@ static void ddial_client_disconnect(ddial_client_t *client)
     if (client->upstream_fd >= 0) {
         close(client->upstream_fd);
         client->upstream_fd = -1;
+        ddial_client_account_mark(client, false);
     }
     client->connected = false;
     client->auth_sent = false;
@@ -274,6 +528,7 @@ static bool ddial_client_connect_socket(ddial_client_t *client)
 
     client->upstream_fd = fd;
     client->connected = true;
+    ddial_client_account_mark(client, true);
     client->auth_sent = false;
     atomic_store(&client->auth_state, DDIAL_AUTH_NONE);
     client->auth_result = 0;
@@ -613,6 +868,19 @@ static void ddial_client_normalize_line(const char *src, char *dst,
         return;
     }
 
+    /* Drop a "-->" prompt glued to the front of a chat line (the prompt has
+     * no newline).  "-->. +^..." login notices are left alone. */
+    while (strncmp(start, "-->", 3U) == 0) {
+        char *after = start + 3;
+        while (*after == ' ') {
+            ++after;
+        }
+        if (*after != '#' && *after != '~' && !isdigit((unsigned char)*after)) {
+            break;
+        }
+        start = after;
+    }
+
     /* --- Link-mode prefix parsing ---
      * Lines received on a link connection begin with one or more '}' bytes
      * that indicate the message type:
@@ -814,7 +1082,19 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
         if (client->handle[0] != '\0' &&
             strcasecmp(parsed_handle, client->handle) == 0) {
             is_our_line = true;
-        } else if (host_ddial_handle_is_local(host, parsed_handle, false)) {
+        }
+        if (client->user_mode) {
+            ttak_mutex_lock(&client->lock);
+            bool echo = ddial_client_is_recent_echo(client, parsed_message);
+            ttak_mutex_unlock(&client->lock);
+            if (is_our_line || echo) {
+                /* The remote repeats what we typed as our account; the
+                 * originals are already in the room and on the dial-ins. */
+                return;
+            }
+        }
+        if (!is_our_line &&
+            host_ddial_handle_is_local(host, parsed_handle, false)) {
             /* Link echo of a local dial-in user's line: the Chatter room
              * already received it from the DDial listener. */
             return;
@@ -948,10 +1228,25 @@ static size_t ddial_client_extract_lines(host_t *host,
 
         /* If the server tells us we are being kicked/timed out, tear down the
          * connection while still under the lock. */
-        if (ddial_client_line_looks_like_kick(normalized_line)) {
+        bool chat_content = ddial_client_line_is_chat_content(normalized_line);
+        bool lockout = !chat_content &&
+                       ddial_client_line_looks_like_lockout(normalized_line);
+        if (lockout && client->user_mode) {
+            /* Dialing again would only make it worse (or disable the
+             * account).  Stay down until an operator reconnects. */
+            client->locked_out = true;
+            printf("[ddial] upstream reports a duplicate/locked login (\"%s\"); "
+                   "not reconnecting until /ddial reconnect\n",
+                   normalized_line);
+        }
+        if (lockout ||
+            (!chat_content && ddial_client_line_looks_like_kick(normalized_line))) {
+            printf("[ddial] upstream hung up on us: \"%s\"\n",
+                   normalized_line);
             if (client->upstream_fd >= 0) {
                 close(client->upstream_fd);
                 client->upstream_fd = -1;
+                ddial_client_account_mark(client, false);
             }
             client->connected = false;
             if (client->reconnect_attempts < 100000U) {
@@ -965,7 +1260,19 @@ static size_t ddial_client_extract_lines(host_t *host,
             return 0U;
         }
 
-        ddial_client_learn_slot(client, normalized_line);
+        if (!client->user_mode) {
+            ddial_client_learn_slot(client, normalized_line);
+        } else if (chat_content && client->handle[0] != '\0') {
+            /* As a plain user every chat line starts with some "#N[", so
+             * only our own echo tells us which line we are on. */
+            char who[DDIAL_MAX_HANDLE_LEN];
+            if (ddial_parse_incoming_chat(normalized_line, nullptr, nullptr,
+                                          nullptr, nullptr, nullptr, who,
+                                          sizeof(who), nullptr) &&
+                strcasecmp(who, client->handle) == 0) {
+                ddial_client_learn_slot(client, normalized_line);
+            }
+        }
         ddial_client_note_auth_marker(client, normalized_line);
 
         /* Route link private messages to the owning local -DT session. */
@@ -1413,7 +1720,8 @@ static void ddial_client_maybe_station_broadcast(host_t *host,
     if (host == nullptr || client == nullptr || client->upstream_fd < 0) {
         return;
     }
-    if (atomic_load(&client->auth_state) != DDIAL_AUTH_APPROVED) {
+    if (atomic_load(&client->auth_state) != DDIAL_AUTH_APPROVED ||
+        client->user_mode) {
         return;
     }
     struct timespec now;
@@ -1440,16 +1748,41 @@ static void *ddial_client_thread(void *arg)
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
 
     SSHC_SAFE_BLOCK_BEGIN() {
+        bool lock_warned = false;
         while (!atomic_load(&client->stop)) {
             if (!client->connected) {
                 unsigned int backoff = ddial_client_backoff_sec(client);
+                if (client->locked_out) {
+                    ddial_client_sleep_interruptible(client, 5U);
+                    continue;
+                }
+                if (client->user_mode) {
+                    if (!ddial_client_account_lock(client, host)) {
+                        if (!lock_warned) {
+                            printf("[ddial] account %s:%d is held by another "
+                                   "process; waiting\n",
+                                   client->host, client->port);
+                            lock_warned = true;
+                        }
+                        ddial_client_sleep_interruptible(client, 30U);
+                        continue;
+                    }
+                    unsigned int wait = ddial_client_cooldown_remaining(client);
+                    if (wait > 0U) {
+                        printf("[ddial] waiting %us before dialing %s:%d again "
+                               "(double-login guard)\n",
+                               wait, client->host, client->port);
+                        ddial_client_sleep_interruptible(client, wait);
+                        continue;
+                    }
+                }
                 if (!ddial_client_connect_socket(client)) {
-                    sleep(backoff);
+                    ddial_client_sleep_interruptible(client, backoff);
                     continue;
                 }
                 if (!ddial_client_do_login(client, host)) {
                     ddial_client_disconnect(client);
-                    sleep(backoff);
+                    ddial_client_sleep_interruptible(client, backoff);
                     continue;
                 }
                 /* Flush any banners/prompts accumulated during login.
@@ -1499,7 +1832,14 @@ static void *ddial_client_thread(void *arg)
         printf("[ddial] SEGV/SIGBUS swallowed in ddial_client_thread\n");
     });
 
+    ttak_mutex_lock(&client->lock);
+    ddial_client_graceful_quit_locked(client);
+    ttak_mutex_unlock(&client->lock);
     ddial_client_disconnect(client);
+    if (client->account_lock_fd >= 0) {
+        close(client->account_lock_fd); /* releases the flock */
+        client->account_lock_fd = -1;
+    }
     return nullptr;
 }
 
@@ -1527,6 +1867,18 @@ void host_ddial_init(host_t *host)
     const char *port_env = getenv("CHATTER_DDIAL_PORT");
     const char *handle_env = getenv("CHATTER_DDIAL_HANDLE");
     const char *key_env = getenv("CHATTER_DDIAL_KEY");
+    const char *mode_env = getenv("CHATTER_DDIAL_MODE");
+    const char *cooldown_env = getenv("CHATTER_DDIAL_RELOGIN_COOLDOWN");
+
+    client->account_lock_fd = -1;
+    client->user_mode =
+        mode_env != nullptr && (strcasecmp(mode_env, "user") == 0 ||
+                                strcasecmp(mode_env, "hijack") == 0);
+    client->relogin_cooldown_sec = DDIAL_CLIENT_USER_RELOGIN_COOLDOWN_SEC;
+    if (cooldown_env != nullptr && cooldown_env[0] != '\0') {
+        client->relogin_cooldown_sec =
+            (unsigned int)strtoul(cooldown_env, nullptr, 10);
+    }
 
     if (host_env != nullptr && host_env[0] != '\0' && port_env != nullptr &&
         port_env[0] != '\0') {
@@ -1545,6 +1897,8 @@ void host_ddial_init(host_t *host)
             snprintf(client->key, sizeof(client->key), "%s", key_env);
         }
         client->enabled = true;
+        printf("[ddial] upstream %s:%d configured in %s mode\n", client->host,
+               client->port, client->user_mode ? "user" : "station");
     }
 
     memset(&host->ddial_listener, 0, sizeof(host->ddial_listener));
@@ -1638,6 +1992,7 @@ void host_ddial_client_reconnect(host_t *host)
     /* Stop the current thread, reset backoff, and start fresh. */
     host_ddial_client_stop(host);
     client->reconnect_attempts = 0U;
+    client->locked_out = false;
     client->enabled = true;
     host_ddial_client_start(host);
 }
@@ -1733,7 +2088,36 @@ void host_ddial_client_send_channel(host_t *host, const char *handle,
     char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 64];
     int  wire_len;
 
-    if (slot_known && our_slot > 0U && handle != nullptr && handle[0] != '\0') {
+    if (client->user_mode) {
+        /* A plain user can only talk on the channel it is tuned to, and the
+         * remote prefixes everything with our own "#N[T1:handle)".  Name
+         * the real speaker inside the message instead. */
+        if (channel != DDIAL_DEFAULT_CHANNEL) {
+            return;
+        }
+        char text[SSH_CHATTER_MESSAGE_LIMIT];
+        if (handle != nullptr && handle[0] != '\0' &&
+            strcasecmp(handle, client->handle) != 0) {
+            char clean_handle[DDIAL_MAX_HANDLE_LEN];
+            ddial_sanitize_handle(handle, strlen(handle), clean_handle,
+                                  sizeof(clean_handle));
+            snprintf(text, sizeof(text), "%s: %s", clean_handle, clean_msg);
+        } else {
+            /* A leading '/' would be run as a command by the remote. */
+            snprintf(text, sizeof(text), "%s%s",
+                     clean_msg[0] == '/' ? " " : "", clean_msg);
+        }
+        char clean_body[DDIAL_MAX_BODY_LEN + 1U];
+        ddial_clean_body(text, clean_body, sizeof(clean_body));
+        wire_len = snprintf(wire_line, sizeof(wire_line), "%s\r\n",
+                            clean_body);
+        if (wire_len > 0 && (size_t)wire_len < sizeof(wire_line)) {
+            ttak_mutex_lock(&client->lock);
+            ddial_client_remember_sent(client, clean_body);
+            ttak_mutex_unlock(&client->lock);
+        }
+    } else if (slot_known && our_slot > 0U && handle != nullptr &&
+               handle[0] != '\0') {
         /* Link mode: send the full #slot[Tchan:handle) message wire form
          * (with '~' dual-channel prefix when tuned away from channel 1). */
         bool formatted;
@@ -1810,7 +2194,18 @@ void host_ddial_client_send_private(host_t *host, uint16_t target_slot,
     }
 
     char wire_line[SSH_CHATTER_MESSAGE_LIMIT + 64];
-    if (!ddial_format_link_private(wire_line, sizeof(wire_line),
+    if (client->user_mode) {
+        /* Plain-user private message: "/P<line> <speaker>: <msg>". */
+        char clean_body[DDIAL_MAX_BODY_LEN + 1U];
+        char text[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(text, sizeof(text), "%s%s%s",
+                 our_handle != nullptr ? our_handle : "",
+                 our_handle != nullptr && our_handle[0] != '\0' ? ": " : "",
+                 clean_msg);
+        ddial_clean_body(text, clean_body, sizeof(clean_body));
+        snprintf(wire_line, sizeof(wire_line), "/P%u %s\r\n",
+                 (unsigned)target_slot, clean_body);
+    } else if (!ddial_format_link_private(wire_line, sizeof(wire_line),
                                    target_slot, our_slot,
                                    DDIAL_DEFAULT_CHANNEL,
                                    DDIAL_TIER_PASSWORD,
@@ -1852,7 +2247,7 @@ static void host_ddial_client_send_link_event(host_t *host, uint16_t slot,
     ttak_mutex_unlock(&client->lock);
 
     if (!enabled || !connected || upstream_fd < 0 ||
-        auth_state != DDIAL_AUTH_APPROVED) {
+        auth_state != DDIAL_AUTH_APPROVED || client->user_mode) {
         return;
     }
 

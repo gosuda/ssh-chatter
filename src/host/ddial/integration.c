@@ -27,6 +27,7 @@ typedef struct ddial_chat_link_entry {
     uint16_t slot;
     uint8_t channel;
     char handle[DDIAL_MAX_HANDLE_LEN];
+    char username[SSH_CHATTER_USERNAME_LEN]; /* Chatter name for /p# */
 } ddial_chat_link_entry_t;
 
 static ddial_chat_link_entry_t *g_ddial_chat_links = nullptr;
@@ -163,6 +164,7 @@ void host_ddial_chat_link_register(session_ctx_t *ctx)
     node->slot = slot;
     node->channel = DDIAL_DEFAULT_CHANNEL;
     snprintf(node->handle, sizeof(node->handle), "%s", handle);
+    snprintf(node->username, sizeof(node->username), "%s", ctx->user.name);
     node->next = g_ddial_chat_links;
     g_ddial_chat_links = node;
     pthread_mutex_unlock(&g_ddial_registry_lock);
@@ -391,19 +393,94 @@ void host_ddial_relay_upstream_line(host_t *host, const char *line)
     }
     char handle[DDIAL_MAX_HANDLE_LEN];
     const char *body = nullptr;
-    if (!ddial_parse_incoming_chat(line, nullptr, nullptr, nullptr, nullptr,
+    uint8_t channel = DDIAL_DEFAULT_CHANNEL;
+    if (!ddial_parse_incoming_chat(line, nullptr, nullptr, &channel, nullptr,
                                    nullptr, handle, sizeof(handle), &body)) {
         return;
     }
     if (host_ddial_handle_is_local(host, handle, true)) {
         return;
     }
-    char formatted[SSH_CHATTER_MESSAGE_LIMIT + 4];
-    int n = snprintf(formatted, sizeof(formatted), "%s\r\n", line);
-    if (n <= 0 || (size_t)n >= sizeof(formatted)) {
+    ddial_mv_public_t pub = {0};
+    pub.channel = channel >= DDIAL_MIN_CHANNEL && channel <= DDIAL_MAX_CHANNEL
+                      ? channel
+                      : DDIAL_DEFAULT_CHANNEL;
+    pub.line = line;
+    pub.plain_body = body;
+    host_ddial_deliver_public(host, &pub);
+}
+
+static void host_ddial_foreach_session(host_t *host, ddial_session_visit_cb cb,
+                                       void *user)
+{
+    if (host == nullptr || cb == nullptr) {
         return;
     }
-    host_ddial_broadcast_to_sessions(host, formatted);
+    pthread_mutex_lock(&g_ddial_registry_lock);
+    for (ddial_session_registry_node_t *cur = g_ddial_sessions;
+         cur != nullptr; cur = cur->next) {
+        struct ddial_session *sess = cur->session;
+        if (sess == nullptr || sess->owner != host ||
+            !sshc_memory_is_valid_gc_pointer(sess) ||
+            !sshc_pointer_check(sess, sizeof(*sess))) {
+            continue;
+        }
+        SSHC_SAFE_BLOCK_BEGIN() {
+            cb(sess, user);
+        } SSHC_SAFE_BLOCK_END({});
+    }
+    pthread_mutex_unlock(&g_ddial_registry_lock);
+}
+
+static void host_ddial_foreach_chat_link(host_t *host,
+                                         ddial_chat_link_visit_cb cb,
+                                         void *user)
+{
+    if (host == nullptr || cb == nullptr) {
+        return;
+    }
+    pthread_mutex_lock(&g_ddial_registry_lock);
+    for (ddial_chat_link_entry_t *cur = g_ddial_chat_links; cur != nullptr;
+         cur = cur->next) {
+        if (cur->host == host) {
+            cb(cur->slot, cur->handle, cur->username, user);
+        }
+    }
+    pthread_mutex_unlock(&g_ddial_registry_lock);
+}
+
+static bool host_ddial_chat_link_username(host_t *host, uint16_t slot,
+                                          char *out, size_t cap)
+{
+    bool found = false;
+    pthread_mutex_lock(&g_ddial_registry_lock);
+    for (ddial_chat_link_entry_t *cur = g_ddial_chat_links; cur != nullptr;
+         cur = cur->next) {
+        if (cur->host == host && cur->slot == slot) {
+            snprintf(out, cap, "%s", cur->username);
+            found = true;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_ddial_registry_lock);
+    return found;
+}
+
+/* Line number of a Chatter member on the chat-link registry, or 0. */
+static uint16_t host_ddial_chat_link_slot_of(host_t *host,
+                                             const char *username)
+{
+    uint16_t slot = 0U;
+    pthread_mutex_lock(&g_ddial_registry_lock);
+    for (ddial_chat_link_entry_t *cur = g_ddial_chat_links; cur != nullptr;
+         cur = cur->next) {
+        if (cur->host == host && strcmp(cur->username, username) == 0) {
+            slot = cur->slot;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_ddial_registry_lock);
+    return slot;
 }
 
 /* Build the "}}}-.<station>^#<slot>..." user broadcast list from the local
@@ -443,9 +520,10 @@ bool host_ddial_client_send_station_broadcast(host_t *host)
             continue;
         }
         char entry[128];
-        if (!ddial_format_broadcast_entry(entry, sizeof(entry), sess->slot,
-                                          sess->channel, DDIAL_TIER_PASSWORD,
-                                          sess->handle, 0U, false)) {
+        if (!ddial_format_broadcast_entry(
+                entry, sizeof(entry), sess->slot,
+                DDIAL_MV_LINK_CHANNEL(sess->channel), mv_tier(sess),
+                sess->handle, (uint16_t)sess->mv.member_no, false)) {
             continue;
         }
         size_t entry_len = strlen(entry);

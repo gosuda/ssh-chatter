@@ -13,6 +13,8 @@
 #include "transport/ddial_relay.c"
 #include "ddial/protocol.c"
 #include "ddial/server.c"
+#include "ddial/members.c"
+#include "ddial/magviz.c"
 #include "ddial/client.c"
 #include "ddial/inject.c"
 #include "ddial/integration.c"

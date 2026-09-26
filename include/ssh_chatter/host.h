@@ -1173,6 +1173,15 @@ typedef struct ddial_relay {
     unsigned int reconnect_attempts;
     struct timespec last_disconnect_time;
     struct timespec last_broadcast_time;
+    /* User-account ("hijack") mode, CHATTER_DDIAL_MODE=user: the relay is a
+     * plain user on the remote DDial, not a Station Link.  See client.c. */
+    bool user_mode;
+    bool locked_out;
+    int account_lock_fd;
+    unsigned int relogin_cooldown_sec;
+    char recent_sent[8][256];
+    struct timespec recent_sent_at[8];
+    size_t recent_sent_head;
 } ddial_relay_t;
 
 typedef struct host {

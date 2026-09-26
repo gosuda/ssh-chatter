@@ -1772,7 +1772,9 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     host_moderation_shutdown(host);
 
     host_telnet_listener_stop(host);
-    host_ddial_listener_stop(host);
+    /* Stops the listener and the upstream client; in user mode the client
+     * says /Q so the remote logs the account out cleanly. */
+    host_ddial_shutdown(host);
     host_json_api_listener_stop(host);
 
     if (host->rss_thread_initialized) {

@@ -39,14 +39,21 @@ void host_ddial_inject_message(host_t *host, const char *username,
     memcpy(single_line, message, line_len);
     single_line[line_len] = '\0';
 
+    /* Chatter members speak on channel 1 from their chat-link line number,
+     * so dial-ins can /ig, /null or /p them like anyone else. */
+    uint16_t slot = host_ddial_chat_link_slot_of(host, username);
     char formatted[SSH_CHATTER_MESSAGE_LIMIT];
-    if (!ddial_format_chat(formatted, sizeof(formatted), 1U,
-                           DDIAL_DEFAULT_CHANNEL, DDIAL_TIER_GUEST, username,
-                           single_line)) {
+    if (!ddial_format_chat(formatted, sizeof(formatted), slot,
+                           DDIAL_DEFAULT_CHANNEL, DDIAL_TIER_PASSWORD,
+                           username, single_line)) {
         return;
     }
+    formatted[strcspn(formatted, "\r\n")] = '\0';
 
-    /* Local -DT clients only.  Upstream traffic is written directly from the
-     * chat broadcast path as raw normalized text. */
-    host_ddial_broadcast_to_sessions(host, formatted);
+    ddial_mv_public_t pub = {0};
+    pub.channel = DDIAL_DEFAULT_CHANNEL;
+    pub.from_slot = slot;
+    pub.line = formatted;
+    pub.plain_body = single_line;
+    host_ddial_deliver_public(host, &pub);
 }

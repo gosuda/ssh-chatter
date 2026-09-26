@@ -1393,6 +1393,9 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
      * DDial upstream and local -DT sessions, so we must not inject again. */
     chat_room_broadcast_entry(&ctx->owner->room, &entry, ctx);
     session_clear_pending_sink(ctx);
+    /* The sender's own line was rendered immediately above; advance the
+     * sink cursor so a later sink does not append it a second time. */
+    ctx->last_sink_history_total = host_history_total(ctx->owner);
 
     (void)host_eliza_intervene(ctx, trimmed, nullptr, false);
 

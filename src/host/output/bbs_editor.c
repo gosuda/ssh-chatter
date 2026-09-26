@@ -69,6 +69,9 @@ static void session_clear_screen(session_ctx_t *ctx)
 
     ctx->output_lines_since_prompt = 0U;
     ctx->prompt_needs_padding = false;
+    /* The cleared screen no longer shows the sunk history; make the next
+     * sink repaint the full tail instead of appending after a blank area. */
+    ctx->last_sink_history_total = 0U;
 
     session_game_handle_screen_cleared(ctx);
 }

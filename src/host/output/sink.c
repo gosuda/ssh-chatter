@@ -349,11 +349,16 @@ void session_process_pending_sink(session_ctx_t *ctx)
     if (!used_incremental_redraw) {
         /*
          * Avoid full-screen clear fallback for both SSH and TELNET.
-         * When incremental diffing is unavailable, append each newly
-         * committed history line with the same renderer used by scrollback.
+         * Append only the entries this session has not seen yet; re-sending
+         * the whole visible chunk repainted the entire scrollback into the
+         * terminal every time a single message arrived.
          */
         ctx->output_buffer_length = buffer_mark;
-        for (size_t idx = 0U; idx < copied; ++idx) {
+        size_t resume_index = ctx->last_sink_history_total;
+        if (resume_index < start_index || resume_index > total) {
+            resume_index = start_index;
+        }
+        for (size_t idx = resume_index - start_index; idx < copied; ++idx) {
             session_send_history_entry(ctx, &buffer[idx]);
         }
     }
@@ -540,6 +545,12 @@ void session_mode_pop_chat_context(session_ctx_t *ctx)
             display_model_follow_tail(&ctx->display_model);
         }
     }
+
+    /* The protected mode cleared the screen, so the sunk view is gone even
+     * though the cursor snapshot says otherwise. Force one full tail
+     * repaint on the next sink instead of appending after a blank screen. */
+    ctx->last_sink_history_total = 0U;
+    ctx->pending_should_sink = true;
 
     /* Flush any buffered mode output and restore buffering state with an
      * empty buffer. */

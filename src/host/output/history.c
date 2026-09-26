@@ -77,6 +77,11 @@ static void session_history_navigate(session_ctx_t *ctx, int direction)
     // This prevents blank lines from appearing when switching from scrollback to command history
     bool was_scrolled_back = (ctx->history_scroll_position > 0U);
 
+    if (was_scrolled_back) {
+        /* The screen still holds the scrolled view; make the sink repaint
+         * the full tail once instead of appending after stale content. */
+        ctx->last_sink_history_total = 0U;
+    }
     session_scrollback_reset_position(ctx);
 
     // Clear the current line to remove any scrollback content
@@ -238,6 +243,9 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
     }
 
     if (direction < 0 && at_boundary && new_position == 0U) {
+        /* Returning from a scrolled view: the screen no longer holds the
+         * previously sunk lines, so force a full tail repaint. */
+        ctx->last_sink_history_total = 0U;
         session_scrollback_reset_position(ctx);
         goto cleanup;
     }
@@ -412,6 +420,9 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
     }
 
     if (direction < 0 && at_boundary && new_position == 0U) {
+        /* Returning from a scrolled view: the screen no longer holds the
+         * previously sunk lines, so force a full tail repaint. */
+        ctx->last_sink_history_total = 0U;
         session_scrollback_reset_position(ctx);
         goto cleanup;
     }

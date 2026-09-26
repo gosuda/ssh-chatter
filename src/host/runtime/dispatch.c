@@ -1,3 +1,56 @@
+/* Read-only DDial commands a Chatter room user may run on the linked
+ * upstream station.  Everything else stays local so arbitrary protocol
+ * commands (/K, /V, /E, ...) can never be injected by chat users. */
+static bool session_try_ddial_passthrough(session_ctx_t *ctx,
+                                          const char *line)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || line == nullptr ||
+        line[0] != '/') {
+        return false;
+    }
+
+    char command[16];
+    size_t len = 0U;
+    for (const char *p = line + 1;
+         *p != '\0' && *p != ' ' && len + 1U < sizeof(command); ++p) {
+        command[len++] = (char)tolower((unsigned char)*p);
+    }
+    command[len] = '\0';
+    if (len == 0U) {
+        return false;
+    }
+
+    static const char *const k_allowed[] = {
+        "s",   "s1", "s2", "s3", "s4", "sm", /* who's online */
+        "i",   "h",                          /* info / help index */
+        "ls",  "b?",  "ver",                 /* lists / version */
+    };
+    bool allowed = false;
+    for (size_t idx = 0U; idx < sizeof(k_allowed) / sizeof(k_allowed[0]);
+         ++idx) {
+        if (strcmp(command, k_allowed[idx]) == 0) {
+            allowed = true;
+            break;
+        }
+    }
+    if (!allowed) {
+        return false;
+    }
+
+    char wire[32];
+    int wire_len = snprintf(wire, sizeof(wire), "/%s\r\n", command);
+    if (wire_len <= 0 || (size_t)wire_len >= sizeof(wire)) {
+        return false;
+    }
+    if (!host_ddial_client_send_raw(ctx->owner, wire, (size_t)wire_len)) {
+        return false;
+    }
+    session_send_system_line(ctx,
+                             "[ddial] command forwarded to the linked "
+                             "station; the reply appears in the room.");
+    return true;
+}
+
 static void session_dispatch_command(session_ctx_t *ctx, const char *line)
 {
     if (ctx == nullptr || line == nullptr) {
@@ -628,6 +681,14 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
             session_handle_reaction(ctx, idx, arguments);
             return;
         }
+    }
+
+    /* DDial interop: forward read-only DDial commands typed in the Chatter
+     * room to the linked upstream station.  The upstream response comes back
+     * through the normal relay path and lands in the room history. */
+    if (effective_line[0] == '/' &&
+        session_try_ddial_passthrough(ctx, effective_line)) {
+        return;
     }
 
     const session_ui_locale_t *locale = session_ui_get_locale(ctx);

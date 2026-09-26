@@ -1508,6 +1508,12 @@ void host_ddial_chat_link_register(session_ctx_t *ctx);
 void host_ddial_chat_link_unregister(session_ctx_t *ctx);
 bool host_ddial_deliver_private_line(host_t *host, uint16_t target_slot,
                                      const char *display_line);
+/* True when handle belongs to a local DDial dial-in session or a linked
+ * Chatter chat member, i.e. the local side has already seen its lines. */
+bool host_ddial_handle_is_local(host_t *host, const char *handle,
+                                bool include_chat_links);
+/* Forward an upstream link chat line to local DDial dial-in sessions. */
+void host_ddial_relay_upstream_line(host_t *host, const char *line);
 bool host_ddial_client_send_raw(host_t *host, const char *data,
                                 size_t data_len);
 void host_ddial_client_send_private(host_t *host, uint16_t target_slot,

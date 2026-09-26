@@ -814,7 +814,15 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
         if (client->handle[0] != '\0' &&
             strcasecmp(parsed_handle, client->handle) == 0) {
             is_our_line = true;
+        } else if (host_ddial_handle_is_local(host, parsed_handle, false)) {
+            /* Link echo of a local dial-in user's line: the Chatter room
+             * already received it from the DDial listener. */
+            return;
         }
+    }
+
+    if (!is_our_line) {
+        host_ddial_relay_upstream_line(host, line);
     }
 
     char display_line[SSH_CHATTER_MESSAGE_LIMIT + 128];

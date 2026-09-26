@@ -348,6 +348,64 @@ bool host_ddial_deliver_private_line(host_t *host, uint16_t target_slot,
     return delivered;
 }
 
+bool host_ddial_handle_is_local(host_t *host, const char *handle,
+                                bool include_chat_links)
+{
+    if (host == nullptr || handle == nullptr || handle[0] == '\0') {
+        return false;
+    }
+    bool found = false;
+    pthread_mutex_lock(&g_ddial_registry_lock);
+    for (ddial_session_registry_node_t *cur = g_ddial_sessions;
+         cur != nullptr && !found; cur = cur->next) {
+        struct ddial_session *sess = cur->session;
+        if (sess == nullptr || sess->owner != host ||
+            !sshc_memory_is_valid_gc_pointer(sess) ||
+            !sshc_pointer_check(sess, sizeof(*sess))) {
+            continue;
+        }
+        if (sess->logged_in && strcasecmp(sess->handle, handle) == 0) {
+            found = true;
+        }
+    }
+    if (include_chat_links) {
+        for (ddial_chat_link_entry_t *cur = g_ddial_chat_links;
+             cur != nullptr && !found; cur = cur->next) {
+            if (cur->host == host && strcasecmp(cur->handle, handle) == 0) {
+                found = true;
+            }
+        }
+    }
+    pthread_mutex_unlock(&g_ddial_registry_lock);
+    return found;
+}
+
+/* Upstream link chat reaches the Chatter room through the history path in
+ * client.c; local dial-in sessions need their own copy.  Only public chat
+ * lines are forwarded, and lines from handles that already originated on
+ * this station (link echo) are dropped so nobody sees their text twice. */
+void host_ddial_relay_upstream_line(host_t *host, const char *line)
+{
+    if (host == nullptr || line == nullptr || line[0] == '\0') {
+        return;
+    }
+    char handle[DDIAL_MAX_HANDLE_LEN];
+    const char *body = nullptr;
+    if (!ddial_parse_incoming_chat(line, nullptr, nullptr, nullptr, nullptr,
+                                   nullptr, handle, sizeof(handle), &body)) {
+        return;
+    }
+    if (host_ddial_handle_is_local(host, handle, true)) {
+        return;
+    }
+    char formatted[SSH_CHATTER_MESSAGE_LIMIT + 4];
+    int n = snprintf(formatted, sizeof(formatted), "%s\r\n", line);
+    if (n <= 0 || (size_t)n >= sizeof(formatted)) {
+        return;
+    }
+    host_ddial_broadcast_to_sessions(host, formatted);
+}
+
 /* Build the "}}}-.<station>^#<slot>..." user broadcast list from the local
  * DDial session registry and send it upstream over the link.  Stations send
  * this list every 10-20 minutes so peers can track who is online. */

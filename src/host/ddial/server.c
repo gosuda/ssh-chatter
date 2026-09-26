@@ -186,6 +186,29 @@ static void ddial_session_do_help(ddial_session_t *sess)
     ddial_session_write_line(sess, "/Q           - quit");
 }
 
+/* Share a dial-in user's public line with the rest of the station: the
+ * Chatter room (as a system history entry, so chat_room_broadcast_entry does
+ * not loop it back into DDial) and the upstream Station Link. */
+static void ddial_session_share_chat(ddial_session_t *sess,
+                                     const char *formatted, const char *body)
+{
+    host_t *host = sess->owner;
+    char display_line[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(display_line, sizeof(display_line), "%s", formatted);
+    size_t len = strlen(display_line);
+    while (len > 0U && (display_line[len - 1U] == '\r' ||
+                        display_line[len - 1U] == '\n')) {
+        display_line[--len] = '\0';
+    }
+    if (len > 0U) {
+        chat_history_entry_t stored = {0};
+        if (host_history_record_system(host, display_line, &stored)) {
+            chat_room_broadcast_entry(&host->room, &stored, nullptr);
+        }
+    }
+    host_ddial_client_send_channel(host, sess->handle, sess->channel, body);
+}
+
 static void ddial_session_process_line(ddial_session_t *sess, const char *line)
 {
     if (sess == nullptr || line == nullptr) {
@@ -224,6 +247,7 @@ static void ddial_session_process_line(ddial_session_t *sess, const char *line)
                                   sess->channel, DDIAL_TIER_GUEST,
                                   sess->handle, msg.body)) {
                 host_ddial_broadcast_to_sessions(sess->owner, formatted);
+                ddial_session_share_chat(sess, formatted, msg.body);
             }
         }
         break;

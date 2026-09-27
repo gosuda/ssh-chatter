@@ -53,6 +53,10 @@ typedef struct json_api_request {
     bool request_id_is_number;
     bool has_request_id;
     char token[1024];
+    char to[SSH_CHATTER_USERNAME_LEN + SSH_CHATTER_IP_LEN];
+    unsigned long limit;
+    bool has_limit;
+    unsigned long before;
 } json_api_request_t;
 
 static bool host_prepare_chat_entry(host_t *host, const char *username,
@@ -745,6 +749,13 @@ static bool json_api_parse_request(const char *line, json_api_request_t *request
 
     (void)json_api_extract_string(line, "\"token\"", request->token,
                                   sizeof(request->token));
+    if (json_api_extract_string(line, "\"to\"", request->to,
+                                sizeof(request->to))) {
+        trim_whitespace_inplace(request->to);
+    }
+    request->has_limit =
+        json_api_extract_uint(line, "\"limit\"", &request->limit);
+    (void)json_api_extract_uint(line, "\"before\"", &request->before);
 
     return true;
 }
@@ -850,6 +861,46 @@ static const char *json_api_attachment_type_label(chat_attachment_type_t type)
     }
 }
 
+/* Append one message object as people see it: the display filter has
+ * already been applied (shown), stored is the history entry itself.
+ * source is "chatter", "ddial" (a relayed DDial chat line) or "system". */
+static bool json_api_append_message(json_builder_t *builder,
+                                    const chat_history_entry_t *stored,
+                                    const chat_history_entry_t *shown)
+{
+    char *escaped_username = json_api_escape_string(shown->username);
+    char *escaped_message = json_api_escape_string(shown->message);
+    char *escaped_target = json_api_escape_string(shown->attachment_target);
+    char *escaped_caption = json_api_escape_string(shown->attachment_caption);
+
+    bool ok = escaped_username != nullptr && escaped_message != nullptr &&
+              escaped_target != nullptr && escaped_caption != nullptr;
+    if (ok) {
+        const char *source = shown != stored             ? "ddial"
+                             : stored->is_user_message ? "chatter"
+                                                       : "system";
+        ok = json_builder_append(
+            builder,
+            "{\"id\":%" PRIu64 ",\"username\":\"%s\",\"message\":\"%s\","
+            "\"created_at\":%lld,\"system\":%s,\"source\":\"%s\","
+            "\"preserve_whitespace\":%s,"
+            "\"attachment\":{\"type\":\"%s\","
+            "\"target\":\"%s\",\"caption\":\"%s\"}}",
+            shown->message_id, escaped_username, escaped_message,
+            (long long)shown->created_at,
+            shown->is_user_message ? "false" : "true", source,
+            shown->preserve_whitespace ? "true" : "false",
+            json_api_attachment_type_label(shown->attachment_type),
+            escaped_target, escaped_caption);
+    }
+
+    sshc_gc_free(escaped_username);
+    sshc_gc_free(escaped_message);
+    sshc_gc_free(escaped_target);
+    sshc_gc_free(escaped_caption);
+    return ok;
+}
+
 static void json_api_on_message(client_connection_t *connection,
                                 const chat_history_entry_t *entry)
 {
@@ -861,44 +912,21 @@ static void json_api_on_message(client_connection_t *connection,
 
     // Same display filter as the terminal views.
     chat_history_entry_t ddial_view;
-    if (!host_ddial_display_view(entry, &ddial_view, &entry)) {
-        return;
-    }
-
-    char *escaped_username = json_api_escape_string(entry->username);
-    char *escaped_message = json_api_escape_string(entry->message);
-    char *escaped_target = json_api_escape_string(entry->attachment_target);
-    char *escaped_caption = json_api_escape_string(entry->attachment_caption);
-
-    if (escaped_username == nullptr || escaped_message == nullptr ||
-        escaped_target == nullptr || escaped_caption == nullptr) {
-        sshc_gc_free(escaped_username);
-        sshc_gc_free(escaped_message);
-        sshc_gc_free(escaped_target);
-        sshc_gc_free(escaped_caption);
+    const chat_history_entry_t *shown = entry;
+    if (!host_ddial_display_view(entry, &ddial_view, &shown)) {
         return;
     }
 
     json_builder_t builder;
     json_builder_init(&builder);
-    json_builder_append(&builder,
-                        "{\"type\":\"event\",\"event\":\"message\","
-                        "\"payload\":{"
-                        "\"id\":%" PRIu64
-                        ",\"username\":\"%s\",\"message\":\"%s\","
-                        "\"created_at\":%lld,\"system\":%s,"
-                        "\"preserve_whitespace\":%s,"
-                        "\"attachment\":{\"type\":\"%s\","
-                        "\"target\":\"%s\",\"caption\":\"%s\"}}}",
-                        entry->message_id, escaped_username, escaped_message,
-                        (long long)entry->created_at,
-                        entry->is_user_message ? "false" : "true",
-                        entry->preserve_whitespace ? "true" : "false",
-                        json_api_attachment_type_label(entry->attachment_type),
-                        escaped_target, escaped_caption);
+    bool built = json_builder_append(
+                     &builder,
+                     "{\"type\":\"event\",\"event\":\"message\",\"payload\":") &&
+                 json_api_append_message(&builder, entry, shown) &&
+                 json_builder_append(&builder, "}");
 
     sshc_abstract_byte_buffer_view_t builder_view;
-    if (json_builder_map_read(&builder, &builder_view)) {
+    if (built && json_builder_map_read(&builder, &builder_view)) {
         if (!json_api_send_line(client, builder_view.data)) {
             atomic_store(&client->stop, true);
             shutdown(client->fd, SHUT_RDWR);
@@ -907,10 +935,249 @@ static void json_api_on_message(client_connection_t *connection,
     }
 
     json_builder_free(&builder);
-    sshc_gc_free(escaped_username);
-    sshc_gc_free(escaped_message);
-    sshc_gc_free(escaped_target);
-    sshc_gc_free(escaped_caption);
+}
+
+#define JSON_API_HISTORY_DEFAULT 50U
+#define JSON_API_HISTORY_MAX 200U
+
+/* {"type":"history","limit":N,"before":<id>}: the newest N visible entries
+ * older than <id> (or the newest overall), oldest first, filtered exactly
+ * like the terminal views.  Result: {"messages":[...],"has_more":bool}. */
+static void json_api_handle_history(json_api_client_t *client,
+                                    const json_api_request_t *request)
+{
+    host_t *host = client->host;
+    size_t limit = request->has_limit ? (size_t)request->limit
+                                      : JSON_API_HISTORY_DEFAULT;
+    if (limit == 0U) {
+        limit = 1U;
+    }
+    if (limit > JSON_API_HISTORY_MAX) {
+        limit = JSON_API_HISTORY_MAX;
+    }
+
+    chat_history_entry_t *picked =
+        (chat_history_entry_t *)calloc(limit, sizeof(*picked));
+    if (picked == nullptr) {
+        json_api_send_response(client, request, false, "Out of memory.",
+                               nullptr);
+        return;
+    }
+
+    size_t count = 0U;
+    bool has_more = false;
+    ttak_mutex_lock(&host->lock);
+    for (size_t i = host->history_count; i > 0U && host->history != nullptr;
+         --i) {
+        const chat_history_entry_t *entry = &host->history[i - 1U];
+        if (request->before != 0UL && entry->message_id != 0U &&
+            entry->message_id >= (uint64_t)request->before) {
+            continue;
+        }
+        if (chat_history_entry_is_empty(entry) ||
+            !host_ddial_display_view(entry, nullptr, nullptr)) {
+            continue;
+        }
+        if (count == limit) {
+            has_more = true;
+            break;
+        }
+        picked[count++] = *entry; /* newest first */
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    json_builder_t builder;
+    json_builder_init(&builder);
+    bool built = json_builder_append(&builder, "{\"messages\":[");
+    for (size_t i = count; built && i > 0U; --i) {
+        const chat_history_entry_t *stored = &picked[i - 1U];
+        chat_history_entry_t ddial_view;
+        const chat_history_entry_t *shown = stored;
+        (void)host_ddial_display_view(stored, &ddial_view, &shown);
+        built = (i == count || json_builder_append(&builder, ",")) &&
+                json_api_append_message(&builder, stored, shown);
+    }
+    built = built && json_builder_append(&builder, "],\"has_more\":%s}",
+                                         has_more ? "true" : "false");
+    free(picked);
+
+    char *result = built ? json_builder_materialize_gc(&builder) : nullptr;
+    json_builder_free(&builder);
+    json_api_send_response(client, request, result != nullptr,
+                           result != nullptr ? "history" : "Out of memory.",
+                           result);
+    sshc_gc_free(result);
+}
+
+typedef struct json_api_user_list {
+    json_builder_t *builder;
+    size_t count;
+    bool ok;
+} json_api_user_list_t;
+
+static void json_api_append_ddial_user(const char *name, const char *kind,
+                                       const char *station, void *user)
+{
+    json_api_user_list_t *list = (json_api_user_list_t *)user;
+    char *escaped_name = json_api_escape_string(name);
+    char *escaped_station = json_api_escape_string(station);
+    list->ok = list->ok && escaped_name != nullptr &&
+               escaped_station != nullptr &&
+               json_builder_append(
+                   list->builder,
+                   "%s{\"name\":\"%s\",\"kind\":\"%s\",\"station\":\"%s\"}",
+                   list->count > 0U ? "," : "", escaped_name, kind,
+                   escaped_station);
+    ++list->count;
+    sshc_gc_free(escaped_name);
+    sshc_gc_free(escaped_station);
+}
+
+/* {"type":"users"}: {"chatter":[{"name"}],"ddial":[{"name","kind",
+ * "station"}],"count":N} -- the same people /users and /connected count. */
+static void json_api_handle_users(json_api_client_t *client,
+                                  const json_api_request_t *request)
+{
+    host_t *host = client->host;
+    json_builder_t builder;
+    json_builder_init(&builder);
+    json_api_user_list_t list = {&builder, 0U, true};
+
+    list.ok = json_builder_append(&builder, "{\"chatter\":[");
+    ttak_mutex_lock(&host->room.lock);
+    for (size_t i = 0U; list.ok && i < host->room.member_count; ++i) {
+        const session_ctx_t *member = host->room.members[i];
+        if (member == nullptr) {
+            continue;
+        }
+        char *escaped = json_api_escape_string(member->user.name);
+        list.ok = escaped != nullptr &&
+                  json_builder_append(&builder, "%s{\"name\":\"%s\"}",
+                                      list.count > 0U ? "," : "", escaped);
+        ++list.count;
+        sshc_gc_free(escaped);
+    }
+    ttak_mutex_unlock(&host->room.lock);
+    size_t chatter_count = list.count;
+
+    list.ok = list.ok && json_builder_append(&builder, "],\"ddial\":[");
+    list.count = 0U;
+    (void)host_ddial_foreach_participant(host, json_api_append_ddial_user,
+                                         &list);
+    list.ok = list.ok && json_builder_append(&builder, "],\"count\":%zu}",
+                                             chatter_count + list.count);
+
+    char *result = list.ok ? json_builder_materialize_gc(&builder) : nullptr;
+    json_builder_free(&builder);
+    json_api_send_response(client, request, result != nullptr,
+                           result != nullptr ? "users" : "Out of memory.",
+                           result);
+    sshc_gc_free(result);
+}
+
+/* {"type":"mail","action":"list"|"send"|"clear","to":"name[@ip|@ddial]",
+ * "message":"..."} for the logged-in user.  send goes through the same
+ * host_mail_send() as /mail, so DDial members are reachable too. */
+static void json_api_handle_mail(json_api_client_t *client,
+                                 const json_api_request_t *request)
+{
+    host_t *host = client->host;
+    const char *action = request->action[0] != '\0' ? request->action : "list";
+
+    if (strcmp(action, "send") == 0) {
+        char name[SSH_CHATTER_USERNAME_LEN];
+        char ip[SSH_CHATTER_IP_LEN] = "";
+        snprintf(name, sizeof(name), "%s", request->to);
+        char *at = strchr(name, '@');
+        if (at != nullptr) {
+            *at = '\0';
+            snprintf(ip, sizeof(ip), "%s", at + 1);
+        }
+        trim_whitespace_inplace(name);
+        if (name[0] == '\0' || request->message[0] == '\0') {
+            json_api_send_response(client, request, false,
+                                   "to and message are required.", nullptr);
+            return;
+        }
+        char error[128];
+        bool to_ddial = false;
+        if (!host_mail_send(host, client->username, name,
+                            ip[0] != '\0' ? ip : nullptr, request->message,
+                            &to_ddial, error, sizeof(error))) {
+            json_api_send_response(client, request, false,
+                                   error[0] != '\0' ? error
+                                                    : "Unable to deliver mail.",
+                                   nullptr);
+            return;
+        }
+        json_api_send_response(client, request, true,
+                               to_ddial ? "delivered to DDial mailbox"
+                                        : "delivered",
+                               to_ddial ? "{\"mailbox\":\"ddial\"}"
+                                        : "{\"mailbox\":\"chatter\"}");
+        return;
+    }
+
+    user_data_record_t record;
+    bool have_record = host_user_data_load_existing(host, client->username,
+                                                    nullptr, &record, false);
+
+    if (strcmp(action, "clear") == 0) {
+        if (have_record && record.mailbox_count > 0U) {
+            char ip[SSH_CHATTER_IP_LEN];
+            snprintf(ip, sizeof(ip), "%s", record.last_ip);
+            record.mailbox_count = 0U;
+            memset(record.mailbox, 0, sizeof(record.mailbox));
+            bool saved;
+            if (host->user_data_lock_initialized) {
+                ttak_mutex_lock(&host->user_data_lock);
+            }
+            saved = user_data_save(host->user_data_root, &record, ip);
+            if (host->user_data_lock_initialized) {
+                ttak_mutex_unlock(&host->user_data_lock);
+            }
+            if (!saved) {
+                json_api_send_response(client, request, false,
+                                       "Failed to update mailbox.", nullptr);
+                return;
+            }
+        }
+        json_api_send_response(client, request, true, "mailbox cleared",
+                               nullptr);
+        return;
+    }
+
+    if (strcmp(action, "list") != 0) {
+        json_api_send_response(client, request, false,
+                               "action must be list, send or clear.", nullptr);
+        return;
+    }
+
+    json_builder_t builder;
+    json_builder_init(&builder);
+    bool ok = json_builder_append(&builder, "{\"messages\":[");
+    size_t mail_count = have_record ? record.mailbox_count : 0U;
+    for (size_t i = 0U; ok && i < mail_count; ++i) {
+        const user_data_mail_entry_t *mail = &record.mailbox[i];
+        char *escaped_sender = json_api_escape_string(mail->sender);
+        char *escaped_message = json_api_escape_string(mail->message);
+        ok = escaped_sender != nullptr && escaped_message != nullptr &&
+             json_builder_append(&builder,
+                                 "%s{\"sender\":\"%s\",\"message\":\"%s\","
+                                 "\"timestamp\":%llu}",
+                                 i > 0U ? "," : "", escaped_sender,
+                                 escaped_message,
+                                 (unsigned long long)mail->timestamp);
+        sshc_gc_free(escaped_sender);
+        sshc_gc_free(escaped_message);
+    }
+    ok = ok && json_builder_append(&builder, "]}");
+    char *result = ok ? json_builder_materialize_gc(&builder) : nullptr;
+    json_builder_free(&builder);
+    json_api_send_response(client, request, result != nullptr,
+                           result != nullptr ? "mailbox" : "Out of memory.",
+                           result);
+    sshc_gc_free(result);
 }
 
 static void json_api_on_detach(client_connection_t *connection)
@@ -1928,6 +2195,21 @@ static void json_api_handle_request(json_api_client_t *client,
         }
 
         json_api_send_response(client, &request, true, "asciiart sent", nullptr);
+        return;
+    }
+
+    if (strcmp(request.type, "history") == 0) {
+        json_api_handle_history(client, &request);
+        return;
+    }
+
+    if (strcmp(request.type, "users") == 0) {
+        json_api_handle_users(client, &request);
+        return;
+    }
+
+    if (strcmp(request.type, "mail") == 0) {
+        json_api_handle_mail(client, &request);
         return;
     }
 

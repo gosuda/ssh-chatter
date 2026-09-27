@@ -1540,6 +1540,12 @@ bool host_ddial_relay_private(host_t *host, session_ctx_t *from,
 /* Everyone on the DDial side (dial-ins and users behind the Station Link),
  * written as "name, name, ..." into out; returns how many. */
 size_t host_ddial_participants(host_t *host, char *out, size_t cap);
+/* Visit everyone on the DDial side.  kind is "dialin" or "remote"; station
+ * is the remote station's name when known, else "".  Returns the count. */
+typedef void (*host_ddial_participant_cb)(const char *name, const char *kind,
+                                          const char *station, void *user);
+size_t host_ddial_foreach_participant(host_t *host,
+                                      host_ddial_participant_cb cb, void *user);
 /* The display-time filter for history entries (ddial/display.c).  Every
  * place that shows history to a person goes through it.  Returns false when
  * the entry is hidden; otherwise *view is what to show -- entry itself, or
@@ -1556,6 +1562,12 @@ bool host_ddial_mail_chatter_to_member(host_t *host, const char *from_name,
 bool host_ddial_mail_member_to_chatter(host_t *host, const char *from_handle,
                                        const char *name, const char *text,
                                        char *error, size_t error_cap);
+/* Mail from a Chatter user.  recipient_ip may be nullptr, an address, or
+ * "ddial" to force the DDial member mailbox; otherwise a DDial member gets
+ * it only when no Chatter user has that name.  *out_ddial tells which. */
+bool host_mail_send(host_t *host, const char *from_name, const char *recipient,
+                    const char *recipient_ip, const char *text,
+                    bool *out_ddial, char *error, size_t error_cap);
 
 void host_ddial_notify_admin_if_port_adjusted(host_t *host, session_ctx_t *ctx);
 uint64_t host_allocate_session_id(host_t *host);

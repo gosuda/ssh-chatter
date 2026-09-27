@@ -30,6 +30,19 @@ LDFLAGS_TTAK :=
 CFLAGS_LIBSSH := $(shell pkg-config --cflags libssh 2>/dev/null)
 LDFLAGS_LIBSSH := $(shell pkg-config --libs libssh 2>/dev/null || echo "-lssh")
 
+# If libcurl/libssh was built against a non-system OpenSSL (e.g. Homebrew,
+# a custom prefix), linking against the system libcrypto can cause ABI
+# version mismatches ("undefined reference to symbol@OPENSSL_3.x.0").
+# Use pkg-config to find the actual OpenSSL lib dir and prepend it so the
+# linker picks the right libcrypto/libssl.  If OpenSSL lives under /usr/lib
+# or /lib (standard system install) no extra flags are needed.
+OPENSSL_LIB_DIR := $(shell pkg-config --variable=libdir openssl 2>/dev/null)
+ifneq ($(OPENSSL_LIB_DIR),)
+ifeq ($(filter /usr/lib% /lib%,$(OPENSSL_LIB_DIR)),)
+LDFLAGS_EXTRA += -L$(OPENSSL_LIB_DIR) -Wl,-rpath,$(OPENSSL_LIB_DIR)
+endif
+endif
+
 CFLAGS_LIBCURL := $(shell pkg-config --cflags libcurl 2>/dev/null)
 LDFLAGS_LIBCURL := $(shell pkg-config --libs libcurl 2>/dev/null || echo "-lcurl")
 

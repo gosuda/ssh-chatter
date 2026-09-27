@@ -238,57 +238,30 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
         }
 
         char error[128];
-
-        /* A DDial member gets it in their /e mailbox: when no Chatter user
-         * has that name, or when addressed as <name>@ddial. */
-        const bool force_ddial = strcasecmp(target_ip, "ddial") == 0;
-        bool chatter_known =
-            !force_ddial &&
-            (target_ip[0] != '\0' ||
-             chat_room_find_user(&ctx->owner->room, target) != nullptr);
-        if (!force_ddial && !chatter_known) {
-            /* Offline Chatter user: their last known address (existing
-             * records only, nothing is created). */
-            chatter_known = host_lookup_last_ip(ctx->owner, target, target_ip,
-                                                sizeof(target_ip));
-        }
-        if (force_ddial ||
-            (!chatter_known && host_ddial_member_exists(ctx->owner, target))) {
-            if (!host_ddial_mail_chatter_to_member(ctx->owner, ctx->user.name,
-                                                   target, msg_cursor, error,
-                                                   sizeof(error))) {
-                session_send_system_line(ctx,
-                                         session_command_localize(ctx, error));
-                return;
+        bool to_ddial = false;
+        if (!host_mail_send(ctx->owner, ctx->user.name, target, target_ip,
+                            msg_cursor, &to_ddial, error, sizeof(error))) {
+            static const char kOpenPrefix[] = "Unable to open mailbox for ";
+            if (strncmp(error, kOpenPrefix, sizeof(kOpenPrefix) - 1U) == 0) {
+                session_command_snprintf(ctx, error, sizeof(error),
+                                         "Unable to open mailbox for %s.",
+                                         target);
+                session_send_system_line(ctx, error);
+            } else {
+                session_send_system_line(
+                    ctx, session_command_localize(
+                             ctx, error[0] != '\0'
+                                      ? error
+                                      : "Unable to deliver mailbox message."));
             }
+            return;
+        }
+        if (to_ddial) {
             char confirmation[SSH_CHATTER_MESSAGE_LIMIT];
             session_command_snprintf(ctx, confirmation, sizeof(confirmation),
                                      "Delivered mailbox message to %s (DDial).",
                                      target);
             session_send_system_line(ctx, confirmation);
-            return;
-        }
-
-        if (!host_user_data_send_mail(
-                ctx->owner, target, target_ip[0] != '\0' ? target_ip : nullptr,
-                ctx->user.name, message, error, sizeof(error))) {
-            if (error[0] != '\0') {
-                static const char kOpenPrefix[] = "Unable to open mailbox for ";
-                if (strncmp(error, kOpenPrefix, sizeof(kOpenPrefix) - 1U) ==
-                    0) {
-                    session_command_snprintf(ctx, error, sizeof(error),
-                                             "Unable to open mailbox for %s.",
-                                             target);
-                    session_send_system_line(ctx, error);
-                } else {
-                    session_send_system_line(
-                        ctx, session_command_localize(ctx, error));
-                }
-            } else {
-                session_send_system_line(
-                    ctx, session_command_localize(
-                             ctx, "Unable to deliver mailbox message."));
-            }
             return;
         }
 

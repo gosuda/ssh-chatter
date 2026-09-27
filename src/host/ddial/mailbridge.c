@@ -193,6 +193,56 @@ bool host_ddial_mail_member_to_chatter(host_t *host, const char *from_handle,
     return ok;
 }
 
+bool host_mail_send(host_t *host, const char *from_name, const char *recipient,
+                    const char *recipient_ip, const char *text,
+                    bool *out_ddial, char *error, size_t error_cap)
+{
+    if (out_ddial != nullptr) {
+        *out_ddial = false;
+    }
+    if (error == nullptr || error_cap == 0U) {
+        return false;
+    }
+    error[0] = '\0';
+    if (host == nullptr || from_name == nullptr || recipient == nullptr ||
+        recipient[0] == '\0' || text == nullptr) {
+        snprintf(error, error_cap, "%s", "Invalid mailbox recipient.");
+        return false;
+    }
+
+    const bool force_ddial =
+        recipient_ip != nullptr && strcasecmp(recipient_ip, "ddial") == 0;
+    char ip[SSH_CHATTER_IP_LEN] = "";
+    if (!force_ddial && recipient_ip != nullptr) {
+        snprintf(ip, sizeof(ip), "%s", recipient_ip);
+    }
+    bool chatter_known =
+        !force_ddial &&
+        (ip[0] != '\0' || chat_room_find_user(&host->room, recipient) != nullptr);
+    if (!force_ddial && !chatter_known) {
+        /* Offline Chatter user: their last known address (existing records
+         * only, nothing is created). */
+        chatter_known = host_lookup_last_ip(host, recipient, ip, sizeof(ip));
+    }
+    if (force_ddial ||
+        (!chatter_known && host_ddial_member_exists(host, recipient))) {
+        if (out_ddial != nullptr) {
+            *out_ddial = true;
+        }
+        return host_ddial_mail_chatter_to_member(host, from_name, recipient,
+                                                 text, error, error_cap);
+    }
+
+    char clean[USER_DATA_MAILBOX_MESSAGE_LEN];
+    if (!ddial_mail_clean_text(text, clean, sizeof(clean))) {
+        snprintf(error, error_cap, "%s", "Mailbox message cannot be empty.");
+        return false;
+    }
+    return host_user_data_send_mail(host, recipient,
+                                    ip[0] != '\0' ? ip : nullptr, from_name,
+                                    clean, error, error_cap);
+}
+
 /* E-mail over the Station Link for local member to_id. */
 static void host_ddial_mail_link_inbound(host_t *host, unsigned from_station,
                                          unsigned to_id,

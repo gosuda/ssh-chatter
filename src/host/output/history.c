@@ -935,6 +935,12 @@ static void session_render_history_entry(session_ctx_t *ctx,
         return;
     }
 
+    // Show what the display filter says, not the stored text.
+    chat_history_entry_t ddial_view;
+    if (!host_ddial_display_view(entry, &ddial_view, &entry)) {
+        return;
+    }
+
     session_output_kind_t previous_kind =
         session_output_set_kind(ctx, SESSION_OUTPUT_KIND_CHAT);
 
@@ -1068,50 +1074,25 @@ static void session_render_history_entry(session_ctx_t *ctx,
         return;
     }
 
-    // A relayed DDial chat line ("71#4[T1:MaxMouse) msg") stays verbatim in
-    // history -- the link roster is rebuilt from it -- but reads like
-    // Chatter chat: "[id] <MaxMouse> msg".
-    const char *system_text = entry->message;
-    char ddial_line[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-    char ddial_handle[DDIAL_MAX_HANDLE_LEN];
-    const char *ddial_body = nullptr;
-    bool ddial_is_link = false;
-    if (ddial_parse_incoming_chat(entry->message, nullptr, nullptr, nullptr,
-                                  &ddial_is_link, nullptr, ddial_handle,
-                                  sizeof(ddial_handle), &ddial_body) &&
-        !ddial_is_link && ddial_handle[0] != '\0') {
-        char id_label[32];
-        const char *id_display = "-";
-        if (entry->message_id > 0U &&
-            host_compact_id_encode(entry->message_id, id_label,
-                                   sizeof(id_label))) {
-            id_display = id_label;
-        }
-        snprintf(ddial_line, sizeof(ddial_line),
-                 ANSI_CYAN "[%s]" ANSI_RESET " <%s> %s", id_display,
-                 ddial_handle, ddial_body);
-        system_text = ddial_line;
-    }
-
     // For non-user messages, check if multiline and send accordingly
-    const bool multiline = strchr(system_text, '\n') != nullptr;
+    const bool multiline = strchr(entry->message, '\n') != nullptr;
     if (multiline) {
         if (ctx->display_model_initialized) {
             unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
             display_model_append_message(&ctx->display_model, entry->message_id,
-                                         system_text, width);
+                                         entry->message, width);
         }
         if (emit_output) {
-            session_send_multiline_message(ctx, system_text);
+            session_send_multiline_message(ctx, entry->message);
         }
     } else {
         if (ctx->display_model_initialized) {
             unsigned int width = (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
             display_model_append_message(&ctx->display_model, entry->message_id,
-                                         system_text, width);
+                                         entry->message, width);
         }
         if (emit_output) {
-            session_send_plain_line(ctx, system_text);
+            session_send_plain_line(ctx, entry->message);
         }
     }
 

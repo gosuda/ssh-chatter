@@ -859,6 +859,12 @@ static void json_api_on_message(client_connection_t *connection,
 
     json_api_client_t *client = (json_api_client_t *)connection->user_data;
 
+    // Same display filter as the terminal views.
+    chat_history_entry_t ddial_view;
+    if (!host_ddial_display_view(entry, &ddial_view, &entry)) {
+        return;
+    }
+
     char *escaped_username = json_api_escape_string(entry->username);
     char *escaped_message = json_api_escape_string(entry->message);
     char *escaped_target = json_api_escape_string(entry->attachment_target);

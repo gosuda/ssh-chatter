@@ -15,6 +15,7 @@
 #include "ddial/server.c"
 #include "ddial/members.c"
 #include "ddial/roster.c"
+#include "ddial/display.c"
 #include "ddial/magviz.c"
 #include "ddial/client.c"
 #include "ddial/inject.c"

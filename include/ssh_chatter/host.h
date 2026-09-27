@@ -1540,6 +1540,13 @@ bool host_ddial_relay_private(host_t *host, session_ctx_t *from,
 /* Everyone on the DDial side (dial-ins and users behind the Station Link),
  * written as "name, name, ..." into out; returns how many. */
 size_t host_ddial_participants(host_t *host, char *out, size_t cap);
+/* The display-time filter for history entries (ddial/display.c).  Every
+ * place that shows history to a person goes through it.  Returns false when
+ * the entry is hidden; otherwise *view is what to show -- entry itself, or
+ * scratch holding a relayed DDial chat line as a Chatter chat message. */
+bool host_ddial_display_view(const chat_history_entry_t *entry,
+                             chat_history_entry_t *scratch,
+                             const chat_history_entry_t **view);
 
 void host_ddial_notify_admin_if_port_adjusted(host_t *host, session_ctx_t *ctx);
 uint64_t host_allocate_session_id(host_t *host);

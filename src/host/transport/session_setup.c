@@ -859,6 +859,13 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         return;
     }
 
+    // What people are shown of this entry (DDial relay lines are wrapped or
+    // hidden here, the same filter scrollback rendering uses).
+    chat_history_entry_t ddial_view;
+    const chat_history_entry_t *shown = entry;
+    const bool shown_visible =
+        host_ddial_display_view(entry, &ddial_view, &shown);
+
     // For real-time broadcast: format and send directly without history lookup
     for (size_t idx = 0; idx < target_count; ++idx) {
         session_ctx_t *member = targets[idx];
@@ -904,31 +911,33 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         member->capture_realtime_output =
             (member->history_scroll_position == 0U) && !member->no_update;
 
-        if (entry->is_user_message) {
+        if (!shown_visible) {
+            // Hidden by the display filter: nothing to write.
+        } else if (shown->is_user_message) {
             char line[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-            chat_history_entry_format_user_line(entry, line, sizeof(line),
+            chat_history_entry_format_user_line(shown, line, sizeof(line),
                                                 true);
             session_send_plain_line(member, line);
 
-            if (entry->attachment_type != CHAT_ATTACHMENT_NONE &&
-                entry->attachment_target[0] != '\0') {
+            if (shown->attachment_type != CHAT_ATTACHMENT_NONE &&
+                shown->attachment_target[0] != '\0') {
                 const char *label =
-                    chat_attachment_type_label(entry->attachment_type);
+                    chat_attachment_type_label(shown->attachment_type);
                 char attachment_line[SSH_CHATTER_MESSAGE_LIMIT];
                 snprintf(attachment_line, sizeof(attachment_line),
                          "    (%s)" ANSI_RESET " %s", label,
-                         entry->attachment_target);
+                         shown->attachment_target);
                 session_send_plain_line(member, attachment_line);
 
-                if (entry->attachment_caption[0] != '\0') {
+                if (shown->attachment_caption[0] != '\0') {
                     char caption_line[SSH_CHATTER_MESSAGE_LIMIT];
                     snprintf(caption_line, sizeof(caption_line),
-                             "    \342\206\263 %s", entry->attachment_caption);
+                             "    \342\206\263 %s", shown->attachment_caption);
                     session_send_plain_line(member, caption_line);
                 }
             }
         } else {
-            session_send_plain_line(member, entry->message);
+            session_send_plain_line(member, shown->message);
         }
 
         session_channel_flush(member);

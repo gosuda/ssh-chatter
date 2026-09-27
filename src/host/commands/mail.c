@@ -5,7 +5,9 @@ static void session_mail_render_inbox(session_ctx_t *ctx)
     }
 
     if (!session_user_data_load(ctx)) {
-        session_send_system_line(ctx, "Mailbox storage is unavailable.");
+        session_send_system_line(
+            ctx,
+            session_command_localize(ctx, "Mailbox storage is unavailable."));
         return;
     }
 
@@ -54,6 +56,57 @@ static void session_mail_render_inbox(session_ctx_t *ctx)
     }
 }
 
+// Sends the localized /mail usage; "/mail" is swapped for the alias.
+static void session_mail_send_usage(session_ctx_t *ctx, bool send_form)
+{
+    const char *tmpl = nullptr;
+    switch (session_ui_language_current(ctx)) {
+    case SESSION_UI_LANGUAGE_KO:
+        tmpl = send_form ? "사용법: /mail [send] <사용자[@IP]>|<메시지>"
+                         : "사용법: /mail [inbox|send <사용자>|<메시지>|clear]";
+        break;
+    case SESSION_UI_LANGUAGE_JP:
+        tmpl = send_form
+                   ? "使い方: /mail [send] <ユーザー[@IP]>|<メッセージ>"
+                   : "使い方: /mail [inbox|send <ユーザー>|<メッセージ>|clear]";
+        break;
+    case SESSION_UI_LANGUAGE_ZH:
+        tmpl = send_form ? "用法: /mail [send] <用户[@IP]>|<消息>"
+                         : "用法: /mail [inbox|send <用户>|<消息>|clear]";
+        break;
+    case SESSION_UI_LANGUAGE_RU:
+        tmpl = send_form ? "Использование: /mail [send] "
+                           "<пользователь[@IP]>|<сообщение>"
+                         : "Использование: /mail [inbox|send "
+                           "<пользователь>|<сообщение>|clear]";
+        break;
+    case SESSION_UI_LANGUAGE_DE:
+        tmpl = send_form
+                   ? "Nutzung: /mail [send] <Benutzer[@IP]>|<Nachricht>"
+                   : "Nutzung: /mail [inbox|send <Benutzer>|<Nachricht>|clear]";
+        break;
+    case SESSION_UI_LANGUAGE_FR:
+        tmpl = send_form ? "Utilisation: /mail [send] "
+                           "<utilisateur[@IP]>|<message>"
+                         : "Utilisation: /mail [inbox|send "
+                           "<utilisateur>|<message>|clear]";
+        break;
+    case SESSION_UI_LANGUAGE_PL:
+        tmpl = send_form ? "Użycie: /mail [send] <użytkownik[@IP]>|<wiadomość>"
+                         : "Użycie: /mail [inbox|send "
+                           "<użytkownik>|<wiadomość>|clear]";
+        break;
+    default:
+        tmpl = send_form ? "Usage: /mail [send] <user[@ip]>|<message>"
+                         : "Usage: /mail [inbox|send <user>|<message>|clear]";
+        break;
+    }
+
+    char usage[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_format_usage(ctx, "/mail", tmpl, usage, sizeof(usage));
+    session_send_system_line(ctx, usage);
+}
+
 static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
@@ -61,7 +114,9 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
     }
 
     if (!session_user_data_available(ctx) && !ctx->owner->user_data_ready) {
-        session_send_system_line(ctx, "Mailbox storage is unavailable.");
+        session_send_system_line(
+            ctx,
+            session_command_localize(ctx, "Mailbox storage is unavailable."));
         return;
     }
 
@@ -77,17 +132,43 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
     char target_token[SSH_CHATTER_USERNAME_LEN + SSH_CHATTER_IP_LEN];
     const char *msg_cursor = nullptr;
 
+    // Names may contain spaces, so '|' separates the recipient from the
+    // message. Without '|', fall back to whitespace-separated tokens.
+    const char *rest = arguments != nullptr ? arguments : "";
+    while (*rest != '\0' && isspace((unsigned char)*rest)) {
+        ++rest;
+    }
     if (strcasecmp(command, "send") == 0) {
+        rest = cursor;
+        while (*rest != '\0' && isspace((unsigned char)*rest)) {
+            ++rest;
+        }
+    }
+
+    const char *separator = strchr(rest, '|');
+    if (separator != nullptr) {
+        size_t token_len = (size_t)(separator - rest);
+        if (token_len >= sizeof(target_token)) {
+            token_len = sizeof(target_token) - 1U;
+        }
+        memcpy(target_token, rest, token_len);
+        target_token[token_len] = '\0';
+        trim_whitespace_inplace(target_token);
+        msg_cursor = separator + 1;
+    } else if (strcasecmp(command, "send") == 0) {
         cursor = session_consume_token(cursor, target_token, sizeof(target_token));
         msg_cursor = cursor;
     } else {
         snprintf(target_token, sizeof(target_token), "%s", command);
         msg_cursor = cursor;
     }
+    while (msg_cursor != nullptr && *msg_cursor != '\0' &&
+           isspace((unsigned char)*msg_cursor)) {
+        ++msg_cursor;
+    }
 
     if (target_token[0] == '\0' || msg_cursor == nullptr || msg_cursor[0] == '\0') {
-        session_send_system_line(ctx,
-                                 "Usage: /mail [send] <user[@ip]> <message>");
+        session_mail_send_usage(ctx, true);
         return;
     }
 
@@ -98,7 +179,9 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
     if (at != nullptr) {
         size_t name_len = (size_t)(at - target_token);
         if (name_len == 0U || name_len >= sizeof(target)) {
-            session_send_system_line(ctx, "Invalid mailbox recipient.");
+            session_send_system_line(
+                ctx,
+                session_command_localize(ctx, "Invalid mailbox recipient."));
             return;
         }
         memcpy(target, target_token, name_len);
@@ -106,7 +189,9 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
         const char *ip_part = at + 1;
         if (ip_part[0] != '\0') {
             if (strlen(ip_part) >= sizeof(target_ip)) {
-                session_send_system_line(ctx, "Recipient IP is too long.");
+                session_send_system_line(
+                    ctx,
+                    session_command_localize(ctx, "Recipient IP is too long."));
                 return;
             }
             snprintf(target_ip, sizeof(target_ip), "%s", ip_part);
@@ -116,7 +201,8 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
     }
 
     if (target[0] == '\0') {
-        session_send_system_line(ctx, "Invalid mailbox recipient.");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Invalid mailbox recipient."));
         return;
     }
 
@@ -124,7 +210,9 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
     snprintf(message, sizeof(message), "%s", msg_cursor);
         trim_whitespace_inplace(message);
         if (message[0] == '\0') {
-            session_send_system_line(ctx, "Mailbox message cannot be empty.");
+            session_send_system_line(
+                ctx, session_command_localize(
+                         ctx, "Mailbox message cannot be empty."));
             return;
         }
 
@@ -133,10 +221,21 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
                 ctx->owner, target, target_ip[0] != '\0' ? target_ip : nullptr,
                 ctx->user.name, message, error, sizeof(error))) {
             if (error[0] != '\0') {
-                session_send_system_line(ctx, error);
+                static const char kOpenPrefix[] = "Unable to open mailbox for ";
+                if (strncmp(error, kOpenPrefix, sizeof(kOpenPrefix) - 1U) ==
+                    0) {
+                    session_command_snprintf(ctx, error, sizeof(error),
+                                             "Unable to open mailbox for %s.",
+                                             target);
+                    session_send_system_line(ctx, error);
+                } else {
+                    session_send_system_line(
+                        ctx, session_command_localize(ctx, error));
+                }
             } else {
-                session_send_system_line(ctx,
-                                         "Unable to deliver mailbox message.");
+                session_send_system_line(
+                    ctx, session_command_localize(
+                             ctx, "Unable to deliver mailbox message."));
             }
             return;
         }
@@ -146,29 +245,33 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
         }
 
         char confirmation[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(confirmation, sizeof(confirmation),
-                 "Delivered mailbox message to %s.", target);
+        session_command_snprintf(ctx, confirmation, sizeof(confirmation),
+                                 "Delivered mailbox message to %s.", target);
         session_send_system_line(ctx, confirmation);
         return;
 
     if (strcasecmp(command, "clear") == 0) {
         if (!session_user_data_load(ctx)) {
-            session_send_system_line(ctx, "Mailbox storage is unavailable.");
+            session_send_system_line(
+                ctx, session_command_localize(
+                         ctx, "Mailbox storage is unavailable."));
             return;
         }
 
         ctx->user_data.mailbox_count = 0U;
         memset(ctx->user_data.mailbox, 0, sizeof(ctx->user_data.mailbox));
         if (session_user_data_commit(ctx)) {
-            session_send_system_line(ctx, "Mailbox cleared.");
+            session_send_system_line(
+                ctx, session_command_localize(ctx, "Mailbox cleared."));
         } else {
-            session_send_system_line(ctx, "Failed to update mailbox.");
+            session_send_system_line(
+                ctx,
+                session_command_localize(ctx, "Failed to update mailbox."));
         }
         return;
     }
 
-    session_send_system_line(
-        ctx, "Usage: /mail [inbox|send <user> <message>|clear]");
+    session_mail_send_usage(ctx, false);
 }
 
 static void session_handle_reaction(session_ctx_t *ctx, size_t reaction_index,

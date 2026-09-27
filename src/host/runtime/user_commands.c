@@ -220,12 +220,15 @@ static void session_handle_exit(session_ctx_t *ctx)
 static void session_handle_pardon(session_ctx_t *ctx, const char *arguments)
 {
     if (!ctx->user.is_operator) {
-        session_send_system_line(ctx, "You are not allowed to pardon users.");
+        session_send_system_line(
+            ctx, session_command_localize(
+                     ctx, "You are not allowed to pardon users."));
         return;
     }
 
     if (arguments == nullptr || *arguments == '\0') {
-        session_send_system_line(ctx, "Usage: /pardon <user|ip>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /pardon <user|ip>"));
         return;
     }
 
@@ -234,16 +237,19 @@ static void session_handle_pardon(session_ctx_t *ctx, const char *arguments)
     trim_whitespace_inplace(token);
 
     if (token[0] == '\0') {
-        session_send_system_line(ctx, "Usage: /pardon <user|ip>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /pardon <user|ip>"));
         return;
     }
 
     if (host_remove_ban_entry(ctx->owner, token)) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "Ban lifted for '%s'.", token);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "Ban lifted for '%s'.", token);
         session_send_system_line(ctx, message);
     } else {
-        session_send_system_line(ctx, "No matching ban found.");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "No matching ban found."));
     }
 }
 

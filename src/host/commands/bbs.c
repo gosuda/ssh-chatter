@@ -1941,18 +1941,47 @@ static void session_bbs_show_dashboard(session_ctx_t *ctx)
 
     session_bbs_prepare_canvas(ctx);
     session_render_separator(ctx, "BBS Dashboard");
-    session_send_system_line(
-        ctx, "Commands: list [all|hot|top|new] [page], read <id>, topic read <tag>, "
-             "post <title> [tags...], edit <id>, "
-             "comment <id>|<text> (:N quotes, @nick mentions), "
-             "cmtedit <id> <idx> <text>, cmtdel <id> <idx>, "
-             "upvote <id>, downvote <id>, cmtvote <id> <idx> up|down, "
-             "regen <id>, delete <id>, report <id> [reason], "
-             "hide|unhide <id>, pin|unpin <id>, mute|unmute <user>, "
-             "mutes, reports [all], modlog, ipaudit <user>|ip <a>, "
-             "search <keyword>, board <id>, "
-             "boards, profile, set-profile, draft <save|list|load|delete>, "
-             "setavatar <name>, door [name], setgamelock <name>, exit");
+    const char *commands_label = "Commands:";
+    switch (session_ui_language_current(ctx)) {
+    case SESSION_UI_LANGUAGE_KO:
+        commands_label = "명령:";
+        break;
+    case SESSION_UI_LANGUAGE_JP:
+        commands_label = "コマンド:";
+        break;
+    case SESSION_UI_LANGUAGE_ZH:
+        commands_label = "命令:";
+        break;
+    case SESSION_UI_LANGUAGE_RU:
+        commands_label = "Команды:";
+        break;
+    case SESSION_UI_LANGUAGE_DE:
+        commands_label = "Befehle:";
+        break;
+    case SESSION_UI_LANGUAGE_FR:
+        commands_label = "Commandes :";
+        break;
+    case SESSION_UI_LANGUAGE_PL:
+        commands_label = "Polecenia:";
+        break;
+    default:
+        break;
+    }
+    char commands_line[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(
+        commands_line, sizeof(commands_line), "%s %s", commands_label,
+        "list [all|hot|top|new] [page], read <id>, topic read <tag>, "
+        "post <title> [tags...], edit <id>, "
+        "comment <id>|<text> (:N quotes, @nick mentions), "
+        "cmtedit <id> <idx> <text>, cmtdel <id> <idx>, "
+        "upvote <id>, downvote <id>, cmtvote <id> <idx> up|down, "
+        "regen <id>, delete <id>, report <id> [reason], "
+        "hide|unhide <id>, pin|unpin <id>, mute <user>[|min], unmute <user>, "
+        "mutes, reports [all], modlog, ipaudit <user>|ip <a>, "
+        "search <keyword>, board <id>, "
+        "boards, profile, set-profile, draft <save|list|load|delete>, "
+        "setavatar <name>, door [name], setgamelock <name>, exit");
+    session_send_system_line(ctx, commands_line);
     session_bbs_list(ctx, nullptr);
 }
 
@@ -4259,28 +4288,64 @@ static void session_bbs_set_mod_flag(session_ctx_t *ctx, uint64_t post_id,
     session_send_system_line(ctx, confirmation);
 }
 
+// Localized argument hints for the mute/unmute usage lines.
+static const char *session_bbs_mute_usage_args(session_ctx_t *ctx,
+                                               bool with_minutes)
+{
+    switch (session_ui_language_current(ctx)) {
+    case SESSION_UI_LANGUAGE_KO:
+        return with_minutes ? "<사용자>[|분]" : "<사용자>";
+    case SESSION_UI_LANGUAGE_JP:
+        return with_minutes ? "<ユーザー>[|分]" : "<ユーザー>";
+    case SESSION_UI_LANGUAGE_ZH:
+        return with_minutes ? "<用户>[|分钟]" : "<用户>";
+    case SESSION_UI_LANGUAGE_RU:
+        return with_minutes ? "<пользователь>[|минуты]" : "<пользователь>";
+    case SESSION_UI_LANGUAGE_DE:
+        return with_minutes ? "<Benutzer>[|Minuten]" : "<Benutzer>";
+    case SESSION_UI_LANGUAGE_FR:
+        return with_minutes ? "<utilisateur>[|minutes]" : "<utilisateur>";
+    case SESSION_UI_LANGUAGE_PL:
+        return with_minutes ? "<użytkownik>[|minuty]" : "<użytkownik>";
+    default:
+        return with_minutes ? "<user>[|minutes]" : "<user>";
+    }
+}
+
 static void session_bbs_mute(session_ctx_t *ctx, const char *arguments)
 {
     if (!session_bbs_require_operator(ctx) || ctx->owner == nullptr) {
         return;
     }
     if (arguments == nullptr || arguments[0] == '\0') {
-        session_bbs_send_usage(ctx, "mute", "<user> [minutes]");
+        session_bbs_send_usage(ctx, "mute",
+                               session_bbs_mute_usage_args(ctx, true));
         return;
     }
 
     char working[128];
     snprintf(working, sizeof(working), "%s", arguments);
     trim_whitespace_inplace(working);
-    char *space = strchr(working, ' ');
+    // "<user>|<minutes>" lets names contain spaces; without '|', a trailing
+    // numeric word is still taken as the duration.
+    char *space = strchr(working, '|');
+    if (space == nullptr) {
+        space = strrchr(working, ' ');
+        if (space != nullptr &&
+            strspn(space + 1, "0123456789") != strlen(space + 1)) {
+            space = nullptr;
+        }
+    }
     char *minutes_text = nullptr;
     if (space != nullptr) {
         *space = '\0';
         minutes_text = space + 1;
-        while (*minutes_text == ' ') ++minutes_text;
+        trim_whitespace_inplace(minutes_text);
+        trim_whitespace_inplace(working);
     }
     if (working[0] == '\0') {
-        session_bbs_send_usage(ctx, "mute", "<user> [minutes]");
+        session_bbs_send_usage(ctx, "mute",
+                               session_bbs_mute_usage_args(ctx, true));
         return;
     }
 
@@ -4291,7 +4356,8 @@ static void session_bbs_mute(session_ctx_t *ctx, const char *arguments)
         long minutes = strtol(minutes_text, &endptr, 10);
         if (errno != 0 || endptr == nullptr || *endptr != '\0' ||
             minutes <= 0L || minutes > (24L * 60L * 365L)) {
-            session_bbs_send_usage(ctx, "mute", "<user> [minutes]");
+            session_bbs_send_usage(ctx, "mute",
+                                   session_bbs_mute_usage_args(ctx, true));
             return;
         }
         until = time(nullptr) + (time_t)(minutes * 60L);
@@ -4327,7 +4393,8 @@ static void session_bbs_unmute(session_ctx_t *ctx, const char *username)
         return;
     }
     if (username == nullptr || username[0] == '\0') {
-        session_bbs_send_usage(ctx, "unmute", "<user>");
+        session_bbs_send_usage(ctx, "unmute",
+                               session_bbs_mute_usage_args(ctx, false));
         return;
     }
 

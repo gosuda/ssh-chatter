@@ -391,10 +391,12 @@ static bool session_translation_queue_private_message(session_ctx_t *ctx,
              message);
     snprintf(job->data.pm.target_name, sizeof(job->data.pm.target_name), "%s",
              target->user.name);
-    snprintf(job->data.pm.to_target_label, sizeof(job->data.pm.to_target_label),
-             "%s -> you", ctx->user.name);
-    snprintf(job->data.pm.to_sender_label, sizeof(job->data.pm.to_sender_label),
-             "you -> %s", target->user.name);
+    session_command_snprintf(target, job->data.pm.to_target_label,
+                             sizeof(job->data.pm.to_target_label), "%s -> you",
+                             ctx->user.name);
+    session_command_snprintf(ctx, job->data.pm.to_sender_label,
+                             sizeof(job->data.pm.to_sender_label), "you -> %s",
+                             target->user.name);
 
     ttak_mutex_lock(&ctx->translation_mutex);
     job->next = nullptr;

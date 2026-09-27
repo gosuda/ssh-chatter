@@ -1532,7 +1532,8 @@ static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
 
     static const char *kUsage = "Usage: /showstatus <nickname>";
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
-    session_command_format_usage(ctx, "/showstatus", kUsage, usage,
+    session_command_format_usage(ctx, "/showstatus",
+                                 session_command_localize(ctx, kUsage), usage,
                                  sizeof(usage));
 
     if (arguments == nullptr || arguments[0] == '\0') {
@@ -1550,7 +1551,9 @@ static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
     }
 
     if (ctx->owner == nullptr) {
-        session_send_system_line(ctx, "User status lookup is unavailable.");
+        session_send_system_line(
+            ctx, session_command_localize(
+                     ctx, "User status lookup is unavailable."));
         return;
     }
 
@@ -1558,23 +1561,24 @@ static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
         chat_room_find_user(&ctx->owner->room, target_name);
     if (target == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "User '%s' is not connected.",
-                 target_name);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "User '%s' is not connected.", target_name);
         session_send_system_line(ctx, message);
         return;
     }
 
     if (target->status_message[0] == '\0') {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message),
-                 "No status message set for '%s'.", target->user.name);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "No status message set for '%s'.",
+                                 target->user.name);
         session_send_system_line(ctx, message);
         return;
     }
 
     char message[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(message, sizeof(message), "Status for %s: %s", target->user.name,
-             target->status_message);
+    session_command_snprintf(ctx, message, sizeof(message), "Status for %s: %s",
+                             target->user.name, target->status_message);
     session_send_system_line(ctx, message);
 }
 

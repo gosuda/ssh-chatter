@@ -200,7 +200,9 @@ static void session_handle_getos(session_ctx_t *ctx, const char *arguments)
     }
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
-    session_command_format_usage(ctx, "/getos", kUsage, usage, sizeof(usage));
+    session_command_format_usage(ctx, "/getos",
+                                 session_command_localize(ctx, kUsage), usage,
+                                 sizeof(usage));
 
     if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
@@ -219,8 +221,9 @@ static void session_handle_getos(session_ctx_t *ctx, const char *arguments)
     if (!host_lookup_user_os(ctx->owner, target, os_buffer,
                              sizeof(os_buffer))) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message),
-                 "No operating system is recorded for %s.", target);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "No operating system is recorded for %s.",
+                                 target);
         session_send_system_line(ctx, message);
         return;
     }
@@ -230,7 +233,8 @@ static void session_handle_getos(session_ctx_t *ctx, const char *arguments)
         descriptor != nullptr ? descriptor->display : os_buffer;
 
     char message[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(message, sizeof(message), "%s reports using %s.", target, display);
+    session_command_snprintf(ctx, message, sizeof(message),
+                             "%s reports using %s.", target, display);
     session_send_system_line(ctx, message);
 }
 
@@ -707,7 +711,8 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
                                         0U, nullptr, 0U, false, false, nullptr,
                                         false)) {
                 session_send_system_line(
-                    ctx, "Warning: unable to update pw_auth.dat.");
+                    ctx, session_command_localize(
+                             ctx, "Warning: unable to update pw_auth.dat."));
             }
         } else {
             session_send_system_line(ctx, "Failed to remove password.");
@@ -731,8 +736,9 @@ static void session_handle_setpw(session_ctx_t *ctx, const char *arguments)
                 ip_wide_explicit ? ip_wide : false,
                 user_data_fixnick_enabled(&ctx->user_data), ctx->client_ip,
                 true)) {
-            session_send_system_line(ctx,
-                                     "Warning: unable to update pw_auth.dat.");
+            session_send_system_line(
+                ctx, session_command_localize(
+                         ctx, "Warning: unable to update pw_auth.dat."));
         }
         if (!host_nickname_claim_upsert(
                 ctx->owner, ctx, ctx->user.name, ctx->user_data.password_salt,
@@ -844,8 +850,9 @@ static void session_handle_delpw(session_ctx_t *ctx, const char *arguments)
         if (!session_pw_auth_update(ctx->owner, target_user, 0U, nullptr, 0U,
                                     nullptr, 0U, false, false, nullptr,
                                     false)) {
-            session_send_system_line(ctx,
-                                     "Warning: unable to update pw_auth.dat.");
+            session_send_system_line(
+                ctx, session_command_localize(
+                         ctx, "Warning: unable to update pw_auth.dat."));
         }
 
     } else {
@@ -861,12 +868,15 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
 
     // Only operators can reset passwords
     if (!ctx->user.is_operator) {
-        session_send_system_line(ctx, "Only operators can reset passwords.");
+        session_send_system_line(
+            ctx, session_command_localize(
+                     ctx, "Only operators can reset passwords."));
         return;
     }
 
     if (arguments == nullptr || arguments[0] == '\0') {
-        session_send_system_line(ctx, "Usage: /resetpw <nickname>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /resetpw <nickname>"));
         return;
     }
 
@@ -875,7 +885,8 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
     trim_whitespace_inplace(target_nickname);
 
     if (target_nickname[0] == '\0') {
-        session_send_system_line(ctx, "Usage: /resetpw <nickname>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /resetpw <nickname>"));
         return;
     }
 
@@ -901,9 +912,10 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
 
     if (target_ip == nullptr || target_ip[0] == '\0') {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message),
-                 "Could not find IP for user '%s'. Cannot reset password.",
-                 target_nickname);
+        session_command_snprintf(
+            ctx, message, sizeof(message),
+            "Could not find IP for user '%s'. Cannot reset password.",
+            target_nickname);
         session_send_system_line(ctx, message);
         return;
     }
@@ -911,8 +923,9 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
     if (!host_user_data_load_existing(ctx->owner, target_nickname, target_ip,
                                       &user_data, false)) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "Failed to load data for user '%s'.",
-                 target_nickname);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "Failed to load data for user '%s'.",
+                                 target_nickname);
         session_send_system_line(ctx, message);
         return;
     }
@@ -928,15 +941,17 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
 
     if (success) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "Password for '%s' has been reset.",
-                 target_nickname);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "Password for '%s' has been reset.",
+                                 target_nickname);
         session_send_system_line(ctx, message);
 
         if (!session_pw_auth_update(ctx->owner, target_nickname, 0U, nullptr, 0U,
                                     nullptr, 0U, false, false, nullptr,
                                     false)) {
-            session_send_system_line(ctx,
-                                     "Warning: unable to update pw_auth.dat.");
+            session_send_system_line(
+                ctx, session_command_localize(
+                         ctx, "Warning: unable to update pw_auth.dat."));
         }
         host_nickname_claim_remove(ctx->owner, target_nickname);
 
@@ -948,8 +963,9 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
         }
     } else {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "Failed to reset password for '%s'.",
-                 target_nickname);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "Failed to reset password for '%s'.",
+                                 target_nickname);
         session_send_system_line(ctx, message);
     }
 }

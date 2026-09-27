@@ -9,3 +9,4 @@
 #include "core/help_entries.c"
 #include "core/command_dispatch.c"
 #include "core/text_utils.c"
+#include "core/command_messages.c"

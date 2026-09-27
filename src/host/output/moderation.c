@@ -7,12 +7,15 @@ static void session_handle_kick(session_ctx_t *ctx, const char *arguments)
     }
 
     if (!ctx->user.is_operator) {
-        session_send_system_line(ctx, "You are not allowed to kick users.");
+        session_send_system_line(
+            ctx, session_command_localize(
+                     ctx, "You are not allowed to kick users."));
         return;
     }
 
     if (arguments == nullptr || *arguments == '\0') {
-        session_send_system_line(ctx, "Usage: /kick <username>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /kick <username>"));
         return;
     }
 
@@ -21,7 +24,8 @@ static void session_handle_kick(session_ctx_t *ctx, const char *arguments)
     trim_whitespace_inplace(target_name);
 
     if (target_name[0] == '\0') {
-        session_send_system_line(ctx, "Usage: /kick <username>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /kick <username>"));
         return;
     }
 
@@ -29,14 +33,15 @@ static void session_handle_kick(session_ctx_t *ctx, const char *arguments)
         chat_room_find_user_ref(&ctx->owner->room, target_name);
     if (target == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "User '%s' is not connected.",
-                 target_name);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "User '%s' is not connected.", target_name);
         session_send_system_line(ctx, message);
         return;
     }
 
     if (target == ctx) {
-        session_send_system_line(ctx, "You cannot kick yourself.");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "You cannot kick yourself."));
         chat_room_release_user_ref(target);
         return;
     }
@@ -51,13 +56,15 @@ static void session_handle_kick(session_ctx_t *ctx, const char *arguments)
     chat_room_broadcast(&ctx->owner->room, notice, nullptr);
 
     if (session_transport_active(target)) {
-        session_send_system_line(target,
-                                 "You have been kicked by an operator.");
+        session_send_system_line(
+            target, session_command_localize(
+                        target, "You have been kicked by an operator."));
         session_transport_request_close(target);
     }
     target->should_exit = true;
     chat_room_release_user_ref(target);
-    session_send_system_line(ctx, "User removed from the chat.");
+    session_send_system_line(
+        ctx, session_command_localize(ctx, "User removed from the chat."));
 
     printf("[kick] %s kicked %s\n", ctx->user.name, kicked_name);
 }
@@ -69,17 +76,21 @@ static void session_handle_ban_name(session_ctx_t *ctx, const char *arguments)
     }
 
     if (!ctx->user.is_operator) {
-        session_send_system_line(ctx, "You are not allowed to ban nicknames.");
+        session_send_system_line(
+            ctx, session_command_localize(
+                     ctx, "You are not allowed to ban nicknames."));
         return;
     }
 
     if (ctx->owner == nullptr) {
-        session_send_system_line(ctx, "Host unavailable.");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Host unavailable."));
         return;
     }
 
     if (arguments == nullptr || *arguments == '\0') {
-        session_send_system_line(ctx, "Usage: /banname <nickname>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /banname <nickname>"));
         return;
     }
 
@@ -88,7 +99,8 @@ static void session_handle_ban_name(session_ctx_t *ctx, const char *arguments)
     trim_whitespace_inplace(target_name);
 
     if (target_name[0] == '\0') {
-        session_send_system_line(ctx, "Usage: /banname <nickname>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /banname <nickname>"));
         return;
     }
 
@@ -96,20 +108,25 @@ static void session_handle_ban_name(session_ctx_t *ctx, const char *arguments)
         const unsigned char ch = (unsigned char)target_name[idx];
         if (ch <= 0x1FU || ch == 0x7FU || ch == ' ' || ch == '\t') {
             session_send_system_line(
-                ctx,
-                "Nicknames may not include control characters or whitespace.");
+                ctx, session_command_localize(
+                         ctx, "Nicknames may not include control characters or "
+                              "whitespace."));
             return;
         }
     }
 
     if (host_is_username_banned(ctx->owner, target_name)) {
         session_send_system_line(
-            ctx, "That nickname is already blocked for bot detection.");
+            ctx,
+            session_command_localize(
+                ctx, "That nickname is already blocked for bot detection."));
         return;
     }
 
     if (!host_add_ban_entry(ctx->owner, target_name, "")) {
-        session_send_system_line(ctx, "Unable to add ban entry (list full?).");
+        session_send_system_line(
+            ctx, session_command_localize(
+                     ctx, "Unable to add ban entry (list full?)."));
         return;
     }
 
@@ -119,26 +136,32 @@ static void session_handle_ban_name(session_ctx_t *ctx, const char *arguments)
              ctx->user.name);
     host_history_record_system(ctx->owner, notice, nullptr);
     chat_room_broadcast(&ctx->owner->room, notice, nullptr);
-    session_send_system_line(ctx, "Nickname ban applied.");
+    session_send_system_line(
+        ctx, session_command_localize(ctx, "Nickname ban applied."));
     printf("[banname] %s banned nickname %s\n", ctx->user.name, target_name);
 
     session_ctx_t *active = chat_room_find_user(&ctx->owner->room, target_name);
     if (active != nullptr) {
         session_send_system_line(
-            active, "Your nickname is now blocked for bot detection. "
-                    "Use /nick <name> to change immediately.");
+            active, session_command_localize(
+                        active, "Your nickname is now blocked for bot "
+                                "detection. Use /nick <name> to change "
+                                "immediately."));
     }
 }
 
 static void session_handle_ban(session_ctx_t *ctx, const char *arguments)
 {
     if (!ctx->user.is_operator) {
-        session_send_system_line(ctx, "You are not allowed to ban users.");
+        session_send_system_line(
+            ctx,
+            session_command_localize(ctx, "You are not allowed to ban users."));
         return;
     }
 
     if (arguments == nullptr || *arguments == '\0') {
-        session_send_system_line(ctx, "Usage: /ban <username>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /ban <username>"));
         return;
     }
 
@@ -147,7 +170,8 @@ static void session_handle_ban(session_ctx_t *ctx, const char *arguments)
     trim_whitespace_inplace(target_name);
 
     if (target_name[0] == '\0') {
-        session_send_system_line(ctx, "Usage: /ban <username>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /ban <username>"));
         return;
     }
 
@@ -177,31 +201,38 @@ static void session_handle_ban(session_ctx_t *ctx, const char *arguments)
             if (host_add_ban_entry(ctx->owner, "", target_name)) {
                 char notice[SSH_CHATTER_MESSAGE_LIMIT];
                 const char *label = valid_cidr ? "CIDR" : "IP";
-                snprintf(notice, sizeof(notice), "%s '%s' has been banned.",
-                         label, target_name);
+                session_command_snprintf(ctx, notice, sizeof(notice),
+                                         "%s '%s' has been banned.", label,
+                                         target_name);
                 session_send_system_line(ctx, notice);
             } else {
                 session_send_system_line(
-                    ctx, "Unable to add ban entry (list full?).");
+                    ctx, session_command_localize(
+                             ctx, "Unable to add ban entry (list full?)."));
             }
         } else {
             char not_found[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(not_found, sizeof(not_found),
-                     "User '%s' is not connected.", target_name);
+            session_command_snprintf(ctx, not_found, sizeof(not_found),
+                                     "User '%s' is not connected.",
+                                     target_name);
             session_send_system_line(ctx, not_found);
         }
         return;
     }
 
     if (target->user.is_lan_operator) {
-        session_send_system_line(ctx, "LAN operators cannot be banned.");
+        session_send_system_line(
+            ctx,
+            session_command_localize(ctx, "LAN operators cannot be banned."));
         return;
     }
 
     const char *target_ip =
         target->client_ip[0] != '\0' ? target->client_ip : "";
     if (!host_add_ban_entry(ctx->owner, target->user.name, target_ip)) {
-        session_send_system_line(ctx, "Unable to add ban entry (list full?).");
+        session_send_system_line(
+            ctx, session_command_localize(
+                     ctx, "Unable to add ban entry (list full?)."));
         return;
     }
 
@@ -210,14 +241,16 @@ static void session_handle_ban(session_ctx_t *ctx, const char *arguments)
              target->user.name, ctx->user.name);
     host_history_record_system(ctx->owner, notice, nullptr);
     chat_room_broadcast(&ctx->owner->room, notice, nullptr);
-    session_send_system_line(ctx, "Ban applied.");
+    session_send_system_line(ctx,
+                             session_command_localize(ctx, "Ban applied."));
     printf("[ban] %s banned %s (%s)\n", ctx->user.name, target->user.name,
            target_ip[0] != '\0' ? target_ip : "unknown");
 
     if (session_transport_active(target)) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "You have been banned by [%s].",
-                 ctx->user.name);
+        session_command_snprintf(target, message, sizeof(message),
+                                 "You have been banned by [%s].",
+                                 ctx->user.name);
         session_send_system_line(target, message);
         target->should_exit = true;
         session_transport_request_close(target);
@@ -231,8 +264,9 @@ static void session_handle_ban_list(session_ctx_t *ctx, const char *arguments)
     }
 
     if (!ctx->user.is_operator) {
-        session_send_system_line(ctx,
-                                 "You are not allowed to view the ban list.");
+        session_send_system_line(
+            ctx, session_command_localize(
+                     ctx, "You are not allowed to view the ban list."));
         return;
     }
 
@@ -241,14 +275,16 @@ static void session_handle_ban_list(session_ctx_t *ctx, const char *arguments)
             ++arguments;
         }
         if (*arguments != '\0') {
-            session_send_system_line(ctx, "Usage: /banlist");
+            session_send_system_line(
+                ctx, session_command_localize(ctx, "Usage: /banlist"));
             return;
         }
     }
 
     host_t *host = ctx->owner;
     if (host == nullptr) {
-        session_send_system_line(ctx, "Host unavailable.");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Host unavailable."));
         return;
     }
 
@@ -274,11 +310,13 @@ static void session_handle_ban_list(session_ctx_t *ctx, const char *arguments)
     ttak_mutex_unlock(&host->lock);
 
     if (entry_count == 0U) {
-        session_send_system_line(ctx, "No active bans.");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "No active bans."));
         return;
     }
 
-    session_send_system_line(ctx, "Active bans:");
+    session_send_system_line(ctx,
+                             session_command_localize(ctx, "Active bans:"));
     enum {
         SESSION_BAN_USERNAME_PREC = SSH_CHATTER_USERNAME_LEN - 1,
         SESSION_BAN_IP_PREC = SSH_CHATTER_IP_LEN - 1
@@ -288,18 +326,21 @@ static void session_handle_ban_list(session_ctx_t *ctx, const char *arguments)
         const char *ip = entries[idx].ip;
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         if (username[0] != '\0' && ip[0] != '\0') {
-            snprintf(message, sizeof(message),
-                     "%zu. user: %.*s, ip: %.*s", idx + 1U,
-                     SESSION_BAN_USERNAME_PREC, username,
-                     SESSION_BAN_IP_PREC, ip);
+            session_command_snprintf(ctx, message, sizeof(message),
+                                     "%zu. user: %.*s, ip: %.*s", idx + 1U,
+                                     SESSION_BAN_USERNAME_PREC, username,
+                                     SESSION_BAN_IP_PREC, ip);
         } else if (username[0] != '\0') {
-            snprintf(message, sizeof(message), "%zu. user: %.*s", idx + 1U,
-                     SESSION_BAN_USERNAME_PREC, username);
+            session_command_snprintf(ctx, message, sizeof(message),
+                                     "%zu. user: %.*s", idx + 1U,
+                                     SESSION_BAN_USERNAME_PREC, username);
         } else if (ip[0] != '\0') {
-            snprintf(message, sizeof(message), "%zu. ip: %.*s", idx + 1U,
-                     SESSION_BAN_IP_PREC, ip);
+            session_command_snprintf(ctx, message, sizeof(message),
+                                     "%zu. ip: %.*s", idx + 1U,
+                                     SESSION_BAN_IP_PREC, ip);
         } else {
-            snprintf(message, sizeof(message), "%zu. <empty>", idx + 1U);
+            session_command_snprintf(ctx, message, sizeof(message),
+                                     "%zu. <empty>", idx + 1U);
         }
         session_send_system_line(ctx, message);
     }
@@ -312,13 +353,15 @@ static void session_handle_getaddr(session_ctx_t *ctx, const char *arguments)
     }
 
     if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
-        session_send_system_line(ctx,
-                                 "You are not allowed to run that command.");
+        session_send_system_line(
+            ctx, session_command_localize(
+                     ctx, "You are not allowed to run that command."));
         return;
     }
 
     if (arguments == nullptr || *arguments == '\0') {
-        session_send_system_line(ctx, "Usage: /getaddr <username>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /getaddr <username>"));
         return;
     }
 
@@ -327,13 +370,15 @@ static void session_handle_getaddr(session_ctx_t *ctx, const char *arguments)
     trim_whitespace_inplace(target_name);
 
     if (target_name[0] == '\0') {
-        session_send_system_line(ctx, "Usage: /getaddr <username>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /getaddr <username>"));
         return;
     }
 
     host_t *host = ctx->owner;
     if (host == nullptr) {
-        session_send_system_line(ctx, "Host unavailable.");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Host unavailable."));
         return;
     }
 
@@ -341,37 +386,151 @@ static void session_handle_getaddr(session_ctx_t *ctx, const char *arguments)
     if (!host_lookup_last_ip(host, target_name, ip, sizeof(ip)) ||
         ip[0] == '\0') {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "No recorded address for '%s'.",
-                 target_name);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "No recorded address for '%s'.", target_name);
         session_send_system_line(ctx, message);
         return;
     }
 
     char message[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(message, sizeof(message), "Last known address for '%s': %s",
-             target_name, ip);
+    session_command_snprintf(ctx, message, sizeof(message),
+                             "Last known address for '%s': %s", target_name,
+                             ip);
     session_send_system_line(ctx, message);
 }
 
 static void session_handle_poke(session_ctx_t *ctx, const char *arguments)
 {
     if (arguments == nullptr || *arguments == '\0') {
-        session_send_system_line(ctx, "Usage: /poke <username>");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "Usage: /poke <username>"));
         return;
     }
 
     session_ctx_t *target = chat_room_find_user(&ctx->owner->room, arguments);
     if (target == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "User '%s' is not connected.",
-                 arguments);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "User '%s' is not connected.", arguments);
         session_send_system_line(ctx, message);
         return;
     }
 
     printf("[poke] %s pokes %s\n", ctx->user.name, target->user.name);
     session_channel_write(target, "\a", 1U);
-    session_send_system_line(ctx, "Poke sent.");
+    session_send_system_line(ctx, session_command_localize(ctx, "Poke sent."));
+}
+
+// Localized usage for /pm; the "/pm" token is later swapped for the alias.
+static const char *session_pm_usage_template(session_ctx_t *ctx)
+{
+    switch (session_ui_language_current(ctx)) {
+    case SESSION_UI_LANGUAGE_KO:
+        return "사용법: /pm <사용자>|<메시지>";
+    case SESSION_UI_LANGUAGE_JP:
+        return "使い方: /pm <ユーザー>|<メッセージ>";
+    case SESSION_UI_LANGUAGE_ZH:
+        return "用法: /pm <用户>|<消息>";
+    case SESSION_UI_LANGUAGE_RU:
+        return "Использование: /pm <пользователь>|<сообщение>";
+    case SESSION_UI_LANGUAGE_DE:
+        return "Nutzung: /pm <Benutzer>|<Nachricht>";
+    case SESSION_UI_LANGUAGE_FR:
+        return "Utilisation: /pm <utilisateur>|<message>";
+    case SESSION_UI_LANGUAGE_PL:
+        return "Użycie: /pm <użytkownik>|<wiadomość>";
+    default:
+        return "Usage: /pm <username>|<message>";
+    }
+}
+
+// Localized usage for /block; the "/block" token is later swapped for the
+// alias.
+static const char *session_block_usage_template(session_ctx_t *ctx)
+{
+    switch (session_ui_language_current(ctx)) {
+    case SESSION_UI_LANGUAGE_KO:
+        return "사용법: /block <사용자|IP|list|confirm <사용자>|<only|ip>>";
+    case SESSION_UI_LANGUAGE_JP:
+        return "使い方: /block <ユーザー|IP|list|confirm <ユーザー>|<only|ip>>";
+    case SESSION_UI_LANGUAGE_ZH:
+        return "用法: /block <用户|IP|list|confirm <用户>|<only|ip>>";
+    case SESSION_UI_LANGUAGE_RU:
+        return "Использование: /block <пользователь|IP|list|confirm "
+               "<пользователь>|<only|ip>>";
+    case SESSION_UI_LANGUAGE_DE:
+        return "Nutzung: /block <Benutzer|IP|list|confirm "
+               "<Benutzer>|<only|ip>>";
+    case SESSION_UI_LANGUAGE_FR:
+        return "Utilisation: /block <utilisateur|IP|list|confirm "
+               "<utilisateur>|<only|ip>>";
+    case SESSION_UI_LANGUAGE_PL:
+        return "Użycie: /block <użytkownik|IP|list|confirm "
+               "<użytkownik>|<only|ip>>";
+    default:
+        return "Usage: /block <username|ip|list|confirm <username>|<only|ip>>";
+    }
+}
+
+// Explains how to confirm a block on a shared-provider IP.
+static void session_block_format_confirm_prompt(session_ctx_t *ctx,
+                                                const char *name, char *buffer,
+                                                size_t length)
+{
+    switch (session_ui_language_current(ctx)) {
+    case SESSION_UI_LANGUAGE_KO:
+        snprintf(buffer, length,
+                 "[%.23s]만 숨기려면 /block confirm %.23s|only, 해당 IP의 "
+                 "모든 사용자를 숨기려면 /block confirm %.23s|ip 를 "
+                 "입력하세요.",
+                 name, name, name);
+        break;
+    case SESSION_UI_LANGUAGE_JP:
+        snprintf(buffer, length,
+                 "[%.23s]だけを非表示にするには /block confirm %.23s|only、"
+                 "そのIPの全員を非表示にするには /block confirm %.23s|ip "
+                 "と入力してください。",
+                 name, name, name);
+        break;
+    case SESSION_UI_LANGUAGE_ZH:
+        snprintf(buffer, length,
+                 "仅屏蔽 [%.23s] 请输入 /block confirm %.23s|only，屏蔽该 IP "
+                 "的所有人请输入 /block confirm %.23s|ip。",
+                 name, name, name);
+        break;
+    case SESSION_UI_LANGUAGE_RU:
+        snprintf(buffer, length,
+                 "Чтобы скрыть только [%.23s], введите /block confirm "
+                 "%.23s|only, а чтобы скрыть всех с этого IP — /block "
+                 "confirm %.23s|ip.",
+                 name, name, name);
+        break;
+    case SESSION_UI_LANGUAGE_DE:
+        snprintf(buffer, length,
+                 "Nur [%.23s] ausblenden: /block confirm %.23s|only; alle "
+                 "von dieser IP ausblenden: /block confirm %.23s|ip.",
+                 name, name, name);
+        break;
+    case SESSION_UI_LANGUAGE_FR:
+        snprintf(buffer, length,
+                 "Pour masquer seulement [%.23s] : /block confirm %.23s|only ; "
+                 "pour masquer tout le monde depuis cette IP : /block "
+                 "confirm %.23s|ip.",
+                 name, name, name);
+        break;
+    case SESSION_UI_LANGUAGE_PL:
+        snprintf(buffer, length,
+                 "Aby ukryć tylko [%.23s], wpisz /block confirm %.23s|only; "
+                 "aby ukryć wszystkich z tego IP: /block confirm %.23s|ip.",
+                 name, name, name);
+        break;
+    default:
+        snprintf(buffer, length,
+                 "Use /block confirm %.23s|only to hide just [%.23s] or /block "
+                 "confirm %.23s|ip to hide everyone from that IP.",
+                 name, name, name);
+        break;
+    }
 }
 
 static void session_handle_block(session_ctx_t *ctx, const char *arguments)
@@ -380,11 +539,9 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    static const char *kUsage =
-        "Usage: /block <username|ip|list|confirm <username> <only|ip>>";
-
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
-    session_command_format_usage(ctx, "/block", kUsage, usage, sizeof(usage));
+    session_command_format_usage(
+        ctx, "/block", session_block_usage_template(ctx), usage, sizeof(usage));
 
     if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
@@ -417,13 +574,26 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
             return;
         }
 
-        char username[SSH_CHATTER_USERNAME_LEN];
-        size_t name_len = 0U;
-        while (*cursor != '\0' && !isspace((unsigned char)*cursor) &&
-               name_len + 1U < sizeof(username)) {
-            username[name_len++] = *cursor++;
+        // "confirm <username>|<mode>"; whitespace split kept as a fallback.
+        char *name_end = strrchr(cursor, '|');
+        if (name_end == nullptr) {
+            name_end = cursor;
+            while (*name_end != '\0' && !isspace((unsigned char)*name_end)) {
+                ++name_end;
+            }
         }
+        char username[SSH_CHATTER_USERNAME_LEN];
+        size_t name_len = (size_t)(name_end - cursor);
+        if (name_len >= sizeof(username)) {
+            name_len = sizeof(username) - 1U;
+        }
+        memcpy(username, cursor, name_len);
         username[name_len] = '\0';
+        trim_whitespace_inplace(username);
+        cursor = name_end;
+        if (*cursor == '|') {
+            ++cursor;
+        }
 
         while (*cursor != '\0' && isspace((unsigned char)*cursor)) {
             ++cursor;
@@ -444,16 +614,17 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
 
         if (!ctx->block_pending.active) {
             session_send_system_line(
-                ctx, "No provider block is awaiting confirmation.");
+                ctx, session_command_localize(
+                         ctx, "No provider block is awaiting confirmation."));
             return;
         }
 
         if (strncmp(ctx->block_pending.username, username,
                     SSH_CHATTER_USERNAME_LEN) != 0) {
             char message[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(message, sizeof(message),
-                     "Pending block is for [%s], not [%s].",
-                     ctx->block_pending.username, username);
+            session_command_snprintf(ctx, message, sizeof(message),
+                                     "Pending block is for [%s], not [%s].",
+                                     ctx->block_pending.username, username);
             session_send_system_line(ctx, message);
             return;
         }
@@ -476,22 +647,26 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
                                    ctx->block_pending.username, block_ip,
                                    &already_present)) {
             if (already_present) {
-                session_send_system_line(ctx,
-                                         "That target is already blocked.");
+                session_send_system_line(
+                    ctx, session_command_localize(
+                             ctx, "That target is already blocked."));
             } else {
                 session_send_system_line(
-                    ctx, "Unable to add block entry (limit reached?).");
+                    ctx,
+                    session_command_localize(
+                        ctx, "Unable to add block entry (limit reached?)."));
             }
         } else {
             char message[SSH_CHATTER_MESSAGE_LIMIT];
             if (block_ip) {
-                snprintf(message, sizeof(message),
-                         "Blocking all users from %.63s.",
-                         ctx->block_pending.ip);
+                session_command_snprintf(ctx, message, sizeof(message),
+                                         "Blocking all users from %.63s.",
+                                         ctx->block_pending.ip);
             } else {
-                snprintf(message, sizeof(message),
-                         "Blocking [%.23s] only (IP %.63s).",
-                         ctx->block_pending.username, ctx->block_pending.ip);
+                session_command_snprintf(ctx, message, sizeof(message),
+                                         "Blocking [%.23s] only (IP %.63s).",
+                                         ctx->block_pending.username,
+                                         ctx->block_pending.ip);
             }
             session_send_system_line(ctx, message);
         }
@@ -512,9 +687,9 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
             session_detect_provider_ip(working, label, sizeof(label));
         if (provider && label[0] != '\0') {
             char warning[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(
-                warning, sizeof(warning),
-                "Error: You cannot ban a country."
+            session_command_snprintf(
+                ctx, warning, sizeof(warning),
+                "Error: You cannot ban a country. "
                 "%.256s is flagged as %.63s; other people may also be hidden.",
                 working, label);
             session_send_system_line(ctx, warning);
@@ -522,42 +697,53 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
         }
         if (!session_blocklist_add(ctx, working, "", true, &already_present)) {
             if (already_present) {
-                session_send_system_line(ctx, "That IP is already blocked.");
+                session_send_system_line(
+                    ctx, session_command_localize(
+                             ctx, "That IP is already blocked."));
             } else {
                 session_send_system_line(
-                    ctx, "Unable to add block entry (limit reached?).");
+                    ctx,
+                    session_command_localize(
+                        ctx, "Unable to add block entry (limit reached?)."));
             }
         } else {
             char message[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(message, sizeof(message),
-                     "Blocking all users from %.256s.", working);
+            session_command_snprintf(ctx, message, sizeof(message),
+                                     "Blocking all users from %.256s.",
+                                     working);
             session_send_system_line(ctx, message);
         }
         return;
     }
 
     if (ctx->owner == nullptr) {
-        session_send_system_line(ctx, "Block list unavailable right now.");
+        session_send_system_line(
+            ctx,
+            session_command_localize(ctx, "Block list unavailable right now."));
         return;
     }
 
     session_ctx_t *target = chat_room_find_user(&ctx->owner->room, working);
     if (target == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "User '%.256s' is not connected.",
-                 working);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "User '%.256s' is not connected.", working);
         session_send_system_line(ctx, message);
         return;
     }
 
     if (target == ctx) {
-        session_send_system_line(ctx, "You do not need to block yourself.");
+        session_send_system_line(
+            ctx, session_command_localize(
+                     ctx, "You do not need to block yourself."));
         return;
     }
 
     if (target->client_ip[0] == '\0') {
         session_send_system_line(
-            ctx, "Unable to identify that user's IP address right now.");
+            ctx,
+            session_command_localize(
+                ctx, "Unable to identify that user's IP address right now."));
         return;
     }
 
@@ -573,15 +759,14 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
                  sizeof(ctx->block_pending.provider_label), "%.31s", label);
 
         char warning[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(warning, sizeof(warning), "%.63s appears to belong to %.63s.",
-                 target->client_ip, label);
+        session_command_snprintf(ctx, warning, sizeof(warning),
+                                 "%.63s appears to belong to %.63s.",
+                                 target->client_ip, label);
         session_send_system_line(ctx, warning);
 
         char prompt[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(prompt, sizeof(prompt),
-                 "Use /block confirm %.23s only to hide just [%.23s] or /block "
-                 "confirm %.23s ip to hide everyone from that IP.",
-                 target->user.name, target->user.name, target->user.name);
+        session_block_format_confirm_prompt(ctx, target->user.name, prompt,
+                                            sizeof(prompt));
         session_send_system_line(ctx, prompt);
         return;
     }
@@ -590,16 +775,20 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
     if (!session_blocklist_add(ctx, target->client_ip, target->user.name, true,
                                &already_present)) {
         if (already_present) {
-            session_send_system_line(ctx, "That address is already blocked.");
+            session_send_system_line(
+                ctx, session_command_localize(
+                         ctx, "That address is already blocked."));
         } else {
             session_send_system_line(
-                ctx, "Unable to add block entry (limit reached?).");
+                ctx, session_command_localize(
+                         ctx, "Unable to add block entry (limit reached?)."));
         }
     } else {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message),
-                 "Blocking all users from %.63s (triggered by [%.23s]).",
-                 target->client_ip, target->user.name);
+        session_command_snprintf(
+            ctx, message, sizeof(message),
+            "Blocking all users from %.63s (triggered by [%.23s]).",
+            target->client_ip, target->user.name);
         session_send_system_line(ctx, message);
     }
 }
@@ -613,7 +802,9 @@ static void session_handle_unblock(session_ctx_t *ctx, const char *arguments)
     static const char *kUsage = "Usage: /unblock <username|ip|all>";
 
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
-    session_command_format_usage(ctx, "/unblock", kUsage, usage, sizeof(usage));
+    session_command_format_usage(ctx, "/unblock",
+                                 session_command_localize(ctx, kUsage), usage,
+                                 sizeof(usage));
 
     if (arguments == nullptr) {
         session_send_system_line(ctx, usage);
@@ -645,11 +836,20 @@ static void session_handle_unblock(session_ctx_t *ctx, const char *arguments)
         ctx->block_pending.provider_label[0] = '\0';
 
         if (removed == 0U) {
-            session_send_system_line(ctx, "No blocked entries to remove.");
+            session_send_system_line(
+                ctx,
+                session_command_localize(ctx, "No blocked entries to remove."));
         } else {
             char message[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(message, sizeof(message), "Removed %zu blocked entr%s.",
-                     removed, removed == 1U ? "y" : "ies");
+            if (removed == 1U) {
+                snprintf(
+                    message, sizeof(message), "%s",
+                    session_command_localize(ctx, "Removed 1 blocked entry."));
+            } else {
+                session_command_snprintf(ctx, message, sizeof(message),
+                                         "Removed %zu blocked entries.",
+                                         removed);
+            }
             session_send_system_line(ctx, message);
         }
         return;
@@ -657,13 +857,13 @@ static void session_handle_unblock(session_ctx_t *ctx, const char *arguments)
 
     if (session_blocklist_remove(ctx, working)) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "Removed block for %.256s.",
-                 working);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "Removed block for %.256s.", working);
         session_send_system_line(ctx, message);
     } else {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(message, sizeof(message), "No block entry matched '%.256s'.",
-                 working);
+        session_command_snprintf(ctx, message, sizeof(message),
+                                 "No block entry matched '%.256s'.", working);
         session_send_system_line(ctx, message);
     }
 }
@@ -674,14 +874,14 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    static const char *kUsage = "Usage: /pm <username> <message>";
-
     char usage[SSH_CHATTER_MESSAGE_LIMIT];
-    session_command_format_usage(ctx, "/pm", kUsage, usage, sizeof(usage));
+    session_command_format_usage(ctx, "/pm", session_pm_usage_template(ctx),
+                                 usage, sizeof(usage));
 
     if (ctx->owner == nullptr) {
-        session_send_system_line(ctx,
-                                 "Private messages are unavailable right now.");
+        session_send_system_line(
+            ctx, session_command_localize(
+                     ctx, "Private messages are unavailable right now."));
         return;
     }
 
@@ -699,9 +899,14 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    char *cursor = working;
-    while (*cursor != '\0' && !isspace((unsigned char)*cursor)) {
-        ++cursor;
+    // Names may contain spaces, so '|' separates the name from the message.
+    // Without '|', fall back to splitting at the first whitespace.
+    char *cursor = strchr(working, '|');
+    if (cursor == nullptr) {
+        cursor = working;
+        while (*cursor != '\0' && !isspace((unsigned char)*cursor)) {
+            ++cursor;
+        }
     }
 
     if (*cursor == '\0') {
@@ -711,11 +916,12 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
 
     *cursor = '\0';
     char *message = cursor + 1;
+    trim_whitespace_inplace(working);
     while (*message != '\0' && isspace((unsigned char)*message)) {
         ++message;
     }
 
-    if (*message == '\0') {
+    if (working[0] == '\0' || *message == '\0') {
         session_send_system_line(ctx, usage);
         return;
     }
@@ -727,8 +933,8 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
     session_ctx_t *target = chat_room_find_user(&ctx->owner->room, target_name);
     if (target == nullptr) {
         char not_found[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(not_found, sizeof(not_found), "User '%s' is not connected.",
-                 target_name);
+        session_command_snprintf(ctx, not_found, sizeof(not_found),
+                                 "User '%s' is not connected.", target_name);
         session_send_system_line(ctx, not_found);
         return;
     }
@@ -745,12 +951,12 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
     printf("[pm] %s -> %s: %s\n", ctx->user.name, target_display, deliver_body);
 
     char to_target_label[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(to_target_label, sizeof(to_target_label), "%s -> you",
-             ctx->user.name);
+    session_command_snprintf(target, to_target_label, sizeof(to_target_label),
+                             "%s -> you", ctx->user.name);
 
     char to_sender_label[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(to_sender_label, sizeof(to_sender_label), "you -> %s",
-             target_display);
+    session_command_snprintf(ctx, to_sender_label, sizeof(to_sender_label),
+                             "you -> %s", target_display);
 
     bool attempt_translation = (target != nullptr) && !translation_bypass &&
                                ctx->translation_enabled &&
@@ -763,7 +969,10 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
             return;
         }
         session_send_system_line(
-            ctx, "Translation unavailable; sending your original message.");
+            ctx,
+            session_command_localize(
+                ctx,
+                "Translation unavailable; sending your original message."));
     }
 
     session_send_private_message_line(target, ctx, to_target_label,

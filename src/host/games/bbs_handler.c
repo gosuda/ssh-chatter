@@ -16,42 +16,491 @@ static void session_bbs_search_posts(session_ctx_t *ctx, const char *arguments);
 extern void session_bbs_door_run(session_ctx_t *ctx, const char *name);
 extern void session_bbs_setgamelock(session_ctx_t *ctx, const char *arguments);
 
+typedef struct session_bbs_help_row {
+    const char *syntax;
+    const char *description[SESSION_UI_LANGUAGE_COUNT];
+} session_bbs_help_row_t;
+
+static const session_bbs_help_row_t kSessionBbsHelpRows[] = {
+    {
+        "list [all|hot|top|new] [page]",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "List posts",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 목록",
+            [SESSION_UI_LANGUAGE_JP] = "投稿一覧",
+            [SESSION_UI_LANGUAGE_ZH] = "列出帖子",
+            [SESSION_UI_LANGUAGE_RU] = "Список постов",
+            [SESSION_UI_LANGUAGE_DE] = "Beiträge auflisten",
+            [SESSION_UI_LANGUAGE_FR] = "Lister les messages",
+            [SESSION_UI_LANGUAGE_PL] = "Lista wpisów",
+        },
+    },
+    {
+        "read <id>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Read a post",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 읽기",
+            [SESSION_UI_LANGUAGE_JP] = "投稿を読む",
+            [SESSION_UI_LANGUAGE_ZH] = "阅读帖子",
+            [SESSION_UI_LANGUAGE_RU] = "Прочитать пост",
+            [SESSION_UI_LANGUAGE_DE] = "Beitrag lesen",
+            [SESSION_UI_LANGUAGE_FR] = "Lire un message",
+            [SESSION_UI_LANGUAGE_PL] = "Czytaj wpis",
+        },
+    },
+    {
+        "topic read <tag>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "List posts by tag",
+            [SESSION_UI_LANGUAGE_KO] = "태그별 게시물 목록",
+            [SESSION_UI_LANGUAGE_JP] = "タグ別の投稿一覧",
+            [SESSION_UI_LANGUAGE_ZH] = "按标签列出帖子",
+            [SESSION_UI_LANGUAGE_RU] = "Посты по тегу",
+            [SESSION_UI_LANGUAGE_DE] = "Beiträge nach Tag auflisten",
+            [SESSION_UI_LANGUAGE_FR] = "Lister les messages par tag",
+            [SESSION_UI_LANGUAGE_PL] = "Wpisy według tagu",
+        },
+    },
+    {
+        "post <title> [tags...]",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Create a post",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 작성",
+            [SESSION_UI_LANGUAGE_JP] = "投稿を作成",
+            [SESSION_UI_LANGUAGE_ZH] = "发帖",
+            [SESSION_UI_LANGUAGE_RU] = "Создать пост",
+            [SESSION_UI_LANGUAGE_DE] = "Beitrag erstellen",
+            [SESSION_UI_LANGUAGE_FR] = "Créer un message",
+            [SESSION_UI_LANGUAGE_PL] = "Utwórz wpis",
+        },
+    },
+    {
+        "edit <id>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Edit a post",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 수정",
+            [SESSION_UI_LANGUAGE_JP] = "投稿を編集",
+            [SESSION_UI_LANGUAGE_ZH] = "编辑帖子",
+            [SESSION_UI_LANGUAGE_RU] = "Редактировать пост",
+            [SESSION_UI_LANGUAGE_DE] = "Beitrag bearbeiten",
+            [SESSION_UI_LANGUAGE_FR] = "Modifier un message",
+            [SESSION_UI_LANGUAGE_PL] = "Edytuj wpis",
+        },
+    },
+    {
+        "comment <id>|<text>",
+        {
+            [SESSION_UI_LANGUAGE_EN] =
+                "Add a comment (:N quotes, @nick mentions)",
+            [SESSION_UI_LANGUAGE_KO] = "댓글 달기 (:N 인용, @닉 멘션)",
+            [SESSION_UI_LANGUAGE_JP] =
+                "コメントを追加（:N で引用、@ニックでメンション）",
+            [SESSION_UI_LANGUAGE_ZH] = "添加评论（:N 引用，@昵称 提及）",
+            [SESSION_UI_LANGUAGE_RU] =
+                "Добавить комментарий (:N — цитата, @ник — упоминание)",
+            [SESSION_UI_LANGUAGE_DE] =
+                "Kommentar hinzufügen (:N zitiert, @Nick erwähnt)",
+            [SESSION_UI_LANGUAGE_FR] =
+                "Ajouter un commentaire (:N cite, @pseudo mentionne)",
+            [SESSION_UI_LANGUAGE_PL] =
+                "Dodaj komentarz (:N cytuje, @nick wspomina)",
+        },
+    },
+    {
+        "cmtedit <id> <idx> <text>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Edit a comment",
+            [SESSION_UI_LANGUAGE_KO] = "댓글 수정",
+            [SESSION_UI_LANGUAGE_JP] = "コメントを編集",
+            [SESSION_UI_LANGUAGE_ZH] = "编辑评论",
+            [SESSION_UI_LANGUAGE_RU] = "Редактировать комментарий",
+            [SESSION_UI_LANGUAGE_DE] = "Kommentar bearbeiten",
+            [SESSION_UI_LANGUAGE_FR] = "Modifier un commentaire",
+            [SESSION_UI_LANGUAGE_PL] = "Edytuj komentarz",
+        },
+    },
+    {
+        "cmtdel <id> <idx>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Delete a comment",
+            [SESSION_UI_LANGUAGE_KO] = "댓글 삭제",
+            [SESSION_UI_LANGUAGE_JP] = "コメントを削除",
+            [SESSION_UI_LANGUAGE_ZH] = "删除评论",
+            [SESSION_UI_LANGUAGE_RU] = "Удалить комментарий",
+            [SESSION_UI_LANGUAGE_DE] = "Kommentar löschen",
+            [SESSION_UI_LANGUAGE_FR] = "Supprimer un commentaire",
+            [SESSION_UI_LANGUAGE_PL] = "Usuń komentarz",
+        },
+    },
+    {
+        "upvote <id>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Upvote a post",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 추천",
+            [SESSION_UI_LANGUAGE_JP] = "投稿に高評価",
+            [SESSION_UI_LANGUAGE_ZH] = "给帖子点赞",
+            [SESSION_UI_LANGUAGE_RU] = "Проголосовать за пост",
+            [SESSION_UI_LANGUAGE_DE] = "Beitrag positiv bewerten",
+            [SESSION_UI_LANGUAGE_FR] = "Voter pour un message",
+            [SESSION_UI_LANGUAGE_PL] = "Zagłosuj za wpisem",
+        },
+    },
+    {
+        "downvote <id>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Downvote a post",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 비추천",
+            [SESSION_UI_LANGUAGE_JP] = "投稿に低評価",
+            [SESSION_UI_LANGUAGE_ZH] = "给帖子点踩",
+            [SESSION_UI_LANGUAGE_RU] = "Проголосовать против поста",
+            [SESSION_UI_LANGUAGE_DE] = "Beitrag negativ bewerten",
+            [SESSION_UI_LANGUAGE_FR] = "Voter contre un message",
+            [SESSION_UI_LANGUAGE_PL] = "Zagłosuj przeciw wpisowi",
+        },
+    },
+    {
+        "cmtvote <id> <idx> up|down",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Vote on a comment",
+            [SESSION_UI_LANGUAGE_KO] = "댓글 투표",
+            [SESSION_UI_LANGUAGE_JP] = "コメントに投票",
+            [SESSION_UI_LANGUAGE_ZH] = "为评论投票",
+            [SESSION_UI_LANGUAGE_RU] = "Оценить комментарий",
+            [SESSION_UI_LANGUAGE_DE] = "Über einen Kommentar abstimmen",
+            [SESSION_UI_LANGUAGE_FR] = "Voter sur un commentaire",
+            [SESSION_UI_LANGUAGE_PL] = "Oceń komentarz",
+        },
+    },
+    {
+        "report <id> [reason]",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Report a post",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 신고",
+            [SESSION_UI_LANGUAGE_JP] = "投稿を通報",
+            [SESSION_UI_LANGUAGE_ZH] = "举报帖子",
+            [SESSION_UI_LANGUAGE_RU] = "Пожаловаться на пост",
+            [SESSION_UI_LANGUAGE_DE] = "Beitrag melden",
+            [SESSION_UI_LANGUAGE_FR] = "Signaler un message",
+            [SESSION_UI_LANGUAGE_PL] = "Zgłoś wpis",
+        },
+    },
+    {
+        "hide|unhide <id>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Hide/unhide a post (op)",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 숨김/해제 (운영자)",
+            [SESSION_UI_LANGUAGE_JP] = "投稿を非表示/再表示（オペ）",
+            [SESSION_UI_LANGUAGE_ZH] = "隐藏/取消隐藏帖子（管理员）",
+            [SESSION_UI_LANGUAGE_RU] = "Скрыть/показать пост (оп.)",
+            [SESSION_UI_LANGUAGE_DE] = "Beitrag aus-/einblenden (Op)",
+            [SESSION_UI_LANGUAGE_FR] = "Masquer/afficher un message (op)",
+            [SESSION_UI_LANGUAGE_PL] = "Ukryj/pokaż wpis (op)",
+        },
+    },
+    {
+        "pin|unpin <id>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Pin/unpin a post (op)",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 고정/해제 (운영자)",
+            [SESSION_UI_LANGUAGE_JP] = "投稿を固定/解除（オペ）",
+            [SESSION_UI_LANGUAGE_ZH] = "置顶/取消置顶帖子（管理员）",
+            [SESSION_UI_LANGUAGE_RU] = "Закрепить/открепить пост (оп.)",
+            [SESSION_UI_LANGUAGE_DE] = "Beitrag anheften/lösen (Op)",
+            [SESSION_UI_LANGUAGE_FR] = "Épingler/désépingler un message (op)",
+            [SESSION_UI_LANGUAGE_PL] = "Przypnij/odepnij wpis (op)",
+        },
+    },
+    {
+        "mute <user>[|min]",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Mute a user (op)",
+            [SESSION_UI_LANGUAGE_KO] = "사용자 음소거 (운영자)",
+            [SESSION_UI_LANGUAGE_JP] = "ユーザーを発言禁止（オペ）",
+            [SESSION_UI_LANGUAGE_ZH] = "禁言用户（管理员）",
+            [SESSION_UI_LANGUAGE_RU] = "Заглушить пользователя (оп.)",
+            [SESSION_UI_LANGUAGE_DE] = "Benutzer stummschalten (Op)",
+            [SESSION_UI_LANGUAGE_FR] = "Rendre un utilisateur muet (op)",
+            [SESSION_UI_LANGUAGE_PL] = "Wycisz użytkownika (op)",
+        },
+    },
+    {
+        "unmute <user>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Unmute a user (op)",
+            [SESSION_UI_LANGUAGE_KO] = "사용자 음소거 해제 (운영자)",
+            [SESSION_UI_LANGUAGE_JP] = "発言禁止を解除（オペ）",
+            [SESSION_UI_LANGUAGE_ZH] = "解除禁言（管理员）",
+            [SESSION_UI_LANGUAGE_RU] = "Снять мут (оп.)",
+            [SESSION_UI_LANGUAGE_DE] = "Stummschaltung aufheben (Op)",
+            [SESSION_UI_LANGUAGE_FR] = "Rétablir la parole (op)",
+            [SESSION_UI_LANGUAGE_PL] = "Odcisz użytkownika (op)",
+        },
+    },
+    {
+        "mutes",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "List active mutes (op)",
+            [SESSION_UI_LANGUAGE_KO] = "음소거 목록 (운영자)",
+            [SESSION_UI_LANGUAGE_JP] = "発言禁止の一覧（オペ）",
+            [SESSION_UI_LANGUAGE_ZH] = "列出禁言（管理员）",
+            [SESSION_UI_LANGUAGE_RU] = "Список мутов (оп.)",
+            [SESSION_UI_LANGUAGE_DE] = "Aktive Stummschaltungen (Op)",
+            [SESSION_UI_LANGUAGE_FR] = "Lister les mises en sourdine (op)",
+            [SESSION_UI_LANGUAGE_PL] = "Lista wyciszeń (op)",
+        },
+    },
+    {
+        "reports [all]",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "List reports (op)",
+            [SESSION_UI_LANGUAGE_KO] = "신고 목록 (운영자)",
+            [SESSION_UI_LANGUAGE_JP] = "通報一覧（オペ）",
+            [SESSION_UI_LANGUAGE_ZH] = "列出举报（管理员）",
+            [SESSION_UI_LANGUAGE_RU] = "Список жалоб (оп.)",
+            [SESSION_UI_LANGUAGE_DE] = "Meldungen auflisten (Op)",
+            [SESSION_UI_LANGUAGE_FR] = "Lister les signalements (op)",
+            [SESSION_UI_LANGUAGE_PL] = "Lista zgłoszeń (op)",
+        },
+    },
+    {
+        "modlog",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Moderation action log (op)",
+            [SESSION_UI_LANGUAGE_KO] = "운영 기록 (운영자)",
+            [SESSION_UI_LANGUAGE_JP] = "モデレーション記録（オペ）",
+            [SESSION_UI_LANGUAGE_ZH] = "管理操作日志（管理员）",
+            [SESSION_UI_LANGUAGE_RU] = "Журнал модерации (оп.)",
+            [SESSION_UI_LANGUAGE_DE] = "Moderationsprotokoll (Op)",
+            [SESSION_UI_LANGUAGE_FR] = "Journal de modération (op)",
+            [SESSION_UI_LANGUAGE_PL] = "Dziennik moderacji (op)",
+        },
+    },
+    {
+        "ipaudit <user>|ip <a>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "IP audit, 5-day retention (op)",
+            [SESSION_UI_LANGUAGE_KO] = "IP 감사, 5일 보관 (운영자)",
+            [SESSION_UI_LANGUAGE_JP] = "IP監査、5日間保持（オペ）",
+            [SESSION_UI_LANGUAGE_ZH] = "IP 审计，保留 5 天（管理员）",
+            [SESSION_UI_LANGUAGE_RU] = "Аудит IP, хранение 5 дней (оп.)",
+            [SESSION_UI_LANGUAGE_DE] = "IP-Prüfung, 5 Tage Aufbewahrung (Op)",
+            [SESSION_UI_LANGUAGE_FR] = "Audit IP, conservation 5 jours (op)",
+            [SESSION_UI_LANGUAGE_PL] = "Audyt IP, przechowywanie 5 dni (op)",
+        },
+    },
+    {
+        "regen <id>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Regenerate a post",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 재생성",
+            [SESSION_UI_LANGUAGE_JP] = "投稿を再生成",
+            [SESSION_UI_LANGUAGE_ZH] = "重新生成帖子",
+            [SESSION_UI_LANGUAGE_RU] = "Пересоздать пост",
+            [SESSION_UI_LANGUAGE_DE] = "Beitrag neu erzeugen",
+            [SESSION_UI_LANGUAGE_FR] = "Régénérer un message",
+            [SESSION_UI_LANGUAGE_PL] = "Wygeneruj wpis ponownie",
+        },
+    },
+    {
+        "delete <id>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Delete a post",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 삭제",
+            [SESSION_UI_LANGUAGE_JP] = "投稿を削除",
+            [SESSION_UI_LANGUAGE_ZH] = "删除帖子",
+            [SESSION_UI_LANGUAGE_RU] = "Удалить пост",
+            [SESSION_UI_LANGUAGE_DE] = "Beitrag löschen",
+            [SESSION_UI_LANGUAGE_FR] = "Supprimer un message",
+            [SESSION_UI_LANGUAGE_PL] = "Usuń wpis",
+        },
+    },
+    {
+        "search <keyword>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Search posts",
+            [SESSION_UI_LANGUAGE_KO] = "게시물 검색",
+            [SESSION_UI_LANGUAGE_JP] = "投稿を検索",
+            [SESSION_UI_LANGUAGE_ZH] = "搜索帖子",
+            [SESSION_UI_LANGUAGE_RU] = "Поиск постов",
+            [SESSION_UI_LANGUAGE_DE] = "Beiträge durchsuchen",
+            [SESSION_UI_LANGUAGE_FR] = "Rechercher des messages",
+            [SESSION_UI_LANGUAGE_PL] = "Szukaj wpisów",
+        },
+    },
+    {
+        "board <id>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Select a board",
+            [SESSION_UI_LANGUAGE_KO] = "게시판 선택",
+            [SESSION_UI_LANGUAGE_JP] = "掲示板を選択",
+            [SESSION_UI_LANGUAGE_ZH] = "选择版块",
+            [SESSION_UI_LANGUAGE_RU] = "Выбрать доску",
+            [SESSION_UI_LANGUAGE_DE] = "Board auswählen",
+            [SESSION_UI_LANGUAGE_FR] = "Choisir un tableau",
+            [SESSION_UI_LANGUAGE_PL] = "Wybierz tablicę",
+        },
+    },
+    {
+        "boards",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "List boards",
+            [SESSION_UI_LANGUAGE_KO] = "게시판 목록",
+            [SESSION_UI_LANGUAGE_JP] = "掲示板一覧",
+            [SESSION_UI_LANGUAGE_ZH] = "列出版块",
+            [SESSION_UI_LANGUAGE_RU] = "Список досок",
+            [SESSION_UI_LANGUAGE_DE] = "Boards auflisten",
+            [SESSION_UI_LANGUAGE_FR] = "Lister les tableaux",
+            [SESSION_UI_LANGUAGE_PL] = "Lista tablic",
+        },
+    },
+    {
+        "profile [username]",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "View user profile",
+            [SESSION_UI_LANGUAGE_KO] = "사용자 프로필 보기",
+            [SESSION_UI_LANGUAGE_JP] = "ユーザープロフィールを表示",
+            [SESSION_UI_LANGUAGE_ZH] = "查看用户资料",
+            [SESSION_UI_LANGUAGE_RU] = "Профиль пользователя",
+            [SESSION_UI_LANGUAGE_DE] = "Benutzerprofil anzeigen",
+            [SESSION_UI_LANGUAGE_FR] = "Voir le profil d'un utilisateur",
+            [SESSION_UI_LANGUAGE_PL] = "Zobacz profil użytkownika",
+        },
+    },
+    {
+        "set-profile",
+        {
+            [SESSION_UI_LANGUAGE_EN] =
+                "Set profile picture from pending ASCII art",
+            [SESSION_UI_LANGUAGE_KO] =
+                "대기 중인 ASCII 아트로 프로필 사진 설정",
+            [SESSION_UI_LANGUAGE_JP] =
+                "保留中のASCIIアートをプロフィール画像に設定",
+            [SESSION_UI_LANGUAGE_ZH] = "用待发布的 ASCII 艺术设置头像",
+            [SESSION_UI_LANGUAGE_RU] = "Сделать ожидающий ASCII-арт аватаром",
+            [SESSION_UI_LANGUAGE_DE] =
+                "Profilbild aus ausstehender ASCII-Art setzen",
+            [SESSION_UI_LANGUAGE_FR] =
+                "Définir la photo de profil depuis l'art ASCII en attente",
+            [SESSION_UI_LANGUAGE_PL] =
+                "Ustaw zdjęcie profilu z oczekującej grafiki ASCII",
+        },
+    },
+    {
+        "setavatar <name>",
+        {
+            [SESSION_UI_LANGUAGE_EN] =
+                "Set profile logo (monitor|mouse|human|mushroom|none)",
+            [SESSION_UI_LANGUAGE_KO] =
+                "프로필 로고 설정 (monitor|mouse|human|mushroom|none)",
+            [SESSION_UI_LANGUAGE_JP] =
+                "プロフィールロゴを設定（monitor|mouse|human|mushroom|none）",
+            [SESSION_UI_LANGUAGE_ZH] =
+                "设置资料标志（monitor|mouse|human|mushroom|none）",
+            [SESSION_UI_LANGUAGE_RU] =
+                "Выбрать логотип профиля (monitor|mouse|human|mushroom|none)",
+            [SESSION_UI_LANGUAGE_DE] =
+                "Profillogo festlegen (monitor|mouse|human|mushroom|none)",
+            [SESSION_UI_LANGUAGE_FR] =
+                "Définir le logo du profil (monitor|mouse|human|mushroom|none)",
+            [SESSION_UI_LANGUAGE_PL] =
+                "Ustaw logo profilu (monitor|mouse|human|mushroom|none)",
+        },
+    },
+    {
+        "draft <save|list|load|delete>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Manage drafts",
+            [SESSION_UI_LANGUAGE_KO] = "임시저장 관리",
+            [SESSION_UI_LANGUAGE_JP] = "下書きを管理",
+            [SESSION_UI_LANGUAGE_ZH] = "管理草稿",
+            [SESSION_UI_LANGUAGE_RU] = "Управление черновиками",
+            [SESSION_UI_LANGUAGE_DE] = "Entwürfe verwalten",
+            [SESSION_UI_LANGUAGE_FR] = "Gérer les brouillons",
+            [SESSION_UI_LANGUAGE_PL] = "Zarządzaj szkicami",
+        },
+    },
+    {
+        "door [name]",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "List or launch door games",
+            [SESSION_UI_LANGUAGE_KO] = "도어 게임 목록/실행",
+            [SESSION_UI_LANGUAGE_JP] = "ドアゲームの一覧/起動",
+            [SESSION_UI_LANGUAGE_ZH] = "列出或启动门游戏",
+            [SESSION_UI_LANGUAGE_RU] = "Список или запуск door-игр",
+            [SESSION_UI_LANGUAGE_DE] = "Door-Spiele auflisten oder starten",
+            [SESSION_UI_LANGUAGE_FR] = "Lister ou lancer les jeux door",
+            [SESSION_UI_LANGUAGE_PL] = "Lista lub uruchomienie gier door",
+        },
+    },
+    {
+        "setgamelock <name>",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Lock a door game (admin)",
+            [SESSION_UI_LANGUAGE_KO] = "도어 게임 잠금 (관리자)",
+            [SESSION_UI_LANGUAGE_JP] = "ドアゲームをロック（管理者）",
+            [SESSION_UI_LANGUAGE_ZH] = "锁定门游戏（管理员）",
+            [SESSION_UI_LANGUAGE_RU] = "Заблокировать door-игру (админ)",
+            [SESSION_UI_LANGUAGE_DE] = "Door-Spiel sperren (Admin)",
+            [SESSION_UI_LANGUAGE_FR] = "Verrouiller un jeu door (admin)",
+            [SESSION_UI_LANGUAGE_PL] = "Zablokuj grę door (admin)",
+        },
+    },
+    {
+        "exit",
+        {
+            [SESSION_UI_LANGUAGE_EN] = "Exit BBS mode",
+            [SESSION_UI_LANGUAGE_KO] = "BBS 모드 종료",
+            [SESSION_UI_LANGUAGE_JP] = "BBSモードを終了",
+            [SESSION_UI_LANGUAGE_ZH] = "退出 BBS 模式",
+            [SESSION_UI_LANGUAGE_RU] = "Выйти из BBS",
+            [SESSION_UI_LANGUAGE_DE] = "BBS-Modus verlassen",
+            [SESSION_UI_LANGUAGE_FR] = "Quitter le mode BBS",
+            [SESSION_UI_LANGUAGE_PL] = "Wyjdź z trybu BBS",
+        },
+    },
+};
+
+static const char *session_bbs_help_title(session_ctx_t *ctx)
+{
+    switch (session_ui_language_current(ctx)) {
+    case SESSION_UI_LANGUAGE_KO:
+        return "BBS 하위 명령:";
+    case SESSION_UI_LANGUAGE_JP:
+        return "BBS サブコマンド:";
+    case SESSION_UI_LANGUAGE_ZH:
+        return "BBS 子命令:";
+    case SESSION_UI_LANGUAGE_RU:
+        return "Подкоманды BBS:";
+    case SESSION_UI_LANGUAGE_DE:
+        return "BBS-Unterbefehle:";
+    case SESSION_UI_LANGUAGE_FR:
+        return "Sous-commandes BBS :";
+    case SESSION_UI_LANGUAGE_PL:
+        return "Podpolecenia BBS:";
+    default:
+        return "BBS Subcommands:";
+    }
+}
+
 // Handle the /bbs command entry point.
 static void session_bbs_print_help(session_ctx_t *ctx)
 {
+    const size_t language = (size_t)session_ui_language_current(ctx);
     session_send_system_line(ctx, "--------------------------------------------------");
-    session_send_system_line(ctx, "BBS Subcommands:");
-    session_send_system_line(ctx, "  list [all|hot|top|new] [page] - List posts");
-    session_send_system_line(ctx, "  read <id>              - Read a post");
-    session_send_system_line(ctx, "  topic read <tag>       - List posts by tag");
-    session_send_system_line(ctx, "  post <title> [tags...] - Create a post");
-    session_send_system_line(ctx, "  edit <id>              - Edit a post");
-    session_send_system_line(ctx, "  comment <id>|<text>    - Add a comment (:N quotes, @nick mentions)");
-    session_send_system_line(ctx, "  cmtedit <id> <idx> <text> - Edit a comment");
-    session_send_system_line(ctx, "  cmtdel <id> <idx>      - Delete a comment");
-    session_send_system_line(ctx, "  upvote <id>            - Upvote a post");
-    session_send_system_line(ctx, "  downvote <id>          - Downvote a post");
-    session_send_system_line(ctx, "  cmtvote <id> <idx> up|down - Vote on a comment");
-    session_send_system_line(ctx, "  report <id> [reason]   - Report a post");
-    session_send_system_line(ctx, "  hide|unhide <id>       - Hide/unhide a post (op)");
-    session_send_system_line(ctx, "  pin|unpin <id>         - Pin/unpin a post (op)");
-    session_send_system_line(ctx, "  mute|unmute <user>     - Mute/unmute a user (op)");
-    session_send_system_line(ctx, "  mutes                  - List active mutes (op)");
-    session_send_system_line(ctx, "  reports [all]          - List reports (op)");
-    session_send_system_line(ctx, "  modlog                 - Moderation action log (op)");
-    session_send_system_line(ctx, "  ipaudit <user>|ip <a>  - IP audit, 5-day retention (op)");
-    session_send_system_line(ctx, "  regen <id>             - Regenerate a post");
-    session_send_system_line(ctx, "  delete <id>            - Delete a post");
-    session_send_system_line(ctx, "  search <keyword>       - Search posts");
-    session_send_system_line(ctx, "  board <id>             - Select a board");
-    session_send_system_line(ctx, "  boards                 - List boards");
-    session_send_system_line(ctx, "  profile [username]     - View user profile");
-    session_send_system_line(ctx, "  set-profile            - Set profile picture from pending ASCII art");
-    session_send_system_line(ctx, "  setavatar <name>       - Set profile logo (monitor|mouse|human|mushroom|none)");
-    session_send_system_line(ctx, "  draft <save|list|load|delete> - Manage drafts");
-    session_send_system_line(ctx, "  door [name]            - List or launch door games");
-    session_send_system_line(ctx, "  setgamelock <name>     - Lock a door game (admin)");
-    session_send_system_line(ctx, "  exit                   - Exit BBS mode");
+    session_send_system_line(ctx, session_bbs_help_title(ctx));
+    for (size_t idx = 0U;
+         idx < sizeof(kSessionBbsHelpRows) / sizeof(kSessionBbsHelpRows[0]);
+         ++idx) {
+        const session_bbs_help_row_t *row = &kSessionBbsHelpRows[idx];
+        const char *description = row->description[SESSION_UI_LANGUAGE_EN];
+        if (language < SESSION_UI_LANGUAGE_COUNT &&
+            row->description[language] != nullptr) {
+            description = row->description[language];
+        }
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(line, sizeof(line), "  %-22s - %s", row->syntax, description);
+        session_send_system_line(ctx, line);
+    }
     session_send_system_line(ctx, "--------------------------------------------------");
 }
 

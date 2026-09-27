@@ -557,11 +557,13 @@ static void session_blocklist_show(session_ctx_t *ctx)
     }
 
     if (ctx->block_entry_count == 0U) {
-        session_send_system_line(ctx, "No blocked users or IPs.");
+        session_send_system_line(
+            ctx, session_command_localize(ctx, "No blocked users or IPs."));
         return;
     }
 
-    session_send_system_line(ctx, "Blocked targets:");
+    session_send_system_line(ctx,
+                             session_command_localize(ctx, "Blocked targets:"));
     for (size_t idx = 0U; idx < SSH_CHATTER_MAX_BLOCKED; ++idx) {
         const session_block_entry_t *entry = &ctx->block_entries[idx];
         if (!entry->in_use) {
@@ -571,22 +573,26 @@ static void session_blocklist_show(session_ctx_t *ctx)
         char line[SSH_CHATTER_MESSAGE_LIMIT];
         if (entry->ip_wide && entry->ip[0] != '\0') {
             if (entry->username[0] != '\0') {
-                snprintf(line, sizeof(line),
-                         "- %s (all users from this IP, originally [%s])",
-                         entry->ip, entry->username);
+                session_command_snprintf(
+                    ctx, line, sizeof(line),
+                    "- %s (all users from this IP, originally [%s])", entry->ip,
+                    entry->username);
             } else {
-                snprintf(line, sizeof(line), "- %s (all users from this IP)",
-                         entry->ip);
+                session_command_snprintf(ctx, line, sizeof(line),
+                                         "- %s (all users from this IP)",
+                                         entry->ip);
             }
         } else if (entry->username[0] != '\0') {
             if (entry->ip[0] != '\0') {
-                snprintf(line, sizeof(line), "- [%s] (only this user, IP %s)",
-                         entry->username, entry->ip);
+                session_command_snprintf(ctx, line, sizeof(line),
+                                         "- [%s] (only this user, IP %s)",
+                                         entry->username, entry->ip);
             } else {
                 snprintf(line, sizeof(line), "- [%s]", entry->username);
             }
         } else {
-            snprintf(line, sizeof(line), "- entry #%zu", idx + 1U);
+            session_command_snprintf(ctx, line, sizeof(line), "- entry #%zu",
+                                     idx + 1U);
         }
         session_send_system_line(ctx, line);
     }

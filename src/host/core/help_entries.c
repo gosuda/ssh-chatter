@@ -574,18 +574,39 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "pm <username> <message>",
+        .label = "pm <username>|<message>",
         .description =
             {
-                "Send a private message to one connected user.",
-                "한 명의 접속 사용자에게 귓속말을 보냅니다.",
-                "接続中のユーザー1人にプライベートメッセージを送ります。",
-                "向一名在线用户发送私信。",
-                "Отправить личное сообщение подключённому пользователю.",
-                "Einem verbundenen Benutzer eine private Nachricht senden.",
-                "Envoyer un message privé à un utilisateur connecté.",
-                "Wyślij prywatną wiadomość do jednego użytkownika.",
+                "Send a private message to one connected user (use | after "
+                "the name, e.g. %spm Lee Yunjin|hello).",
+                "한 명의 접속 사용자에게 귓속말을 보냅니다 (이름 뒤에 | 사용, "
+                "예: %spm Lee Yunjin|안녕).",
+                "接続中のユーザー1人にプライベートメッセージを送ります（名前の"
+                "後に "
+                "| を付けます。例: %spm Lee Yunjin|こんにちは）。",
+                "向一名在线用户发送私信（名字后加 |，例如 %spm Lee "
+                "Yunjin|你好）。",
+                "Отправить личное сообщение подключённому пользователю (после "
+                "имени ставьте |, напр. %spm Lee Yunjin|привет).",
+                "Einem verbundenen Benutzer eine private Nachricht senden (| "
+                "nach dem Namen, z. B. %spm Lee Yunjin|hallo).",
+                "Envoyer un message privé à un utilisateur connecté (| après "
+                "le nom, ex. %spm Lee Yunjin|salut).",
+                "Wyślij prywatną wiadomość do jednego użytkownika (| po "
+                "nazwie, np. %spm Lee Yunjin|cześć).",
             },
+        .label_translations =
+            {
+                [SESSION_UI_LANGUAGE_KO] = "pm <사용자>|<메시지>",
+                [SESSION_UI_LANGUAGE_JP] = "pm <ユーザー>|<メッセージ>",
+                [SESSION_UI_LANGUAGE_ZH] = "pm <用户>|<消息>",
+                [SESSION_UI_LANGUAGE_RU] = "pm <пользователь>|<сообщение>",
+                [SESSION_UI_LANGUAGE_DE] = "pm <Benutzer>|<Nachricht>",
+                [SESSION_UI_LANGUAGE_FR] = "pm <utilisateur>|<message>",
+                [SESSION_UI_LANGUAGE_PL] = "pm <użytkownik>|<wiadomość>",
+            },
+        .description_arg_count = 1U,
+        .description_args = {SESSION_HELP_TEMPLATE_ARG_PREFIX},
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
@@ -616,16 +637,21 @@ static const session_help_entry_t kSessionHelpEssential[] = {
         .label = "fixnick",
         .description =
             {
-                "Persist an IP-wide reserved nickname as one fixed ANSI handle.",
+                "Persist an IP-wide reserved nickname as one fixed ANSI "
+                "handle.",
                 "IP-wide 예약 닉네임의 현재 색을 하나의 고정 ANSI 닉네임으로 "
                 "저장합니다.",
-                "IP-wide 予約ニックの現在色を固定 ANSI ハンドルとして保存します。",
+                "IP-wide 予約ニックの現在色を固定 ANSI "
+                "ハンドルとして保存します。",
                 "将 IP-wide 预留昵称的当前颜色固化为固定 ANSI 昵称。",
                 "Сохраняет текущий цвет IP-wide зарезервированного ника как "
                 "единый ANSI-ник.",
-                "Den aktuellen Farbstil eines IP-weit reservierten Nicknamens als festen ANSI-Handle speichern.",
-                "Conserver le style actuel d'un pseudo réservé IP-wide comme handle ANSI fixe.",
-                "Zapisz bieżący styl zarezerwowanego IP-wide nicka jako stały ANSI handle.",
+                "Den aktuellen Farbstil eines IP-weit reservierten Nicknamens "
+                "als festen ANSI-Handle speichern.",
+                "Conserver le style actuel d'un pseudo réservé IP-wide comme "
+                "handle ANSI fixe.",
+                "Zapisz bieżący styl zarezerwowanego IP-wide nicka jako stały "
+                "ANSI handle.",
             },
         .label_translations =
             {
@@ -649,8 +675,10 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "で初期化）。",
                 "自定义界面颜色（用 %ssystemcolor reset 重置）。",
                 "Настроить цвета интерфейса (сброс — %ssystemcolor reset).",
-                "Oberflächenfarben anpassen (Zurücksetzen mit %ssystemcolor reset).",
-                "Personnaliser les couleurs de l'interface (réinitialisation avec %ssystemcolor reset).",
+                "Oberflächenfarben anpassen (Zurücksetzen mit %ssystemcolor "
+                "reset).",
+                "Personnaliser les couleurs de l'interface (réinitialisation "
+                "avec %ssystemcolor reset).",
                 "Dostosuj kolory interfejsu (reset: %ssystemcolor reset).",
             },
         .label_translations =
@@ -683,7 +711,9 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "bbs [list|read|post|comment|cmtedit|cmtdel|regen|delete|search|edit|upvote|downvote]",
+        .label = "bbs "
+                 "[list|read|post|comment|cmtedit|cmtdel|regen|delete|search|"
+                 "edit|upvote|downvote]",
         .description =
             {
                 "Open the bulletin board system (finish %s to post).",
@@ -691,26 +721,43 @@ static const session_help_entry_t kSessionHelpEssential[] = {
                 "掲示板を開きます（投稿は %s で終了）。",
                 "打开公告板系统（以 %s 结束提交）。",
                 "Открыть доску объявлений (завершайте ввод строкой %s).",
-                "Das Bulletin-Board-System öffnen (Beitrag mit %s abschließen).",
+                "Das Bulletin-Board-System öffnen (Beitrag mit %s "
+                "abschließen).",
                 "Ouvrir le système de forum (terminer avec %s pour publier).",
                 "Otwórz tablicę ogłoszeń (zakończ %s, aby opublikować).",
             },
         .label_translations =
             {
                 [SESSION_UI_LANGUAGE_KO] =
-                    "게시판 [목록|읽기|게시|댓글|댓글수정|댓글삭제|갱신|삭제|검색|수정|추천|반대]",
+                    "게시판 "
+                    "[목록|읽기|게시|댓글|댓글수정|댓글삭제|갱신|삭제|검색|"
+                    "수정|추천|반대]",
                 [SESSION_UI_LANGUAGE_JP] =
-                    "掲示板 [一覧|閲覧|投稿|コメント|コメント編集|コメント削除|再掲|削除|検索|編集|賛成|反対]",
+                    "掲示板 "
+                    "[一覧|閲覧|投稿|コメント|コメント編集|コメント削除|再掲|"
+                    "削除|検索|編集|賛成|反対]",
                 [SESSION_UI_LANGUAGE_ZH] =
-                    "公告板 [列表|阅读|发布|评论|评论编辑|评论删除|置顶|删除|搜索|编辑|赞|踩]",
+                    "公告板 "
+                    "[列表|阅读|发布|评论|评论编辑|评论删除|置顶|删除|搜索|"
+                    "编辑|赞|踩]",
                 [SESSION_UI_LANGUAGE_RU] =
-                    "доска [список|читать|пост|коммент|коммент-ред|коммент-удал|поднять|удалить|поиск|редакт|за|против]",
+                    "доска "
+                    "[список|читать|пост|коммент|коммент-ред|коммент-удал|"
+                    "поднять|удалить|поиск|редакт|за|против]",
                 [SESSION_UI_LANGUAGE_DE] =
-                    "forum [liste|lesen|beitrag|kommentar|kommentarbearbeiten|kommentarloeschen|erneuern|loeschen|suche|bearbeiten|empfehlen|ablehnen]",
+                    "forum "
+                    "[liste|lesen|beitrag|kommentar|kommentarbearbeiten|"
+                    "kommentarloeschen|erneuern|loeschen|suche|bearbeiten|"
+                    "empfehlen|ablehnen]",
                 [SESSION_UI_LANGUAGE_FR] =
-                    "forum [liste|lire|message|commentaire|modifiercommentaire|supprimercommentaire|renouveler|supprimer|recherche|modifier|pour|contre]",
+                    "forum "
+                    "[liste|lire|message|commentaire|modifiercommentaire|"
+                    "supprimercommentaire|renouveler|supprimer|recherche|"
+                    "modifier|pour|contre]",
                 [SESSION_UI_LANGUAGE_PL] =
-                    "forum [lista|czytaj|wpis|komentarz|edytujkomentarz|usunkomentarz|odswiez|usun|szukaj|edytuj|polec|przeciw]",
+                    "forum "
+                    "[lista|czytaj|wpis|komentarz|edytujkomentarz|"
+                    "usunkomentarz|odswiez|usun|szukaj|edytuj|polec|przeciw]",
             },
         .description_arg_count = 1,
         .description_args = {SESSION_HELP_TEMPLATE_ARG_BBS_TERMINATOR},
@@ -869,13 +916,21 @@ static const session_help_entry_t kSessionHelpExtended[] = {
             },
         .label_translations =
             {
-                [SESSION_UI_LANGUAGE_KO] = "게시판 아바타설정 <monitor|mouse|human|mushroom|none>",
-                [SESSION_UI_LANGUAGE_JP] = "掲示板 アバター設定 <monitor|mouse|human|mushroom|none>",
-                [SESSION_UI_LANGUAGE_ZH] = "公告板 头像设置 <monitor|mouse|human|mushroom|none>",
-                [SESSION_UI_LANGUAGE_RU] = "доска аватар-установить <monitor|mouse|human|mushroom|none>",
-                [SESSION_UI_LANGUAGE_DE] = "forum avatarsetzen <monitor|mouse|human|mushroom|none>",
-                [SESSION_UI_LANGUAGE_FR] = "forum defavatar <monitor|mouse|human|mushroom|none>",
-                [SESSION_UI_LANGUAGE_PL] = "forum ustawavatar <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_KO] =
+                    "게시판 아바타설정 <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_JP] =
+                    "掲示板 アバター設定 <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_ZH] =
+                    "公告板 头像设置 <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_RU] =
+                    "доска аватар-установить "
+                    "<monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_DE] =
+                    "forum avatarsetzen <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_FR] =
+                    "forum defavatar <monitor|mouse|human|mushroom|none>",
+                [SESSION_UI_LANGUAGE_PL] =
+                    "forum ustawavatar <monitor|mouse|human|mushroom|none>",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -974,14 +1029,18 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label = "filestore-upload",
         .description =
             {
-                "Start a TELNET ZMODEM upload into /etc/ssh-chatter/user-files.",
+                "Start a TELNET ZMODEM upload into "
+                "/etc/ssh-chatter/user-files.",
                 "TELNET ZMODEM 업로드를 시작합니다.",
                 "TELNET ZMODEM アップロードを開始します。",
                 "启动 TELNET ZMODEM 上传。",
                 "Запустить загрузку через ZMODEM для TELNET.",
-                "Einen TELNET-ZMODEM-Upload nach /etc/ssh-chatter/user-files starten.",
-                "Démarrer un envoi ZMODEM TELNET vers /etc/ssh-chatter/user-files.",
-                "Rozpocznij upload ZMODEM TELNET do /etc/ssh-chatter/user-files.",
+                "Einen TELNET-ZMODEM-Upload nach /etc/ssh-chatter/user-files "
+                "starten.",
+                "Démarrer un envoi ZMODEM TELNET vers "
+                "/etc/ssh-chatter/user-files.",
+                "Rozpocznij upload ZMODEM TELNET do "
+                "/etc/ssh-chatter/user-files.",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -1006,7 +1065,7 @@ static const session_help_entry_t kSessionHelpExtended[] = {
 
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "mail [inbox|send <user> <message>|clear]",
+        .label = "mail [inbox|send <user>|<message>|clear]",
         .description =
             {
                 "Manage your mailbox.",
@@ -1021,14 +1080,20 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label_translations =
             {
                 [SESSION_UI_LANGUAGE_KO] =
-                    "메일 [받은편지함|보내기 <사용자> <메시지>|지우기]",
+                    "메일 [받은편지함|보내기 <사용자>|<메시지>|지우기]",
                 [SESSION_UI_LANGUAGE_JP] =
-                    "メール [受信箱|送信 <ユーザー> <メッセージ>|クリア]",
+                    "メール [受信箱|送信 <ユーザー>|<メッセージ>|クリア]",
                 [SESSION_UI_LANGUAGE_ZH] =
-                    "邮件 [收件箱|发送 <用户> <消息>|清除]",
+                    "邮件 [收件箱|发送 <用户>|<消息>|清除]",
                 [SESSION_UI_LANGUAGE_RU] =
-                    "почта [входящие|отправить <пользователь> "
+                    "почта [входящие|отправить <пользователь>|"
                     "<сообщение>|очистить]",
+                [SESSION_UI_LANGUAGE_DE] =
+                    "mail [inbox|send <Benutzer>|<Nachricht>|clear]",
+                [SESSION_UI_LANGUAGE_FR] =
+                    "mail [inbox|send <utilisateur>|<message>|clear]",
+                [SESSION_UI_LANGUAGE_PL] =
+                    "mail [inbox|send <użytkownik>|<wiadomość>|clear]",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -1046,8 +1111,10 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "打开 ASCII 艺术编辑器（最多128行，每个 IP 10 分钟一次）。",
                 "Открыть редактор ASCII-арта (до 128 строк, раз в 10 минут на "
                 "IP).",
-                "Den ASCII-Art-Editor öffnen (max. 128 Zeilen, 1× pro 10 Minuten pro IP).",
-                "Ouvrir l'éditeur ASCII art (max 128 lignes, 1 fois/10 min par IP).",
+                "Den ASCII-Art-Editor öffnen (max. 128 Zeilen, 1× pro 10 "
+                "Minuten pro IP).",
+                "Ouvrir l'éditeur ASCII art (max 128 lignes, 1 fois/10 min par "
+                "IP).",
                 "Otwórz edytor ASCII art (maks. 128 linii, 1 na 10 min na IP).",
             },
         .label_translations =
@@ -1089,16 +1156,21 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label = "fixnick",
         .description =
             {
-                "Persist an IP-wide reserved nickname as one fixed ANSI handle.",
+                "Persist an IP-wide reserved nickname as one fixed ANSI "
+                "handle.",
                 "IP-wide 예약 닉네임의 현재 색을 하나의 고정 ANSI 닉네임으로 "
                 "저장합니다.",
-                "IP-wide 予約ニックの現在色を固定 ANSI ハンドルとして保存します。",
+                "IP-wide 予約ニックの現在色を固定 ANSI "
+                "ハンドルとして保存します。",
                 "将 IP-wide 预留昵称的当前颜色固化为固定 ANSI 昵称。",
                 "Сохраняет текущий цвет IP-wide зарезервированного ника как "
                 "единый ANSI-ник.",
-                "Den aktuellen Farbstil eines IP-weit reservierten Nicknamens als festen ANSI-Handle speichern.",
-                "Conserver le style actuel d'un pseudo réservé IP-wide comme handle ANSI fixe.",
-                "Zapisz bieżący styl zarezerwowanego IP-wide nicka jako stały ANSI handle.",
+                "Den aktuellen Farbstil eines IP-weit reservierten Nicknamens "
+                "als festen ANSI-Handle speichern.",
+                "Conserver le style actuel d'un pseudo réservé IP-wide comme "
+                "handle ANSI fixe.",
+                "Zapisz bieżący styl zarezerwowanego IP-wide nicka jako stały "
+                "ANSI handle.",
             },
         .label_translations =
             {
@@ -1122,8 +1194,10 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "で初期化）。",
                 "自定义界面颜色（用 %ssystemcolor reset 重置）。",
                 "Настроить цвета интерфейса (сброс — %ssystemcolor reset).",
-                "Oberflächenfarben anpassen (Zurücksetzen mit %ssystemcolor reset).",
-                "Personnaliser les couleurs de l'interface (réinitialisation avec %ssystemcolor reset).",
+                "Oberflächenfarben anpassen (Zurücksetzen mit %ssystemcolor "
+                "reset).",
+                "Personnaliser les couleurs de l'interface (réinitialisation "
+                "avec %ssystemcolor reset).",
                 "Dostosuj kolory interfejsu (reset: %ssystemcolor reset).",
             },
         .label_translations =
@@ -1158,7 +1232,8 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 [SESSION_UI_LANGUAGE_KO] = "번역언어설정 <언어|끄기>",
                 [SESSION_UI_LANGUAGE_JP] = "翻訳言語設定 <言語|オフ>",
                 [SESSION_UI_LANGUAGE_ZH] = "设置翻译语言 <语言|关闭>",
-                [SESSION_UI_LANGUAGE_RU] = "установить-язык-перевода <язык|выкл>",
+                [SESSION_UI_LANGUAGE_RU] =
+                    "установить-язык-перевода <язык|выкл>",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -1198,7 +1273,8 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "出力改行モードを設定します（auto は /os 設定に従います）。",
                 "设置输出换行模式（auto 跟随 /os 设置）。",
                 "Задать режим окончания строк (auto следует /os).",
-                "Zeilenendemodus für die Ausgabe festlegen (auto folgt der /os-Einstellung).",
+                "Zeilenendemodus für die Ausgabe festlegen (auto folgt der "
+                "/os-Einstellung).",
                 "Définir le mode de fin de ligne (auto suit le réglage /os).",
                 "Ustaw tryb zakończeń linii (auto = zgodnie z /os).",
             },
@@ -1246,8 +1322,10 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "言語設定後に翻訳機能を有効/無効にします。",
                 "在设定语言后开启或关闭翻译。",
                 "Включить или отключить перевод после настройки языков.",
-                "Übersetzung nach der Sprachkonfiguration ein- oder ausschalten.",
-                "Activer ou désactiver la traduction après configuration des langues.",
+                "Übersetzung nach der Sprachkonfiguration ein- oder "
+                "ausschalten.",
+                "Activer ou désactiver la traduction après configuration des "
+                "langues.",
                 "Włącz lub wyłącz tłumaczenie po skonfigurowaniu języków.",
             },
         .label_translations =
@@ -1265,14 +1343,22 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label = "morse <on <filter>|off|status>",
         .description =
             {
-                "Toggle the Morse relay feed and optionally filter messages. Commands stay in English.",
-                "모스 릴레이 피드를 켜거나 끄고, 문자열로 선택적으로 필터링합니다. 명령어는 영어로만 제공됩니다.",
-                "モールス中継フィードをオン/オフし、文字列で任意にフィルターします。コマンドは英語のみです。",
+                "Toggle the Morse relay feed and optionally filter messages. "
+                "Commands stay in English.",
+                "모스 릴레이 피드를 켜거나 끄고, 문자열로 선택적으로 "
+                "필터링합니다. 명령어는 영어로만 제공됩니다.",
+                "モールス中継フィードをオン/"
+                "オフし、文字列で任意にフィルターします。コマンドは英語のみです"
+                "。",
                 "莫尔斯中继提要的开关，并可选按字符串过滤。命令仅提供英文。",
-                "Включить или отключить канал Морзе и при желании фильтровать строки. Команды доступны только на английском.",
-                "Morse-Relais ein-/ausschalten und optional nach Zeichenfolgen filtern. Befehle sind nur auf Englisch verfügbar.",
-                "Activer ou désactiver le flux Morse et filtrer éventuellement par chaîne. Les commandes restent en anglais.",
-                "Włącz/wyłącz kanał Morse i opcjonalnie filtruj wiadomości po tekście. Polecenia są dostępne wyłącznie po angielsku.",
+                "Включить или отключить канал Морзе и при желании фильтровать "
+                "строки. Команды доступны только на английском.",
+                "Morse-Relais ein-/ausschalten und optional nach Zeichenfolgen "
+                "filtern. Befehle sind nur auf Englisch verfügbar.",
+                "Activer ou désactiver le flux Morse et filtrer éventuellement "
+                "par chaîne. Les commandes restent en anglais.",
+                "Włącz/wyłącz kanał Morse i opcjonalnie filtruj wiadomości po "
+                "tekście. Polecenia są dostępne wyłącznie po angielsku.",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -1286,9 +1372,11 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "모스 릴레이로 한 줄을 보냅니다 (ASCII/영문 전용).",
                 "モールス中継に1行送信します（ASCII/英語のみ）。",
                 "向莫尔斯中继发送一行（仅限 ASCII/英语）。",
-                "Отправить строку в ретранслятор Морзе (только ASCII/английский).",
+                "Отправить строку в ретранслятор Морзе (только "
+                "ASCII/английский).",
                 "Sende eine Zeile an das Morse-Relais (nur ASCII/Englisch).",
-                "Envoyer une ligne vers le relais Morse (ASCII/anglais uniquement).",
+                "Envoyer une ligne vers le relais Morse (ASCII/anglais "
+                "uniquement).",
                 "Wyślij wiersz do przekaźnika Morse'a (tylko ASCII/angielski).",
             },
         .label_arg_count = 0U,
@@ -1340,8 +1428,10 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "在聊天翻译字幕前预留空行。",
                 "Резервировать пустые строки перед переводами в чате.",
                 "Leerzeilen vor übersetzten Untertiteln im Chat reservieren.",
-                "Réserver des lignes vides avant les sous-titres traduits dans le chat.",
-                "Zarezerwuj puste linie przed przetłumaczonymi podpisami w czacie.",
+                "Réserver des lignes vides avant les sous-titres traduits dans "
+                "le chat.",
+                "Zarezerwuj puste linie przed przetłumaczonymi podpisami w "
+                "czacie.",
             },
         .label_translations =
             {
@@ -1363,8 +1453,10 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "定義済みの配色を適用します（%spalette list を参照）。",
                 "应用预设的界面配色（参见 %spalette list）。",
                 "Применить готовую палитру интерфейса (см. %spalette list).",
-                "Eine vordefinierte Oberflächenpalette anwenden (%spalette list).",
-                "Appliquer une palette d'interface prédéfinie (%spalette list).",
+                "Eine vordefinierte Oberflächenpalette anwenden (%spalette "
+                "list).",
+                "Appliquer une palette d'interface prédéfinie (%spalette "
+                "list).",
                 "Zastosuj predefiniowaną paletę interfejsu (%spalette list).",
             },
         .label_translations =
@@ -1383,13 +1475,16 @@ static const session_help_entry_t kSessionHelpExtended[] = {
         .label = "password [secret] [ip-wide true|false]",
         .description =
             {
-                "Set or clear your password and create a runtime nickname claim.",
+                "Set or clear your password and create a runtime nickname "
+                "claim.",
                 "비밀번호를 설정/삭제하고 런타임 닉네임 점유를 만듭니다.",
                 "パスワードを設定/削除し、実行中のニック占有を作成します。",
                 "设置/清除密码，并创建运行时昵称占用。",
                 "Задать/очистить пароль и создать активное удержание ника.",
-                "Passwort festlegen oder löschen und eine Laufzeit-Nickname-Beanspruchung erstellen.",
-                "Définir ou effacer votre mot de passe et créer une réservation de pseudo.",
+                "Passwort festlegen oder löschen und eine "
+                "Laufzeit-Nickname-Beanspruchung erstellen.",
+                "Définir ou effacer votre mot de passe et créer une "
+                "réservation de pseudo.",
                 "Ustaw lub wyczyść hasło i utwórz czasowe zajęcie nicka.",
             },
     },
@@ -1452,7 +1547,8 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "查看他人记录的操作系统。",
                 "Посмотреть, какую ОС указал другой пользователь.",
                 "Das erfasste Betriebssystem eines anderen anzeigen.",
-                "Consulter le système d'exploitation enregistré d'un autre utilisateur.",
+                "Consulter le système d'exploitation enregistré d'un autre "
+                "utilisateur.",
                 "Sprawdź zapisany system operacyjny innego użytkownika.",
             },
         .label_translations =
@@ -1548,10 +1644,14 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "전역 투표를 시작하거나 종료합니다 (시작은 운영자만 가능).",
                 "グローバル投票を開始または終了します（開始は運営のみ）。",
                 "开始或结束全局投票（仅管理员可开始）。",
-                "Запустить или завершить общий опрос (запуск только для оператора).",
-                "Die globale Umfrage starten oder beenden (Start nur für Operatoren).",
-                "Démarrer ou clôturer le sondage global (réservé aux opérateurs).",
-                "Rozpocznij lub zamknij globalną ankietę (start tylko dla operatorów).",
+                "Запустить или завершить общий опрос (запуск только для "
+                "оператора).",
+                "Die globale Umfrage starten oder beenden (Start nur für "
+                "Operatoren).",
+                "Démarrer ou clôturer le sondage global (réservé aux "
+                "opérateurs).",
+                "Rozpocznij lub zamknij globalną ankietę (start tylko dla "
+                "operatorów).",
             },
         .label_translations =
             {
@@ -1559,7 +1659,8 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                     "전역투표 <질문>|<옵션1>|<옵션2>|...",
                 [SESSION_UI_LANGUAGE_JP] =
                     "グローバル投票 <質問>|<選択肢1>|<選択肢2>|...",
-                [SESSION_UI_LANGUAGE_ZH] = "全局投票 <问题>|<选项1>|<选项2>|...",
+                [SESSION_UI_LANGUAGE_ZH] =
+                    "全局投票 <问题>|<选项1>|<选项2>|...",
                 [SESSION_UI_LANGUAGE_RU] =
                     "опрос <вопрос>|<вариант1>|<вариант2>|...",
             },
@@ -1586,7 +1687,8 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                     "투표 <라벨> <질문>|<옵션1>|<옵션2>|...",
                 [SESSION_UI_LANGUAGE_JP] =
                     "投票 <ラベル> <質問>|<選択肢1>|<選択肢2>|...",
-                [SESSION_UI_LANGUAGE_ZH] = "投票 <标签> <问题>|<选项1>|<选项2>|...",
+                [SESSION_UI_LANGUAGE_ZH] =
+                    "投票 <标签> <问题>|<选项1>|<选项2>|...",
                 [SESSION_UI_LANGUAGE_RU] =
                     "голосование <метка> <вопрос>|<вариант1>|<вариант2>|...",
             },
@@ -1654,9 +1756,12 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "本地屏蔽某用户或 IP 的消息（用 %sblock list 查看）。",
                 "Скрыть сообщения пользователя или IP локально (проверка через "
                 "%sblock list).",
-                "Nachrichten eines Benutzers oder einer IP lokal ausblenden (%sblock list zum Überprüfen).",
-                "Masquer localement les messages d'un utilisateur ou d'une IP (voir %sblock list).",
-                "Lokalnie ukryj wiadomości użytkownika lub IP (sprawdź %sblock list).",
+                "Nachrichten eines Benutzers oder einer IP lokal ausblenden "
+                "(%sblock list zum Überprüfen).",
+                "Masquer localement les messages d'un utilisateur ou d'une IP "
+                "(voir %sblock list).",
+                "Lokalnie ukryj wiadomości użytkownika lub IP (sprawdź %sblock "
+                "list).",
             },
         .label_translations =
             {
@@ -1664,6 +1769,9 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 [SESSION_UI_LANGUAGE_JP] = "ブロック <ユーザー|IP>",
                 [SESSION_UI_LANGUAGE_ZH] = "屏蔽 <用户|IP>",
                 [SESSION_UI_LANGUAGE_RU] = "заблокировать <пользователь|IP>",
+                [SESSION_UI_LANGUAGE_DE] = "block <Benutzer|IP>",
+                [SESSION_UI_LANGUAGE_FR] = "block <utilisateur|IP>",
+                [SESSION_UI_LANGUAGE_PL] = "block <użytkownik|IP>",
             },
         .label_arg_count = 0U,
         .label_args = {},
@@ -1792,26 +1900,41 @@ static const session_help_entry_t kSessionHelpExtended[] = {
                 "渲染，输出启用混合检测。",
                 "Включить профиль Windows 11 с legacy CP949: ввод UTF-8, "
                 "UI в legacy-режиме, гибридное автоопределение вывода.",
-                "Das Windows-11-Legacy-CP949-Profil aktivieren: moderne UTF-8-Eingabe, Legacy-UI-Darstellung und hybride Ausgabeerkennung.",
-                "Activer le profil CP949 legacy de Windows 11 : saisie UTF-8 moderne, rendu d'interface legacy et détection de sortie hybride.",
-                "Włącz starszy profil CP949 systemu Windows 11: nowoczesne wejście UTF-8, stare renderowanie UI i hybrydowa detekcja wyjścia.",
+                "Das Windows-11-Legacy-CP949-Profil aktivieren: moderne "
+                "UTF-8-Eingabe, Legacy-UI-Darstellung und hybride "
+                "Ausgabeerkennung.",
+                "Activer le profil CP949 legacy de Windows 11 : saisie UTF-8 "
+                "moderne, rendu d'interface legacy et détection de sortie "
+                "hybride.",
+                "Włącz starszy profil CP949 systemu Windows 11: nowoczesne "
+                "wejście UTF-8, stare renderowanie UI i hybrydowa detekcja "
+                "wyjścia.",
             },
         .label_arg_count = 0U,
         .label_args = {},
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "retro <...|keyboard <on|off|status|cp437|cp949|cp932|cp936|cp1251|cp850|cp852>|ui <system|chat|all|status|hybrid|utf8|jp>>",
+        .label = "retro <...|keyboard "
+                 "<on|off|status|cp437|cp949|cp932|cp936|cp1251|cp850|cp852>|"
+                 "ui <system|chat|all|status|hybrid|utf8|jp>>",
         .description =
             {
-                "Toggle retro terminal encoding, keyboard codepage, and UI scope.",
-                "레트로 터미널 인코딩, 키보드 코드페이지, UI 범위를 전환합니다.",
-                "レトロ端末エンコーディング、キーボードコードページ、UI 範囲を切り替えます。",
+                "Toggle retro terminal encoding, keyboard codepage, and UI "
+                "scope.",
+                "레트로 터미널 인코딩, 키보드 코드페이지, UI 범위를 "
+                "전환합니다.",
+                "レトロ端末エンコーディング、キーボードコードページ、UI "
+                "範囲を切り替えます。",
                 "切换复古终端编码、键盘代码页与 UI 范围。",
-                "Переключить ретро-кодировку терминала, кодировку клавиатуры и область UI.",
-                "Retro-Terminalcodierung, Tastatur-Codepage und UI-Bereich umschalten.",
-                "Basculer l'encodage du terminal rétro, le codepage clavier et la portée UI.",
-                "Przełącz kodowanie terminala retro, kodowanie klawiatury i zakres UI.",
+                "Переключить ретро-кодировку терминала, кодировку клавиатуры и "
+                "область UI.",
+                "Retro-Terminalcodierung, Tastatur-Codepage und UI-Bereich "
+                "umschalten.",
+                "Basculer l'encodage du terminal rétro, le codepage clavier et "
+                "la portée UI.",
+                "Przełącz kodowanie terminala retro, kodowanie klawiatury i "
+                "zakres UI.",
             },
         .label_arg_count = 0U,
         .label_args = {},

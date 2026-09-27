@@ -164,15 +164,6 @@ static ssize_t ddial_client_send_all(int fd, const char *buf, size_t len)
     return (ssize_t)sent;
 }
 
-static void ddial_client_send_nop(ddial_client_t *client)
-{
-    if (client == nullptr || client->upstream_fd < 0) {
-        return;
-    }
-    const unsigned char nop[2] = {0xFF, 0xF1};
-    (void)ddial_client_send_all(client->upstream_fd, (const char *)nop, 2);
-}
-
 static void ddial_client_update_send_time(ddial_client_t *client)
 {
     if (client == nullptr) {
@@ -180,25 +171,6 @@ static void ddial_client_update_send_time(ddial_client_t *client)
     }
     clock_gettime(CLOCK_MONOTONIC, &client->last_send_time);
 }
-
-static void ddial_client_maybe_keepalive(ddial_client_t *client)
-{
-    if (client == nullptr || client->upstream_fd < 0 ||
-        client->last_send_time.tv_sec == 0) {
-        return;
-    }
-    struct timespec now;
-    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
-        return;
-    }
-    time_t delta = now.tv_sec - client->last_send_time.tv_sec;
-    if (delta >= (time_t)DDIAL_CLIENT_KEEPALIVE_INTERVAL_SEC) {
-        ddial_client_send_nop(client);
-        ddial_client_update_send_time(client);
-    }
-}
-
-
 
 /* ---- user ("hijack") mode helpers ------------------------------------- */
 
@@ -526,6 +498,26 @@ static bool ddial_client_connect_socket(ddial_client_t *client)
     int enable = 1;
     (void)setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enable, sizeof(enable));
 
+    /* Keep idle links alive with TCP keepalives.  An in-band telnet IAC NOP
+     * is not safe here: remotes that do not strip it show the two bytes as
+     * garbage in front of our next chat line ("63\xff\xf1Lee Yunjin) ..."). */
+    (void)setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &enable, sizeof(enable));
+#ifdef TCP_KEEPIDLE
+    int keep_idle = DDIAL_CLIENT_KEEPALIVE_INTERVAL_SEC;
+    (void)setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &keep_idle,
+                     sizeof(keep_idle));
+#endif
+#ifdef TCP_KEEPINTVL
+    int keep_intvl = 15;
+    (void)setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &keep_intvl,
+                     sizeof(keep_intvl));
+#endif
+#ifdef TCP_KEEPCNT
+    int keep_cnt = 4;
+    (void)setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &keep_cnt,
+                     sizeof(keep_cnt));
+#endif
+
     client->upstream_fd = fd;
     client->connected = true;
     ddial_client_account_mark(client, true);
@@ -744,6 +736,21 @@ static void ddial_client_learn_slot(ddial_client_t *client, const char *line)
     }
     if (*after_num != '(' && *after_num != '[') {
         return;
+    }
+    if (!client->user_mode) {
+        /* Station mode: only our own status line " #N(T1:?)" names our
+         * slot; another user's chat line ("#2[T1:Bob) hi") must not. */
+        const char *q = after_num + 1;
+        if (*q != 'T' || !isdigit((unsigned char)q[1])) {
+            return;
+        }
+        ++q;
+        while (isdigit((unsigned char)*q)) {
+            ++q;
+        }
+        if (q[0] != ':' || q[1] != '?') {
+            return;
+        }
     }
     client->slot = (uint16_t)slot;
     client->slot_known = true;
@@ -1809,7 +1816,6 @@ static void *ddial_client_thread(void *arg)
                 continue;
             }
             if (poll_rc == 0) {
-                ddial_client_maybe_keepalive(client);
                 ddial_client_maybe_station_broadcast(host, client);
                 continue;
             }
@@ -2061,8 +2067,11 @@ void host_ddial_client_send_channel(host_t *host, const char *handle,
     bool connected = client->connected;
     int  upstream_fd  = client->upstream_fd;
     ddial_auth_state_t auth_state = atomic_load(&client->auth_state);
-    uint16_t our_slot = client->slot;
-    bool     slot_known = client->slot_known;
+    /* Remotes that never print our " #N(T1:?)" status line still expect the
+     * "#slot[T1:" prefix; line 1 is what a lone station link is given. */
+    uint16_t our_slot = (client->slot_known && client->slot > 0U)
+                            ? client->slot
+                            : DDIAL_LINK_DEFAULT_SLOT;
     ttak_mutex_unlock(&client->lock);
 
     if (!enabled || !connected || upstream_fd < 0 ||
@@ -2116,8 +2125,7 @@ void host_ddial_client_send_channel(host_t *host, const char *handle,
             ddial_client_remember_sent(client, clean_body);
             ttak_mutex_unlock(&client->lock);
         }
-    } else if (slot_known && our_slot > 0U && handle != nullptr &&
-               handle[0] != '\0') {
+    } else if (handle != nullptr && handle[0] != '\0') {
         /* Link mode: send the full #slot[Tchan:handle) message wire form
          * (with '~' dual-channel prefix when tuned away from channel 1). */
         bool formatted;
@@ -2131,15 +2139,6 @@ void host_ddial_client_send_channel(host_t *host, const char *handle,
                 DDIAL_TIER_PASSWORD, handle, clean_msg);
         }
         wire_len = formatted ? (int)strlen(wire_line) : -1;
-    } else if (handle != nullptr && handle[0] != '\0') {
-        /* Slot not yet known: fall back to "handle) message" form. */
-        char clean_handle[DDIAL_MAX_HANDLE_LEN];
-        ddial_sanitize_handle(handle, strlen(handle), clean_handle,
-                              sizeof(clean_handle));
-        char clean_body[DDIAL_MAX_BODY_LEN + 1U];
-        ddial_clean_body(clean_msg, clean_body, sizeof(clean_body));
-        wire_len = snprintf(wire_line, sizeof(wire_line),
-                            "%s) %s\r\n", clean_handle, clean_body);
     } else {
         char clean_body[DDIAL_MAX_BODY_LEN + 1U];
         ddial_clean_body(clean_msg, clean_body, sizeof(clean_body));
@@ -2178,7 +2177,9 @@ void host_ddial_client_send_private(host_t *host, uint16_t target_slot,
     bool connected    = client->connected;
     int  upstream_fd  = client->upstream_fd;
     ddial_auth_state_t auth_state = atomic_load(&client->auth_state);
-    uint16_t our_slot = client->slot;
+    uint16_t our_slot = (client->slot_known && client->slot > 0U)
+                            ? client->slot
+                            : DDIAL_LINK_DEFAULT_SLOT;
     ttak_mutex_unlock(&client->lock);
 
     if (!enabled || !connected || upstream_fd < 0 ||

@@ -659,7 +659,11 @@ size_t host_ddial_participants(host_t *host, char *out, size_t cap)
     }
     ttak_mutex_unlock(&client->lock);
 
-    ddial_roster_entry_t remote[DDIAL_ROSTER_MAX];
+    ddial_roster_entry_t *remote =
+        (ddial_roster_entry_t *)calloc(DDIAL_ROSTER_MAX, sizeof(*remote));
+    if (remote == nullptr) {
+        return list.count;
+    }
     size_t remote_count =
         ddial_roster_snapshot(host, own_handle, remote, DDIAL_ROSTER_MAX);
     for (size_t i = 0U; i < remote_count; ++i) {
@@ -672,5 +676,6 @@ size_t host_ddial_participants(host_t *host, char *out, size_t cap)
         }
         ddial_participant_append(&list, name);
     }
+    free(remote);
     return list.count;
 }

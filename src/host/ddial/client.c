@@ -401,7 +401,6 @@ static void ddial_client_disconnect(ddial_client_t *client)
         ddial_client_account_mark(client, false);
     }
     client->connected = false;
-    ddial_roster_clear();
     client->auth_sent = false;
     atomic_store(&client->auth_state, DDIAL_AUTH_NONE);
     client->auth_result = 0;
@@ -1274,7 +1273,6 @@ static size_t ddial_client_extract_lines(ddial_client_t *client,
                 ddial_client_account_mark(client, false);
             }
             client->connected = false;
-            ddial_roster_clear();
             if (client->reconnect_attempts < 100000U) {
                 client->reconnect_attempts++;
             }
@@ -1308,7 +1306,7 @@ static size_t ddial_client_extract_lines(ddial_client_t *client,
         while (*raw_start == ' ') {
             ++raw_start;
         }
-        ddial_roster_note_line(raw_start, normalized_line);
+        ddial_roster_note_line(normalized_line);
 
         /* A link /P is handed on as the raw wire line; the broadcast step
          * delivers it to its one recipient outside client->lock. */
@@ -1944,6 +1942,8 @@ void host_ddial_client_start(host_t *host)
     }
     client->stop = false;
     ddial_client_update_send_time(client);
+    /* People already online before this start are only in past history. */
+    ddial_roster_seed_from_history(host);
     if (pthread_create(&client->thread, nullptr, ddial_client_thread, host) == 0) {
         client->thread_initialized = true;
         atomic_store(&client->running, true);

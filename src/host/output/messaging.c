@@ -833,6 +833,11 @@ static bool session_should_hide_entry(session_ctx_t *ctx,
     }
 
     if (!entry->is_user_message) {
+        /* DDial station lists and login/logout events stay in history (the
+         * link roster is rebuilt from them) but only operate the link. */
+        if (ddial_roster_line_is_operational(entry->message)) {
+            return true;
+        }
         if (!ctx->breaking_alerts_enabled &&
             session_message_contains_breaking(entry->message)) {
             return true;

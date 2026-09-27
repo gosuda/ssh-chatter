@@ -1403,6 +1403,65 @@ static const session_command_message_t kSessionCommandMessages[] = {
             [SESSION_UI_LANGUAGE_PL] = "- wpis #%zu",
         },
     },
+    {
+        "Delivered mailbox message to %s (DDial).",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "%s님의 DDial 메일함으로 보냈습니다.",
+            [SESSION_UI_LANGUAGE_JP] =
+                "%s の DDial メールボックスに配達しました。",
+            [SESSION_UI_LANGUAGE_ZH] = "已投递到 %s 的 DDial 邮箱。",
+            [SESSION_UI_LANGUAGE_RU] =
+                "Сообщение доставлено в почтовый ящик DDial пользователя %s.",
+            [SESSION_UI_LANGUAGE_DE] =
+                "Nachricht an das DDial-Postfach von %s zugestellt.",
+            [SESSION_UI_LANGUAGE_FR] =
+                "Message remis dans la boîte DDial de %s.",
+            [SESSION_UI_LANGUAGE_PL] =
+                "Dostarczono wiadomość do skrzynki DDial użytkownika %s.",
+        },
+    },
+    {
+        "No DDial member has that name.",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "그 이름의 DDial 회원이 없습니다.",
+            [SESSION_UI_LANGUAGE_JP] = "その名前の DDial 会員はいません。",
+            [SESSION_UI_LANGUAGE_ZH] = "没有该名字的 DDial 会员。",
+            [SESSION_UI_LANGUAGE_RU] = "Нет участника DDial с таким именем.",
+            [SESSION_UI_LANGUAGE_DE] = "Kein DDial-Mitglied hat diesen Namen.",
+            [SESSION_UI_LANGUAGE_FR] = "Aucun membre DDial ne porte ce nom.",
+            [SESSION_UI_LANGUAGE_PL] = "Brak członka DDial o tej nazwie.",
+        },
+    },
+    {
+        "That DDial mailbox is full.",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "해당 DDial 메일함이 가득 찼습니다.",
+            [SESSION_UI_LANGUAGE_JP] = "その DDial メールボックスは満杯です。",
+            [SESSION_UI_LANGUAGE_ZH] = "该 DDial 邮箱已满。",
+            [SESSION_UI_LANGUAGE_RU] = "Этот почтовый ящик DDial переполнен.",
+            [SESSION_UI_LANGUAGE_DE] = "Dieses DDial-Postfach ist voll.",
+            [SESSION_UI_LANGUAGE_FR] = "Cette boîte DDial est pleine.",
+            [SESSION_UI_LANGUAGE_PL] = "Ta skrzynka DDial jest pełna.",
+        },
+    },
+    {
+        "You have new mail from %s. Use /mail to read it.",
+        {
+            [SESSION_UI_LANGUAGE_KO] =
+                "%s님에게서 새 메일이 왔습니다. /mail로 확인하세요.",
+            [SESSION_UI_LANGUAGE_JP] =
+                "%s から新しいメールが届きました。/mail で読めます。",
+            [SESSION_UI_LANGUAGE_ZH] =
+                "你收到来自 %s 的新邮件。使用 /mail 查看。",
+            [SESSION_UI_LANGUAGE_RU] = "Новое письмо от %s. Прочитать: /mail.",
+            [SESSION_UI_LANGUAGE_DE] =
+                "Neue Nachricht von %s. Lesen mit /mail.",
+            [SESSION_UI_LANGUAGE_FR] =
+                "Nouveau message de %s. Lisez-le avec /mail.",
+            [SESSION_UI_LANGUAGE_PL] =
+                "Nowa wiadomość od %s. Przeczytaj przez /mail.",
+        },
+    },
 };
 
 // Returns the message in the session's UI language, or the English text when

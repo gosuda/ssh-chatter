@@ -10,6 +10,8 @@
  *
  *   "[SYSOP] 73-.SynerChat #0[T1:..." / "[LINK] -->. + #5[T1:..."
  *       link housekeeping: hidden.
+ *   "[E-MAIL #012@070 Bob] text"
+ *       link e-mail older builds wrote to the room: hidden (it is private).
  *   "71#4[T1:MaxMouse) text"
  *       shown as a Chatter chat message from MaxMouse.
  *   anything else
@@ -32,6 +34,10 @@ bool host_ddial_display_view(const chat_history_entry_t *entry,
         return true;
     }
     if (ddial_roster_line_is_operational(entry->message)) {
+        return false;
+    }
+    /* Link e-mail used to be written to the room; it is private. */
+    if (strncmp(entry->message, "[E-MAIL ", 8U) == 0) {
         return false;
     }
 

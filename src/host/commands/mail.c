@@ -129,6 +129,27 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
+    if (strcasecmp(command, "clear") == 0) {
+        if (!session_user_data_load(ctx)) {
+            session_send_system_line(
+                ctx, session_command_localize(
+                         ctx, "Mailbox storage is unavailable."));
+            return;
+        }
+
+        ctx->user_data.mailbox_count = 0U;
+        memset(ctx->user_data.mailbox, 0, sizeof(ctx->user_data.mailbox));
+        if (session_user_data_commit(ctx)) {
+            session_send_system_line(
+                ctx, session_command_localize(ctx, "Mailbox cleared."));
+        } else {
+            session_send_system_line(
+                ctx,
+                session_command_localize(ctx, "Failed to update mailbox."));
+        }
+        return;
+    }
+
     char target_token[SSH_CHATTER_USERNAME_LEN + SSH_CHATTER_IP_LEN];
     const char *msg_cursor = nullptr;
 
@@ -217,6 +238,37 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
         }
 
         char error[128];
+
+        /* A DDial member gets it in their /e mailbox: when no Chatter user
+         * has that name, or when addressed as <name>@ddial. */
+        const bool force_ddial = strcasecmp(target_ip, "ddial") == 0;
+        bool chatter_known =
+            !force_ddial &&
+            (target_ip[0] != '\0' ||
+             chat_room_find_user(&ctx->owner->room, target) != nullptr);
+        if (!force_ddial && !chatter_known) {
+            /* Offline Chatter user: their last known address (existing
+             * records only, nothing is created). */
+            chatter_known = host_lookup_last_ip(ctx->owner, target, target_ip,
+                                                sizeof(target_ip));
+        }
+        if (force_ddial ||
+            (!chatter_known && host_ddial_member_exists(ctx->owner, target))) {
+            if (!host_ddial_mail_chatter_to_member(ctx->owner, ctx->user.name,
+                                                   target, msg_cursor, error,
+                                                   sizeof(error))) {
+                session_send_system_line(ctx,
+                                         session_command_localize(ctx, error));
+                return;
+            }
+            char confirmation[SSH_CHATTER_MESSAGE_LIMIT];
+            session_command_snprintf(ctx, confirmation, sizeof(confirmation),
+                                     "Delivered mailbox message to %s (DDial).",
+                                     target);
+            session_send_system_line(ctx, confirmation);
+            return;
+        }
+
         if (!host_user_data_send_mail(
                 ctx->owner, target, target_ip[0] != '\0' ? target_ip : nullptr,
                 ctx->user.name, message, error, sizeof(error))) {
@@ -248,30 +300,6 @@ static void session_handle_mail(session_ctx_t *ctx, const char *arguments)
         session_command_snprintf(ctx, confirmation, sizeof(confirmation),
                                  "Delivered mailbox message to %s.", target);
         session_send_system_line(ctx, confirmation);
-        return;
-
-    if (strcasecmp(command, "clear") == 0) {
-        if (!session_user_data_load(ctx)) {
-            session_send_system_line(
-                ctx, session_command_localize(
-                         ctx, "Mailbox storage is unavailable."));
-            return;
-        }
-
-        ctx->user_data.mailbox_count = 0U;
-        memset(ctx->user_data.mailbox, 0, sizeof(ctx->user_data.mailbox));
-        if (session_user_data_commit(ctx)) {
-            session_send_system_line(
-                ctx, session_command_localize(ctx, "Mailbox cleared."));
-        } else {
-            session_send_system_line(
-                ctx,
-                session_command_localize(ctx, "Failed to update mailbox."));
-        }
-        return;
-    }
-
-    session_mail_send_usage(ctx, false);
 }
 
 static void session_handle_reaction(session_ctx_t *ctx, size_t reaction_index,

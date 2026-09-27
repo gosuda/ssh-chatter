@@ -2702,6 +2702,13 @@ static void mv_mail_list_cb(const ddial_mail_t *mail, void *user)
     ddial_session_t *sess = (ddial_session_t *)user;
     char when[32];
     mv_format_time((time_t)mail->sent, when, sizeof(when));
+    if (mail->from == 0U) {
+        /* Bridged mail (Chatter, another station): the sender is named in
+         * from_handle and has no member number here. */
+        mv_line(sess, " [%u] %s from %s: %s", (unsigned)mail->id, when,
+                mail->from_handle, mail->text);
+        return;
+    }
     mv_line(sess, " [%u] %s from %s (#%u): %s", (unsigned)mail->id, when,
             mail->from_handle, (unsigned)mail->from, mail->text);
 }
@@ -2714,6 +2721,7 @@ static void mv_cmd_email(ddial_session_t *sess, const char *arg)
             "Email commands:",
             "/e          list emails received",
             "/e=# <msg>  send email to member#",
+            "/e=name|msg send email to a member or Chatter user by name",
             "/e-#        delete email#",
             "/e-all      delete all emails",
             nullptr,
@@ -2728,8 +2736,42 @@ static void mv_cmd_email(ddial_session_t *sess, const char *arg)
         const char *p = arg + 1;
         uint32_t to = 0U;
         if (!mv_parse_uint(&p, &to)) {
-            mv_line(sess, "* Usage: /e=<member#> <message>");
-            return;
+            /* By name: "/e=<name>|<msg>" (names may contain spaces) or
+             * "/e=<name> <msg>".  A member of that name gets it here;
+             * otherwise it goes to the Chatter user of that name. */
+            char name[SSH_CHATTER_USERNAME_LEN];
+            const char *sep = strchr(p, '|');
+            if (sep == nullptr) {
+                sep = p;
+                while (*sep != '\0' && *sep != ' ') {
+                    ++sep;
+                }
+            }
+            size_t name_len = (size_t)(sep - p);
+            if (name_len >= sizeof(name)) {
+                name_len = sizeof(name) - 1U;
+            }
+            memcpy(name, p, name_len);
+            name[name_len] = '\0';
+            trim_whitespace_inplace(name);
+            const char *msg = *sep != '\0' ? mv_skip_ws(sep + 1) : sep;
+            if (name[0] == '\0' || msg[0] == '\0') {
+                mv_line(sess, "* Usage: /e=<member#> <message> or "
+                              "/e=<name>|<message>");
+                return;
+            }
+            to = ddial_member_owner_of(host, name);
+            if (to == 0U) {
+                char error[128];
+                if (!host_ddial_mail_member_to_chatter(
+                        host, sess->handle, name, msg, error, sizeof(error))) {
+                    mv_line(sess, "* %s", error);
+                    return;
+                }
+                mv_line(sess, "* Email sent to %s (Chatter).", name);
+                return;
+            }
+            p = msg;
         }
         p = mv_skip_ws(p);
         if (p[0] == '\0') {

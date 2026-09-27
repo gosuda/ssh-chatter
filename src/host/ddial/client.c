@@ -67,6 +67,12 @@
 #include <unistd.h>
 
 #define DDIAL_CLIENT_KEEPALIVE_INTERVAL_SEC 45
+
+/* ddial/mailbridge.c */
+static void host_ddial_mail_link_inbound(host_t *host, unsigned from_station,
+                                         unsigned to_id,
+                                         const char *from_handle,
+                                         const char *text);
 #define DDIAL_CLIENT_POLL_TIMEOUT_MS 5000
 #define DDIAL_CLIENT_RECONNECT_BACKOFF_SEC 5
 #define DDIAL_CLIENT_RECV_CHUNK_SIZE 4096
@@ -971,7 +977,7 @@ static void ddial_client_normalize_line(const char *src, char *dst,
         unsigned from_id = 0U;
         char from_handle[DDIAL_MAX_HANDLE_LEN];
         const char *msg = nullptr;
-        if (ddial_parse_incoming_email(start, &from_station, &from_id,
+        if (ddial_parse_incoming_email(start, &from_station, nullptr, &from_id,
                                        from_handle, sizeof(from_handle),
                                        &msg)) {
             snprintf(dst, dst_cap, "[E-MAIL #%03u@%03u %s] %s", from_id,
@@ -1078,6 +1084,19 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
     }
 
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
+
+    /* Link e-mail goes to the addressed member's mailbox, never the room. */
+    unsigned mail_station = 0U;
+    unsigned mail_to = 0U;
+    char mail_handle[DDIAL_MAX_HANDLE_LEN];
+    const char *mail_text = nullptr;
+    if (ddial_parse_incoming_email(line, &mail_station, &mail_to, nullptr,
+                                   mail_handle, sizeof(mail_handle),
+                                   &mail_text)) {
+        host_ddial_mail_link_inbound(host, mail_station, mail_to, mail_handle,
+                                     mail_text);
+        return;
+    }
 
     /* Link private message: deliver to its one recipient, never to the
      * room.  Our own /P (or a local user's) coming back is dropped. */
@@ -1311,7 +1330,9 @@ static size_t ddial_client_extract_lines(ddial_client_t *client,
         /* A link /P is handed on as the raw wire line; the broadcast step
          * delivers it to its one recipient outside client->lock. */
         if (ddial_parse_incoming_private(raw_start, nullptr, nullptr, nullptr,
-                                         nullptr, 0U, nullptr)) {
+                                         nullptr, 0U, nullptr) ||
+            ddial_parse_incoming_email(raw_start, nullptr, nullptr, nullptr,
+                                       nullptr, 0U, nullptr)) {
             snprintf(out_lines[extracted].line,
                      sizeof(out_lines[extracted].line), "%s", raw_start);
             ++extracted;

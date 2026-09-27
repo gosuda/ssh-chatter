@@ -1547,6 +1547,15 @@ size_t host_ddial_participants(host_t *host, char *out, size_t cap);
 bool host_ddial_display_view(const chat_history_entry_t *entry,
                              chat_history_entry_t *scratch,
                              const chat_history_entry_t **view);
+/* Mail bridge between Chatter mailboxes and DDial member mailboxes
+ * (ddial/mailbridge.c).  error receives a constant English message. */
+bool host_ddial_member_exists(host_t *host, const char *handle);
+bool host_ddial_mail_chatter_to_member(host_t *host, const char *from_name,
+                                       const char *handle, const char *text,
+                                       char *error, size_t error_cap);
+bool host_ddial_mail_member_to_chatter(host_t *host, const char *from_handle,
+                                       const char *name, const char *text,
+                                       char *error, size_t error_cap);
 
 void host_ddial_notify_admin_if_port_adjusted(host_t *host, session_ctx_t *ctx);
 uint64_t host_allocate_session_id(host_t *host);

@@ -162,8 +162,9 @@ bool ddial_parse_incoming_private(const char *line, uint16_t *out_target_slot,
                                   size_t handle_cap, const char **out_message);
 
 bool ddial_parse_incoming_email(const char *line, unsigned *out_from_station,
-                                unsigned *out_from_id, char *out_handle,
-                                size_t handle_cap, const char **out_message);
+                                unsigned *out_to_id, unsigned *out_from_id,
+                                char *out_handle, size_t handle_cap,
+                                const char **out_message);
 
 size_t ddial_expand_carets(const char *src, size_t src_len,
                            char *dst, size_t dst_cap);

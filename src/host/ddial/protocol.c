@@ -892,8 +892,9 @@ bool ddial_parse_incoming_private(const char *line, uint16_t *out_target_slot,
 /* Parse an inbound e-mail line:
  *   "/E~<from_station_3d><to_id_3d>(<from_id>:<handle>) <message>" */
 bool ddial_parse_incoming_email(const char *line, unsigned *out_from_station,
-                                unsigned *out_from_id, char *out_handle,
-                                size_t handle_cap, const char **out_message)
+                                unsigned *out_to_id, unsigned *out_from_id,
+                                char *out_handle, size_t handle_cap,
+                                const char **out_message)
 {
     if (line == nullptr || line[0] != '/' ||
         (line[1] != 'E' && line[1] != 'e') || line[2] != '~') {
@@ -907,6 +908,8 @@ bool ddial_parse_incoming_email(const char *line, unsigned *out_from_station,
     }
     unsigned from_station =
         (unsigned)((p[0] - '0') * 100 + (p[1] - '0') * 10 + (p[2] - '0'));
+    unsigned to_id =
+        (unsigned)((p[3] - '0') * 100 + (p[4] - '0') * 10 + (p[5] - '0'));
     p += 6;
     if (*p != '(') {
         return false;
@@ -941,6 +944,9 @@ bool ddial_parse_incoming_email(const char *line, unsigned *out_from_station,
     }
     if (out_from_station != nullptr) {
         *out_from_station = from_station;
+    }
+    if (out_to_id != nullptr) {
+        *out_to_id = to_id;
     }
     if (out_from_id != nullptr) {
         *out_from_id = from_id;

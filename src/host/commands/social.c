@@ -9,6 +9,12 @@ static void session_handle_usercount(session_ctx_t *ctx)
     count = ctx->owner->room.member_count;
     ttak_mutex_unlock(&ctx->owner->room.lock);
 
+    /* People on the DDial side (dial-ins, users behind the Station Link)
+     * are participants too. */
+    char ddial_names[SSH_CHATTER_MESSAGE_LIMIT];
+    count +=
+        host_ddial_participants(ctx->owner, ddial_names, sizeof(ddial_names));
+
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(message, sizeof(message),
              "There %s currently %zu user%s connected.",
@@ -280,11 +286,21 @@ static void session_handle_connected(session_ctx_t *ctx)
     }
     ttak_mutex_unlock(&ctx->owner->room.lock);
 
+    char ddial_names[SSH_CHATTER_MESSAGE_LIMIT];
+    size_t ddial_count =
+        host_ddial_participants(ctx->owner, ddial_names, sizeof(ddial_names));
+
     char header[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(header, sizeof(header), "Connected users (%zu):", count);
+    snprintf(header, sizeof(header),
+             "Connected users (%zu):", count + ddial_count);
     session_send_system_line(ctx, header);
     if (count > 0U) {
         session_send_system_line(ctx, buffer);
+    }
+    if (ddial_count > 0U) {
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(line, sizeof(line), "DDial: %s", ddial_names);
+        session_send_system_line(ctx, line);
     }
 }
 

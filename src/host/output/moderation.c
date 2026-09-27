@@ -931,6 +931,17 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
              (int)sizeof(target_name) - 1, working);
 
     session_ctx_t *target = chat_room_find_user(&ctx->owner->room, target_name);
+    if (target == nullptr &&
+        host_ddial_relay_private(ctx->owner, ctx, working, message)) {
+        /* Someone on the DDial side: relayed as a DDial private message,
+         * the way public chat is relayed as a DDial chat line. */
+        printf("[pm] %s -> %s (ddial): %s\n", ctx->user.name, working, message);
+        char to_sender_label[SSH_CHATTER_MESSAGE_LIMIT];
+        session_command_snprintf(ctx, to_sender_label, sizeof(to_sender_label),
+                                 "you -> %s", working);
+        session_send_private_message_line(ctx, ctx, to_sender_label, message);
+        return;
+    }
     if (target == nullptr) {
         char not_found[SSH_CHATTER_MESSAGE_LIMIT];
         session_command_snprintf(ctx, not_found, sizeof(not_found),

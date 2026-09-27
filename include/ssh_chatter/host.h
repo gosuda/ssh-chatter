@@ -1501,8 +1501,11 @@ void host_ddial_client_reconnect(host_t *host);
 void host_ddial_client_start(host_t *host);
 void host_ddial_client_send(host_t *host, const char *handle,
                             const char *message);
-void host_ddial_client_send_channel(host_t *host, const char *handle,
-                                    uint8_t channel, const char *message);
+/* from_slot is the speaker's line number on our station (dial-in slot or
+ * Chatter chat-link slot); 0 lets the relay pick a fallback. */
+void host_ddial_client_send_channel(host_t *host, uint16_t from_slot,
+                                    const char *handle, uint8_t channel,
+                                    const char *message);
 void host_ddial_client_send_login(host_t *host, uint16_t slot,
                                   uint8_t channel, ddial_user_tier_t tier,
                                   const char *handle, uint16_t account);
@@ -1526,8 +1529,17 @@ void host_ddial_relay_upstream_line(host_t *host, const char *line);
 bool host_ddial_client_send_raw(host_t *host, const char *data,
                                 size_t data_len);
 void host_ddial_client_send_private(host_t *host, uint16_t target_slot,
-                                    const char *our_handle,
+                                    uint16_t from_slot, const char *our_handle,
                                     const char *message);
+void host_ddial_deliver_link_private(host_t *host, uint16_t target_slot,
+                                     uint16_t from_slot, uint8_t channel,
+                                     const char *from_handle,
+                                     const char *message);
+bool host_ddial_relay_private(host_t *host, session_ctx_t *from,
+                              const char *target_handle, const char *message);
+/* Everyone on the DDial side (dial-ins and users behind the Station Link),
+ * written as "name, name, ..." into out; returns how many. */
+size_t host_ddial_participants(host_t *host, char *out, size_t cap);
 
 void host_ddial_notify_admin_if_port_adjusted(host_t *host, session_ctx_t *ctx);
 uint64_t host_allocate_session_id(host_t *host);

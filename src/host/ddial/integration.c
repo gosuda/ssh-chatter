@@ -615,3 +615,62 @@ void host_ddial_write_who(ddial_session_t *target)
     }
     pthread_mutex_unlock(&g_ddial_registry_lock);
 }
+
+typedef struct ddial_participant_list {
+    char *out;
+    size_t cap;
+    size_t len;
+    size_t count;
+} ddial_participant_list_t;
+
+static void ddial_participant_append(ddial_participant_list_t *list,
+                                     const char *name)
+{
+    int n = snprintf(list->out + list->len, list->cap - list->len, "%s%s",
+                     list->count > 0U ? ", " : "", name);
+    if (n > 0 && (size_t)n < list->cap - list->len) {
+        list->len += (size_t)n;
+    }
+    ++list->count;
+}
+
+static void ddial_participant_dialin_cb(struct ddial_session *sess, void *user)
+{
+    if (sess->logged_in && sess->handle[0] != '\0') {
+        ddial_participant_append((ddial_participant_list_t *)user,
+                                 sess->handle);
+    }
+}
+
+size_t host_ddial_participants(host_t *host, char *out, size_t cap)
+{
+    if (host == nullptr || out == nullptr || cap == 0U) {
+        return 0U;
+    }
+    out[0] = '\0';
+    ddial_participant_list_t list = {out, cap, 0U, 0U};
+    host_ddial_foreach_session(host, ddial_participant_dialin_cb, &list);
+
+    ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
+    char own_handle[DDIAL_MAX_HANDLE_LEN] = "";
+    ttak_mutex_lock(&client->lock);
+    if (client->user_mode) {
+        snprintf(own_handle, sizeof(own_handle), "%s", client->handle);
+    }
+    ttak_mutex_unlock(&client->lock);
+
+    ddial_roster_entry_t remote[DDIAL_ROSTER_MAX];
+    size_t remote_count =
+        ddial_roster_snapshot(host, own_handle, remote, DDIAL_ROSTER_MAX);
+    for (size_t i = 0U; i < remote_count; ++i) {
+        char name[DDIAL_MAX_HANDLE_LEN + 16];
+        if (strcmp(remote[i].handle, "?") == 0) {
+            snprintf(name, sizeof(name), "#%u (guest)",
+                     (unsigned)remote[i].slot);
+        } else {
+            snprintf(name, sizeof(name), "%s", remote[i].handle);
+        }
+        ddial_participant_append(&list, name);
+    }
+    return list.count;
+}

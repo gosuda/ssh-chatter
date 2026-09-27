@@ -401,6 +401,7 @@ static void ddial_client_disconnect(ddial_client_t *client)
         ddial_client_account_mark(client, false);
     }
     client->connected = false;
+    ddial_roster_clear();
     client->auth_sent = false;
     atomic_store(&client->auth_state, DDIAL_AUTH_NONE);
     client->auth_result = 0;
@@ -1079,6 +1080,25 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
 
     ddial_client_t *client = (ddial_client_t *)&host->ddial_relay;
 
+    /* Link private message: deliver to its one recipient, never to the
+     * room.  Our own /P (or a local user's) coming back is dropped. */
+    uint16_t pm_target = 0U;
+    uint16_t pm_from = 0U;
+    uint8_t pm_channel = DDIAL_DEFAULT_CHANNEL;
+    char pm_handle[DDIAL_MAX_HANDLE_LEN];
+    const char *pm_msg = nullptr;
+    if (ddial_parse_incoming_private(line, &pm_target, &pm_from, &pm_channel,
+                                     pm_handle, sizeof(pm_handle), &pm_msg)) {
+        ttak_mutex_lock(&client->lock);
+        bool echo = ddial_client_is_recent_echo(client, pm_msg);
+        ttak_mutex_unlock(&client->lock);
+        if (!echo && !host_ddial_handle_is_local(host, pm_handle, true)) {
+            host_ddial_deliver_link_private(host, pm_target, pm_from,
+                                            pm_channel, pm_handle, pm_msg);
+        }
+        return;
+    }
+
     char parsed_handle[DDIAL_MAX_HANDLE_LEN];
     const char *parsed_message = nullptr;
     bool is_our_line = false;
@@ -1152,11 +1172,9 @@ typedef struct {
  * If a kick/timeout line is seen, tears down the connection under the lock
  * and sets *out_disconnected.  Slot learning is performed here so the lock
  * is not held while broadcasting to the room. */
-static size_t ddial_client_extract_lines(host_t *host,
-                                         ddial_client_t *client,
+static size_t ddial_client_extract_lines(ddial_client_t *client,
                                          ddial_extracted_line_t *out_lines,
-                                         size_t max_lines,
-                                         bool force_flush,
+                                         size_t max_lines, bool force_flush,
                                          bool *out_disconnected)
 {
     if (client == nullptr || out_lines == nullptr || max_lines == 0U) {
@@ -1256,6 +1274,7 @@ static size_t ddial_client_extract_lines(host_t *host,
                 ddial_client_account_mark(client, false);
             }
             client->connected = false;
+            ddial_roster_clear();
             if (client->reconnect_attempts < 100000U) {
                 client->reconnect_attempts++;
             }
@@ -1282,21 +1301,23 @@ static size_t ddial_client_extract_lines(host_t *host,
         }
         ddial_client_note_auth_marker(client, normalized_line);
 
-        /* Route link private messages to the owning local -DT session. */
-        uint16_t pm_target = 0U;
-        uint16_t pm_from = 0U;
-        uint8_t pm_channel = DDIAL_DEFAULT_CHANNEL;
-        char pm_handle[DDIAL_MAX_HANDLE_LEN];
-        const char *pm_msg = nullptr;
-        if (host != nullptr &&
-            ddial_parse_incoming_private(line, &pm_target, &pm_from,
-                                         &pm_channel, pm_handle,
-                                         sizeof(pm_handle), &pm_msg)) {
-            char pm_display[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(pm_display, sizeof(pm_display), "P#%u[T%u:%s) %s",
-                     (unsigned int)pm_from, (unsigned int)pm_channel,
-                     pm_handle, pm_msg);
-            host_ddial_deliver_private_line(host, pm_target, pm_display);
+        char raw_clean[SSH_CHATTER_MESSAGE_LIMIT];
+        ddial_client_sanitize_line(line, strlen(line), raw_clean,
+                                   sizeof(raw_clean));
+        const char *raw_start = raw_clean;
+        while (*raw_start == ' ') {
+            ++raw_start;
+        }
+        ddial_roster_note_line(raw_start, normalized_line);
+
+        /* A link /P is handed on as the raw wire line; the broadcast step
+         * delivers it to its one recipient outside client->lock. */
+        if (ddial_parse_incoming_private(raw_start, nullptr, nullptr, nullptr,
+                                         nullptr, 0U, nullptr)) {
+            snprintf(out_lines[extracted].line,
+                     sizeof(out_lines[extracted].line), "%s", raw_start);
+            ++extracted;
+            continue;
         }
 
         snprintf(out_lines[extracted].line, sizeof(out_lines[extracted].line),
@@ -1368,7 +1389,7 @@ static void ddial_client_flush_received_lines(host_t *host,
     bool disconnected = false;
 
     ttak_mutex_lock(&client->lock);
-    size_t count = ddial_client_extract_lines(host, client, lines,
+    size_t count = ddial_client_extract_lines(client, lines,
                                               DDIAL_CLIENT_MAX_EXTRACTED_LINES,
                                               force_flush, &disconnected);
     ttak_mutex_unlock(&client->lock);
@@ -1408,9 +1429,8 @@ static bool ddial_client_read_chunk(ddial_client_t *client, host_t *host)
         client->recv_buf_len -= drop;
     }
 
-    size_t count = ddial_client_extract_lines(host, client, lines,
-                                              DDIAL_CLIENT_MAX_EXTRACTED_LINES,
-                                              false, &disconnected);
+    size_t count = ddial_client_extract_lines(
+        client, lines, DDIAL_CLIENT_MAX_EXTRACTED_LINES, false, &disconnected);
     ttak_mutex_unlock(&client->lock);
 
     for (size_t i = 0U; i < count; ++i) {
@@ -2042,18 +2062,43 @@ static size_t ddial_client_normalize_outbound_text(const char *src,
     return j;
 }
 
+static uint16_t host_ddial_chat_link_slot_of(host_t *host,
+                                             const char *username);
+
+/* Public chat from a Chatter member: speak from its chat-link line number,
+ * the same slot its login was announced with. */
 void host_ddial_client_send(host_t *host, const char *handle,
                             const char *message)
 {
-    host_ddial_client_send_channel(host, handle, DDIAL_DEFAULT_CHANNEL,
-                                   message);
+    uint16_t from_slot = 0U;
+    if (host != nullptr && handle != nullptr) {
+        from_slot = host_ddial_chat_link_slot_of(host, handle);
+    }
+    host_ddial_client_send_channel(host, from_slot, handle,
+                                   DDIAL_DEFAULT_CHANNEL, message);
+}
+
+/* Slot for a link line: the speaker's own line number, else the slot the
+ * remote assigned us, else line 1.  Never drop the "#slot[T1:" prefix --
+ * remotes show "63Lee Yunjin) hi" instead of "63#1[T1:Lee Yunjin) hi". */
+static uint16_t ddial_client_link_from_slot(ddial_client_t *client,
+                                            uint16_t from_slot)
+{
+    if (from_slot > 0U) {
+        return from_slot;
+    }
+    if (client->slot_known && client->slot > 0U) {
+        return client->slot;
+    }
+    return DDIAL_LINK_DEFAULT_SLOT;
 }
 
 /* Link-mode public chat.  Channel 1 (the tuned link channel) goes out as
  * "#slot[T1:handle) msg"; channels 2-4 go out with the '~' dual-channel
  * prefix per the wire spec. */
-void host_ddial_client_send_channel(host_t *host, const char *handle,
-                                    uint8_t channel, const char *message)
+void host_ddial_client_send_channel(host_t *host, uint16_t from_slot,
+                                    const char *handle, uint8_t channel,
+                                    const char *message)
 {
     if (host == nullptr || message == nullptr) {
         return;
@@ -2067,11 +2112,7 @@ void host_ddial_client_send_channel(host_t *host, const char *handle,
     bool connected = client->connected;
     int  upstream_fd  = client->upstream_fd;
     ddial_auth_state_t auth_state = atomic_load(&client->auth_state);
-    /* Remotes that never print our " #N(T1:?)" status line still expect the
-     * "#slot[T1:" prefix; line 1 is what a lone station link is given. */
-    uint16_t our_slot = (client->slot_known && client->slot > 0U)
-                            ? client->slot
-                            : DDIAL_LINK_DEFAULT_SLOT;
+    uint16_t our_slot = ddial_client_link_from_slot(client, from_slot);
     ttak_mutex_unlock(&client->lock);
 
     if (!enabled || !connected || upstream_fd < 0 ||
@@ -2164,7 +2205,7 @@ void host_ddial_client_send_channel(host_t *host, const char *handle,
 
 /* Send a /P private message to a remote slot over the link. */
 void host_ddial_client_send_private(host_t *host, uint16_t target_slot,
-                                    const char *our_handle,
+                                    uint16_t from_slot, const char *our_handle,
                                     const char *message)
 {
     if (host == nullptr || message == nullptr || target_slot == 0U) {
@@ -2177,9 +2218,7 @@ void host_ddial_client_send_private(host_t *host, uint16_t target_slot,
     bool connected    = client->connected;
     int  upstream_fd  = client->upstream_fd;
     ddial_auth_state_t auth_state = atomic_load(&client->auth_state);
-    uint16_t our_slot = (client->slot_known && client->slot > 0U)
-                            ? client->slot
-                            : DDIAL_LINK_DEFAULT_SLOT;
+    uint16_t our_slot = ddial_client_link_from_slot(client, from_slot);
     ttak_mutex_unlock(&client->lock);
 
     if (!enabled || !connected || upstream_fd < 0 ||
@@ -2222,6 +2261,7 @@ void host_ddial_client_send_private(host_t *host, uint16_t target_slot,
         (void)ddial_client_send_all(client->upstream_fd, wire_line,
                                     strlen(wire_line));
         ddial_client_update_send_time(client);
+        ddial_client_remember_sent(client, clean_msg);
     }
     ttak_mutex_unlock(&client->lock);
 }

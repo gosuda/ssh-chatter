@@ -8,7 +8,8 @@
 #define DDIAL_MIN_CHANNEL 1
 #define DDIAL_MAX_CHANNEL 4
 #define DDIAL_DEFAULT_CHANNEL 1
-/* Slot used in "#slot[T1:" link lines until the remote names ours. */
+/* Last-resort slot for "#slot[T1:" link lines when neither the speaker's
+ * line number nor ours on the remote is known. */
 #define DDIAL_LINK_DEFAULT_SLOT 1U
 #define DDIAL_MAX_HANDLE_LEN 32
 #define DDIAL_MAX_HANDLE_WIRE_LEN 25 /* spec: never exceed 25 chars */

@@ -1255,7 +1255,8 @@ void session_handle_ddial_slash(session_ctx_t *ctx, const char *line)
             return;
         }
         host_ddial_client_send_private(ctx->owner, (uint16_t)target,
-                                       ctx->user.name, parsed.body);
+                                       ctx->ddial_link_slot, ctx->user.name,
+                                       parsed.body);
         return;
     }
 

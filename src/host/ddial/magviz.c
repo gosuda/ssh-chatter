@@ -1165,7 +1165,7 @@ static void mv_public_chat(ddial_session_t *sess, uint16_t channel,
         } else {
             snprintf(wire, sizeof(wire), "%s", plain);
         }
-        host_ddial_client_send_channel(host, sess->handle,
+        host_ddial_client_send_channel(host, sess->slot, sess->handle,
                                        DDIAL_MV_LINK_CHANNEL(channel), wire);
     }
     if (vanish) {
@@ -1177,6 +1177,32 @@ static void mv_public_chat(ddial_session_t *sess, uint16_t channel,
 }
 
 /* ---- private messages --------------------------------------------------- */
+
+/* Show a DDial private message to the Chatter member on chat-link line
+ * slot.  Returns false when that line is not a connected Chatter member. */
+static bool mv_private_to_chatter(host_t *host, uint16_t slot,
+                                  uint16_t from_slot, const char *from_handle,
+                                  const char *body, bool action)
+{
+    char username[SSH_CHATTER_USERNAME_LEN];
+    if (!host_ddial_chat_link_username(host, slot, username,
+                                       sizeof(username))) {
+        return false;
+    }
+    session_ctx_t *ctx = chat_room_find_user_ref(&host->room, username);
+    if (ctx == nullptr) {
+        return false;
+    }
+    char line[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(line, sizeof(line), "[DDial PM from #%u %s] %s%s",
+             (unsigned)from_slot, from_handle, action ? "* " : "", body);
+    session_send_line(ctx, line);
+    if (ctx->history_scroll_position == 0U) {
+        session_refresh_input_line(ctx);
+    }
+    chat_room_release_user_ref(ctx);
+    return true;
+}
 
 static void mv_private_one(ddial_session_t *sess, uint16_t slot,
                            const char *body, bool action)
@@ -1205,28 +1231,72 @@ static void mv_private_one(ddial_session_t *sess, uint16_t slot,
     }
 
     char username[SSH_CHATTER_USERNAME_LEN];
-    if (host_ddial_chat_link_username(host, slot, username, sizeof(username))) {
-        session_ctx_t *ctx = chat_room_find_user_ref(&host->room, username);
-        if (ctx != nullptr) {
-            char line[SSH_CHATTER_MESSAGE_LIMIT];
-            snprintf(line, sizeof(line), "[DDial PM from #%u %s] %s%s",
-                     (unsigned)sess->slot, sess->handle, action ? "* " : "",
-                     body);
-            session_send_line(ctx, line);
-            if (ctx->history_scroll_position == 0U) {
-                session_refresh_input_line(ctx);
-            }
-            chat_room_release_user_ref(ctx);
-            mv_line(sess, "* Sent to #%u (%s, Chatter).", (unsigned)slot,
-                    username);
-            return;
-        }
+    if (host_ddial_chat_link_username(host, slot, username, sizeof(username)) &&
+        mv_private_to_chatter(host, slot, sess->slot, sess->handle, body,
+                              action)) {
+        mv_line(sess, "* Sent to #%u (%s, Chatter).", (unsigned)slot, username);
+        return;
     }
 
     /* Not local: hand it to the Station Link, if one is up. */
-    host_ddial_client_send_private(host, slot, sess->handle, body);
+    host_ddial_client_send_private(host, slot, sess->slot, sess->handle, body);
     mv_line(sess, "* Sent to #%u over the Station Link (if connected).",
             (unsigned)slot);
+}
+
+/* A /P that arrived over the Station Link: hand it to the local dial-in
+ * or Chatter member on target_slot. */
+void host_ddial_deliver_link_private(host_t *host, uint16_t target_slot,
+                                     uint16_t from_slot, uint8_t channel,
+                                     const char *from_handle,
+                                     const char *message)
+{
+    if (host == nullptr || from_handle == nullptr || message == nullptr) {
+        return;
+    }
+    char display[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(display, sizeof(display), "P#%u[T%u:%s) %s", (unsigned)from_slot,
+             (unsigned)channel, from_handle, message);
+    if (host_ddial_deliver_private_line(host, target_slot, display)) {
+        return;
+    }
+    (void)mv_private_to_chatter(host, target_slot, from_slot, from_handle,
+                                message, false);
+}
+
+/* Chatter /pm to someone on the DDial side: the private-message twin of the
+ * public relay.  A dial-in gets the same "P#slot(handle) msg" line a /p
+ * from another dial-in would produce; a user behind the Station Link gets
+ * a link /P.  Returns false when target_handle is on neither side. */
+bool host_ddial_relay_private(host_t *host, session_ctx_t *from,
+                              const char *target_handle, const char *message)
+{
+    if (host == nullptr || from == nullptr || target_handle == nullptr ||
+        message == nullptr) {
+        return false;
+    }
+    uint16_t from_slot = from->ddial_link_slot;
+
+    ddial_session_t *target = mv_find_handle(host, target_handle);
+    if (target != nullptr) {
+        if (mv_list_contains(&target->mv.squelch_slots, from_slot)) {
+            return true; /* squelched: accepted, silently not shown */
+        }
+        char text[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(text, sizeof(text), "P#%u(%s) %s", (unsigned)from_slot,
+                 from->user.name, message);
+        ddial_session_write_line(target, text);
+        mv_bell(target, DDIAL_MV_BEEP_PM);
+        return true;
+    }
+
+    uint16_t slot = 0U;
+    if (ddial_roster_find(host, target_handle, &slot)) {
+        host_ddial_client_send_private(host, slot, from_slot, from->user.name,
+                                       message);
+        return true;
+    }
+    return false;
 }
 
 static void mv_private(ddial_session_t *sess, const ddial_mv_slot_list_t *to,

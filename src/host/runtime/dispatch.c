@@ -116,6 +116,13 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
 
     else if (session_parse_command_any(ctx, "/set-sync-url", effective_line,
                                        &args)) {
+        /* Repoints history sync for the whole server. */
+        if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
+            session_send_system_line(
+                ctx, session_command_localize(
+                         ctx, "Only operators may change the sync server."));
+            return;
+        }
         if (args == nullptr || *args == '\0') {
             session_send_system_line(ctx, "Usage: /set-sync-url <host> <port>");
             return;
@@ -149,43 +156,6 @@ static void session_dispatch_command(session_ctx_t *ctx, const char *line)
             ctx, "SSH sync URL updated. Attempting to reconnect...");
         return;
     }
-
-    else if (session_parse_command_any(ctx, "/set-sync-url", effective_line,
-                                       &args)) {
-        if (args == nullptr || *args == '\0') {
-            session_send_system_line(ctx, "Usage: /set-sync-url <host> <port>");
-            return;
-        }
-
-        char host_str[256];
-        char port_str[16];
-        const char *remaining_args =
-            session_consume_token(args, host_str, sizeof(host_str));
-        remaining_args =
-            session_consume_token(remaining_args, port_str, sizeof(port_str));
-
-        if (host_str[0] == '\0' || port_str[0] == '\0') {
-            session_send_system_line(ctx, "Usage: /set-sync-url <host> <port>");
-            return;
-        }
-
-        char *endptr;
-        long port_long = strtol(port_str, &endptr, 10);
-        if (*endptr != '\0' || port_long <= 0 || port_long > 65535) {
-            session_send_system_line(
-                ctx, "Invalid port number. Port must be between 1 and 65535.");
-            return;
-        }
-
-        // For now, using default username and password. This can be extended later.
-        ssh_chatter_sync_set_connection_details(host_str, (int)port_long,
-                                                "chatter_sync", "password");
-        ssh_chatter_sync_manual_trigger();
-        session_send_system_line(
-            ctx, "SSH sync URL updated. Attempting to reconnect...");
-        return;
-    }
-
     else if (session_parse_command_any(ctx, "/history", effective_line,
                                        &args)) {
         session_handle_history(ctx, args);

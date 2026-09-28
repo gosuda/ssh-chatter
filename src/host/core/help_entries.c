@@ -2243,16 +2243,19 @@ static const session_help_entry_t kSessionHelpOperator[] = {
         .label = "set-sync-url <host> <port>",
         .description =
             {
-                "Point history sync at another server and reconnect.",
-                "기록 동기화 서버를 바꾸고 다시 연결합니다.",
-                "履歴同期サーバーを変更して再接続します。",
-                "更改历史同步服务器并重新连接。",
-                "Сменить сервер синхронизации истории и переподключиться.",
+                "Point history sync at another server and reconnect "
+                "(operator only).",
+                "기록 동기화 서버를 바꾸고 다시 연결합니다 (운영자 전용).",
+                "履歴同期サーバーを変更して再接続します（オペレーター専用）。",
+                "更改历史同步服务器并重新连接（仅限管理员）。",
+                "Сменить сервер синхронизации истории и переподключиться "
+                "(только оператор).",
                 "Den Server für die Verlaufssynchronisierung ändern und neu "
-                "verbinden.",
+                "verbinden (nur Operatoren).",
                 "Changer le serveur de synchronisation de l'historique et se "
-                "reconnecter.",
-                "Zmień serwer synchronizacji historii i połącz ponownie.",
+                "reconnecter (opérateur).",
+                "Zmień serwer synchronizacji historii i połącz ponownie "
+                "(tylko operator).",
             },
     },
     {

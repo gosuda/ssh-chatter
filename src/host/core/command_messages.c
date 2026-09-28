@@ -1154,6 +1154,23 @@ static const session_command_message_t kSessionCommandMessages[] = {
         },
     },
     {
+        "Only operators may change the sync server.",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "운영자만 동기화 서버를 바꿀 수 있습니다.",
+            [SESSION_UI_LANGUAGE_JP] =
+                "同期サーバーを変更できるのはオペレーターだけです。",
+            [SESSION_UI_LANGUAGE_ZH] = "只有管理员可以更改同步服务器。",
+            [SESSION_UI_LANGUAGE_RU] =
+                "Менять сервер синхронизации могут только операторы.",
+            [SESSION_UI_LANGUAGE_DE] =
+                "Nur Operatoren dürfen den Sync-Server ändern.",
+            [SESSION_UI_LANGUAGE_FR] =
+                "Seuls les opérateurs peuvent changer le serveur de synchronisation.",
+            [SESSION_UI_LANGUAGE_PL] =
+                "Tylko operatorzy mogą zmienić serwer synchronizacji.",
+        },
+    },
+    {
         "Only operators can reset passwords.",
         {
             [SESSION_UI_LANGUAGE_KO] =

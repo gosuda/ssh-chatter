@@ -76,6 +76,14 @@ if [ $? -ne 0 ]; then
 fi
 echo "SSL/TLS certificates generated successfully in $CERT_DIR."
 
+# Generate the chat server's SSH host key locally (never ship one in the repo)
+HOST_KEY="$INSTALL_DIR/ssh_host_rsa_key"
+if [ ! -f "$HOST_KEY" ]; then
+    echo "Generating SSH host key at $HOST_KEY..."
+    ssh-keygen -q -t rsa -b 4096 -N "" -f "$HOST_KEY" || { echo "Error: Failed to generate SSH host key."; exit 1; }
+    chmod 600 "$HOST_KEY"
+fi
+
 # Prompt for API Key
 API_KEY=""
 read -p "Enter your GOOGLE_API_KEY or GEMINI_API_KEY (leave blank if you want to set it manually later): " API_KEY
@@ -84,7 +92,7 @@ read -p "Enter your GOOGLE_API_KEY or GEMINI_API_KEY (leave blank if you want to
 echo "Creating and configuring systemd service files..."
 
 # ssh-chat-server.service
-SSH_CHAT_SERVICE_CONTENT="[Unit]\nDescription=SSH Chat Server\nAfter=network.target\n\n[Service]\nUser=sshchatterai ; IMPORTANT: Change this to a dedicated, less privileged user\nGroup=sshchatterai ; IMPORTANT: Change this to a dedicated, less privileged group\nWorkingDirectory=$INSTALL_DIR/ssh-chat/\nExecStartPre=/usr/bin/bash -c \"go build -o ssh-chat-server .\"\nExecStart=$INSTALL_DIR/ssh-chat/ssh-chat-server -key $CURRENT_DIR/tmp_keys/ssh_host_rsa_key -port 2222\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n"
+SSH_CHAT_SERVICE_CONTENT="[Unit]\nDescription=SSH Chat Server\nAfter=network.target\n\n[Service]\nUser=sshchatterai ; IMPORTANT: Change this to a dedicated, less privileged user\nGroup=sshchatterai ; IMPORTANT: Change this to a dedicated, less privileged group\nWorkingDirectory=$INSTALL_DIR/ssh-chat/\nExecStartPre=/usr/bin/bash -c \"go build -o ssh-chat-server .\"\nExecStart=$INSTALL_DIR/ssh-chat/ssh-chat-server -key $HOST_KEY -port 2222\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n"
 echo -e "$SSH_CHAT_SERVICE_CONTENT" | sudo tee /etc/systemd/system/ssh-chat-server.service > /dev/null
 
 # ai-message-sender.service

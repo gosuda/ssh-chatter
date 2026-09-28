@@ -10,8 +10,8 @@ WorkingDirectory=/home/yjlee/ssh-chatter/ssh-chat-with-ai/ssh-chat/
 # Build the Go SSH chat server (if not already built)
 ExecStartPre=/usr/bin/bash -c "go build -o ssh-chat-server ."
 
-# Start the SSH chat server
-ExecStart=/home/yjlee/ssh-chatter/ssh-chat-with-ai/ssh-chat/ssh-chat-server -key /home/yjlee/ssh-chatter/tmp_keys/ssh_host_rsa_key -port 2222
+# Start the SSH chat server (install_chatbot.sh generates the host key)
+ExecStart=/home/yjlee/ssh-chatter/ssh-chat-with-ai/ssh-chat/ssh-chat-server -key /var/lib/ssh-chatter-ai/ssh_host_rsa_key -port 2222
 
 Restart=always
 RestartSec=5

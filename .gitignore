@@ -18,3 +18,9 @@ stress-test
 display-model-test
 *.deb
 .cache/
+# Host keys, runtime state snapshots and local logs never belong in git
+tmp_keys/
+*_key
+*_key.pub
+*.dat.*.lz4
+*.log

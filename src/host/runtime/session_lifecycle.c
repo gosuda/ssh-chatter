@@ -550,7 +550,10 @@ static bool session_run_login_tui(session_ctx_t *ctx)
     }
 
     char welcome_line[256];
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     snprintf(welcome_line, sizeof(welcome_line), loc->welcome, ctx->user.name);
+#pragma GCC diagnostic pop
     session_send_system_line(ctx, welcome_line);
 
     int empty_enter_count = 0;

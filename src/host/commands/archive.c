@@ -254,7 +254,10 @@ static void session_archive_render_entries(session_ctx_t *ctx,
 
     session_send_system_line(ctx, archive_text_header(lang));
     char header[SSH_CHATTER_MESSAGE_LIMIT];
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
     snprintf(header, sizeof(header), archive_text_showing_format(lang), count);
+#pragma GCC diagnostic pop
     session_send_system_line(ctx, header);
 
     for (size_t idx = 0U; idx < count; ++idx) {
@@ -302,7 +305,10 @@ static void session_handle_archive_enter(session_ctx_t *ctx, const char *date_st
     size_t count = host_archive_read_date(ctx->owner, date_str, &entries);
     if (count == 0U || entries == nullptr) {
         char msg[SSH_CHATTER_MESSAGE_LIMIT];
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
         snprintf(msg, sizeof(msg), archive_text_no_date_format(lang), date_str);
+#pragma GCC diagnostic pop
         session_send_system_line(ctx, msg);
         return;
     }

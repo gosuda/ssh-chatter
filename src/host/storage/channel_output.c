@@ -671,12 +671,17 @@ static void session_output_buffer_flush(session_ctx_t *ctx)
 
     bool locked = session_output_lock(ctx);
     if (ctx->output_buffer_length > 0U) {
-        // Temporarily disable buffering to avoid infinite recursion
+        // Temporarily disable buffering to avoid infinite recursion.  The
+        // buffer holds output from before any scrollback capture began, so
+        // it goes straight out rather than into the capture.
+        char *capture = ctx->scrollback_capture;
+        ctx->scrollback_capture = nullptr;
         ctx->output_buffering_enabled = false;
         session_channel_write(ctx, ctx->output_buffer,
                               ctx->output_buffer_length);
         ctx->output_buffer_length = 0U;
         ctx->output_buffering_enabled = true;
+        ctx->scrollback_capture = capture;
     }
     if (locked) {
         session_output_unlock(ctx);

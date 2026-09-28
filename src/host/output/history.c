@@ -118,6 +118,235 @@ static void session_history_navigate(session_ctx_t *ctx, int direction)
     }
 }
 
+/* Terminal rows the bytes take once printed: follows CR/LF, ESC[nG column
+ * moves and wide characters, wrapping at the terminal width the way a
+ * terminal does (a full row only wraps on the next printable). */
+static size_t session_scrollback_count_rows(const session_ctx_t *ctx,
+                                            const char *data, size_t length)
+{
+    const size_t width =
+        (ctx->terminal_width > 0U) ? (size_t)ctx->terminal_width : 80U;
+    size_t rows = 0U;
+    size_t col = 0U;
+    size_t idx = 0U;
+    while (idx < length) {
+        const unsigned char ch = (unsigned char)data[idx];
+        if (ch == 0x1BU) {
+            if (idx + 1U < length && data[idx + 1U] == '[') {
+                size_t end = idx + 2U;
+                size_t param = 0U;
+                while (end < length && ((unsigned char)data[end] < 0x40U ||
+                                        (unsigned char)data[end] > 0x7EU)) {
+                    if (isdigit((unsigned char)data[end])) {
+                        param = param * 10U + (size_t)(data[end] - '0');
+                    } else {
+                        param = 0U;
+                    }
+                    ++end;
+                }
+                if (end < length && data[end] == 'G') {
+                    col = param > 0U ? param - 1U : 0U;
+                    if (col > width) {
+                        col = width;
+                    }
+                }
+                idx = end < length ? end + 1U : length;
+            } else {
+                idx += 2U;
+            }
+            continue;
+        }
+        if (ch == '\r') {
+            col = 0U;
+            ++idx;
+            continue;
+        }
+        if (ch == '\n') {
+            ++rows;
+            col = 0U;
+            ++idx;
+            continue;
+        }
+        if (ch < 0x20U || ch == 0x7FU) {
+            ++idx;
+            continue;
+        }
+        size_t seq_len = 1U;
+        if (ch >= 0xF0U) {
+            seq_len = 4U;
+        } else if (ch >= 0xE0U) {
+            seq_len = 3U;
+        } else if (ch >= 0xC0U) {
+            seq_len = 2U;
+        }
+        if (seq_len > length - idx) {
+            seq_len = length - idx;
+        }
+        const int char_width =
+            ch < 0x80U ? 1 : session_utf8_char_width(&data[idx], seq_len);
+        if (char_width > 0) {
+            if (col + (size_t)char_width > width) {
+                ++rows;
+                col = 0U;
+            }
+            col += (size_t)char_width;
+        }
+        idx += seq_len;
+    }
+    if (col > 0U) {
+        ++rows;
+    }
+    return rows;
+}
+
+static void session_scrollback_send_header(session_ctx_t *ctx, size_t oldest,
+                                           size_t newest, size_t total)
+{
+    char header[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(header, sizeof(header), "Scrollback (%zu-%zu of %zu)",
+             oldest + 1U, newest + 1U, total);
+    session_send_system_line(ctx, header);
+}
+
+/* Render one scrollback frame: a header, then entries[0..count) (history
+ * indices oldest_index onward).  A message can wrap or carry captions over
+ * several rows, so a frame of N messages has no fixed height; the frame is
+ * captured first, and the oldest messages are dropped until the rest fit in
+ * max_rows so every frame is the same height.  Returns the rows written,
+ * header included, and the history index of the oldest message shown. */
+static size_t session_scrollback_render_window_locked(
+    session_ctx_t *ctx, const chat_history_entry_t *entries, size_t count,
+    size_t oldest_index, size_t total, size_t max_rows, size_t *first_shown);
+
+/* Other sessions' threads write to this one; hold its (recursive) output
+ * lock so none of their bytes land in, or race with, the capture. */
+static size_t session_scrollback_render_window(
+    session_ctx_t *ctx, const chat_history_entry_t *entries, size_t count,
+    size_t oldest_index, size_t total, size_t max_rows, size_t *first_shown)
+{
+    const bool locked = session_output_lock(ctx);
+    const size_t rows = session_scrollback_render_window_locked(
+        ctx, entries, count, oldest_index, total, max_rows, first_shown);
+    if (locked) {
+        session_output_unlock(ctx);
+    }
+    return rows;
+}
+
+static size_t session_scrollback_render_window_locked(
+    session_ctx_t *ctx, const chat_history_entry_t *entries, size_t count,
+    size_t oldest_index, size_t total, size_t max_rows, size_t *first_shown)
+{
+    *first_shown = oldest_index;
+    ctx->scrollback_rendered_entries = count;
+    if (ctx->display_model_initialized) {
+        ctx->display_model.line_count = 0U;
+    }
+
+    size_t offsets[SSH_CHATTER_SCROLLBACK_MAX_CHUNK + 1U];
+    bool measurable = count <= SSH_CHATTER_SCROLLBACK_MAX_CHUNK &&
+                      ctx->scrollback_capture == nullptr;
+    if (measurable) {
+        /* Send the clear/cursor moves queued before the frame first. */
+        session_output_buffer_flush(ctx);
+        ctx->scrollback_capture_capacity = SSH_CHATTER_OUTPUT_BUFFER_SIZE;
+        ctx->scrollback_capture =
+            (char *)sshc_gc_malloc(ctx->scrollback_capture_capacity);
+        ctx->scrollback_capture_length = 0U;
+        ctx->scrollback_capture_overflowed = false;
+        if (ctx->scrollback_capture == nullptr) {
+            ctx->scrollback_capture_capacity = 0U;
+            measurable = false;
+        }
+    }
+
+    if (!measurable) {
+        session_scrollback_send_header(ctx, oldest_index,
+                                       oldest_index + count - 1U, total);
+        for (size_t idx = 0U; idx < count; ++idx) {
+            session_send_history_entry(ctx, &entries[idx]);
+        }
+        if (ctx->display_model_initialized) {
+            return ctx->display_model.line_count + 1U;
+        }
+        return count + 1U;
+    }
+
+    for (size_t idx = 0U; idx < count; ++idx) {
+        offsets[idx] = ctx->scrollback_capture_length;
+        session_send_history_entry(ctx, &entries[idx]);
+    }
+    offsets[count] = ctx->scrollback_capture_length;
+
+    char *captured = ctx->scrollback_capture;
+    ctx->scrollback_capture = nullptr;
+    ctx->scrollback_capture_length = 0U;
+    ctx->scrollback_capture_capacity = 0U;
+    if (captured == nullptr || ctx->scrollback_capture_overflowed) {
+        /* The capture outgrew its cap and went out unmeasured (no header). */
+        ctx->scrollback_capture_overflowed = false;
+        if (ctx->display_model_initialized) {
+            return ctx->display_model.line_count;
+        }
+        return count;
+    }
+
+    size_t first = count;
+    size_t entry_rows = 0U;
+    while (first > 0U) {
+        const size_t rows = session_scrollback_count_rows(
+            ctx, &captured[offsets[first - 1U]],
+            offsets[first] - offsets[first - 1U]);
+        /* The newest message always stays, even if it alone is too tall. */
+        if (first < count && entry_rows + rows > max_rows) {
+            break;
+        }
+        entry_rows += rows;
+        --first;
+    }
+
+    ctx->scrollback_capture_capacity = SSH_CHATTER_MESSAGE_LIMIT;
+    ctx->scrollback_capture =
+        (char *)sshc_gc_malloc(ctx->scrollback_capture_capacity);
+    ctx->scrollback_capture_length = 0U;
+    size_t header_rows = 1U;
+    if (ctx->scrollback_capture != nullptr) {
+        session_scrollback_send_header(ctx, oldest_index + first,
+                                       oldest_index + count - 1U, total);
+        char *header = ctx->scrollback_capture;
+        const size_t header_length = ctx->scrollback_capture_length;
+        ctx->scrollback_capture = nullptr;
+        ctx->scrollback_capture_length = 0U;
+        ctx->scrollback_capture_capacity = 0U;
+        if (header != nullptr && !ctx->scrollback_capture_overflowed) {
+            header_rows =
+                session_scrollback_count_rows(ctx, header, header_length);
+            session_channel_write(ctx, header, header_length);
+        }
+        ctx->scrollback_capture_overflowed = false;
+        sshc_gc_free(header);
+    } else {
+        ctx->scrollback_capture_capacity = 0U;
+        session_scrollback_send_header(ctx, oldest_index + first,
+                                       oldest_index + count - 1U, total);
+    }
+
+    session_channel_write(ctx, &captured[offsets[first]],
+                          offsets[count] - offsets[first]);
+    sshc_gc_free(captured);
+
+    *first_shown = oldest_index + first;
+    ctx->scrollback_rendered_entries = count - first;
+    if (first > 0U && ctx->display_model_initialized &&
+        entries[first].message_id > 0U) {
+        ctx->display_model.view.mode = VIEW_MANUAL_SCROLL;
+        ctx->display_model.view.anchor.message_id = entries[first].message_id;
+        ctx->display_model.view.anchor.subline_index = 0U;
+    }
+
+    return header_rows + entry_rows;
+}
+
 void session_scrollback_navigate(session_ctx_t *ctx, int direction,
                                  size_t step)
 {
@@ -150,97 +379,44 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
 
     size_t buffer_capacity = 0U;
     chat_history_entry_t *buffer = nullptr;
-    bool reached_oldest = false;
 
     size_t scroll_step = (step == 0) ? session_visible_history_lines(ctx) : step;
     if (scroll_step == 0U) {
         scroll_step = 1U;
     }
 
-    size_t max_position = 0U;
-    if (total > scroll_step) {
-        max_position = total - scroll_step;
+    /* A frame can hold fewer than scroll_step messages once tall ones are
+     * trimmed, so page by what the last frame actually showed and let the
+     * view go as deep as the oldest message. */
+    size_t page = ctx->scrollback_rendered_entries;
+    if (ctx->history_scroll_position == 0U || page == 0U ||
+        page > scroll_step) {
+        page = scroll_step;
     }
+    const size_t max_position = total - 1U;
     if (ctx->history_scroll_position > max_position) {
         ctx->history_scroll_position = max_position;
     }
-    size_t position = ctx->history_scroll_position;
+    const size_t position = ctx->history_scroll_position;
     size_t new_position = position;
     if (direction > 0) {
-        size_t current_newest_visible = 0U;
-        if (position < total) {
-            current_newest_visible = total - 1U - position;
+        size_t advance = page;
+        if (advance > max_position - new_position) {
+            advance = max_position - new_position;
         }
-
-        size_t current_chunk = scroll_step;
-        if (current_chunk > current_newest_visible + 1U) {
-            current_chunk = current_newest_visible + 1U;
-        }
-        if (current_chunk == 0U) {
-            current_chunk = 1U;
-        }
-
-        const size_t current_oldest_visible =
-            (current_newest_visible + 1U > current_chunk)
-                ? (current_newest_visible + 1U - current_chunk)
-                : 0U;
-
-        if (current_oldest_visible == 0U) {
-            reached_oldest = true;
-        } else if (new_position < max_position) {
-            size_t advance = scroll_step;
-            if (advance > max_position - new_position) {
-                advance = max_position - new_position;
-            }
-            if (advance == 0U) {
-                reached_oldest = true;
-            } else {
-                new_position += advance;
-                if (new_position == max_position) {
-                    reached_oldest = true;
-                }
-            }
-        } else {
-            reached_oldest = true;
-        }
+        new_position += advance;
     } else if (direction < 0) {
-        if (new_position > 0U) {
-            size_t retreat = scroll_step;
-            if (retreat > new_position) {
-                retreat = new_position;
-            }
-            new_position -= retreat;
+        size_t retreat = page;
+        if (retreat > new_position) {
+            retreat = new_position;
         }
+        new_position -= retreat;
     }
 
-    bool at_boundary = (new_position == position);
-    ctx->history_scroll_position = new_position;
-
-    bool at_oldest = (ctx->history_scroll_position == max_position);
-
+    const bool at_boundary = (new_position == position);
     ctx->no_update = true;
     ctx->history_latest_notified = false;
-    // Synchronize the display model: switch to manual scroll with a
-    // stable anchor based on the oldest visible message so that new
-    // incoming messages do not jump the view back to the tail.
-    if (ctx->display_model_initialized) {
-        const size_t nv = total - 1U - new_position;
-        size_t cs = scroll_step;
-        if (cs > nv + 1U) cs = nv + 1U;
-        if (cs == 0U) cs = 1U;
-        const size_t ov = (nv + 1U > cs) ? (nv + 1U - cs) : 0U;
-        chat_history_entry_t anchor_buf;
-        if (host_history_copy_range(ctx->owner, ov, &anchor_buf, 1U) == 1U &&
-            anchor_buf.message_id > 0U) {
-            ctx->display_model.view.mode = VIEW_MANUAL_SCROLL;
-            ctx->display_model.view.anchor.message_id = anchor_buf.message_id;
-            ctx->display_model.view.anchor.subline_index = 0U;
-        }
-    }
-
-    if (!at_oldest) {
-        ctx->history_oldest_notified = false;
-    }
+    ctx->history_oldest_notified = false;
 
     if (direction < 0 && at_boundary && new_position == 0U) {
         /* Returning from a scrolled view: the screen no longer holds the
@@ -250,76 +426,50 @@ void session_scrollback_navigate(session_ctx_t *ctx, int direction,
         goto cleanup;
     }
 
+    const size_t newest_visible = total - 1U - new_position;
+    size_t chunk = scroll_step;
+    if (chunk > newest_visible + 1U) {
+        chunk = newest_visible + 1U;
+    }
+    buffer = session_scrollback_reserve_buffer(ctx, chunk, &buffer_capacity);
+    if (buffer == nullptr) {
+        goto cleanup;
+    }
+    if (chunk > buffer_capacity) {
+        chunk = buffer_capacity;
+    }
+    const size_t oldest_visible = newest_visible + 1U - chunk;
+    const size_t copied =
+        host_history_copy_range(ctx->owner, oldest_visible, buffer, chunk);
+    if (copied == 0U) {
+        session_send_system_line(ctx, "Unable to read chat history right now.");
+        ctx->history_latest_notified = false;
+        ctx->history_oldest_notified = false;
+        session_render_prompt(ctx, false);
+        goto cleanup;
+    }
+    ctx->history_scroll_position = new_position;
+
+    /* Coming from the live tail the whole screen is chat, and an in-place
+     * redraw (resize, leaving a mode) cannot trust the last frame's size:
+     * clear the full screen in both cases. */
+    if (position == 0U || direction == 0) {
+        ctx->scrollback_rendered_lines = 0U;
+    }
     session_scrollback_prepare_display(ctx);
 
     const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
     session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
 
-    size_t newest_visible = 0U;
-    if (total > 0U && new_position < total) {
-        newest_visible = total - 1U - new_position;
-    }
-    size_t chunk = scroll_step;
-    if (chunk > newest_visible + 1U) {
-        chunk = newest_visible + 1U;
-    }
-    if (chunk == 0U) {
-        chunk = 1U;
-    }
+    size_t first_shown = oldest_visible;
+    ctx->scrollback_rendered_lines = session_scrollback_render_window(
+        ctx, buffer, copied, oldest_visible, total, scroll_step, &first_shown);
 
-    const size_t oldest_visible =
-        (newest_visible + 1U > chunk) ? (newest_visible + 1U - chunk) : 0U;
-
-    if (direction > 0 && reached_oldest) {
-        if (!ctx->history_oldest_notified) {
-            ctx->history_oldest_notified = true;
-        }
+    if (first_shown == 0U) {
+        ctx->history_oldest_notified = true;
     }
-
-    char header[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(header, sizeof(header), "Scrollback (%zu-%zu of %zu)",
-             oldest_visible + 1U, newest_visible + 1U, total);
-    session_send_system_line(ctx, header);
-
-    if (ctx->display_model_initialized) {
-        ctx->display_model.line_count = 0U;
-    }
-
-    buffer = session_scrollback_reserve_buffer(ctx, chunk, &buffer_capacity);
-    if (buffer == nullptr) {
-        goto cleanup;
-    }
-
-    size_t request = chunk;
-    if (request > buffer_capacity) {
-        request = buffer_capacity;
-    }
-    size_t copied =
-        host_history_copy_range(ctx->owner, oldest_visible, buffer, request);
-    if (copied == 0U) {
-        session_send_system_line(ctx, "Unable to read chat history right now.");
-        ctx->history_scroll_position = (total > 0U) ? max_position : 0U;
-        ctx->history_latest_notified = false;
-        ctx->history_oldest_notified = false;
-        ctx->scrollback_rendered_lines = 0U;
-        session_render_prompt(ctx, false);
-        goto cleanup;
-    }
-
-    for (size_t idx = 0; idx < copied; ++idx) {
-        session_send_history_entry(ctx, &buffer[idx]);
-    }
-
-    if (ctx->display_model_initialized) {
-        ctx->scrollback_rendered_lines = ctx->display_model.line_count + 1U;
-    } else {
-        ctx->scrollback_rendered_lines = copied + 1U;
-    }
-
     if (direction < 0 && new_position == 0U) {
-        if (!ctx->history_latest_notified) {
-            ctx->history_latest_notified = true;
-        }
+        ctx->history_latest_notified = true;
     }
 
     session_render_prompt(ctx, false);
@@ -366,58 +516,29 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         visible_lines = 1U;
     }
 
-    size_t max_position = 0U;
-    if (total > visible_lines) {
-        max_position = total - visible_lines;
-    }
+    /* One message per step, as deep as the oldest message: frames are
+     * trimmed to the screen, so the oldest ones may need the extra steps. */
+    const size_t max_position = total - 1U;
     if (ctx->history_scroll_position > max_position) {
         ctx->history_scroll_position = max_position;
     }
-    size_t position = ctx->history_scroll_position;
+    const size_t position = ctx->history_scroll_position;
     size_t new_position = position;
     size_t buffer_capacity = 0U;
     chat_history_entry_t *buffer = nullptr;
 
-    // Scroll by exactly 1 line
     if (direction > 0) {
-        // Scroll toward older messages
         if (new_position < max_position) {
             new_position += 1U;
         }
-    } else if (direction < 0) {
-        // Scroll toward newer messages
-        if (new_position > 0U) {
-            new_position -= 1U;
-        }
+    } else if (new_position > 0U) {
+        new_position -= 1U;
     }
 
-    bool at_boundary = (new_position == position);
-    ctx->history_scroll_position = new_position;
-
-    bool at_oldest = (ctx->history_scroll_position == max_position);
-
+    const bool at_boundary = (new_position == position);
     ctx->no_update = true;
     ctx->history_latest_notified = false;
-    // Keep display model in manual scroll so new messages don't jump
-    // the view to tail while the user is reading back-history.
-    if (ctx->display_model_initialized) {
-        const size_t nv = total - 1U - new_position;
-        size_t cs = visible_lines;
-        if (cs > nv + 1U) cs = nv + 1U;
-        if (cs == 0U) cs = 1U;
-        const size_t ov = (nv + 1U > cs) ? (nv + 1U - cs) : 0U;
-        chat_history_entry_t anchor_buf;
-        if (host_history_copy_range(ctx->owner, ov, &anchor_buf, 1U) == 1U &&
-            anchor_buf.message_id > 0U) {
-            ctx->display_model.view.mode = VIEW_MANUAL_SCROLL;
-            ctx->display_model.view.anchor.message_id = anchor_buf.message_id;
-            ctx->display_model.view.anchor.subline_index = 0U;
-        }
-    }
-
-    if (!at_oldest) {
-        ctx->history_oldest_notified = false;
-    }
+    ctx->history_oldest_notified = false;
 
     if (direction < 0 && at_boundary && new_position == 0U) {
         /* Returning from a scrolled view: the screen no longer holds the
@@ -427,75 +548,46 @@ static void session_scrollback_navigate_line(session_ctx_t *ctx, int direction)
         goto cleanup;
     }
 
+    const size_t newest_visible = total - 1U - new_position;
+    size_t chunk = visible_lines;
+    if (chunk > newest_visible + 1U) {
+        chunk = newest_visible + 1U;
+    }
+    buffer = session_scrollback_reserve_buffer(ctx, chunk, &buffer_capacity);
+    if (buffer == nullptr) {
+        goto cleanup;
+    }
+    if (chunk > buffer_capacity) {
+        chunk = buffer_capacity;
+    }
+    const size_t oldest_visible = newest_visible + 1U - chunk;
+    const size_t copied =
+        host_history_copy_range(ctx->owner, oldest_visible, buffer, chunk);
+    if (copied == 0U) {
+        session_render_prompt(ctx, false);
+        goto cleanup;
+    }
+    ctx->history_scroll_position = new_position;
+
+    /* Coming from the live tail, the whole screen is chat: clear all of it. */
+    if (position == 0U) {
+        ctx->scrollback_rendered_lines = 0U;
+    }
     session_scrollback_prepare_display(ctx);
 
     const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
     session_channel_write(ctx, clear_sequence, sizeof(clear_sequence) - 1U);
 
-    // Calculate sliding window - always show the configured message chunk
-    size_t newest_visible = 0U;
-    if (total > 0U && new_position < total) {
-        newest_visible = total - 1U - new_position;
-    }
-    size_t chunk = visible_lines;
-    if (chunk > newest_visible + 1U) {
-        chunk = newest_visible + 1U;
-    }
-    if (chunk == 0U) {
-        chunk = 1U;
-    }
+    size_t first_shown = oldest_visible;
+    ctx->scrollback_rendered_lines = session_scrollback_render_window(
+        ctx, buffer, copied, oldest_visible, total, visible_lines,
+        &first_shown);
 
-    const size_t oldest_visible =
-        (newest_visible + 1U > chunk) ? (newest_visible + 1U - chunk) : 0U;
-
-    buffer = session_scrollback_reserve_buffer(ctx, chunk, &buffer_capacity);
-    if (buffer == nullptr) {
-        goto cleanup;
+    if (first_shown == 0U) {
+        ctx->history_oldest_notified = true;
     }
-
-    size_t request = chunk;
-    if (request > buffer_capacity) {
-        request = buffer_capacity;
-    }
-    size_t copied =
-        host_history_copy_range(ctx->owner, oldest_visible, buffer, request);
-    if (copied == 0U) {
-        ctx->history_scroll_position = (total > 0U) ? max_position : 0U;
-        ctx->history_latest_notified = false;
-        ctx->scrollback_rendered_lines = 0U;
-        session_render_prompt(ctx, false);
-        goto cleanup;
-    }
-
-    // Show header indicating the message range being displayed
-    char header[SSH_CHATTER_MESSAGE_LIMIT];
-    snprintf(header, sizeof(header), "Scrollback (%zu-%zu of %zu)",
-             oldest_visible + 1U, newest_visible + 1U, total);
-    session_send_system_line(ctx, header);
-
-    if (ctx->display_model_initialized) {
-        ctx->display_model.line_count = 0U;
-    }
-
-    for (size_t idx = 0; idx < copied; ++idx) {
-        session_send_history_entry(ctx, &buffer[idx]);
-    }
-
-    if (ctx->display_model_initialized) {
-        ctx->scrollback_rendered_lines = ctx->display_model.line_count + 1U;
-    } else {
-        ctx->scrollback_rendered_lines = copied + 1U;
-    }
-
     if (direction < 0 && new_position == 0U) {
-        if (!ctx->history_latest_notified) {
-            ctx->history_latest_notified = true;
-        }
-    }
-    if (direction > 0 && new_position == max_position) {
-        if (!ctx->history_oldest_notified) {
-            ctx->history_oldest_notified = true;
-        }
+        ctx->history_latest_notified = true;
     }
 
     session_render_prompt(ctx, false);

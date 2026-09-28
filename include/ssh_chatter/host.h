@@ -949,6 +949,15 @@ typedef struct session_ctx {
     bool history_oldest_notified;
     bool history_latest_notified;
     size_t scrollback_rendered_lines;
+    /* Messages shown in the last scrollback frame; a page step moves by
+     * this many so tall messages trimmed off a frame are not skipped. */
+    size_t scrollback_rendered_entries;
+    /* While set, session_channel_write() appends here instead of sending,
+     * so a scrollback frame can be measured before it goes out. */
+    char *scrollback_capture;
+    size_t scrollback_capture_length;
+    size_t scrollback_capture_capacity;
+    bool scrollback_capture_overflowed;
     chat_history_entry_t *scrollback_buffer;
     size_t scrollback_buffer_capacity;
     bool

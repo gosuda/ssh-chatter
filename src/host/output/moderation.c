@@ -1121,11 +1121,58 @@ static void session_handle_search(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, listing);
 }
 
+#define SESSION_SCROLLBACK_CAPTURE_MAX (256U * 1024U)
+
+/* Divert a write into the scrollback capture.  When it would outgrow the
+ * cap, send what was captured, drop the capture and return false. */
+static bool session_scrollback_capture_append(session_ctx_t *ctx,
+                                              const void *data, size_t length)
+{
+    const size_t needed = ctx->scrollback_capture_length + length;
+    if (needed > ctx->scrollback_capture_capacity) {
+        size_t capacity = ctx->scrollback_capture_capacity * 2U;
+        if (capacity < needed) {
+            capacity = needed;
+        }
+        char *grown = nullptr;
+        if (capacity <= SESSION_SCROLLBACK_CAPTURE_MAX) {
+            grown = (char *)sshc_gc_realloc(ctx->scrollback_capture, capacity);
+        }
+        if (grown == nullptr) {
+            char *captured = ctx->scrollback_capture;
+            const size_t captured_length = ctx->scrollback_capture_length;
+            ctx->scrollback_capture = nullptr;
+            ctx->scrollback_capture_length = 0U;
+            ctx->scrollback_capture_capacity = 0U;
+            ctx->scrollback_capture_overflowed = true;
+            if (captured_length > 0U) {
+                session_channel_write(ctx, captured, captured_length);
+            }
+            sshc_gc_free(captured);
+            return false;
+        }
+        ctx->scrollback_capture = grown;
+        ctx->scrollback_capture_capacity = capacity;
+    }
+    memcpy(ctx->scrollback_capture + ctx->scrollback_capture_length, data,
+           length);
+    ctx->scrollback_capture_length = needed;
+    return true;
+}
+
 void session_channel_write(session_ctx_t *ctx, const void *data, size_t length)
 {
     if (ctx == nullptr || data == nullptr || length == 0U || ctx->should_exit ||
         !session_transport_active(ctx)) {
         return;
+    }
+
+    if (ctx->scrollback_capture != nullptr) {
+        if (session_scrollback_capture_append(ctx, data, length)) {
+            return;
+        }
+        /* Too big to hold: the capture was sent out as-is and stopped; fall
+         * through so this write follows it. */
     }
 
     // If output buffering is enabled, append to buffer instead of writing directly

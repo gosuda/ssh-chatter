@@ -226,6 +226,7 @@ void session_scrollback_reset_position(session_ctx_t *ctx)
     ctx->history_latest_notified = false;
     ctx->history_oldest_notified = false;
     ctx->scrollback_rendered_lines = 0U;
+    ctx->scrollback_rendered_entries = 0U;
     // Clear no_update flag when returning to latest messages
     ctx->no_update = false;
 

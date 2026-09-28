@@ -193,7 +193,11 @@ static size_t session_scrollback_line_capacity(const session_ctx_t *ctx)
     size_t target = SSH_CHATTER_SCROLLBACK_CHUNK;
 
     if (ctx != nullptr) {
-        unsigned int height = ctx->terminal_height;
+        /* Without a reported size, match the default height the scrollback
+         * clear assumes, or frames run past the top of the screen. */
+        unsigned int height = ctx->terminal_height > 0U
+                                  ? ctx->terminal_height
+                                  : SESSION_DEFAULT_TERMINAL_HEIGHT;
         if (height > 0U) {
             const unsigned int reserved_lines = 2U;
             if (height > reserved_lines) {

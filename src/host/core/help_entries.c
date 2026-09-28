@@ -535,18 +535,47 @@ static const session_help_entry_t kSessionHelpEssential[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "ddial <connect|disconnect|status>",
+        .label = "ddial [status]",
         .description =
             {
-                "Connect to Retro-Dial.",
-                "Retro-Dial에 연결합니다.",
-                "Retro-Dialに接続します。",
-                "连接 Retro-Dial。",
-                "Подключиться к Retro-Dial.",
-                "Mit Retro-Dial verbinden.",
-                "Se connecter à Retro-Dial.",
-                "Połącz z Retro-Dial.",
+                "Show the Retro-Dial (DDial) link status. Only plain ASCII "
+                "chat is relayed to DDial; lines with Korean or other "
+                "non-ASCII text stay in this room. %ss, %si, %sh, %sls and "
+                "%sver ask the linked station.",
+                "Retro-Dial(DDial) 연결 상태를 보여줍니다. DDial에는 ASCII "
+                "채팅만 중계되며, 한국어 등 ASCII가 아닌 글자가 섞인 줄은 이 "
+                "방에만 남습니다. %ss, %si, %sh, %sls, %sver 는 연결된 "
+                "스테이션에 물어봅니다.",
+                "Retro-Dial（DDial）の接続状態を表示します。DDial へは ASCII "
+                "のチャットだけが中継され、日本語など ASCII 以外を含む行は"
+                "この部屋にだけ残ります。%ss, %si, %sh, %sls, %sver は接続先"
+                "ステーションに問い合わせます。",
+                "显示 Retro-Dial（DDial）连接状态。只有纯 ASCII 聊天会转发到 "
+                "DDial，含中文等非 ASCII 字符的行只留在本聊天室。%ss、%si、"
+                "%sh、%sls、%sver 会查询已连接的站点。",
+                "Показать состояние связи с Retro-Dial (DDial). В DDial "
+                "уходят только строки на чистом ASCII; строки с кириллицей и "
+                "другими не-ASCII символами остаются в комнате. %ss, %si, "
+                "%sh, %sls и %sver спрашивают связанную станцию.",
+                "Status der Retro-Dial-Verbindung (DDial) anzeigen. Nur reiner "
+                "ASCII-Chat geht an DDial; Zeilen mit Umlauten oder anderem "
+                "Nicht-ASCII bleiben in diesem Raum. %ss, %si, %sh, %sls und "
+                "%sver fragen die verbundene Station.",
+                "Afficher l'état du lien Retro-Dial (DDial). Seul le chat en "
+                "ASCII pur est relayé vers DDial ; les lignes avec accents ou "
+                "autres caractères non ASCII restent dans ce salon. %ss, %si, "
+                "%sh, %sls et %sver interrogent la station liée.",
+                "Pokaż stan połączenia z Retro-Dial (DDial). Do DDial trafia "
+                "tylko czat w czystym ASCII; linie z polskimi znakami lub "
+                "innymi spoza ASCII zostają w tym pokoju. %ss, %si, %sh, %sls "
+                "i %sver pytają połączoną stację.",
             },
+        .description_arg_count = 5U,
+        .description_args = {SESSION_HELP_TEMPLATE_ARG_PREFIX,
+                             SESSION_HELP_TEMPLATE_ARG_PREFIX,
+                             SESSION_HELP_TEMPLATE_ARG_PREFIX,
+                             SESSION_HELP_TEMPLATE_ARG_PREFIX,
+                             SESSION_HELP_TEMPLATE_ARG_PREFIX},
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
@@ -2051,6 +2080,34 @@ static const session_help_entry_t kSessionHelpOperator[] = {
                     "ai成员 <开|关> [名字 ...|全部] [use-gemini]",
                 [SESSION_UI_LANGUAGE_RU] =
                     "ai-участник <вкл|выкл> [имя ...|все] [use-gemini]",
+            },
+        .label_arg_count = 0U,
+        .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "ddial <connect <host> <port> [handle]|reconnect|disconnect|"
+                 "raw <c-string>>",
+        .description =
+            {
+                "Drive the DDial relay link; raw sends escaped bytes such as "
+                "\\nid\\npw\\n as-is (operator only).",
+                "DDial 중계 연결을 관리합니다. raw 는 \\nid\\npw\\n 같은 "
+                "이스케이프 바이트를 그대로 보냅니다 (운영자 전용).",
+                "DDial 中継リンクを操作します。raw は \\nid\\npw\\n の"
+                "ようなエスケープしたバイトをそのまま送ります（オペレーター"
+                "専用）。",
+                "管理 DDial 中继连接；raw 会原样发送 \\nid\\npw\\n 这类"
+                "转义字节（仅限管理员）。",
+                "Управлять связью DDial; raw отправляет экранированные байты "
+                "как есть, напр. \\nid\\npw\\n (только оператор).",
+                "DDial-Relay-Verbindung steuern; raw sendet maskierte Bytes "
+                "wie \\nid\\npw\\n unverändert (nur Operatoren).",
+                "Piloter le lien relais DDial ; raw envoie tels quels des "
+                "octets échappés comme \\nid\\npw\\n (opérateur).",
+                "Steruj łączem przekaźnika DDial; raw wysyła bajty ze "
+                "znakami ucieczki, np. \\nid\\npw\\n, bez zmian (tylko "
+                "operator).",
             },
         .label_arg_count = 0U,
         .label_args = {},

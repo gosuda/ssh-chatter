@@ -2069,8 +2069,11 @@ void host_ddial_shutdown(host_t *host)
 }
 
 /* Normalize outbound text to raw 7-bit ASCII.  DDial/Retro-Dial upstreams
- * expect plain ASCII, so strip anything that is not a printable ASCII
- * character, tab, CR, or LF.  Returns the length of the written string. */
+ * expect plain ASCII: a line carrying any non-ASCII byte (Korean and other
+ * UTF-8 text) is not sent at all rather than stripped down to a blank line,
+ * and neither is one left with nothing but whitespace.  Other control bytes
+ * besides tab, CR and LF are dropped.  Returns the length written, 0 when
+ * the line must not go out. */
 static size_t ddial_client_normalize_outbound_text(const char *src,
                                                     size_t src_len,
                                                     char *dst,
@@ -2079,15 +2082,29 @@ static size_t ddial_client_normalize_outbound_text(const char *src,
     if (src == nullptr || dst == nullptr || dst_cap == 0U) {
         return 0U;
     }
+    dst[0] = '\0';
+    for (size_t k = 0U; k < src_len && src[k] != '\0'; ++k) {
+        if (((unsigned char)src[k] & 0x80U) != 0U) {
+            return 0U;
+        }
+    }
     size_t i = 0U;
     size_t j = 0U;
+    bool has_text = false;
     while (i < src_len && j + 1U < dst_cap) {
         unsigned char c = (unsigned char)src[i];
         if ((c >= 0x20U && c <= 0x7EU) || c == '\t' || c == '\n' ||
             c == '\r') {
             dst[j++] = (char)c;
+            if (c > 0x20U) {
+                has_text = true;
+            }
         }
         ++i;
+    }
+    if (!has_text) {
+        dst[0] = '\0';
+        return 0U;
     }
     dst[j] = '\0';
     return j;

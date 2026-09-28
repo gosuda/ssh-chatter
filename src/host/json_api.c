@@ -967,6 +967,7 @@ static void json_api_handle_history(json_api_client_t *client,
     size_t count = 0U;
     bool has_more = false;
     ttak_mutex_lock(&host->lock);
+    host_history_restore_cache_locked(host);
     for (size_t i = host->history_count; i > 0U && host->history != nullptr;
          --i) {
         const chat_history_entry_t *entry = &host->history[i - 1U];

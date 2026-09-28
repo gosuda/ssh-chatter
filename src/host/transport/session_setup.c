@@ -1089,6 +1089,8 @@ static bool host_history_append_locked(host_t *host,
         return false;
     }
 
+    host_history_restore_cache_locked(host);
+
     size_t cache_limit = SSH_CHATTER_HISTORY_CACHE_LIMIT;
     if (cache_limit == 0U) {
         cache_limit = host->history_count + 1U;
@@ -1142,6 +1144,7 @@ static size_t host_history_total(host_t *host)
 
     size_t count = 0U;
     ttak_mutex_lock(&host->lock);
+    host_history_restore_cache_locked(host);
     count = host->history_total;
     ttak_mutex_unlock(&host->lock);
     return count;
@@ -1572,6 +1575,7 @@ static size_t host_history_copy_range(host_t *host, size_t start_index,
     state_path[0] = '\0';
 
     ttak_mutex_lock(&host->lock);
+    host_history_restore_cache_locked(host);
     size_t total = host->history_total;
     if (start_index >= total) {
         ttak_mutex_unlock(&host->lock);
@@ -1666,6 +1670,7 @@ static bool host_history_find_entry_by_id(host_t *host, uint64_t message_id,
     uint32_t file_history_count = 0U;
 
     ttak_mutex_lock(&host->lock);
+    host_history_restore_cache_locked(host);
     if (host->history != nullptr) {
         for (size_t idx = 0U; idx < host->history_count; ++idx) {
             const chat_history_entry_t *candidate = &host->history[idx];
@@ -1746,6 +1751,7 @@ static size_t host_history_delete_range(host_t *host, uint64_t start_id,
     uint64_t local_last = 0U;
 
     ttak_mutex_lock(&host->lock);
+    host_history_restore_cache_locked(host);
 
     chat_history_entry_t *entries = nullptr;
     size_t entry_count = 0U;
@@ -2045,6 +2051,7 @@ static bool host_history_commit_entry(host_t *host, chat_history_entry_t *entry,
         return false;
     }
 
+    host_history_restore_cache(host);
     ttak_mutex_lock(&host->lock);
     if (entry->is_user_message) {
         if (host->next_message_id == 0U) {
@@ -2170,6 +2177,7 @@ static void host_history_cleanup_expired(host_t *host)
     const time_t expiration_threshold = now - (3 * 24 * 60 * 60);
 
     ttak_mutex_lock(&host->lock);
+    host_history_restore_cache_locked(host);
 
     if (host->history == nullptr || host->history_count == 0U) {
         ttak_mutex_unlock(&host->lock);
@@ -2220,6 +2228,7 @@ static bool host_history_apply_reaction(host_t *host, uint64_t message_id,
     bool applied = false;
 
     ttak_mutex_lock(&host->lock);
+    host_history_restore_cache_locked(host);
     if (host->history != nullptr) {
         for (size_t idx = 0U; idx < host->history_count; ++idx) {
             chat_history_entry_t *entry = &host->history[idx];

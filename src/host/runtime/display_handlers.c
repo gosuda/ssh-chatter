@@ -934,6 +934,7 @@ static void session_handle_ai_member(session_ctx_t *ctx, const char *arguments)
         ttak_mutex_lock(&host->lock);
         host->ai_chat_use_gemini = use_gemini;
         ttak_mutex_unlock(&host->lock);
+        host_runtime_settings_save(host);
     }
 
     for (size_t member = 0U; member < HOST_AI_MEMBER_COUNT; ++member) {

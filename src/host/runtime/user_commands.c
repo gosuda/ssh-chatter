@@ -1105,6 +1105,8 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
 
     if (strcasecmp(action, "disconnect") == 0) {
         host_ddial_client_disconnect(ctx->owner);
+        host_runtime_settings_note_ddial(ctx->owner,
+                                         RUNTIME_DDIAL_DISCONNECTED);
         session_send_system_line(ctx, "DDial relay disconnected.");
         return;
     }
@@ -1206,6 +1208,7 @@ static void session_handle_ddial(session_ctx_t *ctx, const char *arguments)
 
         if (host_ddial_client_configure(ctx->owner, host_str, (int)port_long,
                                         handle, key)) {
+            host_runtime_settings_note_ddial(ctx->owner, RUNTIME_DDIAL_LINK);
             session_send_system_line(
                 ctx, "DDial relay configured and connecting...");
         } else {

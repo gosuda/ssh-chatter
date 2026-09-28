@@ -256,6 +256,13 @@ enum {
 
 typedef struct host_ai_reply_job host_ai_reply_job_t;
 
+/* How an operator last left the DDial upstream link (runtime_settings). */
+enum {
+    RUNTIME_DDIAL_FOLLOW_ENV = 0,
+    RUNTIME_DDIAL_LINK = 1,
+    RUNTIME_DDIAL_DISCONNECTED = 2,
+};
+
 /* Queue feeding the AI reply thread, so LLM calls never block the thread
  * that received the message. */
 typedef struct host_ai_reply_state {
@@ -1282,6 +1289,11 @@ typedef struct host {
     size_t history_start_index;
     size_t history_total;
     bool history_cache_loaded;
+    /* History was moved to its cold blob while the room sat idle; it must be
+     * restored before anything reads, appends or saves it. */
+    bool history_released;
+    /* Same for ELIZA's memory, restored from its own file. */
+    bool eliza_memory_released;
     chat_history_entry_t *history_override;
     size_t history_override_count;
     uint64_t next_message_id;
@@ -1401,6 +1413,10 @@ typedef struct host {
     struct timespec eliza_last_action;
     char eliza_state_file_path[PATH_MAX];
     char eliza_memory_file_path[PATH_MAX];
+    char ai_chat_memory_file_path[PATH_MAX];
+    char runtime_settings_file_path[PATH_MAX];
+    /* How an operator last left the DDial link (see persistence.c). */
+    uint8_t runtime_ddial_mode;
     /* Per-persona presence (index = member - HOST_AI_MEMBER_PERSONA_A);
      * ELIZA's lives in eliza_enabled. */
     _Atomic bool ai_persona_enabled[HOST_AI_MEMBER_COUNT - 1];

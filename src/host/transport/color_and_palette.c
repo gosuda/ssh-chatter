@@ -1561,6 +1561,19 @@ static bool host_ai_route_private(host_t *host, const char *from,
                                   uint16_t ddial_from_slot, bool *queued);
 static bool host_ai_reply_init(host_t *host);
 static void host_ai_members_restore(host_t *host);
+static void host_history_restore_cache_locked(host_t *host);
+static void host_history_restore_cache(host_t *host);
+static void host_state_load(host_t *host);
+static void host_ai_chat_memory_restore(host_t *host);
+static void host_eliza_memory_restore(host_t *host);
+static void host_ai_chat_memory_save_locked(host_t *host);
+static void host_ai_chat_memory_load(host_t *host);
+static void host_runtime_settings_save(host_t *host);
+static void host_runtime_settings_load(host_t *host);
+static void host_runtime_settings_note_ddial(host_t *host, uint8_t mode);
+static void host_persist_resolve_path(char *out, size_t out_len,
+                                      const char *env_name,
+                                      const char *fallback);
 static bool host_ai_member_set_present(host_t *host, size_t member,
                                        bool enabled);
 static bool host_ai_member_is_present(host_t *host, size_t member);

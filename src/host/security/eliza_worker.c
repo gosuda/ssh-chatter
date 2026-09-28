@@ -1123,6 +1123,13 @@ static void host_state_save_locked(host_t *host)
         return;
     }
 
+    host_history_restore_cache_locked(host);
+    if (host->history_released) {
+        /* The blob could not be read back; never replace the saved
+         * history with the empty in-memory one. */
+        return;
+    }
+
     if (host->state_file_path[0] == '\0') {
         return;
     }

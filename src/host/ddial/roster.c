@@ -398,6 +398,7 @@ static void ddial_roster_seed_from_history(host_t *host)
         return;
     }
     ttak_mutex_lock(&host->lock);
+    host_history_restore_cache_locked(host);
     size_t count = host->history_count;
     size_t start = count > DDIAL_ROSTER_HISTORY_SCAN
                        ? count - DDIAL_ROSTER_HISTORY_SCAN

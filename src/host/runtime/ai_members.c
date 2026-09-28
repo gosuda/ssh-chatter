@@ -406,6 +406,7 @@ static bool host_ai_persona_reply(host_t *host, const host_ai_reply_job_t *job,
                               job->message,
                               SSH_CHATTER_AI_PROMPT_MESSAGE_MAX - 1U);
 
+    host_ai_chat_memory_restore(host);
     char context[SSH_CHATTER_AI_MEMORY_CONTEXT_BUFFER];
     size_t context_matches = host_ai_chat_memory_collect_context(
         host, job->message, context, sizeof(context));

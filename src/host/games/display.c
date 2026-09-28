@@ -1911,6 +1911,7 @@ static void session_handle_translate_scope(session_ctx_t *ctx,
 
         translator_set_manual_chat_bbs_only(true);
         translator_set_manual_skip_scrollback(false);
+        host_runtime_settings_save(ctx->owner);
         session_send_system_line(
             ctx, "Translation scope limited to chat messages and BBS posts.");
 
@@ -1935,6 +1936,7 @@ static void session_handle_translate_scope(session_ctx_t *ctx,
 
         translator_set_manual_chat_bbs_only(true);
         translator_set_manual_skip_scrollback(true);
+        host_runtime_settings_save(ctx->owner);
         session_send_system_line(
             ctx, "Translation scope limited to chat messages and "
                  "BBS posts. Scrollback translation is disabled.");
@@ -1969,6 +1971,7 @@ static void session_handle_translate_scope(session_ctx_t *ctx,
 
         translator_set_manual_chat_bbs_only(false);
         translator_set_manual_skip_scrollback(false);
+        host_runtime_settings_save(ctx->owner);
         session_send_system_line(
             ctx,
             "Full translation scope restored. System output and bulk messages "
@@ -2082,6 +2085,7 @@ static void session_handle_gemini(session_ctx_t *ctx, const char *arguments)
 
     if (requested_enable) {
         translator_set_gemini_enabled(true);
+        host_runtime_settings_save(ctx->owner);
         session_send_system_line(
             ctx,
             "Gemini translation enabled. Ollama fallback remains available.");
@@ -2097,6 +2101,7 @@ static void session_handle_gemini(session_ctx_t *ctx, const char *arguments)
     }
 
     translator_set_gemini_enabled(false);
+    host_runtime_settings_save(ctx->owner);
     session_send_system_line(
         ctx, "Gemini translation disabled. Using Ollama gemma2:2b only.");
     session_send_system_line(ctx, "While Gemini is off, only chat messages and "

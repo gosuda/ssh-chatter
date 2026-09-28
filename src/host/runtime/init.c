@@ -377,6 +377,14 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_fix_overlapping_bbs_rss_paths(host);
     host->eliza_memory_file_path[0] = '\0';
     host_eliza_memory_resolve_path(host);
+    host_persist_resolve_path(host->ai_chat_memory_file_path,
+                              sizeof(host->ai_chat_memory_file_path),
+                              "CHATTER_AI_MEMORY_FILE", "ai_chat_memory.dat");
+    host_persist_resolve_path(host->runtime_settings_file_path,
+                              sizeof(host->runtime_settings_file_path),
+                              "CHATTER_RUNTIME_SETTINGS_FILE",
+                              "runtime_settings.dat");
+    host->runtime_ddial_mode = 0U;
     host->eliza_state_file_path[0] = '\0';
     host_eliza_state_resolve_path(host);
     host->bbs_watchdog_thread_initialized = false;
@@ -589,6 +597,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_reply_state_load(host);
     host_rss_state_load(host);
     host_eliza_memory_load(host);
+    host_ai_chat_memory_load(host);
     host_eliza_state_load(host);
     host_ai_members_restore(host);
 
@@ -615,6 +624,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     }
     host_bbs_start_watchdog(host);
     host_rss_start_backend(host);
+    host_runtime_settings_load(host);
     host_ddial_client_start(host);
     sshc_memory_context_pop(memory_scope);
 }
@@ -1422,7 +1432,12 @@ static void host_ai_chat_memory_store(host_t *host, const char *username,
         snprintf(clean_username, sizeof(clean_username), "%s", "user");
     }
 
+    host_ai_chat_memory_restore(host);
     ttak_mutex_lock(&host->lock);
+    if (host->ai_chat_memory == nullptr) {
+        ttak_mutex_unlock(&host->lock);
+        return;
+    }
     if (host->ai_chat_memory_count >= SSH_CHATTER_AI_MEMORY_MAX) {
         memmove(host->ai_chat_memory, host->ai_chat_memory + 1,
                 (SSH_CHATTER_AI_MEMORY_MAX - 1U) *
@@ -1436,6 +1451,7 @@ static void host_ai_chat_memory_store(host_t *host, const char *username,
     snprintf(entry->username, sizeof(entry->username), "%s", clean_username);
     snprintf(entry->prompt, sizeof(entry->prompt), "%s", clean_prompt);
     snprintf(entry->reply, sizeof(entry->reply), "%s", clean_reply);
+    host_ai_chat_memory_save_locked(host);
     ttak_mutex_unlock(&host->lock);
 }
 

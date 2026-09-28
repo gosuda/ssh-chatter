@@ -13,4 +13,5 @@
 #include "runtime/session_lifecycle.c"
 #include "runtime/init.c"
 #include "runtime/ai_members.c"
+#include "runtime/persistence.c"
 #include "runtime/serve.c"

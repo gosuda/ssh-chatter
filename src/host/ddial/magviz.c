@@ -827,6 +827,7 @@ static void mv_share_room(host_t *host, const char *line)
 static void mv_room_forget(host_t *host, const char *line)
 {
     ttak_mutex_lock(&host->lock);
+    host_history_restore_cache_locked(host);
     for (size_t i = host->history_count; i > 0U; --i) {
         size_t idx = i - 1U;
         chat_history_entry_t *entry = &host->history[idx];

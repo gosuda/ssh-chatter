@@ -78,6 +78,8 @@ static size_t host_history_drop_expired_locked(host_t *host, time_t cutoff)
         return 0U;
     }
 
+    host_history_restore_cache_locked(host);
+
     size_t write_idx = 0U;
     size_t removed = 0U;
     for (size_t idx = 0U; idx < host->history_count; ++idx) {

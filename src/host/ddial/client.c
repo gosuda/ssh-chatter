@@ -1054,6 +1054,7 @@ static void ddial_client_note_auth_marker(ddial_client_t *client,
 static void host_history_delete_matching_message(host_t *host, const char *message)
 {
     ttak_mutex_lock(&host->lock);
+    host_history_restore_cache_locked(host);
     if (host->history == nullptr || host->history_count == 0U) {
         ttak_mutex_unlock(&host->lock);
         return;

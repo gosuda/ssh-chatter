@@ -133,7 +133,17 @@ static bool host_cold_blob_save(const char *path, const void *data,
         return false;
     }
 
-    FILE *fp = fopen(path, "wb");
+    /* Write a temp file and rename it over the blob, so a crash or a full
+     * disk never leaves a truncated blob behind. */
+    char temp_path[PATH_MAX];
+    int temp_written = snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
+    if (temp_written < 0 || (size_t)temp_written >= sizeof(temp_path)) {
+        sshc_gc_free(compressed);
+        sshc_gc_free(source);
+        return false;
+    }
+
+    FILE *fp = fopen(temp_path, "wb");
     if (fp == nullptr) {
         sshc_gc_free(compressed);
         sshc_gc_free(source);
@@ -153,11 +163,16 @@ static bool host_cold_blob_save(const char *path, const void *data,
     bool ok = fwrite(&header, sizeof(header), 1U, fp) == 1U &&
               fwrite(compressed, 1U, (size_t)compressed_len, fp) ==
                   (size_t)compressed_len;
-    fclose(fp);
+    ok = ok && fflush(fp) == 0 && fsync(fileno(fp)) == 0;
+    if (fclose(fp) != 0) {
+        ok = false;
+    }
+    if (ok) {
+        (void)chmod(temp_path, S_IRUSR | S_IWUSR);
+        ok = rename(temp_path, path) == 0;
+    }
     if (!ok) {
-        remove(path);
-    } else {
-        (void)chmod(path, S_IRUSR | S_IWUSR);
+        (void)remove(temp_path);
     }
 
     sshc_gc_free(compressed);
@@ -255,46 +270,110 @@ static void host_history_release_cache(host_t *host)
     if (host == nullptr) {
         return;
     }
-    chat_history_entry_t *buffer = nullptr;
-    size_t count = 0U;
-    size_t capacity = 0U;
-    size_t start_index = 0U;
-    size_t history_total = 0U;
-    ttak_mutex_lock(&host->lock);
-    buffer = host->history;
-    count = host->history_count;
-    capacity = host->history_capacity;
-    start_index = host->history_start_index;
-    history_total = host->history_total;
-    host->history = nullptr;
-    host->history_capacity = 0U;
-    host->history_count = 0U;
-    host->history_start_index = host->history_total;
-    host->history_cache_loaded = false;
-    ttak_mutex_unlock(&host->lock);
 
-    if (buffer != nullptr && count > 0U && capacity > 0U) {
-        chat_history_entry_t *snapshot = (chat_history_entry_t *)sshc_gc_calloc(
-            count, sizeof(*snapshot));
-        if (snapshot != nullptr) {
-            for (size_t idx = 0U; idx < count; ++idx) {
-                size_t ring = (start_index + idx) % capacity;
-                snapshot[idx] = buffer[ring];
-            }
-            sshc_history_cold_meta_t meta = {.history_total = history_total};
-            char cold_path[PATH_MAX];
-            if (host_cold_file_path(cold_path, sizeof(cold_path),
-                                    host->state_file_path, "history")) {
-                (void)host_cold_blob_save(cold_path, snapshot,
-                                          sizeof(chat_history_entry_t), count,
-                                          &meta, sizeof(meta));
-            }
-            sshc_gc_free(snapshot);
-        }
+    char cold_path[PATH_MAX];
+    if (!host_cold_file_path(cold_path, sizeof(cold_path),
+                             host->state_file_path, "history")) {
+        return;
     }
 
+    ttak_mutex_lock(&host->lock);
+    if (host->history_released || host->history == nullptr ||
+        host->history_count == 0U) {
+        ttak_mutex_unlock(&host->lock);
+        return;
+    }
+
+    /* The cache is a plain array, oldest first (appends memmove), so the
+     * snapshot is taken as-is. It is written under the lock: nothing may
+     * append between the snapshot and dropping the cache. */
+    sshc_history_cold_meta_t meta = {.history_total = host->history_total};
+    bool saved = host_cold_blob_save(cold_path, host->history,
+                                     sizeof(chat_history_entry_t),
+                                     host->history_count, &meta, sizeof(meta));
+    chat_history_entry_t *buffer = nullptr;
+    if (saved) {
+        buffer = host->history;
+        host->history = nullptr;
+        host->history_capacity = 0U;
+        host->history_count = 0U;
+        host->history_start_index = host->history_total;
+        host->history_cache_loaded = false;
+        host->history_released = true;
+    }
+    ttak_mutex_unlock(&host->lock);
+
+    if (!saved) {
+        /* Keep the cache rather than risk losing it. */
+        printf("[history] could not write %s; keeping history in memory\n",
+               cold_path);
+    }
     if (buffer != nullptr) {
         sshc_gc_free(buffer);
+    }
+}
+
+/* Bring released history back from its cold blob. Caller holds host->lock;
+ * a no-op unless the history was released. */
+static void host_history_restore_cache_locked(host_t *host)
+{
+    if (host == nullptr || !host->history_released) {
+        return;
+    }
+
+    char cold_path[PATH_MAX];
+    if (host_cold_file_path(cold_path, sizeof(cold_path),
+                            host->state_file_path, "history")) {
+        sshc_history_cold_meta_t meta = {0};
+        size_t entry_count = 0U;
+        chat_history_entry_t *restored =
+            (chat_history_entry_t *)host_cold_blob_load(
+                cold_path, sizeof(chat_history_entry_t), sizeof(meta),
+                &entry_count, &meta);
+        if (restored != nullptr && entry_count > 0U) {
+            if (host->history != nullptr) {
+                sshc_gc_free(host->history);
+            }
+            host->history = restored;
+            host->history_capacity = entry_count;
+            host->history_count = entry_count;
+            if (meta.history_total >= entry_count) {
+                host->history_total = meta.history_total;
+            }
+            host->history_start_index = host->history_total - entry_count;
+            host->history_cache_loaded = true;
+            host->history_released = false;
+            return;
+        }
+        if (restored != nullptr) {
+            sshc_gc_free(restored);
+        }
+    }
+    /* Stay released: host_state_save_locked will not write over the main
+     * state file, and the unlocked restore falls back to reloading it. */
+    humanized_log_error("history", "could not read released history blob",
+                        EIO);
+}
+
+static void host_history_restore_cache(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+    ttak_mutex_lock(&host->lock);
+    host_history_restore_cache_locked(host);
+    bool still_released = host->history_released;
+    ttak_mutex_unlock(&host->lock);
+
+    if (still_released) {
+        /* The main state file still holds the full history: nothing is
+         * saved while it is released. */
+        host_state_load(host);
+        ttak_mutex_lock(&host->lock);
+        host->history_released = false;
+        host->history_cache_loaded =
+            host->history != nullptr && host->history_capacity > 0U;
+        ttak_mutex_unlock(&host->lock);
     }
 }
 
@@ -583,7 +662,10 @@ unload_idle_state:
     host_history_release_cache(host);
     host_bbs_release_cache(host);
     host_ai_chat_memory_release(host);
-    host_eliza_memory_release(host);
+    if (host->eliza_memory != nullptr) {
+        host_eliza_memory_release(host);
+        host->eliza_memory_released = true;
+    }
     host_othello_games_release(host);
     host_gonu_games_release(host);
     host_manual_gc_tick(host);
@@ -600,9 +682,10 @@ void host_ensure_idle_subsystems(host_t *host)
         return;
     }
 
+    host_history_restore_cache(host);
     host_bbs_acquire_storage(host);
-    host_ai_chat_memory_ensure(host);
-    host_eliza_memory_ensure(host);
+    host_ai_chat_memory_restore(host);
+    host_eliza_memory_restore(host);
     host_othello_games_ensure(host);
     host_gonu_games_ensure(host);
 }

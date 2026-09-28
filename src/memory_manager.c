@@ -935,13 +935,22 @@ static void sshc_crash_signal_handler(int sig, siginfo_t *info, void *context)
      * the first-fault details before chaining so the journal always records
      * the exact faulting instruction and address. */
     ucontext_t *uc = (ucontext_t *)context;
+    unsigned long fault_pc = 0UL;
+    unsigned long fault_sp = 0UL;
+#if defined(__x86_64__)
+    fault_pc = (unsigned long)uc->uc_mcontext.gregs[REG_RIP];
+    fault_sp = (unsigned long)uc->uc_mcontext.gregs[REG_RSP];
+#elif defined(__aarch64__)
+    fault_pc = (unsigned long)uc->uc_mcontext.pc;
+    fault_sp = (unsigned long)uc->uc_mcontext.sp;
+#else
+    (void)uc;
+#endif
     char buf[256];
     int n = snprintf(buf, sizeof(buf),
-                     "[crash] fatal signal %d code %d addr %p rip 0x%lx "
-                     "rsp 0x%lx tid %ld\n",
-                     sig, info->si_code, info->si_addr,
-                     (unsigned long)uc->uc_mcontext.gregs[REG_RIP],
-                     (unsigned long)uc->uc_mcontext.gregs[REG_RSP],
+                     "[crash] fatal signal %d code %d addr %p pc 0x%lx "
+                     "sp 0x%lx tid %ld\n",
+                     sig, info->si_code, info->si_addr, fault_pc, fault_sp,
                      (long)syscall(SYS_gettid));
     if (n > 0) {
         size_t len = (size_t)n < sizeof(buf) ? (size_t)n : sizeof(buf) - 1U;

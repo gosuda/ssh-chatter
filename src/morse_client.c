@@ -325,13 +325,19 @@ static void morse_client_send_handshake(morse_client_t *client)
     morse_client_preview_handshake_output(client);
 }
 
-static void morse_client_sleep_seconds(unsigned int seconds)
+/* Reconnect backoff, in one-second steps so a stop request (shutdown joins
+ * this thread) is honoured promptly instead of after the whole delay. */
+static void morse_client_sleep_seconds(morse_client_t *client,
+                                       unsigned int seconds)
 {
-    struct timespec pause = {
-        .tv_sec = (time_t)seconds,
-        .tv_nsec = 0L,
-    };
-    while (nanosleep(&pause, &pause) != 0 && errno == EINTR) {
+    for (unsigned int elapsed = 0U;
+         elapsed < seconds && !atomic_load(&client->thread_stop); ++elapsed) {
+        struct timespec pause = {
+            .tv_sec = 1,
+            .tv_nsec = 0L,
+        };
+        while (nanosleep(&pause, &pause) != 0 && errno == EINTR) {
+        }
     }
 }
 
@@ -417,7 +423,7 @@ static void *morse_client_thread(void *arg)
         if (!atomic_load(&client->connected)) {
             morse_client_close_socket(client);
             if (!morse_client_connect(client)) {
-                morse_client_sleep_seconds(delay);
+                morse_client_sleep_seconds(client, delay);
                 continue;
             }
 
@@ -429,7 +435,7 @@ static void *morse_client_thread(void *arg)
                      morse_client_compute_reconnect_delay(client));
         morse_client_close_socket(client);
         morse_client_sleep_seconds(
-            atomic_load(&client->reconnect_delay_seconds));
+            client, atomic_load(&client->reconnect_delay_seconds));
     }
 
     atomic_store(&client->thread_running, false);

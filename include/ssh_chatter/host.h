@@ -1401,7 +1401,11 @@ typedef struct host {
     struct timespec eliza_last_action;
     char eliza_state_file_path[PATH_MAX];
     char eliza_memory_file_path[PATH_MAX];
-    _Atomic bool ai_chat_enabled;
+    /* Per-persona presence (index = member - HOST_AI_MEMBER_PERSONA_A);
+     * ELIZA's lives in eliza_enabled. */
+    _Atomic bool ai_persona_enabled[HOST_AI_MEMBER_COUNT - 1];
+    /* Personas the saved state turned off, applied at startup. */
+    uint8_t ai_persona_saved_off;
     bool ai_chat_use_gemini;
     char ai_chat_model[64];
     struct timespec ai_chat_last_reply;

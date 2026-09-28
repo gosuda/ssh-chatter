@@ -1560,6 +1560,12 @@ static bool host_ai_route_private(host_t *host, const char *from,
                                   const char *target, const char *message,
                                   uint16_t ddial_from_slot, bool *queued);
 static bool host_ai_reply_init(host_t *host);
+static void host_ai_members_restore(host_t *host);
+static bool host_ai_member_set_present(host_t *host, size_t member,
+                                       bool enabled);
+static bool host_ai_member_is_present(host_t *host, size_t member);
+static size_t host_ai_member_lookup(const host_t *host, const char *name);
+static const char *host_ai_member_name(const host_t *host, size_t member);
 static void host_ai_reply_shutdown(host_t *host);
 static bool session_parse_birthday(const char *input, char *normalized,
                                    size_t length);

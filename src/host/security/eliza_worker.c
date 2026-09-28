@@ -1470,6 +1470,11 @@ static void host_eliza_state_save_locked(host_t *host)
     record.magic = ELIZA_STATE_MAGIC;
     record.version = ELIZA_STATE_VERSION;
     record.enabled = atomic_load(&host->eliza_enabled) ? 1U : 0U;
+    for (size_t persona = 0U; persona < HOST_AI_MEMBER_COUNT - 1U; ++persona) {
+        if (!atomic_load(&host->ai_persona_enabled[persona])) {
+            record.reserved[0] |= (uint8_t)(1U << persona);
+        }
+    }
 
     bool success = fwrite(&record, sizeof(record), 1U, fp) == 1U;
     int write_error = 0;
@@ -1554,6 +1559,8 @@ static void host_eliza_state_load(host_t *host)
         record.version > ELIZA_STATE_VERSION) {
         return;
     }
+
+    host->ai_persona_saved_off = record.version >= 2U ? record.reserved[0] : 0U;
 
     if (record.enabled != 0U) {
         (void)host_eliza_enable(host);

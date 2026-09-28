@@ -66,7 +66,11 @@ static bool host_ai_member_is_present(host_t *host, size_t member)
     if (member == HOST_AI_MEMBER_ELIZA) {
         return atomic_load(&host->eliza_enabled);
     }
-    return atomic_load(&host->ai_chat_enabled);
+    if (member >= HOST_AI_MEMBER_COUNT) {
+        return false;
+    }
+    return atomic_load(
+        &host->ai_persona_enabled[member - HOST_AI_MEMBER_PERSONA_A]);
 }
 
 /* Index of the AI member called name, or HOST_AI_MEMBER_COUNT. */
@@ -105,6 +109,84 @@ static void host_ai_member_presence(host_t *host, size_t member, bool joined)
         host_ddial_chat_link_remove(host, host->ai_ddial_slots[member]);
         host->ai_ddial_slots[member] = 0U;
     }
+}
+
+/* Switch one AI member on or off: announces the join/part, holds or frees
+ * its DDial line and saves the choice. Returns whether anything changed. */
+static bool host_ai_member_set_present(host_t *host, size_t member,
+                                       bool enabled)
+{
+    if (host == nullptr || member >= HOST_AI_MEMBER_COUNT) {
+        return false;
+    }
+    if (member == HOST_AI_MEMBER_ELIZA) {
+        return enabled ? host_eliza_enable(host) : host_eliza_disable(host);
+    }
+
+    bool was_enabled = atomic_exchange(
+        &host->ai_persona_enabled[member - HOST_AI_MEMBER_PERSONA_A], enabled);
+    if (was_enabled == enabled) {
+        return false;
+    }
+    if (enabled) {
+        struct timespec now = session_now_monotonic();
+        host_ai_chat_update_last_reply(host, &now);
+    }
+    host_ai_member_presence(host, member, enabled);
+
+    ttak_mutex_lock(&host->lock);
+    host_eliza_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+    return true;
+}
+
+/* Startup: bring in the personas the saved state left on (ELIZA restores
+ * herself in host_eliza_state_load). */
+static void host_ai_members_restore(host_t *host)
+{
+    for (size_t member = HOST_AI_MEMBER_PERSONA_A;
+         member < HOST_AI_MEMBER_COUNT; ++member) {
+        unsigned bit = 1U << (member - HOST_AI_MEMBER_PERSONA_A);
+        if ((host->ai_persona_saved_off & bit) != 0U) {
+            continue;
+        }
+        atomic_store(
+            &host->ai_persona_enabled[member - HOST_AI_MEMBER_PERSONA_A], true);
+        host_ai_member_presence(host, member, true);
+    }
+
+    /* ELIZA's restore may already have saved while the personas were still
+     * off; write the real state back so the next start sees it. */
+    ttak_mutex_lock(&host->lock);
+    host_eliza_state_save_locked(host);
+    ttak_mutex_unlock(&host->lock);
+}
+
+/* AI members currently present in the room, comma-joined into out (like
+ * host_ddial_participants); returns how many there are. */
+static size_t host_ai_participants(host_t *host, char *out, size_t cap)
+{
+    if (host == nullptr || out == nullptr || cap == 0U) {
+        return 0U;
+    }
+
+    out[0] = '\0';
+    size_t offset = 0U;
+    size_t count = 0U;
+    for (size_t member = 0U; member < HOST_AI_MEMBER_COUNT; ++member) {
+        if (!host_ai_member_is_present(host, member)) {
+            continue;
+        }
+        int written = snprintf(out + offset, cap - offset, "%s%s",
+                               count == 0U ? "" : ", ",
+                               host_ai_member_name(host, member));
+        if (written > 0) {
+            size_t advance = (size_t)written;
+            offset += (advance < cap - offset) ? advance : cap - offset - 1U;
+        }
+        ++count;
+    }
+    return count;
 }
 
 /* Particles that may follow a name when someone calls it in Korean
@@ -254,12 +336,20 @@ static void host_ai_route_public(host_t *host, const char *username,
         (void)host_ai_reply_enqueue(host, HOST_AI_REPLY_PUBLIC, member, true,
                                     username, message, 0U);
     }
-    if (any_called || !atomic_load(&host->ai_chat_enabled)) {
+    if (any_called) {
         return;
     }
 
     size_t member = host_ai_pick_ambient_persona(username, message);
-    if (member < HOST_AI_MEMBER_COUNT) {
+    if (member < HOST_AI_MEMBER_COUNT &&
+        !host_ai_member_is_present(host, member)) {
+        /* The picked persona is switched off: let the other one speak. */
+        member = (member == HOST_AI_MEMBER_PERSONA_A)
+                     ? HOST_AI_MEMBER_PERSONA_B
+                     : HOST_AI_MEMBER_PERSONA_A;
+    }
+    if (member < HOST_AI_MEMBER_COUNT &&
+        host_ai_member_is_present(host, member)) {
         (void)host_ai_reply_enqueue(host, HOST_AI_REPLY_PUBLIC, member, false,
                                     username, message, 0U);
     }

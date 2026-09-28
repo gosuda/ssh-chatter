@@ -1462,6 +1462,102 @@ static const session_command_message_t kSessionCommandMessages[] = {
                 "Nowa wiadomość od %s. Przeczytaj przez /mail.",
         },
     },
+    {
+        "Only operators may control AI members.",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "AI 멤버는 운영자만 제어할 수 있습니다.",
+            [SESSION_UI_LANGUAGE_JP] = "AI メンバーを操作できるのはオペレーターだけです。",
+            [SESSION_UI_LANGUAGE_ZH] = "只有管理员可以控制 AI 成员。",
+            [SESSION_UI_LANGUAGE_RU] = "Управлять AI-участниками могут только операторы.",
+            [SESSION_UI_LANGUAGE_DE] = "Nur Operatoren dürfen KI-Mitglieder steuern.",
+            [SESSION_UI_LANGUAGE_FR] = "Seuls les opérateurs peuvent gérer les membres IA.",
+            [SESSION_UI_LANGUAGE_PL] = "Tylko operatorzy mogą sterować członkami AI.",
+        },
+    },
+    {
+        "%s (on)",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "%s (켜짐)",
+            [SESSION_UI_LANGUAGE_JP] = "%s (オン)",
+            [SESSION_UI_LANGUAGE_ZH] = "%s（开）",
+            [SESSION_UI_LANGUAGE_RU] = "%s (вкл)",
+            [SESSION_UI_LANGUAGE_DE] = "%s (an)",
+            [SESSION_UI_LANGUAGE_FR] = "%s (activé)",
+            [SESSION_UI_LANGUAGE_PL] = "%s (wł.)",
+        },
+    },
+    {
+        "%s (off)",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "%s (꺼짐)",
+            [SESSION_UI_LANGUAGE_JP] = "%s (オフ)",
+            [SESSION_UI_LANGUAGE_ZH] = "%s（关）",
+            [SESSION_UI_LANGUAGE_RU] = "%s (выкл)",
+            [SESSION_UI_LANGUAGE_DE] = "%s (aus)",
+            [SESSION_UI_LANGUAGE_FR] = "%s (désactivé)",
+            [SESSION_UI_LANGUAGE_PL] = "%s (wył.)",
+        },
+    },
+    {
+        "AI members: %s",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "AI 멤버: %s",
+            [SESSION_UI_LANGUAGE_JP] = "AI メンバー: %s",
+            [SESSION_UI_LANGUAGE_ZH] = "AI 成员：%s",
+            [SESSION_UI_LANGUAGE_RU] = "AI-участники: %s",
+            [SESSION_UI_LANGUAGE_DE] = "KI-Mitglieder: %s",
+            [SESSION_UI_LANGUAGE_FR] = "Membres IA : %s",
+            [SESSION_UI_LANGUAGE_PL] = "Członkowie AI: %s",
+        },
+    },
+    {
+        "Small talk backend: %s.",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "잡담 백엔드: %s.",
+            [SESSION_UI_LANGUAGE_JP] = "雑談バックエンド: %s。",
+            [SESSION_UI_LANGUAGE_ZH] = "闲聊后端：%s。",
+            [SESSION_UI_LANGUAGE_RU] = "Бэкенд болтовни: %s.",
+            [SESSION_UI_LANGUAGE_DE] = "Smalltalk-Backend: %s.",
+            [SESSION_UI_LANGUAGE_FR] = "Moteur de discussion : %s.",
+            [SESSION_UI_LANGUAGE_PL] = "Backend pogawędek: %s.",
+        },
+    },
+    {
+        "Usage: /ai-member <on|off> [name ...|all] [use-gemini]",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "사용법: /ai-member <켜기|끄기> [이름 ...|모두] [use-gemini]",
+            [SESSION_UI_LANGUAGE_JP] = "使い方: /ai-member <オン|オフ> [名前 ...|すべて] [use-gemini]",
+            [SESSION_UI_LANGUAGE_ZH] = "用法：/ai-member <开|关> [名字 ...|全部] [use-gemini]",
+            [SESSION_UI_LANGUAGE_RU] = "Использование: /ai-member <вкл|выкл> [имя ...|все] [use-gemini]",
+            [SESSION_UI_LANGUAGE_DE] = "Verwendung: /ai-member <on|off> [Name ...|all] [use-gemini]",
+            [SESSION_UI_LANGUAGE_FR] = "Usage : /ai-member <on|off> [nom ...|all] [use-gemini]",
+            [SESSION_UI_LANGUAGE_PL] = "Użycie: /ai-member <on|off> [nazwa ...|all] [use-gemini]",
+        },
+    },
+    {
+        "Unknown AI member '%s'. Choose from: %s.",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "'%s'라는 AI 멤버는 없습니다. 선택 가능: %s.",
+            [SESSION_UI_LANGUAGE_JP] = "AI メンバー「%s」は存在しません。選択肢: %s。",
+            [SESSION_UI_LANGUAGE_ZH] = "没有名为“%s”的 AI 成员。可选：%s。",
+            [SESSION_UI_LANGUAGE_RU] = "AI-участника «%s» нет. Доступны: %s.",
+            [SESSION_UI_LANGUAGE_DE] = "Unbekanntes KI-Mitglied „%s“. Zur Wahl: %s.",
+            [SESSION_UI_LANGUAGE_FR] = "Membre IA « %s » inconnu. Choix possibles : %s.",
+            [SESSION_UI_LANGUAGE_PL] = "Nieznany członek AI „%s”. Do wyboru: %s.",
+        },
+    },
+    {
+        "%s is busy right now; try again soon.",
+        {
+            [SESSION_UI_LANGUAGE_KO] = "%s은(는) 지금 바쁩니다. 잠시 후 다시 시도하세요.",
+            [SESSION_UI_LANGUAGE_JP] = "%s は今忙しいようです。少ししてからもう一度どうぞ。",
+            [SESSION_UI_LANGUAGE_ZH] = "%s 现在正忙，请稍后再试。",
+            [SESSION_UI_LANGUAGE_RU] = "%s сейчас занят(а); попробуйте чуть позже.",
+            [SESSION_UI_LANGUAGE_DE] = "%s ist gerade beschäftigt; versuche es gleich noch einmal.",
+            [SESSION_UI_LANGUAGE_FR] = "%s est occupé(e) pour le moment ; réessayez bientôt.",
+            [SESSION_UI_LANGUAGE_PL] = "%s jest teraz zajęty; spróbuj za chwilę.",
+        },
+    },
 };
 
 // Returns the message in the session's UI language, or the English text when

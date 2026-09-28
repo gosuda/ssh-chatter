@@ -1,7 +1,9 @@
 static const uint32_t HOST_STATE_MAGIC = 0x53484354U; /* 'SHCT' */
 static const uint32_t HOST_STATE_VERSION = 16U;
 static const uint32_t ELIZA_STATE_MAGIC = 0x454c5354U; /* 'ELST' */
-static const uint32_t ELIZA_STATE_VERSION = 1U;
+/* v2 uses reserved[0] as a mask of switched-off personas (bit n = persona
+ * n); zero in v1 files keeps both personas on. */
+static const uint32_t ELIZA_STATE_VERSION = 2U;
 
 typedef struct eliza_memory_header {
     uint32_t magic;

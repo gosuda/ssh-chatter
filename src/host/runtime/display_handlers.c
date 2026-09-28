@@ -802,95 +802,147 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments)
     session_send_system_line(ctx, kUsage);
 }
 
+/* One line per AI member (on/off) plus the small-talk backend. */
+static void session_ai_member_send_status(session_ctx_t *ctx)
+{
+    host_t *host = ctx->owner;
+    char members[SSH_CHATTER_MESSAGE_LIMIT];
+    members[0] = '\0';
+    size_t offset = 0U;
+    for (size_t member = 0U; member < HOST_AI_MEMBER_COUNT; ++member) {
+        char item[96];
+        if (host_ai_member_is_present(host, member)) {
+            session_command_snprintf(ctx, item, sizeof(item), "%s (on)",
+                                     host_ai_member_name(host, member));
+        } else {
+            session_command_snprintf(ctx, item, sizeof(item), "%s (off)",
+                                     host_ai_member_name(host, member));
+        }
+        int written = snprintf(members + offset, sizeof(members) - offset,
+                               "%s%s", member == 0U ? "" : ", ", item);
+        if (written < 0 || (size_t)written >= sizeof(members) - offset) {
+            break;
+        }
+        offset += (size_t)written;
+    }
+
+    char line[SSH_CHATTER_MESSAGE_LIMIT];
+    session_command_snprintf(ctx, line, sizeof(line), "AI members: %s",
+                             members);
+    session_send_system_line(ctx, line);
+    session_command_snprintf(ctx, line, sizeof(line),
+                             "Small talk backend: %s.",
+                             host->ai_chat_use_gemini ? "Gemini 2.5 Flash-Lite"
+                                                      : "Ollama");
+    session_send_system_line(ctx, line);
+}
+
+static void session_ai_member_send_usage(session_ctx_t *ctx)
+{
+    session_send_system_line(
+        ctx, session_command_localize(
+                 ctx, "Usage: /ai-member <on|off> [name ...|all] "
+                      "[use-gemini]"));
+}
+
 static void session_handle_ai_member(session_ctx_t *ctx, const char *arguments)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
         return;
     }
+    host_t *host = ctx->owner;
 
     if (!ctx->user.is_operator && !ctx->user.is_lan_operator) {
         session_send_system_line(
-            ctx, "Only operators may control AI member participation.");
+            ctx, session_command_localize(
+                     ctx, "Only operators may control AI members."));
         return;
     }
 
-    char working[128];
-    if (arguments != nullptr) {
-        snprintf(working, sizeof(working), "%s", arguments);
-        trim_whitespace_inplace(working);
-    } else {
-        working[0] = '\0';
-    }
+    char working[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(working, sizeof(working), "%s",
+             arguments != nullptr ? arguments : "");
+    trim_whitespace_inplace(working);
 
     if (working[0] == '\0') {
-        bool enabled = host_ai_member_is_enabled(ctx->owner);
-        char status[SSH_CHATTER_MESSAGE_LIMIT];
-        const char *persona_a = ctx->owner->ai_persona_a_name[0] != '\0'
-                                    ? ctx->owner->ai_persona_a_name
-                                    : "kaka";
-        const char *persona_b = ctx->owner->ai_persona_b_name[0] != '\0'
-                                    ? ctx->owner->ai_persona_b_name
-                                    : "dada";
-        snprintf(status, sizeof(status),
-                 "AI members (%s/%s) are %s using %s.",
-                 persona_a, persona_b,
-                 enabled ? "enabled" : "disabled",
-                 ctx->owner->ai_chat_use_gemini ? "Gemini 2.5 Flash-Lite"
-                                                : "Ollama");
-        session_send_system_line(ctx, status);
-        session_send_system_line(
-            ctx, "Usage: /ai-member <on|off> [use-gemini]");
+        session_ai_member_send_status(ctx);
+        session_ai_member_send_usage(ctx);
         return;
     }
 
-    char token[32];
+    char token[SSH_CHATTER_USERNAME_LEN];
     const char *remaining =
         session_consume_token(working, token, sizeof(token));
     bool requested_enable = false;
-    bool recognized = false;
     if (session_argument_is_disable(token)) {
-        recognized = true;
         requested_enable = false;
-    } else {
-        recognized = parse_bool_token(token, &requested_enable);
-    }
-
-    if (!recognized) {
-        session_send_system_line(
-            ctx, "Usage: /ai-member <on|off> [use-gemini]");
+    } else if (!parse_bool_token(token, &requested_enable)) {
+        session_ai_member_send_usage(ctx);
         return;
     }
 
+    /* Collect the targets first so a typo changes nothing. No name keeps
+     * the old meaning: both small-talk personas. */
+    bool targets[HOST_AI_MEMBER_COUNT] = {false};
+    bool named = false;
     bool use_gemini = false;
-    if (remaining != nullptr) {
-        char backend_token[32];
-        session_consume_token(remaining, backend_token, sizeof(backend_token));
-        use_gemini = (strcasecmp(backend_token, "use-gemini") == 0);
+    while (remaining != nullptr && *remaining != '\0') {
+        remaining = session_consume_token(remaining, token, sizeof(token));
+        if (token[0] == '\0') {
+            break;
+        }
+        if (strcasecmp(token, "use-gemini") == 0) {
+            use_gemini = true;
+            continue;
+        }
+        if (strcasecmp(token, "all") == 0 || strcmp(token, "모두") == 0 ||
+            strcmp(token, "すべて") == 0 || strcmp(token, "全部") == 0 ||
+            strcmp(token, "все") == 0) {
+            for (size_t member = 0U; member < HOST_AI_MEMBER_COUNT; ++member) {
+                targets[member] = true;
+            }
+            named = true;
+            continue;
+        }
+        size_t member = host_ai_member_lookup(host, token);
+        if (member >= HOST_AI_MEMBER_COUNT) {
+            char names[128];
+            snprintf(names, sizeof(names), "%s, %s, %s, all",
+                     host_ai_member_name(host, HOST_AI_MEMBER_ELIZA),
+                     host_ai_member_name(host, HOST_AI_MEMBER_PERSONA_A),
+                     host_ai_member_name(host, HOST_AI_MEMBER_PERSONA_B));
+            char message[SSH_CHATTER_MESSAGE_LIMIT];
+            session_command_snprintf(ctx, message, sizeof(message),
+                                     "Unknown AI member '%s'. Choose from: "
+                                     "%s.",
+                                     token, names);
+            session_send_system_line(ctx, message);
+            return;
+        }
+        targets[member] = true;
+        named = true;
+    }
+    if (!named) {
+        targets[HOST_AI_MEMBER_PERSONA_A] = true;
+        targets[HOST_AI_MEMBER_PERSONA_B] = true;
     }
 
-    ttak_mutex_lock(&ctx->owner->lock);
-    ctx->owner->ai_chat_use_gemini = requested_enable && use_gemini;
-    ttak_mutex_unlock(&ctx->owner->lock);
-    host_ai_member_set_enabled(ctx->owner, requested_enable);
-    if (requested_enable) {
-        session_send_system_line(ctx,
-                                 use_gemini
-                                     ? "AI members enabled with Gemini 2.5 "
-                                       "Flash-Lite."
-                                     : "AI members enabled with Ollama.");
-    } else {
-        char disabled_msg[SSH_CHATTER_MESSAGE_LIMIT];
-        const char *persona_a = ctx->owner->ai_persona_a_name[0] != '\0'
-                                    ? ctx->owner->ai_persona_a_name
-                                    : "kaka";
-        const char *persona_b = ctx->owner->ai_persona_b_name[0] != '\0'
-                                    ? ctx->owner->ai_persona_b_name
-                                    : "dada";
-        snprintf(disabled_msg, sizeof(disabled_msg),
-                 "AI members disabled. %s/%s will stay quiet.", persona_a,
-                 persona_b);
-        session_send_system_line(ctx, disabled_msg);
+    /* Turning a persona on picks the backend, as before: Ollama unless
+     * use-gemini is given. */
+    if (requested_enable && (targets[HOST_AI_MEMBER_PERSONA_A] ||
+                             targets[HOST_AI_MEMBER_PERSONA_B])) {
+        ttak_mutex_lock(&host->lock);
+        host->ai_chat_use_gemini = use_gemini;
+        ttak_mutex_unlock(&host->lock);
     }
+
+    for (size_t member = 0U; member < HOST_AI_MEMBER_COUNT; ++member) {
+        if (targets[member]) {
+            (void)host_ai_member_set_present(host, member, requested_enable);
+        }
+    }
+
+    session_ai_member_send_status(ctx);
 }
 
 static void session_handle_ollama_model(session_ctx_t *ctx,

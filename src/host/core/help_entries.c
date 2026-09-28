@@ -609,6 +609,32 @@ static const session_help_entry_t kSessionHelpEssential[] = {
         .description_args = {SESSION_HELP_TEMPLATE_ARG_PREFIX},
     },
     {
+        .kind = SESSION_HELP_ENTRY_TEXT,
+        .label = "",
+        .description =
+            {
+                "  AI members (eliza, kaka, dada) chat in the room: call one "
+                "by name to get an answer, or %spm kaka|hi to talk privately.",
+                "  AI 멤버(eliza, kaka, dada)도 방에 있습니다: 이름을 부르면 "
+                "답하고, %spm kaka|안녕 으로 귓속말도 할 수 있습니다.",
+                "  AI メンバー（eliza, kaka, dada）も部屋にいます: 名前を呼ぶと"
+                "返事をし、%spm kaka|こんにちは で個別に話せます。",
+                "  AI 成员（eliza、kaka、dada）也在聊天室里：叫它们的名字就会"
+                "回应，也可以用 %spm kaka|你好 私聊。",
+                "  AI-участники (eliza, kaka, dada) тоже в комнате: назовите "
+                "имя, чтобы получить ответ, или %spm kaka|привет для лички.",
+                "  KI-Mitglieder (eliza, kaka, dada) sind im Raum: sprich sie "
+                "mit Namen an oder schreib privat mit %spm kaka|hallo.",
+                "  Des membres IA (eliza, kaka, dada) sont dans le salon : "
+                "appelez-les par leur nom ou écrivez en privé avec %spm "
+                "kaka|salut.",
+                "  Członkowie AI (eliza, kaka, dada) są w pokoju: zawołaj ich "
+                "po imieniu albo napisz prywatnie przez %spm kaka|cześć.",
+            },
+        .description_arg_count = 1U,
+        .description_args = {SESSION_HELP_TEMPLATE_ARG_PREFIX},
+    },
+    {
         .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "color (text;highlight[;bold])",
         .description =
@@ -1987,24 +2013,44 @@ static const session_help_entry_t kSessionHelpOperator[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "ai-member <on|off>",
+        .label = "ai-member <on|off> [name ...|all] [use-gemini]",
         .description =
             {
-                "Toggle AI member participation (operator only).",
-                "AI 멤버 참여를 전환합니다 (운영자 전용).",
-                "AI メンバーの参加を切り替えます（オペレーター専用）。",
-                "切换 AI 成员参与（仅限管理员）。",
-                "Включить/выключить участие AI-участников (оператор).",
-                "KI-Mitgliedschaft umschalten (nur Operatoren).",
-                "Activer ou désactiver la participation des membres IA (opérateur).",
-                "Włącz lub wyłącz udział AI (tylko operator).",
+                "Turn AI members on or off: all, or only the named ones "
+                "(eliza, kaka, dada); no name means kaka and dada. No "
+                "arguments shows who is on (operator only).",
+                "AI 멤버를 켜거나 끕니다: 모두 또는 지정한 멤버만(eliza, "
+                "kaka, dada), 이름을 생략하면 kaka와 dada. 인자 없이 쓰면 "
+                "현재 상태를 보여줍니다 (운영자 전용).",
+                "AI メンバーをオン/オフします: すべて、または指定したメンバー"
+                "のみ（eliza, kaka, dada）。名前を省くと kaka と dada。"
+                "引数なしで状態を表示します（オペレーター専用）。",
+                "开启或关闭 AI 成员：全部，或仅指定的成员（eliza、kaka、"
+                "dada）；不写名字则为 kaka 和 dada。不带参数时显示当前状态"
+                "（仅限管理员）。",
+                "Включить/выключить AI-участников: всех или только названных "
+                "(eliza, kaka, dada); без имени — kaka и dada. Без аргументов "
+                "показывает состояние (оператор).",
+                "KI-Mitglieder ein- oder ausschalten: alle oder nur die "
+                "genannten (eliza, kaka, dada); ohne Namen kaka und dada. "
+                "Ohne Argumente wird der Status angezeigt (nur Operatoren).",
+                "Activer ou désactiver les membres IA : tous, ou seulement "
+                "ceux nommés (eliza, kaka, dada) ; sans nom, kaka et dada. "
+                "Sans argument, affiche l'état (opérateur).",
+                "Włącz lub wyłącz członków AI: wszystkich albo tylko "
+                "wskazanych (eliza, kaka, dada); bez nazwy kaka i dada. Bez "
+                "argumentów pokazuje stan (tylko operator).",
             },
         .label_translations =
             {
-                [SESSION_UI_LANGUAGE_KO] = "ai-멤버 <켜기|끄기>",
-                [SESSION_UI_LANGUAGE_JP] = "aiメンバー <オン|オフ>",
-                [SESSION_UI_LANGUAGE_ZH] = "ai成员 <开|关>",
-                [SESSION_UI_LANGUAGE_RU] = "ai-участник <вкл|выкл>",
+                [SESSION_UI_LANGUAGE_KO] =
+                    "ai-멤버 <켜기|끄기> [이름 ...|모두] [use-gemini]",
+                [SESSION_UI_LANGUAGE_JP] =
+                    "aiメンバー <オン|オフ> [名前 ...|すべて] [use-gemini]",
+                [SESSION_UI_LANGUAGE_ZH] =
+                    "ai成员 <开|关> [名字 ...|全部] [use-gemini]",
+                [SESSION_UI_LANGUAGE_RU] =
+                    "ai-участник <вкл|выкл> [имя ...|все] [use-gemini]",
             },
         .label_arg_count = 0U,
         .label_args = {},

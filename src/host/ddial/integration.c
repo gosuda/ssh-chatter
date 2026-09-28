@@ -133,56 +133,50 @@ bool host_ddial_send_private(host_t *host, uint16_t target_slot,
  * implement duplex chat relay; it only announces presence so a linked
  * station's who's-online list and login/logout feed include Chatter's own
  * members, matching what a real DDial dial-in session would produce. */
-void host_ddial_chat_link_register(session_ctx_t *ctx)
+uint16_t host_ddial_chat_link_add(host_t *host, const char *display_name,
+                                  const char *username)
 {
-    if (ctx == nullptr || ctx->owner == nullptr) {
-        return;
-    }
-    const char *raw_handle =
-        (ctx->user_data_loaded && ctx->user_data.preferred_nickname[0] != '\0')
-            ? ctx->user_data.preferred_nickname
-            : ctx->user.name;
-    if (raw_handle == nullptr || raw_handle[0] == '\0') {
-        return;
+    if (host == nullptr || display_name == nullptr ||
+        display_name[0] == '\0' || username == nullptr) {
+        return 0U;
     }
     char handle[DDIAL_MAX_HANDLE_LEN];
-    ddial_sanitize_handle(raw_handle, strlen(raw_handle), handle,
+    ddial_sanitize_handle(display_name, strlen(display_name), handle,
                          sizeof(handle));
     if (handle[0] == '\0') {
-        return;
+        return 0U;
     }
 
     ddial_chat_link_entry_t *node =
         (ddial_chat_link_entry_t *)sshc_gc_calloc(1U, sizeof(*node));
     if (node == nullptr) {
-        return;
+        return 0U;
     }
 
     pthread_mutex_lock(&g_ddial_registry_lock);
     uint16_t slot = ddial_allocate_slot_locked();
-    node->host = ctx->owner;
+    node->host = host;
     node->slot = slot;
     node->channel = DDIAL_DEFAULT_CHANNEL;
     snprintf(node->handle, sizeof(node->handle), "%s", handle);
-    snprintf(node->username, sizeof(node->username), "%s", ctx->user.name);
+    snprintf(node->username, sizeof(node->username), "%s", username);
     node->next = g_ddial_chat_links;
     g_ddial_chat_links = node;
     pthread_mutex_unlock(&g_ddial_registry_lock);
 
-    ctx->ddial_link_slot = slot;
-
     /* Mock as a regular (password-tier) member login, same as a real DDial
      * dial-in account -- not a guest, and not the station's own link
-     * account with a borrowed/rewritten nickname. Each local chat user gets
-     * its own slot and login/logout event so it reads as a genuine member
-     * on the remote station. */
-    host_ddial_client_send_login(ctx->owner, slot, DDIAL_DEFAULT_CHANNEL,
+     * account with a borrowed/rewritten nickname. Each local chat member
+     * gets its own slot and login/logout event so it reads as a genuine
+     * member on the remote station. */
+    host_ddial_client_send_login(host, slot, DDIAL_DEFAULT_CHANNEL,
                                  DDIAL_TIER_PASSWORD, handle, 0U);
+    return slot;
 }
 
-void host_ddial_chat_link_unregister(session_ctx_t *ctx)
+void host_ddial_chat_link_remove(host_t *host, uint16_t slot)
 {
-    if (ctx == nullptr || ctx->owner == nullptr || ctx->ddial_link_slot == 0U) {
+    if (host == nullptr || slot == 0U) {
         return;
     }
 
@@ -193,7 +187,7 @@ void host_ddial_chat_link_unregister(session_ctx_t *ctx)
     ddial_chat_link_entry_t **prev = &g_ddial_chat_links;
     ddial_chat_link_entry_t *cur = g_ddial_chat_links;
     while (cur != nullptr) {
-        if (cur->host == ctx->owner && cur->slot == ctx->ddial_link_slot) {
+        if (cur->host == host && cur->slot == slot) {
             snprintf(handle, sizeof(handle), "%s", cur->handle);
             *prev = cur->next;
             sshc_gc_free(cur);
@@ -205,10 +199,33 @@ void host_ddial_chat_link_unregister(session_ctx_t *ctx)
     pthread_mutex_unlock(&g_ddial_registry_lock);
 
     if (handle[0] != '\0') {
-        host_ddial_client_send_logout(ctx->owner, ctx->ddial_link_slot,
-                                      DDIAL_DEFAULT_CHANNEL,
+        host_ddial_client_send_logout(host, slot, DDIAL_DEFAULT_CHANNEL,
                                       DDIAL_TIER_PASSWORD, handle, 0U);
     }
+}
+
+void host_ddial_chat_link_register(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr) {
+        return;
+    }
+    const char *display_name =
+        (ctx->user_data_loaded && ctx->user_data.preferred_nickname[0] != '\0')
+            ? ctx->user_data.preferred_nickname
+            : ctx->user.name;
+    uint16_t slot =
+        host_ddial_chat_link_add(ctx->owner, display_name, ctx->user.name);
+    if (slot != 0U) {
+        ctx->ddial_link_slot = slot;
+    }
+}
+
+void host_ddial_chat_link_unregister(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr || ctx->ddial_link_slot == 0U) {
+        return;
+    }
+    host_ddial_chat_link_remove(ctx->owner, ctx->ddial_link_slot);
     ctx->ddial_link_slot = 0U;
 }
 

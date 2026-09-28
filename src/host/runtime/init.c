@@ -158,6 +158,10 @@ void host_init(host_t *host, auth_profile_t *auth)
                "interventions disabled.\n");
     }
 
+    if (!host_ai_reply_init(host)) {
+        printf("[ai] reply worker unavailable; AI members will stay quiet.\n");
+    }
+
     if (!host_moderation_init(host)) {
         printf("[security] moderation worker unavailable; using synchronous "
                "checks\n");
@@ -1022,15 +1026,6 @@ static const char *host_ai_chat_skip_token(void)
     return "cucumber-ballet-fly-tetromino";
 }
 
-static bool host_ai_chat_message_mentions(const char *text, const char *needle)
-{
-    if (text == nullptr || text[0] == '\0' || needle == nullptr ||
-        needle[0] == '\0') {
-        return false;
-    }
-    return string_contains_case_insensitive(text, needle);
-}
-
 static bool host_ai_chat_reply_is_skip_token(const char *reply)
 {
     if (reply == nullptr || reply[0] == '\0') {
@@ -1078,65 +1073,6 @@ static bool host_ai_chat_message_looks_korean(const char *text)
     }
 
     return false;
-}
-
-typedef enum ai_chat_bot_persona {
-    AI_CHAT_BOT_NONE = 0,
-    AI_CHAT_BOT_KAKA,
-    AI_CHAT_BOT_DADA,
-} ai_chat_bot_persona_t;
-
-static ai_chat_bot_persona_t host_ai_chat_choose_persona(
-    const chat_history_entry_t *entry)
-{
-    if (entry == nullptr) {
-        return AI_CHAT_BOT_NONE;
-    }
-
-    if (host_ai_chat_message_mentions(entry->message, "kaka") ||
-        host_ai_chat_message_mentions(entry->message, "카카")) {
-        return AI_CHAT_BOT_KAKA;
-    }
-    if (host_ai_chat_message_mentions(entry->message, "dada") ||
-        host_ai_chat_message_mentions(entry->message, "다다")) {
-        return AI_CHAT_BOT_DADA;
-    }
-
-    uint32_t hash = 2166136261U;
-    for (const unsigned char *cur = (const unsigned char *)entry->username;
-         *cur != '\0'; ++cur) {
-        hash ^= (uint32_t)(*cur);
-        hash *= 16777619U;
-    }
-    for (const unsigned char *cur = (const unsigned char *)entry->message;
-         *cur != '\0'; ++cur) {
-        hash ^= (uint32_t)(*cur);
-        hash *= 16777619U;
-    }
-
-    if ((hash % 4U) != 0U) {
-        return AI_CHAT_BOT_NONE;
-    }
-    return ((hash % 2U) == 0U) ? AI_CHAT_BOT_KAKA : AI_CHAT_BOT_DADA;
-}
-
-static bool host_ai_chat_should_respond(const chat_history_entry_t *entry)
-{
-    if (entry == nullptr || !entry->is_user_message) {
-        return false;
-    }
-    if (entry->message[0] == '\0' || entry->message[0] == '/') {
-        return false;
-    }
-    if (strncasecmp(entry->username, "eliza", SSH_CHATTER_USERNAME_LEN) ==
-            0 ||
-        strncasecmp(entry->username, "ai-eliza", SSH_CHATTER_USERNAME_LEN) ==
-            0 ||
-        strncasecmp(entry->username, "kaka", SSH_CHATTER_USERNAME_LEN) == 0 ||
-        strncasecmp(entry->username, "dada", SSH_CHATTER_USERNAME_LEN) == 0) {
-        return false;
-    }
-    return host_ai_chat_choose_persona(entry) != AI_CHAT_BOT_NONE;
 }
 
 static void host_ai_chat_snapshot_state(host_t *host, char *model,
@@ -1266,10 +1202,8 @@ static void host_ai_member_set_enabled(host_t *host, bool enabled)
     }
 
     if (was_enabled != enabled) {
-        host_announce_presence(host, host_ai_persona_name(host, false),
-                               enabled);
-        host_announce_presence(host, host_ai_persona_name(host, true),
-                               enabled);
+        host_ai_member_presence(host, HOST_AI_MEMBER_PERSONA_A, enabled);
+        host_ai_member_presence(host, HOST_AI_MEMBER_PERSONA_B, enabled);
     }
 }
 
@@ -1563,122 +1497,6 @@ static void host_ai_chat_memory_store(host_t *host, const char *username,
     ttak_mutex_unlock(&host->lock);
 }
 
-static void host_ai_chat_consider_reply(host_t *host,
-                                        const chat_history_entry_t *entry)
-{
-    if (host == nullptr || entry == nullptr) {
-        return;
-    }
-    if (!host_ai_member_is_enabled(host)) {
-        return;
-    }
-    if (!host_ai_chat_should_respond(entry)) {
-        return;
-    }
-
-    struct timespec now = session_now_monotonic();
-    struct timespec last_reply = {0, 0};
-    char model[64];
-    bool use_gemini = false;
-    host_ai_chat_snapshot_state(host, model, sizeof(model), &use_gemini,
-                                &last_reply);
-
-    double cooldown = session_timespec_elapsed_seconds(&now, &last_reply);
-    if (cooldown < 3.0) {
-        return;
-    }
-
-    char prompt[SSH_CHATTER_MESSAGE_LIMIT * 2U];
-    char context[SSH_CHATTER_AI_MEMORY_CONTEXT_BUFFER];
-    char username_snippet[SSH_CHATTER_USERNAME_LEN];
-    char message_snippet[SSH_CHATTER_AI_PROMPT_MESSAGE_MAX];
-    host_ai_chat_copy_limited(username_snippet, sizeof(username_snippet),
-                              entry->username, SSH_CHATTER_AI_PROMPT_USERNAME_MAX);
-    host_ai_chat_copy_limited(message_snippet, sizeof(message_snippet),
-                              entry->message,
-                              SSH_CHATTER_AI_PROMPT_MESSAGE_MAX - 1U);
-    size_t context_matches = host_ai_chat_memory_collect_context(
-        host, entry->message, context, sizeof(context));
-    ai_chat_bot_persona_t persona = host_ai_chat_choose_persona(entry);
-    if (persona == AI_CHAT_BOT_NONE) {
-        return;
-    }
-
-    const bool korean = host_ai_chat_message_looks_korean(entry->message);
-    const char *persona_name =
-        (persona == AI_CHAT_BOT_KAKA) ? "kaka" : "dada";
-    const char *tone_instruction = nullptr;
-    if (persona == AI_CHAT_BOT_KAKA) {
-        tone_instruction =
-            "Respond as kaka, a slightly cheerful and playful chat "
-            "participant. Keep it short and natural.";
-    } else {
-        tone_instruction =
-            "Respond as dada, a calm-but-absurd jokester who sounds a little "
-            "childish. Keep it short and natural.";
-    }
-    const char *language_instruction =
-        korean
-            ? "The user is speaking Korean. Reply in Korean."
-            : "The user is speaking English. Reply in English.";
-
-    if (context_matches > 0U && context[0] != '\0') {
-        char context_snippet[SSH_CHATTER_AI_PROMPT_CONTEXT_MAX];
-        host_ai_chat_copy_limited(context_snippet, sizeof(context_snippet),
-                                  context,
-                                  SSH_CHATTER_AI_PROMPT_CONTEXT_MAX - 1U);
-        snprintf(prompt, sizeof(prompt),
-                 "Memory context:\n%s\n\nUser %s says: %s\n"
-                 "%s %s Keep replies under three sentences and avoid "
-                 "moderation or BBS topics. If you decide this message does "
-                 "not need a reply, output exactly: "
-                 "%s",
-                 context_snippet, username_snippet, message_snippet,
-                 tone_instruction, language_instruction,
-                 host_ai_chat_skip_token());
-    } else {
-        snprintf(prompt, sizeof(prompt),
-                 "User %s says: %s\n"
-                 "%s %s Keep replies under three sentences and avoid "
-                 "moderation or BBS topics. If you decide this message does "
-                 "not need a reply, output exactly: "
-                 "%s",
-                 username_snippet, message_snippet, tone_instruction,
-                 language_instruction, host_ai_chat_skip_token());
-    }
-
-    char reply[SSH_CHATTER_MESSAGE_LIMIT];
-    bool success = use_gemini
-                       ? translator_gemini_smalltalk(
-                             prompt, model, reply, sizeof(reply))
-                       : translator_ollama_smalltalk(
-                             prompt, model, reply, sizeof(reply));
-    if (!success) {
-        const char *error = translator_last_error();
-        if (error != nullptr && error[0] != '\0') {
-            printf("[ai-chat] small-talk request failed: %s\n", error);
-        } else {
-            printf("[ai-chat] small-talk request failed.\n");
-        }
-        return;
-    }
-
-    if (!success || reply[0] == '\0') {
-        return;
-    }
-    if (host_ai_chat_reply_is_skip_token(reply)) {
-        return;
-    }
-
-    if (!host_post_client_message(host, persona_name, reply, nullptr, nullptr,
-                                  false)) {
-        return;
-    }
-
-    host_ai_chat_memory_store(host, entry->username, entry->message, reply);
-    host_ai_chat_update_last_reply(host, &now);
-}
-
 bool host_post_client_message(host_t *host, const char *username,
                               const char *message, const char *color_name,
                               const char *highlight_name, bool is_bold)
@@ -1701,9 +1519,7 @@ bool host_post_client_message(host_t *host, const char *username,
 
     chat_room_broadcast_entry(&host->room, &stored, nullptr);
     success = true;
-    if (success) {
-        host_ai_chat_consider_reply(host, &stored);
-    }
+    host_ai_route_public(host, stored.username, stored.message);
 
 exit_host_post_client_message:
     if (memory_scope != nullptr) {
@@ -1840,6 +1656,7 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
     }
 
     host_eliza_worker_shutdown(host);
+    host_ai_reply_shutdown(host);
     host_moderation_shutdown(host);
 
     host_telnet_listener_stop(host);

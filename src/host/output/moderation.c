@@ -931,6 +931,25 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
              (int)sizeof(target_name) - 1, working);
 
     session_ctx_t *target = chat_room_find_user(&ctx->owner->room, target_name);
+    bool ai_queued = false;
+    if (target == nullptr &&
+        host_ai_route_private(ctx->owner, ctx->user.name, target_name, message,
+                              0U, &ai_queued)) {
+        /* An AI member: its answer arrives as a PM once it is generated. */
+        if (!ai_queued) {
+            char busy[SSH_CHATTER_MESSAGE_LIMIT];
+            session_command_snprintf(ctx, busy, sizeof(busy),
+                                     "%s is busy right now; try again soon.",
+                                     target_name);
+            session_send_system_line(ctx, busy);
+            return;
+        }
+        char to_sender_label[SSH_CHATTER_MESSAGE_LIMIT];
+        session_command_snprintf(ctx, to_sender_label, sizeof(to_sender_label),
+                                 "you -> %s", target_name);
+        session_send_private_message_line(ctx, ctx, to_sender_label, message);
+        return;
+    }
     if (target == nullptr &&
         host_ddial_relay_private(ctx->owner, ctx, working, message)) {
         /* Someone on the DDial side: relayed as a DDial private message,

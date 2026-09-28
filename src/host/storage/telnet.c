@@ -1398,6 +1398,7 @@ static void session_deliver_outgoing_message(session_ctx_t *ctx,
     ctx->last_sink_history_total = host_history_total(ctx->owner);
 
     (void)host_eliza_intervene(ctx, trimmed, nullptr, false);
+    host_ai_route_public(ctx->owner, entry.username, entry.message);
 
     size_t message_length = strnlen(trimmed, SSH_CHATTER_MESSAGE_LIMIT);
 

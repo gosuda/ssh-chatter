@@ -607,8 +607,6 @@ void host_ensure_idle_subsystems(host_t *host)
     host_gonu_games_ensure(host);
 }
 
-static void host_ai_chat_consider_reply(host_t *host,
-                                        const chat_history_entry_t *entry);
 static bool host_ai_member_is_enabled(host_t *host);
 static void host_ai_member_set_enabled(host_t *host, bool enabled);
 static void host_ai_chat_snapshot_state(host_t *host, char *model,

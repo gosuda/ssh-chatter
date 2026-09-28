@@ -1553,6 +1553,14 @@ static void session_handle_connected(session_ctx_t *ctx);
 static void host_announce_presence(host_t *host, const char *name,
                                    bool joined);
 static size_t host_ai_participants(host_t *host, char *out, size_t cap);
+static void host_ai_member_presence(host_t *host, size_t member, bool joined);
+static void host_ai_route_public(host_t *host, const char *username,
+                                 const char *message);
+static bool host_ai_route_private(host_t *host, const char *from,
+                                  const char *target, const char *message,
+                                  uint16_t ddial_from_slot, bool *queued);
+static bool host_ai_reply_init(host_t *host);
+static void host_ai_reply_shutdown(host_t *host);
 static bool session_parse_birthday(const char *input, char *normalized,
                                    size_t length);
 static void session_handle_birthday(session_ctx_t *ctx, const char *arguments);

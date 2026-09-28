@@ -246,6 +246,30 @@ typedef struct host_eliza_worker_state {
     host_eliza_intervene_task_t *tail;
 } host_eliza_worker_state_t;
 
+/* AI members present in the room: ELIZA plus the two small-talk personas. */
+enum {
+    HOST_AI_MEMBER_ELIZA = 0,
+    HOST_AI_MEMBER_PERSONA_A,
+    HOST_AI_MEMBER_PERSONA_B,
+    HOST_AI_MEMBER_COUNT
+};
+
+typedef struct host_ai_reply_job host_ai_reply_job_t;
+
+/* Queue feeding the AI reply thread, so LLM calls never block the thread
+ * that received the message. */
+typedef struct host_ai_reply_state {
+    ttak_mutex_t mutex;
+    ttak_cond_t cond;
+    bool initialized;
+    bool thread_started;
+    bool stop;
+    pthread_t thread;
+    host_ai_reply_job_t *head;
+    host_ai_reply_job_t *tail;
+    size_t pending;
+} host_ai_reply_state_t;
+
 typedef enum chat_attachment_type {
     CHAT_ATTACHMENT_NONE = 0,
     CHAT_ATTACHMENT_IMAGE,
@@ -1293,6 +1317,9 @@ typedef struct host {
     _Atomic bool geo_language_enabled;
     host_moderation_state_t moderation;
     host_eliza_worker_state_t eliza_worker;
+    host_ai_reply_state_t ai_reply;
+    /* DDial chat-link line of each AI member while present, else 0. */
+    uint16_t ai_ddial_slots[HOST_AI_MEMBER_COUNT];
     atomic_uint_fast64_t next_session_id;
     pthread_t bbs_watchdog_thread;
     bool bbs_watchdog_thread_initialized;
@@ -1533,6 +1560,10 @@ bool host_ddial_client_send_station_broadcast(host_t *host);
  * relay is implemented for these entries. */
 void host_ddial_chat_link_register(session_ctx_t *ctx);
 void host_ddial_chat_link_unregister(session_ctx_t *ctx);
+/* Name-based forms for members without a session (AI members). */
+uint16_t host_ddial_chat_link_add(host_t *host, const char *display_name,
+                                  const char *username);
+void host_ddial_chat_link_remove(host_t *host, uint16_t slot);
 bool host_ddial_deliver_private_line(host_t *host, uint16_t target_slot,
                                      const char *display_line);
 /* True when handle belongs to a local DDial dial-in session or a linked

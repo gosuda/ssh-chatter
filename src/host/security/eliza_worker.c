@@ -64,7 +64,7 @@ static void host_eliza_announce_join(host_t *host)
         return;
     }
 
-    host_announce_presence(host, "eliza", true);
+    host_ai_member_presence(host, HOST_AI_MEMBER_ELIZA, true);
     host_eliza_say(host,
                    "Hey everyone, I'm eliza. Just another chatter keeping "
                    "an eye on things.");
@@ -77,7 +77,7 @@ static void host_eliza_announce_depart(host_t *host)
     }
 
     host_eliza_say(host, "I'm heading out. Stay safe!");
-    host_announce_presence(host, "eliza", false);
+    host_ai_member_presence(host, HOST_AI_MEMBER_ELIZA, false);
 }
 
 static void host_eliza_say(host_t *host, const char *message)

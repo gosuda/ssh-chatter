@@ -1189,6 +1189,12 @@ static bool mv_private_to_chatter(host_t *host, uint16_t slot,
                                        sizeof(username))) {
         return false;
     }
+    /* An AI member's line: it answers on the sender's line. */
+    bool ai_queued = false;
+    if (!action && host_ai_route_private(host, from_handle, username, body,
+                                         from_slot, &ai_queued)) {
+        return ai_queued;
+    }
     session_ctx_t *ctx = chat_room_find_user_ref(&host->room, username);
     if (ctx == nullptr) {
         return false;

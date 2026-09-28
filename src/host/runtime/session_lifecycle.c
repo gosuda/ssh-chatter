@@ -1201,7 +1201,6 @@ static void *session_thread(void *arg)
             session_send_system_line(ctx, "NOTE: UTF-8 is recommended to see Korean RSS without dirty broken letters");
         }
 
-        char join_message[SSH_CHATTER_MESSAGE_LIMIT];
         char join_name[SSH_CHATTER_USERNAME_LEN];
         const char *source_name =
             (ctx->user_data_loaded &&
@@ -1209,11 +1208,7 @@ static void *session_thread(void *arg)
                 ? ctx->user_data.preferred_nickname
                 : ctx->user.name;
         snprintf(join_name, sizeof(join_name), "%s", source_name);
-        snprintf(join_message, sizeof(join_message),
-                 "%s%s*%s [%s] has joined the chat", ANSI_RESET,
-                 ANSI_BRIGHT_RED, ANSI_RESET, join_name);
-        host_history_record_system(ctx->owner, join_message, nullptr);
-        chat_room_broadcast(&ctx->owner->room, join_message, nullptr);
+        host_announce_presence(ctx->owner, join_name, true);
         host_ddial_chat_link_register(ctx);
     }
 
@@ -1909,16 +1904,11 @@ static void *session_thread(void *arg)
 
     if (ctx->has_joined_room) {
         printf("[part] %s\n", ctx->user.name);
-        char part_message[SSH_CHATTER_MESSAGE_LIMIT];
-        if (ctx->user_data.preferred_nickname[0] != '\0') {
-            snprintf(part_message, sizeof(part_message), "%s%s*%s [%s] has left the chat",
-                     ANSI_RESET, ANSI_BRIGHT_BLUE, ANSI_RESET, ctx->user_data.preferred_nickname);
-        } else {
-            snprintf(part_message, sizeof(part_message), "%s%s*%s [%s] has left the chat",
-                     ANSI_RESET, ANSI_BRIGHT_BLUE, ANSI_RESET, ctx->user.name);
-        }
-        host_history_record_system(ctx->owner, part_message, nullptr);
-        chat_room_broadcast(&ctx->owner->room, part_message, nullptr);
+        host_announce_presence(ctx->owner,
+                               ctx->user_data.preferred_nickname[0] != '\0'
+                                   ? ctx->user_data.preferred_nickname
+                                   : ctx->user.name,
+                               false);
         host_ddial_chat_link_unregister(ctx);
         atomic_store(&ctx->room_snapshot_retired, true);
         chat_room_remove(&ctx->owner->room, ctx);

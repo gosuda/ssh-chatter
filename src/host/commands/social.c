@@ -14,6 +14,8 @@ static void session_handle_usercount(session_ctx_t *ctx)
     char ddial_names[SSH_CHATTER_MESSAGE_LIMIT];
     count +=
         host_ddial_participants(ctx->owner, ddial_names, sizeof(ddial_names));
+    char ai_names[SSH_CHATTER_MESSAGE_LIMIT];
+    count += host_ai_participants(ctx->owner, ai_names, sizeof(ai_names));
 
     char message[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(message, sizeof(message),
@@ -289,10 +291,13 @@ static void session_handle_connected(session_ctx_t *ctx)
     char ddial_names[SSH_CHATTER_MESSAGE_LIMIT];
     size_t ddial_count =
         host_ddial_participants(ctx->owner, ddial_names, sizeof(ddial_names));
+    char ai_names[SSH_CHATTER_MESSAGE_LIMIT];
+    size_t ai_count =
+        host_ai_participants(ctx->owner, ai_names, sizeof(ai_names));
 
     char header[SSH_CHATTER_MESSAGE_LIMIT];
     snprintf(header, sizeof(header),
-             "Connected users (%zu):", count + ddial_count);
+             "Connected users (%zu):", count + ddial_count + ai_count);
     session_send_system_line(ctx, header);
     if (count > 0U) {
         session_send_system_line(ctx, buffer);
@@ -300,6 +305,11 @@ static void session_handle_connected(session_ctx_t *ctx)
     if (ddial_count > 0U) {
         char line[SSH_CHATTER_MESSAGE_LIMIT];
         snprintf(line, sizeof(line), "DDial: %s", ddial_names);
+        session_send_system_line(ctx, line);
+    }
+    if (ai_count > 0U) {
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(line, sizeof(line), "AI: %s", ai_names);
         session_send_system_line(ctx, line);
     }
 }

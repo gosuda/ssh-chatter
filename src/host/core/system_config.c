@@ -18,7 +18,7 @@ static bool host_is_system_reserved_username(host_t *host, const char *username)
     static const char *const system_reserved_names[] = {
         "Guest",   "Admin",       "Operator", "System", "Root", "Moderator",
         "Chatter", "ssh-chatter", "bot",      "Bot",    "BOT",
-        "kaka",    "dada",
+        "kaka",    "dada",        "eliza",
     };
     static const size_t system_reserved_names_count =
         sizeof(system_reserved_names) / sizeof(system_reserved_names[0]);

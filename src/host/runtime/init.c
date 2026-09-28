@@ -548,7 +548,8 @@ void host_init(host_t *host, auth_profile_t *auth)
     atomic_store(&host->eliza_announced, false);
     host->eliza_last_action.tv_sec = 0;
     host->eliza_last_action.tv_nsec = 0L;
-    atomic_store(&host->ai_chat_enabled, true);
+    /* Enabled after state load so the members announce their join. */
+    atomic_store(&host->ai_chat_enabled, false);
     host->ai_chat_use_gemini = false;
     host->ai_chat_last_reply.tv_sec = 0;
     host->ai_chat_last_reply.tv_nsec = 0L;
@@ -582,6 +583,7 @@ void host_init(host_t *host, auth_profile_t *auth)
     host_rss_state_load(host);
     host_eliza_memory_load(host);
     host_eliza_state_load(host);
+    host_ai_member_set_enabled(host, true);
 
     host_user_data_bootstrap(host);
 
@@ -1126,7 +1128,9 @@ static bool host_ai_chat_should_respond(const chat_history_entry_t *entry)
     if (entry->message[0] == '\0' || entry->message[0] == '/') {
         return false;
     }
-    if (strncasecmp(entry->username, "ai-eliza", SSH_CHATTER_USERNAME_LEN) ==
+    if (strncasecmp(entry->username, "eliza", SSH_CHATTER_USERNAME_LEN) ==
+            0 ||
+        strncasecmp(entry->username, "ai-eliza", SSH_CHATTER_USERNAME_LEN) ==
             0 ||
         strncasecmp(entry->username, "kaka", SSH_CHATTER_USERNAME_LEN) == 0 ||
         strncasecmp(entry->username, "dada", SSH_CHATTER_USERNAME_LEN) == 0) {
@@ -1188,17 +1192,84 @@ static bool host_ai_member_is_enabled(host_t *host)
     return atomic_load(&host->ai_chat_enabled);
 }
 
+static const char *host_ai_persona_name(const host_t *host, bool second)
+{
+    const char *configured =
+        second ? host->ai_persona_b_name : host->ai_persona_a_name;
+    if (configured[0] != '\0') {
+        return configured;
+    }
+    return second ? "dada" : "kaka";
+}
+
+/* Join/part lines for everyone in the room — sessions and AI members alike —
+ * so the two can't be told apart by how they arrive or leave. */
+static void host_announce_presence(host_t *host, const char *name, bool joined)
+{
+    if (host == nullptr || name == nullptr || name[0] == '\0') {
+        return;
+    }
+
+    char message[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(message, sizeof(message), "%s%s*%s [%s] has %s the chat",
+             ANSI_RESET, joined ? ANSI_BRIGHT_RED : ANSI_BRIGHT_BLUE,
+             ANSI_RESET, name, joined ? "joined" : "left");
+    host_history_record_system(host, message, nullptr);
+    chat_room_broadcast(&host->room, message, nullptr);
+}
+
+static void host_ai_participant_append(char *out, size_t cap, size_t *offset,
+                                       size_t count, const char *name)
+{
+    int written = snprintf(out + *offset, cap - *offset, "%s%s",
+                           count == 0U ? "" : ", ", name);
+    if (written > 0) {
+        size_t advance = (size_t)written;
+        *offset += (advance < cap - *offset) ? advance : cap - *offset - 1U;
+    }
+}
+
+/* AI members currently present in the room, comma-joined into out (like
+ * host_ddial_participants); returns how many there are. */
+static size_t host_ai_participants(host_t *host, char *out, size_t cap)
+{
+    if (host == nullptr || out == nullptr || cap == 0U) {
+        return 0U;
+    }
+
+    out[0] = '\0';
+    size_t offset = 0U;
+    size_t count = 0U;
+    if (atomic_load(&host->eliza_enabled)) {
+        host_ai_participant_append(out, cap, &offset, count++, "eliza");
+    }
+    if (atomic_load(&host->ai_chat_enabled)) {
+        host_ai_participant_append(out, cap, &offset, count++,
+                                   host_ai_persona_name(host, false));
+        host_ai_participant_append(out, cap, &offset, count++,
+                                   host_ai_persona_name(host, true));
+    }
+    return count;
+}
+
 static void host_ai_member_set_enabled(host_t *host, bool enabled)
 {
     if (host == nullptr) {
         return;
     }
 
-    atomic_store(&host->ai_chat_enabled, enabled);
+    bool was_enabled = atomic_exchange(&host->ai_chat_enabled, enabled);
 
     if (enabled) {
         struct timespec now = session_now_monotonic();
         host_ai_chat_update_last_reply(host, &now);
+    }
+
+    if (was_enabled != enabled) {
+        host_announce_presence(host, host_ai_persona_name(host, false),
+                               enabled);
+        host_announce_presence(host, host_ai_persona_name(host, true),
+                               enabled);
     }
 }
 

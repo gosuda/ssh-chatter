@@ -64,7 +64,7 @@ static void host_eliza_announce_join(host_t *host)
         return;
     }
 
-    host_history_record_system(host, "* [eliza] has joined the chat", nullptr);
+    host_announce_presence(host, "eliza", true);
     host_eliza_say(host,
                    "Hey everyone, I'm eliza. Just another chatter keeping "
                    "an eye on things.");
@@ -77,7 +77,7 @@ static void host_eliza_announce_depart(host_t *host)
     }
 
     host_eliza_say(host, "I'm heading out. Stay safe!");
-    host_history_record_system(host, "* [eliza] has left the chat", nullptr);
+    host_announce_presence(host, "eliza", false);
 }
 
 static void host_eliza_say(host_t *host, const char *message)

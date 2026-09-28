@@ -381,6 +381,132 @@ static bool host_ai_route_private(host_t *host, const char *from,
     return true;
 }
 
+/* Decode one UTF-8 sequence; returns its length, 0 when malformed. */
+static size_t host_ai_utf8_decode(const unsigned char *p, uint32_t *cp)
+{
+    if (p[0] < 0x80U) {
+        *cp = p[0];
+        return 1U;
+    }
+    size_t len;
+    uint32_t value;
+    if ((p[0] & 0xE0U) == 0xC0U) {
+        len = 2U;
+        value = p[0] & 0x1FU;
+    } else if ((p[0] & 0xF0U) == 0xE0U) {
+        len = 3U;
+        value = p[0] & 0x0FU;
+    } else if ((p[0] & 0xF8U) == 0xF0U) {
+        len = 4U;
+        value = p[0] & 0x07U;
+    } else {
+        return 0U;
+    }
+    for (size_t i = 1U; i < len; ++i) {
+        if ((p[i] & 0xC0U) != 0x80U) {
+            return 0U;
+        }
+        value = (value << 6U) | (p[i] & 0x3FU);
+    }
+    *cp = value;
+    return len;
+}
+
+/* ASCII stand-in for a code point that often slips into English model
+ * output: "" drops it (emoji, pictographs, joiners), nullptr means the
+ * character is real non-English text and has no stand-in. */
+static const char *host_ai_ascii_stand_in(uint32_t cp)
+{
+    switch (cp) {
+    case 0x2018U: case 0x2019U: case 0x201AU: case 0x201BU: case 0x2032U:
+        return "'";
+    case 0x201CU: case 0x201DU: case 0x201EU: case 0x201FU: case 0x2033U:
+        return "\"";
+    case 0x2010U: case 0x2011U: case 0x2012U: case 0x2013U: case 0x2014U:
+    case 0x2015U: case 0x2212U:
+        return "-";
+    case 0x2026U:
+        return "...";
+    case 0x00A0U: case 0x202FU: case 0x205FU:
+        return " ";
+    case 0x2022U: case 0x00B7U:
+        return "*";
+    case 0x00D7U:
+        return "x";
+    case 0x00A9U:
+        return "(c)";
+    case 0x00AEU:
+        return "(R)";
+    case 0x2122U:
+        return "TM";
+    case 0x2190U:
+        return "<-";
+    case 0x2192U:
+        return "->";
+    case 0x200BU: case 0x200CU: case 0x200DU: case 0x2060U: case 0xFE0EU:
+    case 0xFE0FU: case 0xFEFFU:
+        return "";
+    default:
+        break;
+    }
+    if (cp >= 0x2000U && cp <= 0x200AU) {
+        return " ";
+    }
+    if ((cp >= 0x2190U && cp <= 0x21FFU) ||   /* arrows */
+        (cp >= 0x2300U && cp <= 0x23FFU) ||   /* misc technical */
+        (cp >= 0x25A0U && cp <= 0x27BFU) ||   /* shapes, symbols, dingbats */
+        (cp >= 0x2B00U && cp <= 0x2BFFU) ||   /* misc symbols and arrows */
+        (cp >= 0x1F000U && cp <= 0x1FAFFU) || /* emoji and pictographs */
+        (cp >= 0xE0020U && cp <= 0xE007FU)) { /* emoji tag sequences */
+        return "";
+    }
+    return nullptr;
+}
+
+/* Replies go to DDial too, which only takes plain ASCII lines.  Fold the
+ * typographic punctuation and emoji an English reply tends to carry so it
+ * still gets through.  A reply with real non-English text is left alone:
+ * those were never going to reach DDial. */
+static void host_ai_reply_fold_ascii(char *reply, size_t reply_len)
+{
+    char folded[SSH_CHATTER_MESSAGE_LIMIT];
+    size_t out = 0U;
+    const unsigned char *p = (const unsigned char *)reply;
+    while (*p != '\0') {
+        uint32_t cp = 0U;
+        size_t len = host_ai_utf8_decode(p, &cp);
+        if (len == 0U) {
+            return;
+        }
+        const char *piece;
+        char single[2] = {(char)cp, '\0'};
+        if (cp < 0x80U) {
+            piece = single;
+        } else {
+            piece = host_ai_ascii_stand_in(cp);
+            if (piece == nullptr) {
+                return;
+            }
+        }
+        for (const char *q = piece; *q != '\0'; ++q) {
+            /* Dropped emoji leave their surrounding spaces doubled. */
+            if (*q == ' ' && out > 0U && folded[out - 1U] == ' ') {
+                continue;
+            }
+            if (out + 1U >= sizeof(folded)) {
+                return;
+            }
+            folded[out++] = *q;
+        }
+        p += len;
+    }
+    folded[out] = '\0';
+    trim_whitespace_inplace(folded);
+    if (folded[0] != '\0') {
+        snprintf(reply, reply_len, "%s", folded);
+    }
+}
+
 static bool host_ai_persona_reply(host_t *host, const host_ai_reply_job_t *job,
                                   char *reply, size_t reply_len)
 {
@@ -427,7 +553,8 @@ static bool host_ai_persona_reply(host_t *host, const host_ai_reply_job_t *job,
     const char *language =
         host_ai_chat_message_looks_korean(job->message)
             ? "The user is speaking Korean. Reply in Korean."
-            : "The user is speaking English. Reply in English.";
+            : "The user is speaking English. Reply in English, in plain "
+              "ASCII only: no emoji, curly quotes or special dashes.";
 
     char length_rule[256];
     if (job->kind == HOST_AI_REPLY_PRIVATE) {
@@ -536,6 +663,7 @@ static void host_ai_reply_run(host_t *host, const host_ai_reply_job_t *job)
     } else if (!host_ai_persona_reply(host, job, reply, sizeof(reply))) {
         return;
     }
+    host_ai_reply_fold_ascii(reply, sizeof(reply));
     if (reply[0] == '\0') {
         return;
     }

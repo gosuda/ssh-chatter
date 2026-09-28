@@ -1545,6 +1545,93 @@ static const session_help_entry_t kSessionHelpExtended[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "setpw [secret]",
+        .description =
+            {
+                "Same as password.",
+                "password 와 같습니다.",
+                "password と同じです。",
+                "与 password 相同。",
+                "То же, что password.",
+                "Wie password.",
+                "Identique à password.",
+                "To samo co password.",
+            },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "delpw [username]",
+        .description =
+            {
+                "Remove your password; operators can remove another user's.",
+                "내 비밀번호를 삭제합니다. 운영자는 다른 사용자의 비밀번호도 삭제할 수 있습니다.",
+                "自分のパスワードを削除します。オペレーターは他のユーザーのものも削除できます。",
+                "删除自己的密码；管理员可以删除其他用户的密码。",
+                "Удалить свой пароль; операторы могут удалить пароль другого "
+                "пользователя.",
+                "Eigenes Passwort entfernen; Operatoren können das anderer "
+                "Benutzer entfernen.",
+                "Supprimer votre mot de passe ; les opérateurs peuvent "
+                "supprimer celui d'un autre utilisateur.",
+                "Usuń swoje hasło; operatorzy mogą usunąć hasło innego "
+                "użytkownika.",
+            },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "wall [show|enter|exit]",
+        .description =
+            {
+                "Show the shared graffiti wall, or enter/exit its editor.",
+                "공용 낙서 벽을 보거나 편집기에 들어가고 나옵니다.",
+                "共有の落書き壁を表示するか、エディターに出入りします。",
+                "查看共享涂鸦墙，或进入/退出其编辑器。",
+                "Показать общую стену граффити или войти/выйти из её "
+                "редактора.",
+                "Die gemeinsame Graffiti-Wand anzeigen oder ihren Editor "
+                "betreten/verlassen.",
+                "Afficher le mur de graffitis partagé, ou entrer/sortir de "
+                "son éditeur.",
+                "Pokaż wspólną ścianę graffiti albo wejdź/wyjdź z jej "
+                "edytora.",
+            },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "othello <list|accept <game-id>>",
+        .description =
+            {
+                "List open Othello games or accept one.",
+                "대기 중인 오델로 게임을 보거나 수락합니다.",
+                "待機中のオセロ対局を一覧表示するか、受けます。",
+                "列出等待中的黑白棋对局或接受其中一个。",
+                "Показать открытые партии в реверси или принять одну.",
+                "Offene Othello-Partien auflisten oder eine annehmen.",
+                "Lister les parties d'Othello ouvertes ou en accepter une.",
+                "Wyświetl otwarte partie Othello albo przyjmij jedną.",
+            },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "hybrid <on|off|status>",
+        .description =
+            {
+                "Keep mixed-language text in UTF-8 while system output uses "
+                "the retro encoding.",
+                "레트로 인코딩을 쓰는 중에도 여러 언어가 섞인 글은 UTF-8로 보냅니다.",
+                "レトロ文字コード使用中も、多言語が混ざった文は UTF-8 で送ります。",
+                "使用复古编码时，混合语言的文本仍以 UTF-8 发送。",
+                "При ретро-кодировке оставлять текст на смеси языков в UTF-8.",
+                "Gemischtsprachigen Text in UTF-8 lassen, während "
+                "Systemausgaben die Retro-Kodierung nutzen.",
+                "Garder le texte multilingue en UTF-8 pendant que la sortie "
+                "système utilise l'encodage rétro.",
+                "Zostaw tekst mieszanych języków w UTF-8, gdy komunikaty "
+                "systemowe używają kodowania retro.",
+            },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
         .label = "date <timezone>",
         .description =
             {
@@ -2086,31 +2173,87 @@ static const session_help_entry_t kSessionHelpOperator[] = {
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,
-        .label = "ddial <connect <host> <port> [handle]|reconnect|disconnect|"
-                 "raw <c-string>>",
+        .label = "ddial <connect <host> <port> [handle] [password]|reconnect|"
+                 "disconnect|raw <c-string>>",
         .description =
             {
-                "Drive the DDial relay link; raw sends escaped bytes such as "
+                "Drive the DDial relay link. connect logs in as a guest "
+                "unless a password is given; raw sends escaped bytes such as "
                 "\\nid\\npw\\n as-is (operator only).",
-                "DDial 중계 연결을 관리합니다. raw 는 \\nid\\npw\\n 같은 "
-                "이스케이프 바이트를 그대로 보냅니다 (운영자 전용).",
-                "DDial 中継リンクを操作します。raw は \\nid\\npw\\n の"
-                "ようなエスケープしたバイトをそのまま送ります（オペレーター"
-                "専用）。",
-                "管理 DDial 中继连接；raw 会原样发送 \\nid\\npw\\n 这类"
-                "转义字节（仅限管理员）。",
-                "Управлять связью DDial; raw отправляет экранированные байты "
-                "как есть, напр. \\nid\\npw\\n (только оператор).",
-                "DDial-Relay-Verbindung steuern; raw sendet maskierte Bytes "
-                "wie \\nid\\npw\\n unverändert (nur Operatoren).",
-                "Piloter le lien relais DDial ; raw envoie tels quels des "
-                "octets échappés comme \\nid\\npw\\n (opérateur).",
-                "Steruj łączem przekaźnika DDial; raw wysyła bajty ze "
-                "znakami ucieczki, np. \\nid\\npw\\n, bez zmian (tylko "
-                "operator).",
+                "DDial 중계 연결을 관리합니다. connect 는 비밀번호를 주지 않으면 "
+                "게스트로 로그인합니다. raw 는 \\nid\\npw\\n 같은 이스케이프 "
+                "바이트를 그대로 보냅니다 (운영자 전용).",
+                "DDial 中継リンクを操作します。connect はパスワードを省くと"
+                "ゲストでログインします。raw は \\nid\\npw\\n のような"
+                "エスケープしたバイトをそのまま送ります（オペレーター専用）。",
+                "管理 DDial 中继连接。connect 不带密码时以访客身份登录；raw "
+                "会原样发送 \\nid\\npw\\n 这类转义字节（仅限管理员）。",
+                "Управлять связью DDial. connect без пароля входит гостем; "
+                "raw отправляет экранированные байты как есть, напр. "
+                "\\nid\\npw\\n (только оператор).",
+                "DDial-Relay-Verbindung steuern. connect meldet sich ohne "
+                "Passwort als Gast an; raw sendet maskierte Bytes wie "
+                "\\nid\\npw\\n unverändert (nur Operatoren).",
+                "Piloter le lien relais DDial. connect se connecte en invité "
+                "sans mot de passe ; raw envoie tels quels des octets "
+                "échappés comme \\nid\\npw\\n (opérateur).",
+                "Steruj łączem przekaźnika DDial. connect bez hasła loguje "
+                "jako gość; raw wysyła bajty ze znakami ucieczki, np. "
+                "\\nid\\npw\\n, bez zmian (tylko operator).",
             },
         .label_arg_count = 0U,
         .label_args = {},
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "resetpw <nickname>",
+        .description =
+            {
+                "Clear a user's password (operator only).",
+                "사용자의 비밀번호를 초기화합니다 (운영자 전용).",
+                "ユーザーのパスワードを消去します（オペレーター専用）。",
+                "清除用户的密码（仅限管理员）。",
+                "Сбросить пароль пользователя (только оператор).",
+                "Passwort eines Benutzers zurücksetzen (nur Operatoren).",
+                "Effacer le mot de passe d'un utilisateur (opérateur).",
+                "Wyczyść hasło użytkownika (tylko operator).",
+            },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "ollama-model",
+        .description =
+            {
+                "Show the Ollama models the AI members use (operator only).",
+                "AI 멤버가 쓰는 Ollama 모델을 보여줍니다 (운영자 전용).",
+                "AI メンバーが使う Ollama モデルを表示します（オペレーター専用）。",
+                "显示 AI 成员使用的 Ollama 模型（仅限管理员）。",
+                "Показать модели Ollama, которые используют AI-участники "
+                "(оператор).",
+                "Die Ollama-Modelle der KI-Mitglieder anzeigen (nur "
+                "Operatoren).",
+                "Afficher les modèles Ollama utilisés par les membres IA "
+                "(opérateur).",
+                "Pokaż modele Ollama używane przez członków AI (tylko "
+                "operator).",
+            },
+    },
+    {
+        .kind = SESSION_HELP_ENTRY_COMMAND,
+        .label = "set-sync-url <host> <port>",
+        .description =
+            {
+                "Point history sync at another server and reconnect.",
+                "기록 동기화 서버를 바꾸고 다시 연결합니다.",
+                "履歴同期サーバーを変更して再接続します。",
+                "更改历史同步服务器并重新连接。",
+                "Сменить сервер синхронизации истории и переподключиться.",
+                "Den Server für die Verlaufssynchronisierung ändern und neu "
+                "verbinden.",
+                "Changer le serveur de synchronisation de l'historique et se "
+                "reconnecter.",
+                "Zmień serwer synchronizacji historii i połącz ponownie.",
+            },
     },
     {
         .kind = SESSION_HELP_ENTRY_COMMAND,

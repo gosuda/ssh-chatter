@@ -99,12 +99,15 @@ typedef enum translation_job_type {
     TRANSLATION_JOB_CAPTION = 0,
     TRANSLATION_JOB_INPUT,
     TRANSLATION_JOB_PRIVATE_MESSAGE,
+    TRANSLATION_JOB_CHAT,
+    TRANSLATION_JOB_BBS_POST,
 } translation_job_type_t;
 
 typedef struct translation_job {
     translation_job_type_t type;
     char target_language[SSH_CHATTER_LANG_NAME_LEN];
     size_t placeholder_lines;
+    uint64_t generation;
     struct translation_job *next;
     union {
         struct {
@@ -122,6 +125,19 @@ typedef struct translation_job {
             char to_target_label[SSH_CHATTER_MESSAGE_LIMIT];
             char to_sender_label[SSH_CHATTER_MESSAGE_LIMIT];
         } pm;
+        struct {
+            uint64_t message_id;
+            bool backfill;
+            char name[SSH_CHATTER_USERNAME_LEN];
+            char text[SSH_CHATTER_MESSAGE_LIMIT];
+        } chat;
+        struct {
+            uint64_t post_id;
+            uint64_t fingerprint;
+            char **segments; /* title, body chunks, then one per comment */
+            size_t segment_count;
+            size_t body_chunks;
+        } bbs;
     } data;
 } translation_job_t;
 
@@ -136,8 +152,61 @@ typedef struct translation_result {
     char pm_target_name[SSH_CHATTER_USERNAME_LEN];
     char pm_to_target_label[SSH_CHATTER_MESSAGE_LIMIT];
     char pm_to_sender_label[SSH_CHATTER_MESSAGE_LIMIT];
+    uint64_t generation;
+    uint64_t message_id;
+    bool backfill;
+    char chat_name[SSH_CHATTER_USERNAME_LEN];
+    uint64_t post_id;
+    uint64_t fingerprint;
+    char **segments;
+    size_t segment_count;
+    size_t body_chunks;
     struct translation_result *next;
 } translation_result_t;
+
+#ifndef SSH_CHATTER_TRANSLATION_BACKFILL_MESSAGES
+#define SSH_CHATTER_TRANSLATION_BACKFILL_MESSAGES 100U
+#endif
+
+/* One request carries the backfill plus whatever arrived meanwhile. */
+#ifndef SSH_CHATTER_TRANSLATION_CHAT_BATCH_MAX
+#define SSH_CHATTER_TRANSLATION_CHAT_BATCH_MAX 128U
+#endif
+
+#ifndef SSH_CHATTER_TRANSLATION_CHAT_BATCH_BYTES
+#define SSH_CHATTER_TRANSLATION_CHAT_BATCH_BYTES (64U * 1024U)
+#endif
+
+#ifndef SSH_CHATTER_TRANSLATION_CHAT_CACHE_SIZE
+#define SSH_CHATTER_TRANSLATION_CHAT_CACHE_SIZE 512U
+#endif
+
+#ifndef SSH_CHATTER_TRANSLATION_BBS_CHUNK_BYTES
+#define SSH_CHATTER_TRANSLATION_BBS_CHUNK_BYTES 1800U
+#endif
+
+typedef struct translation_chat_cache_entry {
+    uint64_t message_id;
+    bool pending;
+    bool failed;
+    char *text;
+} translation_chat_cache_entry_t;
+
+typedef struct translation_chat_cache {
+    size_t next_slot;
+    translation_chat_cache_entry_t
+        entries[SSH_CHATTER_TRANSLATION_CHAT_CACHE_SIZE];
+} translation_chat_cache_t;
+
+typedef struct translation_bbs_cache {
+    uint64_t post_id;
+    uint64_t fingerprint;
+    bool pending;
+    bool failed;
+    char **segments;
+    size_t segment_count;
+    size_t body_chunks;
+} translation_bbs_cache_t;
 
 static translation_job_t *session_translation_job_alloc(void)
 {
@@ -196,9 +265,32 @@ static bool session_translation_worker_ensure(session_ctx_t *ctx)
     return true;
 }
 
+// Forget every cached chat/BBS translation and make results of jobs that
+// are still in flight stale, so a language change never shows old output.
+static void session_translation_reset_cache(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    ++ctx->translation_generation;
+    ctx->translation_backfill_done = false;
+    ctx->translation_chat_cache = nullptr;
+    ctx->translation_bbs_cache = nullptr;
+}
+
 static void session_translation_clear_queue(session_ctx_t *ctx)
 {
-    if (ctx == nullptr || !ctx->translation_mutex_initialized) {
+    if (ctx == nullptr) {
+        return;
+    }
+
+    if (ctx->translation_mutex_initialized) {
+        ttak_mutex_lock(&ctx->translation_mutex);
+        session_translation_reset_cache(ctx);
+        ttak_mutex_unlock(&ctx->translation_mutex);
+    } else {
+        session_translation_reset_cache(ctx);
         return;
     }
 
@@ -212,6 +304,8 @@ static void session_translation_clear_queue(session_ctx_t *ctx)
     ready = ctx->translation_ready_head;
     ctx->translation_ready_head = nullptr;
     ctx->translation_ready_tail = nullptr;
+    ctx->translation_batch_ready_head = nullptr;
+    ctx->translation_batch_ready_tail = nullptr;
     ttak_mutex_unlock(&ctx->translation_mutex);
 
     while (pending != nullptr) {
@@ -361,6 +455,28 @@ static const char *session_translation_pending_text(session_ui_language_t lang, 
     }
 }
 
+static const char *session_translation_bbs_pending_text(session_ui_language_t lang)
+{
+    switch (lang) {
+    case SESSION_UI_LANGUAGE_KO:
+        return "[게시글 번역 중...]";
+    case SESSION_UI_LANGUAGE_JP:
+        return "[投稿を翻訳中...]";
+    case SESSION_UI_LANGUAGE_ZH:
+        return "[正在翻译帖子...]";
+    case SESSION_UI_LANGUAGE_RU:
+        return "[Перевод публикации...]";
+    case SESSION_UI_LANGUAGE_DE:
+        return "[Beitrag wird übersetzt...]";
+    case SESSION_UI_LANGUAGE_FR:
+        return "[Traduction de la publication...]";
+    case SESSION_UI_LANGUAGE_PL:
+        return "[Tłumaczenie posta...]";
+    default:
+        return "[Translating post...]";
+    }
+}
+
 static bool session_translation_queue_private_message(session_ctx_t *ctx,
                                                       session_ctx_t *target,
                                                       const char *message)
@@ -453,6 +569,509 @@ static bool session_translation_queue_input(session_ctx_t *ctx,
     ttak_mutex_unlock(&ctx->translation_mutex);
 
     session_send_system_line(ctx, session_translation_pending_text(ctx->ui_language, false));
+    return true;
+}
+
+static bool session_translation_output_active(const session_ctx_t *ctx)
+{
+    return ctx != nullptr && ctx->translation_enabled &&
+           ctx->output_translation_enabled &&
+           ctx->output_translation_language[0] != '\0';
+}
+
+static char *session_translation_strndup(const char *text, size_t length)
+{
+    char *copy = (char *)sshc_gc_malloc(length + 1U);
+    if (copy != nullptr) {
+        memcpy(copy, text, length);
+        copy[length] = '\0';
+    }
+    return copy;
+}
+
+typedef struct translation_job_list {
+    translation_job_t *head;
+    translation_job_t *tail;
+} translation_job_list_t;
+
+static void session_translation_job_list_append(translation_job_list_t *list,
+                                                translation_job_t *job)
+{
+    job->next = nullptr;
+    if (list->tail != nullptr) {
+        list->tail->next = job;
+    } else {
+        list->head = job;
+    }
+    list->tail = job;
+}
+
+// Hand a list of jobs to the worker in one step, so it sees all of them
+// when it assembles its next batch.
+static void session_translation_enqueue_list(session_ctx_t *ctx,
+                                             translation_job_list_t *list)
+{
+    if (list->head == nullptr) {
+        return;
+    }
+
+    ttak_mutex_lock(&ctx->translation_mutex);
+    for (translation_job_t *job = list->head; job != nullptr; job = job->next) {
+        job->generation = ctx->translation_generation;
+    }
+    if (ctx->translation_pending_tail != nullptr) {
+        ctx->translation_pending_tail->next = list->head;
+    } else {
+        ctx->translation_pending_head = list->head;
+    }
+    ctx->translation_pending_tail = list->tail;
+    ttak_cond_signal(&ctx->translation_cond);
+    ttak_mutex_unlock(&ctx->translation_mutex);
+    list->head = nullptr;
+    list->tail = nullptr;
+}
+
+static void session_translation_enqueue(session_ctx_t *ctx,
+                                        translation_job_t *job)
+{
+    translation_job_list_t list = {0};
+    session_translation_job_list_append(&list, job);
+    session_translation_enqueue_list(ctx, &list);
+}
+
+// Caller holds translation_mutex (or owns ctx exclusively).
+static translation_chat_cache_entry_t *
+session_translation_chat_cache_find_locked(session_ctx_t *ctx,
+                                           uint64_t message_id)
+{
+    translation_chat_cache_t *cache = ctx->translation_chat_cache;
+    if (cache == nullptr || message_id == 0U) {
+        return nullptr;
+    }
+
+    for (size_t idx = 0U; idx < SSH_CHATTER_TRANSLATION_CHAT_CACHE_SIZE;
+         ++idx) {
+        if (cache->entries[idx].message_id == message_id) {
+            return &cache->entries[idx];
+        }
+    }
+    return nullptr;
+}
+
+static translation_chat_cache_entry_t *
+session_translation_chat_cache_claim_locked(session_ctx_t *ctx,
+                                            uint64_t message_id)
+{
+    translation_chat_cache_entry_t *slot =
+        session_translation_chat_cache_find_locked(ctx, message_id);
+    if (slot != nullptr) {
+        return slot;
+    }
+
+    if (ctx->translation_chat_cache == nullptr) {
+        ctx->translation_chat_cache = (translation_chat_cache_t *)
+            sshc_gc_calloc(1U, sizeof(translation_chat_cache_t));
+        if (ctx->translation_chat_cache == nullptr) {
+            return nullptr;
+        }
+    }
+
+    translation_chat_cache_t *cache = ctx->translation_chat_cache;
+    slot = &cache->entries[cache->next_slot];
+    cache->next_slot =
+        (cache->next_slot + 1U) % SSH_CHATTER_TRANSLATION_CHAT_CACHE_SIZE;
+    memset(slot, 0, sizeof(*slot));
+    slot->message_id = message_id;
+    return slot;
+}
+
+// Resolve what the reader actually sees for a history entry and decide
+// whether it is a chat line worth translating for them.
+static bool session_translation_chat_candidate(
+    session_ctx_t *ctx, const chat_history_entry_t *entry,
+    chat_history_entry_t *scratch, const chat_history_entry_t **view)
+{
+    if (ctx == nullptr || entry == nullptr || scratch == nullptr ||
+        view == nullptr || chat_history_entry_is_empty(entry)) {
+        return false;
+    }
+
+    if (!host_ddial_display_view(entry, scratch, view)) {
+        return false;
+    }
+
+    const chat_history_entry_t *shown = *view;
+    if (!shown->is_user_message || shown->message_id == 0U ||
+        shown->message[0] == '\0') {
+        return false;
+    }
+
+    // The reader's own lines are already in the reader's language.
+    if (strcmp(chat_history_entry_display_name(shown), ctx->user.name) == 0) {
+        return false;
+    }
+
+    if (shown->message[0] == '@') {
+        char stripped[SSH_CHATTER_MESSAGE_LIMIT];
+        if (translation_strip_no_translate_prefix(shown->message, stripped,
+                                                  sizeof(stripped))) {
+            return false;
+        }
+    }
+
+    return !session_should_hide_entry(ctx, shown);
+}
+
+// Queue one incoming chat line for the batched chat translator. Lines already
+// translated, in flight or failed for the current language are skipped. With
+// a collect list the job is gathered there instead of being queued.
+static bool session_translation_queue_chat_entry(
+    session_ctx_t *ctx, const chat_history_entry_t *entry, bool backfill,
+    translation_job_list_t *collect)
+{
+    if (!session_translation_output_active(ctx) ||
+        ctx->translation_suppress_output) {
+        return false;
+    }
+
+    chat_history_entry_t scratch;
+    const chat_history_entry_t *view = entry;
+    if (!session_translation_chat_candidate(ctx, entry, &scratch, &view)) {
+        return false;
+    }
+
+    if (!session_translation_worker_ensure(ctx)) {
+        return false;
+    }
+
+    ttak_mutex_lock(&ctx->translation_mutex);
+    translation_chat_cache_entry_t *slot =
+        session_translation_chat_cache_find_locked(ctx, view->message_id);
+    if (slot != nullptr &&
+        (slot->pending || slot->failed || slot->text != nullptr)) {
+        ttak_mutex_unlock(&ctx->translation_mutex);
+        return false;
+    }
+    slot = session_translation_chat_cache_claim_locked(ctx, view->message_id);
+    if (slot != nullptr) {
+        slot->pending = true;
+    }
+    ttak_mutex_unlock(&ctx->translation_mutex);
+    if (slot == nullptr) {
+        return false;
+    }
+
+    translation_job_t *job = session_translation_job_alloc();
+    if (job == nullptr) {
+        return false;
+    }
+
+    job->type = TRANSLATION_JOB_CHAT;
+    snprintf(job->target_language, sizeof(job->target_language), "%s",
+             ctx->output_translation_language);
+    job->data.chat.message_id = view->message_id;
+    job->data.chat.backfill = backfill;
+    snprintf(job->data.chat.name, sizeof(job->data.chat.name), "%s",
+             chat_history_entry_display_name(view));
+    snprintf(job->data.chat.text, sizeof(job->data.chat.text), "%s",
+             view->message);
+
+    if (collect != nullptr) {
+        session_translation_job_list_append(collect, job);
+    } else {
+        session_translation_enqueue(ctx, job);
+    }
+    return true;
+}
+
+// When translation turns on (or the language changes) queue the last
+// SSH_CHATTER_TRANSLATION_BACKFILL_MESSAGES chat lines; the worker sends them
+// together with anything that arrives meanwhile as one batch.
+static void session_translation_backfill(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->owner == nullptr ||
+        ctx->translation_backfill_done ||
+        !session_translation_output_active(ctx)) {
+        return;
+    }
+    ctx->translation_backfill_done = true;
+
+    const size_t total = host_history_total(ctx->owner);
+    if (total == 0U) {
+        return;
+    }
+
+    enum { kChunk = 32, kScanLimit = 1000 };
+    chat_history_entry_t *buffer = (chat_history_entry_t *)sshc_gc_calloc(
+        kChunk, sizeof(chat_history_entry_t));
+    if (buffer == nullptr) {
+        return;
+    }
+
+    // Walk backwards to find where the last N translatable lines begin.
+    size_t start = total;
+    size_t found = 0U;
+    size_t scanned = 0U;
+    chat_history_entry_t scratch;
+    const chat_history_entry_t *view = nullptr;
+    while (start > 0U && found < SSH_CHATTER_TRANSLATION_BACKFILL_MESSAGES &&
+           scanned < kScanLimit) {
+        size_t chunk = start >= (size_t)kChunk ? (size_t)kChunk : start;
+        size_t copied =
+            host_history_copy_range(ctx->owner, start - chunk, buffer, chunk);
+        if (copied < chunk) {
+            break;
+        }
+        size_t idx = chunk;
+        while (idx > 0U && found < SSH_CHATTER_TRANSLATION_BACKFILL_MESSAGES) {
+            --idx;
+            ++scanned;
+            if (session_translation_chat_candidate(ctx, &buffer[idx],
+                                                   &scratch, &view)) {
+                ++found;
+            }
+        }
+        start = start - chunk + idx;
+    }
+
+    translation_job_list_t backlog = {0};
+    for (size_t pos = start; pos < total; pos += (size_t)kChunk) {
+        size_t chunk = total - pos;
+        if (chunk > (size_t)kChunk) {
+            chunk = (size_t)kChunk;
+        }
+        size_t copied = host_history_copy_range(ctx->owner, pos, buffer, chunk);
+        for (size_t idx = 0U; idx < copied; ++idx) {
+            (void)session_translation_queue_chat_entry(ctx, &buffer[idx],
+                                                       true, &backlog);
+        }
+    }
+    session_translation_enqueue_list(ctx, &backlog);
+}
+
+static uint64_t session_translation_fnv1a(uint64_t hash, const char *text);
+
+static uint64_t session_translation_output_hash(const session_ctx_t *ctx)
+{
+    if (!ctx->has_last_output_line) {
+        return 0U;
+    }
+    return session_translation_fnv1a(1469598103934665603ULL,
+                                     ctx->last_output_line);
+}
+
+// Called after a chat line was written: remember it so its translation can
+// be placed directly beneath it when nothing else was printed in between.
+static void session_translation_note_chat_line(session_ctx_t *ctx,
+                                               const chat_history_entry_t *entry)
+{
+    if (!session_translation_queue_chat_entry(ctx, entry, false, nullptr)) {
+        return;
+    }
+    ctx->translation_tail_message_id = entry->message_id;
+    ctx->translation_tail_output_hash = session_translation_output_hash(ctx);
+}
+
+// Copy the cached translation of a chat line, if one exists.
+static bool session_translation_chat_caption(session_ctx_t *ctx,
+                                             uint64_t message_id, char *buffer,
+                                             size_t length)
+{
+    if (!session_translation_output_active(ctx) || buffer == nullptr ||
+        length == 0U || !ctx->translation_mutex_initialized) {
+        return false;
+    }
+
+    bool found = false;
+    ttak_mutex_lock(&ctx->translation_mutex);
+    translation_chat_cache_entry_t *slot =
+        session_translation_chat_cache_find_locked(ctx, message_id);
+    if (slot != nullptr && slot->text != nullptr) {
+        snprintf(buffer, length, "%s", slot->text);
+        found = true;
+    }
+    ttak_mutex_unlock(&ctx->translation_mutex);
+    return found;
+}
+
+// Emit a translated chat line as caption rows ("    ↳ ..."), keeping later
+// lines of a multi-line translation indented under the first.
+static void session_translation_emit_caption(session_ctx_t *ctx,
+                                             const char *prefix,
+                                             const char *text,
+                                             bool add_to_model,
+                                             uint64_t message_id, bool emit)
+{
+    if (ctx == nullptr || text == nullptr) {
+        return;
+    }
+
+    const char *cursor = text;
+    bool first = true;
+    while (cursor != nullptr) {
+        const char *newline = strchr(cursor, '\n');
+        size_t length =
+            newline != nullptr ? (size_t)(newline - cursor) : strlen(cursor);
+        char line[SSH_CHATTER_MESSAGE_LIMIT];
+        snprintf(line, sizeof(line), "%s%s%.*s" ANSI_RESET,
+                 first ? "    \342\206\263 " : "      ",
+                 first && prefix != nullptr ? prefix : "", (int)length,
+                 cursor);
+        if (add_to_model && ctx->display_model_initialized) {
+            unsigned int width =
+                (ctx->terminal_width > 0U) ? ctx->terminal_width : 80U;
+            display_model_append_message(&ctx->display_model, message_id,
+                                         line, width);
+        }
+        if (emit) {
+            session_send_plain_line(ctx, line);
+        }
+        first = false;
+        cursor = newline != nullptr ? newline + 1 : nullptr;
+    }
+}
+
+static uint64_t session_translation_fnv1a(uint64_t hash, const char *text)
+{
+    for (const unsigned char *p = (const unsigned char *)text;
+         p != nullptr && *p != '\0'; ++p) {
+        hash ^= *p;
+        hash *= 1099511628211ULL;
+    }
+    hash ^= 0xffU;
+    hash *= 1099511628211ULL;
+    return hash;
+}
+
+static uint64_t session_translation_bbs_fingerprint(const bbs_post_t *post)
+{
+    uint64_t hash = 1469598103934665603ULL;
+    hash = session_translation_fnv1a(hash, post->title);
+    hash = session_translation_fnv1a(hash, post->body);
+    for (size_t idx = 0U; idx < post->comment_count; ++idx) {
+        hash = session_translation_fnv1a(hash, post->comments[idx].text);
+    }
+    return hash ^ (uint64_t)post->comment_count;
+}
+
+// The finished translation of this exact post revision, or nullptr.
+static const translation_bbs_cache_t *
+session_translation_bbs_ready(session_ctx_t *ctx, const bbs_post_t *post)
+{
+    if (!session_translation_output_active(ctx) || post == nullptr) {
+        return nullptr;
+    }
+
+    const translation_bbs_cache_t *cache = ctx->translation_bbs_cache;
+    if (cache == nullptr || cache->pending || cache->failed ||
+        cache->segments == nullptr || cache->post_id != post->id ||
+        cache->fingerprint != session_translation_bbs_fingerprint(post) ||
+        cache->segment_count != 1U + cache->body_chunks + post->comment_count) {
+        return nullptr;
+    }
+    return cache;
+}
+
+// Split a post body into newline-aligned chunks the translator can handle.
+static size_t session_translation_split_body(const char *body, char **out,
+                                             size_t capacity)
+{
+    size_t count = 0U;
+    size_t length = strlen(body);
+    size_t pos = 0U;
+    while (pos < length && count < capacity) {
+        size_t end = length;
+        size_t next = length;
+        if (length - pos > SSH_CHATTER_TRANSLATION_BBS_CHUNK_BYTES) {
+            end = pos + SSH_CHATTER_TRANSLATION_BBS_CHUNK_BYTES;
+            size_t cut = end;
+            while (cut > pos && body[cut] != '\n') {
+                --cut;
+            }
+            if (cut > pos) {
+                end = cut;
+                next = cut + 1U;
+            } else {
+                while (end > pos &&
+                       ((unsigned char)body[end] & 0xC0U) == 0x80U) {
+                    --end;
+                }
+                next = end;
+            }
+        }
+        out[count] = session_translation_strndup(body + pos, end - pos);
+        if (out[count] == nullptr) {
+            break;
+        }
+        ++count;
+        pos = next;
+    }
+    return count;
+}
+
+// Queue the title, body and comments of a post as one batch. Returns true
+// when a new request went out (the caller shows a "translating" notice).
+static bool session_translation_queue_bbs_post(session_ctx_t *ctx,
+                                               const bbs_post_t *post)
+{
+    if (!session_translation_output_active(ctx) || post == nullptr) {
+        return false;
+    }
+
+    const uint64_t fingerprint = session_translation_bbs_fingerprint(post);
+    const translation_bbs_cache_t *existing = ctx->translation_bbs_cache;
+    if (existing != nullptr && existing->post_id == post->id &&
+        existing->fingerprint == fingerprint) {
+        return false;
+    }
+
+    if (!session_translation_worker_ensure(ctx)) {
+        return false;
+    }
+
+    const size_t body_capacity =
+        2U * (strlen(post->body) / SSH_CHATTER_TRANSLATION_BBS_CHUNK_BYTES) +
+        2U;
+    const size_t capacity = 1U + body_capacity + post->comment_count;
+    char **segments = (char **)sshc_gc_calloc(capacity, sizeof(char *));
+    translation_bbs_cache_t *cache = (translation_bbs_cache_t *)sshc_gc_calloc(
+        1U, sizeof(translation_bbs_cache_t));
+    translation_job_t *job = session_translation_job_alloc();
+    if (segments == nullptr || cache == nullptr || job == nullptr) {
+        return false;
+    }
+
+    size_t count = 0U;
+    segments[count++] =
+        session_translation_strndup(post->title, strlen(post->title));
+    size_t body_chunks = session_translation_split_body(
+        post->body, &segments[count], body_capacity);
+    count += body_chunks;
+    for (size_t idx = 0U; idx < post->comment_count; ++idx) {
+        const char *text = post->comments[idx].text;
+        segments[count++] = session_translation_strndup(text, strlen(text));
+    }
+    for (size_t idx = 0U; idx < count; ++idx) {
+        if (segments[idx] == nullptr) {
+            return false;
+        }
+    }
+
+    cache->post_id = post->id;
+    cache->fingerprint = fingerprint;
+    cache->pending = true;
+    ctx->translation_bbs_cache = cache;
+
+    job->type = TRANSLATION_JOB_BBS_POST;
+    snprintf(job->target_language, sizeof(job->target_language), "%s",
+             ctx->output_translation_language);
+    job->data.bbs.post_id = post->id;
+    job->data.bbs.fingerprint = fingerprint;
+    job->data.bbs.segments = segments;
+    job->data.bbs.segment_count = count;
+    job->data.bbs.body_chunks = body_chunks;
+
+    session_translation_enqueue(ctx, job);
     return true;
 }
 
@@ -670,6 +1289,102 @@ static void session_handle_translation_quota_exhausted(session_ctx_t *ctx,
     }
 }
 
+// True when chat translations may be written to the screen right now.
+static bool session_translation_chat_visible(const session_ctx_t *ctx)
+{
+    return ctx->history_scroll_position == 0U &&
+           ctx->editor_mode == SESSION_EDITOR_MODE_NONE &&
+           !ctx->bbs_rendering_editor && !session_in_protected_section(ctx) &&
+           (!ctx->display_model_initialized ||
+            display_model_is_following_tail(&ctx->display_model));
+}
+
+// Repaint the chat tail so the freshly translated backlog shows inline.
+static void session_translation_repaint_chat(session_ctx_t *ctx)
+{
+    session_clear_screen(ctx);
+    session_apply_background_fill(ctx);
+    ctx->pending_should_sink = true;
+    session_process_pending_sink(ctx);
+}
+
+static void session_translation_apply_chat_result(session_ctx_t *ctx,
+                                                  const translation_result_t *ready,
+                                                  bool show_live,
+                                                  bool *refreshed)
+{
+    char *text = nullptr;
+    if (ready->success) {
+        text = session_translation_strndup(ready->translated,
+                                           strlen(ready->translated));
+    }
+
+    ttak_mutex_lock(&ctx->translation_mutex);
+    translation_chat_cache_entry_t *slot =
+        session_translation_chat_cache_find_locked(ctx, ready->message_id);
+    if (slot != nullptr) {
+        slot->pending = false;
+        slot->text = text;
+        slot->failed = (text == nullptr);
+    }
+    ttak_mutex_unlock(&ctx->translation_mutex);
+
+    if (!show_live || text == nullptr || slot == nullptr) {
+        return;
+    }
+
+    // Right under its line the caption needs no label; anywhere else it says
+    // which line it belongs to.
+    const bool adjacent =
+        ready->message_id == ctx->translation_tail_message_id &&
+        session_translation_output_hash(ctx) ==
+            ctx->translation_tail_output_hash;
+    char prefix[SSH_CHATTER_USERNAME_LEN + 64U];
+    prefix[0] = '\0';
+    if (!adjacent) {
+        char id_label[32];
+        if (!host_compact_id_encode(ready->message_id, id_label,
+                                    sizeof(id_label))) {
+            snprintf(id_label, sizeof(id_label), "-");
+        }
+        snprintf(prefix, sizeof(prefix), ANSI_CYAN "[%s]" ANSI_RESET " <%s> ",
+                 id_label, ready->chat_name);
+    }
+    session_translation_emit_caption(ctx, prefix, text, false, 0U, true);
+    ctx->translation_tail_message_id = 0U;
+    *refreshed = true;
+}
+
+static void session_translation_apply_bbs_result(session_ctx_t *ctx,
+                                                 const translation_result_t *ready)
+{
+    translation_bbs_cache_t *cache = ctx->translation_bbs_cache;
+    if (cache == nullptr || cache->post_id != ready->post_id ||
+        cache->fingerprint != ready->fingerprint) {
+        return;
+    }
+
+    cache->pending = false;
+    cache->failed = !ready->success;
+    if (ready->success) {
+        cache->segments = ready->segments;
+        cache->segment_count = ready->segment_count;
+        cache->body_chunks = ready->body_chunks;
+    }
+
+    if (!ctx->bbs_view_active || ctx->bbs_view_post_id != ready->post_id ||
+        ctx->editor_mode != SESSION_EDITOR_MODE_NONE ||
+        ctx->bbs_rendering_editor) {
+        return;
+    }
+
+    if (ready->success) {
+        (void)session_bbs_refresh_view(ctx);
+    } else {
+        session_send_system_line(ctx, ready->error_message);
+    }
+}
+
 static void session_translation_flush_ready(session_ctx_t *ctx)
 {
     if (ctx == nullptr || !ctx->translation_mutex_initialized) {
@@ -826,6 +1541,65 @@ static void session_translation_flush_ready(session_ctx_t *ctx)
     }
 
     if (refreshed && ctx->history_scroll_position == 0U) {
+        session_refresh_input_line(ctx);
+    }
+}
+
+// Session-loop tick for batched chat/BBS translation: start the backlog
+// batch when translation turns on and show whatever came back.
+static void session_translation_flush_batches(session_ctx_t *ctx)
+{
+    if (ctx == nullptr) {
+        return;
+    }
+
+    session_translation_backfill(ctx);
+
+    if (!ctx->translation_mutex_initialized) {
+        return;
+    }
+
+    ttak_mutex_lock(&ctx->translation_mutex);
+    translation_result_t *ready = ctx->translation_batch_ready_head;
+    ctx->translation_batch_ready_head = nullptr;
+    ctx->translation_batch_ready_tail = nullptr;
+    ttak_mutex_unlock(&ctx->translation_mutex);
+
+    if (ready == nullptr) {
+        return;
+    }
+
+    // A translated backlog is shown by repainting the chat tail, which also
+    // covers live lines from the same batch; otherwise live lines get their
+    // translation appended as they come back.
+    const bool chat_visible = session_translation_output_active(ctx) &&
+                              session_translation_chat_visible(ctx);
+    bool backfill_ready = false;
+    for (const translation_result_t *scan = ready; scan != nullptr;
+         scan = scan->next) {
+        if (scan->type == TRANSLATION_JOB_CHAT && scan->backfill &&
+            scan->success &&
+            scan->generation == ctx->translation_generation) {
+            backfill_ready = true;
+        }
+    }
+
+    bool refreshed = false;
+    for (; ready != nullptr; ready = ready->next) {
+        if (ready->generation != ctx->translation_generation) {
+            continue;
+        }
+        if (ready->type == TRANSLATION_JOB_CHAT) {
+            session_translation_apply_chat_result(
+                ctx, ready, chat_visible && !backfill_ready, &refreshed);
+        } else if (ready->type == TRANSLATION_JOB_BBS_POST) {
+            session_translation_apply_bbs_result(ctx, ready);
+        }
+    }
+
+    if (backfill_ready && chat_visible) {
+        session_translation_repaint_chat(ctx);
+    } else if (refreshed) {
         session_refresh_input_line(ctx);
     }
 }
@@ -1301,6 +2075,435 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
     return true;
 }
 
+typedef struct translation_segment {
+    const char *source;
+    char *sanitized;
+    translation_placeholder_t
+        placeholders[SSH_CHATTER_MAX_TRANSLATION_PLACEHOLDERS];
+    size_t placeholder_count;
+    char *output;
+} translation_segment_t;
+
+// Chat and BBS batch results have their own queue: they may repaint the
+// screen, so only the session loop drains them, never a nested output call.
+static void session_translation_push_results(session_ctx_t *ctx,
+                                             translation_result_t *head,
+                                             translation_result_t *tail)
+{
+    ttak_mutex_lock(&ctx->translation_mutex);
+    tail->next = nullptr;
+    if (ctx->translation_batch_ready_tail != nullptr) {
+        ctx->translation_batch_ready_tail->next = head;
+    } else {
+        ctx->translation_batch_ready_head = head;
+    }
+    ctx->translation_batch_ready_tail = tail;
+    ttak_mutex_unlock(&ctx->translation_mutex);
+}
+
+static void session_translation_push_result(session_ctx_t *ctx,
+                                            translation_result_t *result)
+{
+    session_translation_push_results(ctx, result, result);
+}
+
+// Hide ANSI sequences behind [[ANSIn]] tokens; text with more sequences than
+// placeholders is sent with the sequences dropped instead.
+static bool session_translation_segment_prepare(translation_segment_t *segment)
+{
+    const size_t length = strlen(segment->source);
+    const size_t capacity = length * 5U + 64U;
+    segment->sanitized = (char *)sshc_gc_malloc(capacity);
+    if (segment->sanitized == nullptr) {
+        return false;
+    }
+
+    if (translation_prepare_text(segment->source, segment->sanitized,
+                                 capacity, segment->placeholders,
+                                 &segment->placeholder_count)) {
+        return true;
+    }
+
+    size_t out = 0U;
+    for (size_t idx = 0U; segment->source[idx] != '\0';) {
+        if (segment->source[idx] == '\033') {
+            ++idx;
+            if (segment->source[idx] == '[') {
+                ++idx;
+                while (segment->source[idx] != '\0') {
+                    unsigned char ch = (unsigned char)segment->source[idx++];
+                    if (ch >= '@' && ch <= '~') {
+                        break;
+                    }
+                }
+            } else if (segment->source[idx] != '\0') {
+                ++idx;
+            }
+            continue;
+        }
+        segment->sanitized[out++] = segment->source[idx++];
+    }
+    segment->sanitized[out] = '\0';
+    segment->placeholder_count = 0U;
+    return true;
+}
+
+static bool session_translation_segment_restore(translation_segment_t *segment,
+                                                const char *translated,
+                                                size_t length)
+{
+    char *raw = session_translation_strndup(translated, length);
+    size_t capacity = length + 1U +
+                      segment->placeholder_count *
+                          SSH_CHATTER_PLACEHOLDER_SEQUENCE_LEN;
+    char *restored = (char *)sshc_gc_malloc(capacity);
+    if (raw == nullptr || restored == nullptr) {
+        return false;
+    }
+
+    if (!translation_restore_text(raw, restored, capacity,
+                                  segment->placeholders,
+                                  segment->placeholder_count)) {
+        return false;
+    }
+    session_translation_normalize_output(restored);
+    segment->output = restored;
+    return true;
+}
+
+typedef struct translation_group_state {
+    bool abort;
+    unsigned int consecutive_failures;
+} translation_group_state_t;
+
+// Give up on the rest of the batch when the provider is out of quota, the
+// session is closing, or requests keep failing (the provider is down).
+static void session_translation_note_failure(session_ctx_t *ctx,
+                                             translation_group_state_t *state)
+{
+    if (ctx->translation_thread_stop) {
+        state->abort = true;
+        return;
+    }
+    if (translator_last_error_was_quota()) {
+        session_handle_translation_quota_exhausted(ctx,
+                                                   translator_last_error());
+        state->abort = true;
+        return;
+    }
+    if (++state->consecutive_failures >= 3U) {
+        state->abort = true;
+    }
+}
+
+// Translate a group of segments in one request, delimited by [[SEGnnn]]
+// markers. Segments the reply lost are retried; a failed request is split in
+// halves so one bad line or an oversized reply cannot sink the whole batch.
+static void session_translation_translate_group(session_ctx_t *ctx,
+                                                const char *language,
+                                                translation_segment_t **group,
+                                                size_t count,
+                                                translation_group_state_t *state)
+{
+    if (count == 0U || state->abort || ctx->translation_thread_stop) {
+        return;
+    }
+
+    if (count == 1U) {
+        translation_segment_t *segment = group[0];
+        size_t capacity = strlen(segment->sanitized) * 4U + 1024U;
+        char *translated = (char *)sshc_gc_malloc(capacity);
+        if (translated == nullptr) {
+            return;
+        }
+        if (!translator_translate_with_cancel(segment->sanitized, language,
+                                              translated, capacity, nullptr,
+                                              0U,
+                                              &ctx->translation_thread_stop)) {
+            session_translation_note_failure(ctx, state);
+            return;
+        }
+        state->consecutive_failures = 0U;
+        (void)session_translation_segment_restore(segment, translated,
+                                                  strlen(translated));
+        return;
+    }
+
+    size_t combined_len = 1U;
+    for (size_t idx = 0U; idx < count; ++idx) {
+        combined_len += strlen(group[idx]->sanitized) + 16U;
+    }
+    char *combined = (char *)sshc_gc_malloc(combined_len);
+    size_t capacity = combined_len * 4U + 4096U;
+    char *translated = (char *)sshc_gc_malloc(capacity);
+    if (combined == nullptr || translated == nullptr) {
+        return;
+    }
+
+    size_t offset = 0U;
+    for (size_t idx = 0U; idx < count; ++idx) {
+        int written = snprintf(combined + offset, combined_len - offset,
+                               "[[SEG%03zu]]\n%s\n", idx, group[idx]->sanitized);
+        if (written < 0 || (size_t)written >= combined_len - offset) {
+            return;
+        }
+        offset += (size_t)written;
+    }
+
+    const size_t half = count / 2U;
+    if (!translator_translate_with_cancel(combined, language, translated,
+                                          capacity, nullptr, 0U,
+                                          &ctx->translation_thread_stop)) {
+        session_translation_note_failure(ctx, state);
+        session_translation_translate_group(ctx, language, group, half, state);
+        session_translation_translate_group(ctx, language, group + half,
+                                            count - half, state);
+        return;
+    }
+    state->consecutive_failures = 0U;
+
+    translation_segment_t **missing = (translation_segment_t **)sshc_gc_calloc(
+        count, sizeof(translation_segment_t *));
+    if (missing == nullptr) {
+        return;
+    }
+    size_t missing_count = 0U;
+    for (size_t idx = 0U; idx < count; ++idx) {
+        char marker[24];
+        int marker_len = snprintf(marker, sizeof(marker), "[[SEG%03zu]]", idx);
+        const char *start = strstr(translated, marker);
+        if (marker_len <= 0 || start == nullptr) {
+            missing[missing_count++] = group[idx];
+            continue;
+        }
+        start += marker_len;
+        while (*start == '\r' || *start == '\n' || *start == ' ') {
+            ++start;
+        }
+        const char *end = strstr(start, "[[SEG");
+        if (end == nullptr) {
+            end = start + strlen(start);
+        }
+        while (end > start && (end[-1] == '\r' || end[-1] == '\n' ||
+                               end[-1] == ' ')) {
+            --end;
+        }
+        if (!session_translation_segment_restore(group[idx], start,
+                                                 (size_t)(end - start))) {
+            missing[missing_count++] = group[idx];
+        }
+    }
+
+    if (missing_count == count) {
+        session_translation_translate_group(ctx, language, group, half, state);
+        session_translation_translate_group(ctx, language, group + half,
+                                            count - half, state);
+    } else if (missing_count > 0U) {
+        session_translation_translate_group(ctx, language, missing,
+                                            missing_count, state);
+    }
+}
+
+// Translate every segment, packing as many as fit the request budget into
+// each call. Returns how many segments ended up with a translation.
+static size_t session_translation_translate_segments(
+    session_ctx_t *ctx, const char *language, translation_segment_t *segments,
+    size_t count)
+{
+    translation_segment_t **group = (translation_segment_t **)sshc_gc_calloc(
+        count + 1U, sizeof(translation_segment_t *));
+    if (group == nullptr) {
+        return 0U;
+    }
+
+    translation_group_state_t state = {0};
+    size_t group_count = 0U;
+    size_t group_bytes = 0U;
+    for (size_t idx = 0U; idx <= count && !state.abort; ++idx) {
+        size_t bytes = 0U;
+        if (idx < count) {
+            if (!session_translation_segment_prepare(&segments[idx])) {
+                continue;
+            }
+            bytes = strlen(segments[idx].sanitized);
+            if (bytes == 0U) {
+                segments[idx].output = session_translation_strndup("", 0U);
+                continue;
+            }
+        }
+        if (group_count > 0U &&
+            (idx == count ||
+             group_bytes + bytes > SSH_CHATTER_TRANSLATION_CHAT_BATCH_BYTES)) {
+            session_translation_translate_group(ctx, language, group,
+                                                group_count, &state);
+            group_count = 0U;
+            group_bytes = 0U;
+        }
+        if (idx < count) {
+            group[group_count++] = &segments[idx];
+            group_bytes += bytes;
+        }
+    }
+
+    size_t translated = 0U;
+    for (size_t idx = 0U; idx < count; ++idx) {
+        if (segments[idx].output != nullptr) {
+            ++translated;
+        }
+    }
+    return translated;
+}
+
+static void session_translation_process_chat_batch(session_ctx_t *ctx,
+                                                   translation_job_t **jobs,
+                                                   size_t job_count)
+{
+    translation_segment_t *segments = (translation_segment_t *)sshc_gc_calloc(
+        job_count, sizeof(translation_segment_t));
+    if (segments == nullptr) {
+        return;
+    }
+    for (size_t idx = 0U; idx < job_count; ++idx) {
+        segments[idx].source = jobs[idx]->data.chat.text;
+    }
+
+    (void)session_translation_translate_segments(
+        ctx, jobs[0]->target_language, segments, job_count);
+    if (ctx->translation_thread_stop) {
+        return;
+    }
+
+    // Hand the whole batch over at once so the session sees it in one flush.
+    translation_result_t *head = nullptr;
+    translation_result_t *tail = nullptr;
+    for (size_t idx = 0U; idx < job_count; ++idx) {
+        translation_result_t *result = session_translation_result_alloc();
+        if (result == nullptr) {
+            continue;
+        }
+        result->type = TRANSLATION_JOB_CHAT;
+        result->generation = jobs[idx]->generation;
+        result->message_id = jobs[idx]->data.chat.message_id;
+        result->backfill = jobs[idx]->data.chat.backfill;
+        snprintf(result->chat_name, sizeof(result->chat_name), "%s",
+                 jobs[idx]->data.chat.name);
+        result->success = segments[idx].output != nullptr;
+        if (result->success) {
+            snprintf(result->translated, sizeof(result->translated), "%s",
+                     segments[idx].output);
+        }
+        if (tail != nullptr) {
+            tail->next = result;
+        } else {
+            head = result;
+        }
+        tail = result;
+    }
+    if (head != nullptr) {
+        session_translation_push_results(ctx, head, tail);
+    }
+}
+
+static void session_translation_process_bbs_job(session_ctx_t *ctx,
+                                                translation_job_t *job)
+{
+    const size_t count = job->data.bbs.segment_count;
+    translation_segment_t *segments = (translation_segment_t *)sshc_gc_calloc(
+        count, sizeof(translation_segment_t));
+    char **output = (char **)sshc_gc_calloc(count, sizeof(char *));
+    if (segments == nullptr || output == nullptr) {
+        return;
+    }
+    for (size_t idx = 0U; idx < count; ++idx) {
+        segments[idx].source = job->data.bbs.segments[idx];
+    }
+
+    size_t translated = session_translation_translate_segments(
+        ctx, job->target_language, segments, count);
+    if (ctx->translation_thread_stop) {
+        return;
+    }
+
+    // Anything the translator could not handle is shown as written.
+    for (size_t idx = 0U; idx < count; ++idx) {
+        output[idx] = segments[idx].output != nullptr
+                          ? segments[idx].output
+                          : job->data.bbs.segments[idx];
+    }
+
+    translation_result_t *result = session_translation_result_alloc();
+    if (result == nullptr) {
+        return;
+    }
+    result->type = TRANSLATION_JOB_BBS_POST;
+    result->generation = job->generation;
+    result->success = translated > 0U;
+    result->post_id = job->data.bbs.post_id;
+    result->fingerprint = job->data.bbs.fingerprint;
+    result->segments = output;
+    result->segment_count = count;
+    result->body_chunks = job->data.bbs.body_chunks;
+    if (!result->success) {
+        const char *error = translator_last_error();
+        snprintf(result->error_message, sizeof(result->error_message),
+                 "[!] post translation failed%s%s",
+                 error != nullptr && error[0] != '\0' ? ": " : ".",
+                 error != nullptr ? error : "");
+    }
+    session_translation_push_result(ctx, result);
+}
+
+// Take the first chat job plus every chat job queued behind it (the backfill
+// and whatever arrived meanwhile) and translate them as one batch.
+static void session_translation_collect_chat_batch(session_ctx_t *ctx,
+                                                   translation_job_t *first)
+{
+    translation_job_t **jobs = (translation_job_t **)sshc_gc_calloc(
+        SSH_CHATTER_TRANSLATION_CHAT_BATCH_MAX, sizeof(translation_job_t *));
+    if (jobs == nullptr) {
+        return;
+    }
+    size_t count = 0U;
+    jobs[count++] = first;
+    size_t bytes = strlen(first->data.chat.text);
+
+    bool idle = false;
+    ttak_mutex_lock(&ctx->translation_mutex);
+    idle = !ctx->translation_thread_stop &&
+           ctx->translation_pending_head == nullptr;
+    ttak_mutex_unlock(&ctx->translation_mutex);
+    if (idle) {
+        // Give messages arriving right now a moment to join this request.
+        struct timespec aggregation_delay = {
+            .tv_sec = 0, .tv_nsec = SSH_CHATTER_TRANSLATION_BATCH_DELAY_NS};
+        host_sleep_uninterruptible(&aggregation_delay);
+    }
+
+    ttak_mutex_lock(&ctx->translation_mutex);
+    while (count < SSH_CHATTER_TRANSLATION_CHAT_BATCH_MAX &&
+           ctx->translation_pending_head != nullptr) {
+        translation_job_t *candidate = ctx->translation_pending_head;
+        if (candidate->type != TRANSLATION_JOB_CHAT ||
+            strcmp(candidate->target_language, first->target_language) != 0) {
+            break;
+        }
+        size_t candidate_bytes = strlen(candidate->data.chat.text);
+        if (bytes + candidate_bytes > SSH_CHATTER_TRANSLATION_CHAT_BATCH_BYTES) {
+            break;
+        }
+        ctx->translation_pending_head = candidate->next;
+        if (ctx->translation_pending_head == nullptr) {
+            ctx->translation_pending_tail = nullptr;
+        }
+        candidate->next = nullptr;
+        jobs[count++] = candidate;
+        bytes += candidate_bytes;
+    }
+    ttak_mutex_unlock(&ctx->translation_mutex);
+
+    session_translation_process_chat_batch(ctx, jobs, count);
+}
+
 static void *session_translation_worker(void *arg)
 {
     session_ctx_t *ctx = (session_ctx_t *)arg;
@@ -1340,6 +2543,16 @@ static void *session_translation_worker(void *arg)
         ttak_mutex_unlock(&ctx->translation_mutex);
 
         if (batch_count == 0U) {
+            continue;
+        }
+
+        if (batch[0]->type == TRANSLATION_JOB_BBS_POST) {
+            session_translation_process_bbs_job(ctx, batch[0]);
+            continue;
+        }
+
+        if (batch[0]->type == TRANSLATION_JOB_CHAT) {
+            session_translation_collect_chat_batch(ctx, batch[0]);
             continue;
         }
 

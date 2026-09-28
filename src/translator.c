@@ -34,6 +34,18 @@
 #define TRANSLATOR_DEFAULT_MODEL "gemini-2.5"
 #define TRANSLATOR_CONNECT_TIMEOUT_MS 5000L
 #define TRANSLATOR_TOTAL_TIMEOUT_MS 15000L
+#define TRANSLATOR_TIMEOUT_PER_KB_MS 1500L
+#define TRANSLATOR_MAX_TIMEOUT_MS 180000L
+
+/* Batched requests (a chat backlog, a whole BBS post) take far longer to
+ * generate than a single line, so the request budget grows with the input. */
+static _Thread_local long translator_request_timeout_ms = 0L;
+
+static long translator_total_timeout_ms(void)
+{
+    return translator_request_timeout_ms > 0L ? translator_request_timeout_ms
+                                              : TRANSLATOR_TOTAL_TIMEOUT_MS;
+}
 
 typedef struct translator_buffer {
     sshc_abstract_byte_buffer_t bytes;
@@ -1596,7 +1608,7 @@ static CURLcode translator_issue_gemini_request(
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, buffer);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS,
                      TRANSLATOR_CONNECT_TIMEOUT_MS);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, TRANSLATOR_TOTAL_TIMEOUT_MS);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, translator_total_timeout_ms());
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     translator_configure_cancel_callback(curl, cancel_flag);
 
@@ -1693,7 +1705,7 @@ static CURLcode translator_issue_json_post(
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, buffer);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS,
                      TRANSLATOR_CONNECT_TIMEOUT_MS);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, TRANSLATOR_TOTAL_TIMEOUT_MS);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, translator_total_timeout_ms());
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     translator_configure_cancel_callback(curl, cancel_flag);
 
@@ -3014,6 +3026,13 @@ translator_translate_internal(const char *text, const char *target_language,
 
     translator_set_error(nullptr);
 
+    long timeout_ms = TRANSLATOR_TOTAL_TIMEOUT_MS +
+                      (long)(strlen(text) / 1024U) * TRANSLATOR_TIMEOUT_PER_KB_MS;
+    if (timeout_ms > TRANSLATOR_MAX_TIMEOUT_MS) {
+        timeout_ms = TRANSLATOR_MAX_TIMEOUT_MS;
+    }
+    translator_request_timeout_ms = timeout_ms;
+
     translator_candidate_t candidates[8];
     size_t candidate_count = translator_prepare_candidates(
         candidates, sizeof(candidates) / sizeof(candidates[0]));
@@ -3073,6 +3092,7 @@ bool translator_translate_with_cancel(const char *text,
                                                 translation, translation_len,
                                                 detected_language, detected_len,
                                                 cancel_flag);
+    translator_request_timeout_ms = 0L;
     translator_memory_scope_exit(&memory_scope);
     return result;
 }
@@ -3086,6 +3106,7 @@ bool translator_translate(const char *text, const char *target_language,
                                                 translation, translation_len,
                                                 detected_language, detected_len,
                                                 nullptr);
+    translator_request_timeout_ms = 0L;
     translator_memory_scope_exit(&memory_scope);
     return result;
 }

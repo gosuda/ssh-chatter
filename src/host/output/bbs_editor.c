@@ -202,6 +202,18 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
         return;
     }
 
+    // Translation mode: use the finished translation of this revision, or
+    // send title, body and comments off as one batch and repaint on return.
+    const translation_bbs_cache_t *translation =
+        session_translation_bbs_ready(ctx, post);
+    bool translation_pending = false;
+    if (translation == nullptr && session_translation_output_active(ctx)) {
+        (void)session_translation_queue_bbs_post(ctx, post);
+        translation_pending = ctx->translation_bbs_cache != nullptr &&
+                              ctx->translation_bbs_cache->post_id == post->id &&
+                              ctx->translation_bbs_cache->pending;
+    }
+
     if (post_hidden || (post->mod_flags & SSH_CHATTER_BBS_MOD_FLAG_PINNED) !=
                            0U) {
         session_send_system_line(
@@ -243,6 +255,10 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
     }
 
     session_send_plain_line(ctx, title_line);
+    if (translation != nullptr) {
+        session_translation_emit_caption(ctx, nullptr, translation->segments[0],
+                                         false, 0U, true);
+    }
     session_send_plain_line(ctx, author_line);
     session_send_plain_line(ctx, created_line);
     session_send_plain_line(ctx, bumped_line);
@@ -250,6 +266,30 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
 
     // Send body line by line (with BBS color markup expansion)
     session_send_bbs_body_text(ctx, post->body);
+
+    if (translation != nullptr && translation->body_chunks > 0U) {
+        size_t length = 1U;
+        for (size_t idx = 0U; idx < translation->body_chunks; ++idx) {
+            length += strlen(translation->segments[1U + idx]) + 1U;
+        }
+        char *joined = (char *)sshc_gc_malloc(length);
+        if (joined != nullptr) {
+            size_t offset = 0U;
+            for (size_t idx = 0U; idx < translation->body_chunks; ++idx) {
+                offset += (size_t)snprintf(joined + offset, length - offset,
+                                           "%s%s", idx > 0U ? "\n" : "",
+                                           translation->segments[1U + idx]);
+            }
+            session_send_plain_line(ctx, "");
+            session_render_separator(ctx, "{Translation}");
+            session_send_bbs_body_text(ctx, joined);
+            sshc_gc_free(joined);
+        }
+    }
+    if (translation_pending) {
+        session_send_system_line(
+            ctx, session_translation_bbs_pending_text(ctx->ui_language));
+    }
 
     // Send comments if any
     if (post->comment_count > 0U) {
@@ -283,6 +323,12 @@ static void session_bbs_render_post(session_ctx_t *ctx, const bbs_post_t *post,
             session_send_system_line(ctx, comment_author_line);
             session_send_system_line(ctx, comment_created_line);
             session_bbs_render_comment_text(ctx, post, idx);
+            if (translation != nullptr) {
+                session_translation_emit_caption(
+                    ctx, nullptr,
+                    translation->segments[1U + translation->body_chunks + idx],
+                    false, 0U, true);
+            }
             session_send_plain_line(ctx, ""); // Empty line for spacing between comments
         }
     }

@@ -1451,7 +1451,10 @@ static void session_send_line(session_ctx_t *ctx, const char *message)
         placeholder_lines = spacing;
     }
 
-    if (translation_ready && session_translation_queue_caption(
+    // Full-screen sections (BBS, RSS, games) repaint themselves; a caption
+    // arriving later would land in the middle of their layout.
+    if (translation_ready && !session_in_protected_section(ctx) &&
+        session_translation_queue_caption(
                                  ctx, render_text, placeholder_lines)) {
         if (placeholder_lines > 0U) {
             session_translation_reserve_placeholders(ctx, placeholder_lines);

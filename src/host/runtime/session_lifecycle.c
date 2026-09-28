@@ -1228,6 +1228,7 @@ static void *session_thread(void *arg)
             break;
         }
         session_translation_flush_ready(ctx);
+        session_translation_flush_batches(ctx);
 
         if (ctx->game.active && ctx->game.type == SESSION_GAME_TETRIS) {
             session_game_tetris_process_timeout(ctx);

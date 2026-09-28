@@ -1032,6 +1032,18 @@ static void session_render_history_entry(session_ctx_t *ctx,
             }
         }
 
+        // Translation mode: show the cached translation under the line.
+        if (entry->message_id > 0U) {
+            char translated[SSH_CHATTER_TRANSLATION_WORKING_LEN];
+            if (session_translation_chat_caption(ctx, entry->message_id,
+                                                 translated,
+                                                 sizeof(translated))) {
+                session_translation_emit_caption(ctx, nullptr, translated,
+                                                 true, entry->message_id,
+                                                 emit_output);
+            }
+        }
+
         // Display attachment URL if present, similar to reply format
         if (emit_output && entry->attachment_type != CHAT_ATTACHMENT_NONE &&
             entry->attachment_target[0] != '\0') {
@@ -1068,6 +1080,12 @@ static void session_render_history_entry(session_ctx_t *ctx,
             if (emit_output) {
                 session_send_plain_line(ctx, reaction_line);
             }
+        }
+
+        // Incoming lines join the batched translator; the translation shows
+        // up once the batch returns.
+        if (emit_output) {
+            session_translation_note_chat_line(ctx, entry);
         }
 
         session_output_restore_kind(ctx, previous_kind);

@@ -151,6 +151,8 @@ struct webssh_client;
 struct morse_client;
 struct translation_job;
 struct translation_result;
+struct translation_chat_cache;
+struct translation_bbs_cache;
 
 struct session_ctx;
 
@@ -870,6 +872,19 @@ typedef struct session_ctx {
     struct translation_job *translation_pending_tail;
     struct translation_result *translation_ready_head;
     struct translation_result *translation_ready_tail;
+    /* Batched chat/BBS translation: results are cached per message id (and
+     * per post) for the language they were made for; the generation drops
+     * results of jobs queued before the cache was reset. */
+    uint64_t translation_generation;
+    bool translation_backfill_done;
+    struct translation_chat_cache *translation_chat_cache;
+    struct translation_bbs_cache *translation_bbs_cache;
+    struct translation_result *translation_batch_ready_head;
+    struct translation_result *translation_batch_ready_tail;
+    /* Last chat line queued for translation and the output line it ended
+     * on: its translation can go right under it if nothing came after. */
+    uint64_t translation_tail_message_id;
+    uint64_t translation_tail_output_hash;
     char status_message[SSH_CHATTER_STATUS_LEN];
     bool asciiart_pending;
     session_asciiart_target_t asciiart_target;

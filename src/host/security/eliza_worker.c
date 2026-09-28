@@ -283,41 +283,31 @@ static void host_eliza_worker_shutdown(host_t *host)
 
     host_eliza_worker_state_t *worker = &host->eliza_worker;
 
-    if (worker->mutex_initialized) {
-        ttak_mutex_lock(&worker->mutex);
+    if (!worker->thread_started) {
+        /* No thread ever ran, so nothing else can touch the primitives. */
         atomic_store(&worker->stop, true);
-        ttak_cond_broadcast(&worker->cond);
-        ttak_mutex_unlock(&worker->mutex);
-    } else {
-        atomic_store(&worker->stop, true);
+        if (worker->mutex_initialized) {
+            ttak_mutex_destroy(&worker->mutex);
+            worker->mutex_initialized = false;
+        }
+        if (worker->cond_initialized) {
+            ttak_cond_destroy(&worker->cond);
+            worker->cond_initialized = false;
+        }
+        worker->head = nullptr;
+        worker->tail = nullptr;
+        return;
     }
 
-    if (worker->thread_started) {
-        pthread_join(worker->thread, nullptr);
-        worker->thread_started = false;
-    }
-
-    if (worker->mutex_initialized) {
-        ttak_mutex_destroy(&worker->mutex);
-        worker->mutex_initialized = false;
-    }
-
-    if (worker->cond_initialized) {
-        ttak_cond_destroy(&worker->cond);
-        worker->cond_initialized = false;
-    }
-
-    host_eliza_intervene_task_t *task = worker->head;
-    while (task != nullptr) {
-        host_eliza_intervene_task_t *next = task->next;
-        host_eliza_task_free(task);
-        task = next;
-    }
-
-    worker->head = nullptr;
-    worker->tail = nullptr;
-    atomic_store(&worker->active, false);
-    atomic_store(&worker->stop, false);
+    /* No pthread_join — the thread is detached and drops the queue on its
+     * way out. The mutex/cond live inside host_t and stay valid until epoch
+     * GC reclaims the host after the thread calls sshc_epoch_thread_exit(),
+     * so they are deliberately not destroyed here. thread_started stays set
+     * so a repeated shutdown never takes the destroy path above. */
+    ttak_mutex_lock(&worker->mutex);
+    atomic_store(&worker->stop, true);
+    ttak_cond_broadcast(&worker->cond);
+    ttak_mutex_unlock(&worker->mutex);
 }
 
 static __attribute__((unused)) bool
@@ -362,6 +352,7 @@ static void *host_eliza_worker_thread(void *arg)
     }
 
     sshc_epoch_thread_enter();
+    pthread_detach(pthread_self());
     sshc_memory_context_t *memory_scope =
         sshc_memory_context_push(host->memory_context);
 
@@ -374,8 +365,18 @@ static void *host_eliza_worker_thread(void *arg)
             ttak_cond_wait(&worker->cond, &worker->mutex);
         }
 
-        if (worker->head == nullptr && atomic_load(&worker->stop)) {
+        if (atomic_load(&worker->stop)) {
+            /* Shutdown no longer joins, so drop pending work instead of
+             * running interventions against a host being torn down. */
+            host_eliza_intervene_task_t *pending = worker->head;
+            worker->head = nullptr;
+            worker->tail = nullptr;
             ttak_mutex_unlock(&worker->mutex);
+            while (pending != nullptr) {
+                host_eliza_intervene_task_t *next = pending->next;
+                host_eliza_task_free(pending);
+                pending = next;
+            }
             break;
         }
 

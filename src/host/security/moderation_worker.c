@@ -279,6 +279,13 @@ static bool host_moderation_recover_worker(host_t *host, const char *diagnostic)
 
     host_moderation_backoff(attempt);
 
+    ttak_mutex_lock(&host->moderation.mutex);
+    bool stopping = host->moderation.stop;
+    ttak_mutex_unlock(&host->moderation.mutex);
+    if (stopping) {
+        return false;
+    }
+
     if (!host_moderation_spawn_worker(host)) {
         humanized_log_error("moderation", "failed to restart moderation worker",
                             EIO);
@@ -294,6 +301,12 @@ static bool host_moderation_recover_worker(host_t *host, const char *diagnostic)
     host->moderation.restart_attempts = attempt;
 
     ttak_mutex_lock(&host->moderation.mutex);
+    if (host->moderation.stop) {
+        /* Shutdown raced the respawn; the thread closes the new child on
+         * its way out. */
+        ttak_mutex_unlock(&host->moderation.mutex);
+        return false;
+    }
     host->moderation.active = true;
     host->moderation.stop = false;
     ttak_cond_broadcast(&host->moderation.cond);
@@ -408,6 +421,7 @@ static void *host_moderation_thread(void *arg)
     }
 
     sshc_epoch_thread_enter();
+    pthread_detach(pthread_self());
     sshc_memory_context_t *memory_scope =
         sshc_memory_context_push(host->memory_context);
 
@@ -420,8 +434,9 @@ static void *host_moderation_thread(void *arg)
             ttak_cond_wait(&host->moderation.cond, &host->moderation.mutex);
         }
 
-        if (!host->moderation.active ||
-            (host->moderation.stop && host->moderation.head == nullptr)) {
+        /* Shutdown no longer joins, so leave on stop instead of draining;
+         * whatever is still queued is flushed as an error below. */
+        if (!host->moderation.active || host->moderation.stop) {
             ttak_mutex_unlock(&host->moderation.mutex);
             break;
         }
@@ -538,6 +553,10 @@ static void *host_moderation_thread(void *arg)
         failure_reason = nullptr;
     }
 
+    /* The thread owns the child process and its pipes, so it tears them
+     * down itself; shutdown never touches them while the thread may be
+     * mid-IPC. */
+    host_moderation_close_worker(host);
     host_moderation_flush_pending(host, failure_reason);
     sshc_memory_context_pop(memory_scope);
     sshc_epoch_thread_exit();
@@ -604,7 +623,11 @@ static void host_moderation_shutdown(host_t *host)
         return;
     }
 
-    if (!host->moderation.active && !host->moderation.thread_started) {
+    if (!host->moderation.thread_started) {
+        /* Init failed before the thread ran: nothing else can touch the
+         * child or the primitives, so release everything here. */
+        host_moderation_close_worker(host);
+        host_moderation_flush_pending(host, nullptr);
         if (host->moderation.mutex_initialized) {
             ttak_mutex_destroy(&host->moderation.mutex);
             host->moderation.mutex_initialized = false;
@@ -613,38 +636,21 @@ static void host_moderation_shutdown(host_t *host)
             ttak_cond_destroy(&host->moderation.cond);
             host->moderation.cond_initialized = false;
         }
+        host->moderation.active = false;
+        host->moderation.stop = true;
         return;
     }
 
-    if (host->moderation.mutex_initialized) {
-        ttak_mutex_lock(&host->moderation.mutex);
-        host->moderation.stop = true;
-        ttak_cond_broadcast(&host->moderation.cond);
-        ttak_mutex_unlock(&host->moderation.mutex);
-    }
-
-    if (host->moderation.thread_started) {
-        pthread_join(host->moderation.thread, nullptr);
-        host->moderation.thread_started = false;
-    }
-
-    host_moderation_close_worker(host);
-    host->moderation.restart_attempts = 0U;
-    host->moderation.worker_start_time.tv_sec = 0;
-    host->moderation.worker_start_time.tv_nsec = 0;
-
-    host_moderation_flush_pending(host, nullptr);
-
-    if (host->moderation.mutex_initialized) {
-        ttak_mutex_destroy(&host->moderation.mutex);
-        host->moderation.mutex_initialized = false;
-    }
-    if (host->moderation.cond_initialized) {
-        ttak_cond_destroy(&host->moderation.cond);
-        host->moderation.cond_initialized = false;
-    }
-
+    /* No pthread_join — the thread is detached, closes the child and flushes
+     * the queue itself, then epoch GC reclaims the host (and the embedded
+     * mutex/cond, deliberately not destroyed here) after it exits.
+     * thread_started stays set so a repeated shutdown never takes the
+     * destroy path above. */
+    ttak_mutex_lock(&host->moderation.mutex);
+    host->moderation.stop = true;
     host->moderation.active = false;
+    ttak_cond_broadcast(&host->moderation.cond);
+    ttak_mutex_unlock(&host->moderation.mutex);
 }
 
 static bool host_moderation_queue_chat(session_ctx_t *ctx, const char *message,

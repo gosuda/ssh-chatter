@@ -1593,7 +1593,10 @@ static void session_render_prompt(session_ctx_t *ctx, bool include_separator)
     }
 }
 
-static void session_refresh_input_line(session_ctx_t *ctx)
+/* erase_line: the cursor still sits after the old input on the same row
+ * (Tab completion, history recall), so wipe that row before re-printing
+ * instead of appending the new text after the old. */
+static void session_redraw_input_line(session_ctx_t *ctx, bool erase_line)
 {
     if (ctx == nullptr || !session_transport_active(ctx)) {
         return;
@@ -1606,6 +1609,11 @@ static void session_refresh_input_line(session_ctx_t *ctx)
     // user can see what they were typing after an interleaving broadcast.
     if (ctx->input_mode == SESSION_INPUT_MODE_CHAT ||
         ctx->input_mode == SESSION_INPUT_MODE_COMMAND) {
+        if (erase_line && !ctx->bbs_post_pending) {
+            const char clear_sequence[] = "\r" ANSI_CLEAR_LINE;
+            session_channel_write(ctx, clear_sequence,
+                                  sizeof(clear_sequence) - 1U);
+        }
         if (ctx->input_length > 0U) {
             session_channel_write(ctx, ctx->input_buffer, ctx->input_length);
         }
@@ -1621,6 +1629,11 @@ static void session_refresh_input_line(session_ctx_t *ctx)
     if (locked) {
         session_output_unlock(ctx);
     }
+}
+
+static void session_refresh_input_line(session_ctx_t *ctx)
+{
+    session_redraw_input_line(ctx, false);
 }
 
 static void session_set_input_text(session_ctx_t *ctx, const char *text)
@@ -1639,7 +1652,7 @@ static void session_set_input_text(session_ctx_t *ctx, const char *text)
         ctx->input_length = len;
     }
 
-    session_refresh_input_line(ctx);
+    session_redraw_input_line(ctx, true);
 }
 
 static void session_local_echo_char(session_ctx_t *ctx, char ch)

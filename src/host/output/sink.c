@@ -83,7 +83,8 @@ static bool session_try_command_completion(session_ctx_t *ctx)
             const char bell = '\a';
             session_channel_write(ctx, &bell, 1U);
         }
-        session_refresh_input_line(ctx);
+        /* Nothing changed and the input is still on screen; a redraw here
+         * would print it a second time after itself. */
         return true;
     }
 

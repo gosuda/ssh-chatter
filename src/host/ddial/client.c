@@ -1118,6 +1118,7 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
     }
 
     char parsed_handle[DDIAL_MAX_HANDLE_LEN];
+    parsed_handle[0] = '\0';
     const char *parsed_message = nullptr;
     bool is_our_line = false;
 
@@ -1176,6 +1177,14 @@ static void ddial_client_broadcast_line(host_t *host, const char *line)
     chat_history_entry_t stored = {0};
     if (host_history_record_system(host, display_line, &stored)) {
         chat_room_broadcast_entry(&host->room, &stored, nullptr);
+    }
+
+    /* Someone on a linked station said this: AI members hear them like any
+     * room participant. Lines that started here (our link account, a local
+     * dial-in, a Chatter or AI member) are echoes and are not answered. */
+    if (parsed_message != nullptr && !is_our_line &&
+        !host_ddial_handle_is_local(host, parsed_handle, true)) {
+        host_ai_route_public(host, parsed_handle, parsed_message);
     }
 }
 

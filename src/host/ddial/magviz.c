@@ -1157,6 +1157,10 @@ static void mv_public_chat(ddial_session_t *sess, uint16_t channel,
     bool shared = !opts->local_only && !opts->members_only;
     if (shared && channel == DDIAL_MV_ROOM_CHANNEL) {
         mv_share_room(host, line);
+        /* Dial-ins are room participants too: AI members hear them. */
+        if (!opts->action && !opts->block) {
+            host_ai_route_public(host, sess->handle, plain);
+        }
     }
     if (shared && channel <= DDIAL_MAX_CHANNEL && !opts->block) {
         char wire[DDIAL_MV_TEXT_LIMIT * 2U + 8U];

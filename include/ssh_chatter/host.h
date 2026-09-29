@@ -1681,11 +1681,28 @@ void session_handle_retro(session_ctx_t *ctx, const char *arguments);
 void session_handle_hybrid(session_ctx_t *ctx, const char *arguments);
 void session_handle_iyagi(session_ctx_t *ctx, const char *arguments);
 
+/* Host-owned arrays can be created lazily from a session thread. Allocate
+ * them in the host memory context: the session context is destroyed when
+ * the session ends, which would leave the host pointing at freed memory. */
+static inline void *host_owned_calloc(host_t *host, size_t count, size_t size)
+{
+    sshc_memory_context_t *prev = nullptr;
+    bool pinned = host->memory_context != nullptr;
+    if (pinned) {
+        prev = sshc_memory_context_push(host->memory_context);
+    }
+    void *ptr = sshc_gc_calloc(count, size);
+    if (pinned) {
+        sshc_memory_context_pop(prev);
+    }
+    return ptr;
+}
+
 static inline void host_bans_ensure(host_t *host)
 {
     if (host != nullptr && host->bans == nullptr) {
-        host->bans = (host_ban_entry_t *)sshc_gc_calloc(
-            SSH_CHATTER_MAX_BANS, sizeof(host_ban_entry_t));
+        host->bans = (host_ban_entry_t *)host_owned_calloc(
+            host, SSH_CHATTER_MAX_BANS, sizeof(host_ban_entry_t));
         host->ban_capacity = SSH_CHATTER_MAX_BANS;
     }
 }
@@ -1693,8 +1710,8 @@ static inline void host_bans_ensure(host_t *host)
 static inline void host_replies_ensure(host_t *host)
 {
     if (host != nullptr && host->replies == nullptr) {
-        host->replies = (chat_reply_entry_t *)sshc_gc_calloc(
-            SSH_CHATTER_MAX_REPLIES, sizeof(chat_reply_entry_t));
+        host->replies = (chat_reply_entry_t *)host_owned_calloc(
+            host, SSH_CHATTER_MAX_REPLIES, sizeof(chat_reply_entry_t));
         host->reply_capacity = SSH_CHATTER_MAX_REPLIES;
     }
 }
@@ -1702,8 +1719,8 @@ static inline void host_replies_ensure(host_t *host)
 static inline void host_preferences_ensure(host_t *host)
 {
     if (host != nullptr && host->preferences == nullptr) {
-        host->preferences = (user_preference_t *)sshc_gc_calloc(
-            SSH_CHATTER_MAX_PREFERENCES, sizeof(user_preference_t));
+        host->preferences = (user_preference_t *)host_owned_calloc(
+            host, SSH_CHATTER_MAX_PREFERENCES, sizeof(user_preference_t));
         host->preference_capacity = SSH_CHATTER_MAX_PREFERENCES;
     }
 }
@@ -1711,8 +1728,8 @@ static inline void host_preferences_ensure(host_t *host)
 static inline void host_rss_feeds_ensure(host_t *host)
 {
     if (host != nullptr && host->rss_feeds == nullptr) {
-        host->rss_feeds = (rss_feed_t *)sshc_gc_calloc(
-            SSH_CHATTER_RSS_MAX_FEEDS, sizeof(rss_feed_t));
+        host->rss_feeds = (rss_feed_t *)host_owned_calloc(
+            host, SSH_CHATTER_RSS_MAX_FEEDS, sizeof(rss_feed_t));
         host->rss_feed_capacity = SSH_CHATTER_RSS_MAX_FEEDS;
     }
 }
@@ -1720,8 +1737,8 @@ static inline void host_rss_feeds_ensure(host_t *host)
 static inline void host_eliza_memory_ensure(host_t *host)
 {
     if (host != nullptr && host->eliza_memory == nullptr) {
-        host->eliza_memory = (eliza_memory_entry_t *)sshc_gc_calloc(
-            SSH_CHATTER_ELIZA_MEMORY_MAX, sizeof(eliza_memory_entry_t));
+        host->eliza_memory = (eliza_memory_entry_t *)host_owned_calloc(
+            host, SSH_CHATTER_ELIZA_MEMORY_MAX, sizeof(eliza_memory_entry_t));
         host->eliza_memory_capacity = SSH_CHATTER_ELIZA_MEMORY_MAX;
     }
 }
@@ -1729,8 +1746,8 @@ static inline void host_eliza_memory_ensure(host_t *host)
 static inline void host_ai_chat_memory_ensure(host_t *host)
 {
     if (host != nullptr && host->ai_chat_memory == nullptr) {
-        host->ai_chat_memory = (ai_chat_memory_entry_t *)sshc_gc_calloc(
-            SSH_CHATTER_AI_MEMORY_MAX, sizeof(ai_chat_memory_entry_t));
+        host->ai_chat_memory = (ai_chat_memory_entry_t *)host_owned_calloc(
+            host, SSH_CHATTER_AI_MEMORY_MAX, sizeof(ai_chat_memory_entry_t));
         host->ai_chat_memory_capacity = SSH_CHATTER_AI_MEMORY_MAX;
     }
 }
@@ -1738,16 +1755,16 @@ static inline void host_ai_chat_memory_ensure(host_t *host)
 static inline void host_gonu_games_ensure(host_t *host)
 {
     if (host != nullptr && host->gonu_games == nullptr) {
-        host->gonu_games = (gonu_multiplayer_slot_t *)sshc_gc_calloc(
-            SSH_CHATTER_GONU_MAX_SLOTS, sizeof(gonu_multiplayer_slot_t));
+        host->gonu_games = (gonu_multiplayer_slot_t *)host_owned_calloc(
+            host, SSH_CHATTER_GONU_MAX_SLOTS, sizeof(gonu_multiplayer_slot_t));
     }
 }
 
 static inline void host_named_polls_ensure(host_t *host)
 {
     if (host != nullptr && host->named_polls == nullptr) {
-        host->named_polls = (named_poll_state_t *)sshc_gc_calloc(
-            SSH_CHATTER_MAX_NAMED_POLLS, sizeof(named_poll_state_t));
+        host->named_polls = (named_poll_state_t *)host_owned_calloc(
+            host, SSH_CHATTER_MAX_NAMED_POLLS, sizeof(named_poll_state_t));
         host->named_poll_capacity = SSH_CHATTER_MAX_NAMED_POLLS;
     }
 }
@@ -1755,16 +1772,16 @@ static inline void host_named_polls_ensure(host_t *host)
 static inline void host_othello_games_ensure(host_t *host)
 {
     if (host != nullptr && host->othello_games == nullptr) {
-        host->othello_games = (othello_multiplayer_slot_t *)sshc_gc_calloc(
-            SSH_CHATTER_OTHELLO_MAX_SLOTS, sizeof(othello_multiplayer_slot_t));
+        host->othello_games = (othello_multiplayer_slot_t *)host_owned_calloc(
+            host, SSH_CHATTER_OTHELLO_MAX_SLOTS, sizeof(othello_multiplayer_slot_t));
     }
 }
 
 static inline void host_operator_grants_ensure(host_t *host)
 {
     if (host != nullptr && host->operator_grants == nullptr) {
-        host->operator_grants = (host_operator_grant_t *)sshc_gc_calloc(
-            SSH_CHATTER_MAX_GRANTS, sizeof(host_operator_grant_t));
+        host->operator_grants = (host_operator_grant_t *)host_owned_calloc(
+            host, SSH_CHATTER_MAX_GRANTS, sizeof(host_operator_grant_t));
         host->operator_grant_capacity = SSH_CHATTER_MAX_GRANTS;
     }
 }
@@ -1772,8 +1789,8 @@ static inline void host_operator_grants_ensure(host_t *host)
 static inline void host_protected_ips_ensure(host_t *host)
 {
     if (host != nullptr && host->protected_ips == nullptr) {
-        host->protected_ips = (char (*)[SSH_CHATTER_IP_LEN])sshc_gc_calloc(
-            SSH_CHATTER_MAX_PROTECTED_IPS, SSH_CHATTER_IP_LEN);
+        host->protected_ips = (char (*)[SSH_CHATTER_IP_LEN])host_owned_calloc(
+            host, SSH_CHATTER_MAX_PROTECTED_IPS, SSH_CHATTER_IP_LEN);
         host->protected_ip_capacity = SSH_CHATTER_MAX_PROTECTED_IPS;
     }
 }

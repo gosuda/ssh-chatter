@@ -326,10 +326,16 @@ static void host_history_restore_cache_locked(host_t *host)
                             host->state_file_path, "history")) {
         sshc_history_cold_meta_t meta = {0};
         size_t entry_count = 0U;
+        /* The restore usually runs on a session thread. Load into the host
+         * context, or the history dies with that session and the next
+         * append writes into freed memory. */
+        sshc_memory_context_t *prev_ctx =
+            sshc_memory_context_push(host->memory_context);
         chat_history_entry_t *restored =
             (chat_history_entry_t *)host_cold_blob_load(
                 cold_path, sizeof(chat_history_entry_t), sizeof(meta),
                 &entry_count, &meta);
+        sshc_memory_context_pop(prev_ctx);
         if (restored != nullptr && entry_count > 0U) {
             if (host->history != nullptr) {
                 sshc_gc_free(host->history);
@@ -368,7 +374,10 @@ static void host_history_restore_cache(host_t *host)
     if (still_released) {
         /* The main state file still holds the full history: nothing is
          * saved while it is released. */
+        sshc_memory_context_t *prev_ctx =
+            sshc_memory_context_push(host->memory_context);
         host_state_load(host);
+        sshc_memory_context_pop(prev_ctx);
         ttak_mutex_lock(&host->lock);
         host->history_released = false;
         host->history_cache_loaded =

@@ -88,13 +88,23 @@ static bool ddial_mail_clean_text(const char *in, char *out, size_t cap)
     return out[0] != '\0';
 }
 
-static void ddial_mail_notify_member(host_t *host, uint32_t member)
+typedef struct ddial_mail_notify_ctx {
+    uint32_t member;
+} ddial_mail_notify_ctx_t;
+
+static void ddial_mail_notify_cb(ddial_session_t *target, void *user)
 {
-    ddial_session_t *target = mv_find_member(host, member);
-    if (target != nullptr) {
+    ddial_mail_notify_ctx_t *c = (ddial_mail_notify_ctx_t *)user;
+    if (target->logged_in && target->mv.member_no == c->member) {
         ddial_session_write_line(target, "* You have new email. Type /e.");
         mv_bell(target, DDIAL_MV_BEEP_PM);
     }
+}
+
+static void ddial_mail_notify_member(host_t *host, uint32_t member)
+{
+    ddial_mail_notify_ctx_t c = {member};
+    host_ddial_foreach_session(host, ddial_mail_notify_cb, &c);
 }
 
 bool host_ddial_member_exists(host_t *host, const char *handle)

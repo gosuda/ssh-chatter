@@ -842,9 +842,16 @@ static bool host_user_data_send_mail(host_t *host, const char *recipient,
         host_is_lan_operator_username(host, recipient);
     if (target_is_lan_ops) {
         session_ctx_t *target_session =
-            chat_room_find_user(&host->room, recipient);
-        if (target_session == nullptr ||
-            !target_session->user.is_lan_operator) {
+            chat_room_find_user_ref(&host->room, recipient);
+        if (target_session == nullptr) {
+            if (error != nullptr && error_length > 0U) {
+                snprintf(error, error_length, "%s",
+                         "LAN operator mailbox is unavailable.");
+            }
+            return false;
+        }
+        if (!target_session->user.is_lan_operator) {
+            chat_room_release_user_ref(target_session);
             if (error != nullptr && error_length > 0U) {
                 snprintf(error, error_length, "%s",
                          "LAN operator mailbox is unavailable.");
@@ -853,14 +860,16 @@ static bool host_user_data_send_mail(host_t *host, const char *recipient,
         }
         snprintf(resolved_ip, sizeof(resolved_ip), "%s",
                  target_session->client_ip);
+        chat_room_release_user_ref(target_session);
     }
 
     if (resolved_ip[0] == '\0') {
         session_ctx_t *target_session =
-            chat_room_find_user(&host->room, recipient);
+            chat_room_find_user_ref(&host->room, recipient);
         if (target_session != nullptr) {
             snprintf(resolved_ip, sizeof(resolved_ip), "%s",
                      target_session->client_ip);
+            chat_room_release_user_ref(target_session);
         }
     }
 

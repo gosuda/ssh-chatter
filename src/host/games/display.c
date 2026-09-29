@@ -1558,7 +1558,7 @@ static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
     }
 
     session_ctx_t *target =
-        chat_room_find_user(&ctx->owner->room, target_name);
+        chat_room_find_user_ref(&ctx->owner->room, target_name);
     if (target == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         session_command_snprintf(ctx, message, sizeof(message),
@@ -1573,6 +1573,7 @@ static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
                                  "No status message set for '%s'.",
                                  target->user.name);
         session_send_system_line(ctx, message);
+        chat_room_release_user_ref(target);
         return;
     }
 
@@ -1580,6 +1581,7 @@ static void session_handle_showstatus(session_ctx_t *ctx, const char *arguments)
     session_command_snprintf(ctx, message, sizeof(message), "Status for %s: %s",
                              target->user.name, target->status_message);
     session_send_system_line(ctx, message);
+    chat_room_release_user_ref(target);
 }
 
 static void session_handle_weather(session_ctx_t *ctx, const char *arguments)

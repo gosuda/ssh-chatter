@@ -140,13 +140,15 @@ static void session_handle_ban_name(session_ctx_t *ctx, const char *arguments)
         ctx, session_command_localize(ctx, "Nickname ban applied."));
     printf("[banname] %s banned nickname %s\n", ctx->user.name, target_name);
 
-    session_ctx_t *active = chat_room_find_user(&ctx->owner->room, target_name);
+    session_ctx_t *active =
+        chat_room_find_user_ref(&ctx->owner->room, target_name);
     if (active != nullptr) {
         session_send_system_line(
             active, session_command_localize(
                         active, "Your nickname is now blocked for bot "
                                 "detection. Use /nick <name> to change "
                                 "immediately."));
+        chat_room_release_user_ref(active);
     }
 }
 
@@ -175,7 +177,8 @@ static void session_handle_ban(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    session_ctx_t *target = chat_room_find_user(&ctx->owner->room, target_name);
+    session_ctx_t *target =
+        chat_room_find_user_ref(&ctx->owner->room, target_name);
     if (target == nullptr) {
         bool valid_ip = false;
         unsigned char inet_buffer[sizeof(struct in6_addr)];
@@ -224,6 +227,7 @@ static void session_handle_ban(session_ctx_t *ctx, const char *arguments)
         session_send_system_line(
             ctx,
             session_command_localize(ctx, "LAN operators cannot be banned."));
+        chat_room_release_user_ref(target);
         return;
     }
 
@@ -233,6 +237,7 @@ static void session_handle_ban(session_ctx_t *ctx, const char *arguments)
         session_send_system_line(
             ctx, session_command_localize(
                      ctx, "Unable to add ban entry (list full?)."));
+        chat_room_release_user_ref(target);
         return;
     }
 
@@ -255,6 +260,7 @@ static void session_handle_ban(session_ctx_t *ctx, const char *arguments)
         target->should_exit = true;
         session_transport_request_close(target);
     }
+    chat_room_release_user_ref(target);
 }
 
 static void session_handle_ban_list(session_ctx_t *ctx, const char *arguments)
@@ -407,7 +413,8 @@ static void session_handle_poke(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    session_ctx_t *target = chat_room_find_user(&ctx->owner->room, arguments);
+    session_ctx_t *target =
+        chat_room_find_user_ref(&ctx->owner->room, arguments);
     if (target == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         session_command_snprintf(ctx, message, sizeof(message),
@@ -418,6 +425,7 @@ static void session_handle_poke(session_ctx_t *ctx, const char *arguments)
 
     printf("[poke] %s pokes %s\n", ctx->user.name, target->user.name);
     session_channel_write(target, "\a", 1U);
+    chat_room_release_user_ref(target);
     session_send_system_line(ctx, session_command_localize(ctx, "Poke sent."));
 }
 
@@ -723,7 +731,8 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
         return;
     }
 
-    session_ctx_t *target = chat_room_find_user(&ctx->owner->room, working);
+    session_ctx_t *target =
+        chat_room_find_user_ref(&ctx->owner->room, working);
     if (target == nullptr) {
         char message[SSH_CHATTER_MESSAGE_LIMIT];
         session_command_snprintf(ctx, message, sizeof(message),
@@ -736,6 +745,7 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
         session_send_system_line(
             ctx, session_command_localize(
                      ctx, "You do not need to block yourself."));
+        chat_room_release_user_ref(target);
         return;
     }
 
@@ -744,6 +754,7 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
             ctx,
             session_command_localize(
                 ctx, "Unable to identify that user's IP address right now."));
+        chat_room_release_user_ref(target);
         return;
     }
 
@@ -768,6 +779,7 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
         session_block_format_confirm_prompt(ctx, target->user.name, prompt,
                                             sizeof(prompt));
         session_send_system_line(ctx, prompt);
+        chat_room_release_user_ref(target);
         return;
     }
 
@@ -791,6 +803,7 @@ static void session_handle_block(session_ctx_t *ctx, const char *arguments)
             target->client_ip, target->user.name);
         session_send_system_line(ctx, message);
     }
+    chat_room_release_user_ref(target);
 }
 
 static void session_handle_unblock(session_ctx_t *ctx, const char *arguments)
@@ -930,7 +943,8 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
     snprintf(target_name, sizeof(target_name), "%.*s",
              (int)sizeof(target_name) - 1, working);
 
-    session_ctx_t *target = chat_room_find_user(&ctx->owner->room, target_name);
+    session_ctx_t *target =
+        chat_room_find_user_ref(&ctx->owner->room, target_name);
     bool ai_queued = false;
     if (target == nullptr &&
         host_ai_route_private(ctx->owner, ctx->user.name, target_name, message,
@@ -996,6 +1010,7 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
     if (attempt_translation) {
         if (session_translation_queue_private_message(ctx, target,
                                                       deliver_body)) {
+            chat_room_release_user_ref(target);
             return;
         }
         session_send_system_line(
@@ -1008,6 +1023,7 @@ static void session_handle_pm(session_ctx_t *ctx, const char *arguments)
     session_send_private_message_line(target, ctx, to_target_label,
                                       deliver_body);
     session_send_private_message_line(ctx, ctx, to_sender_label, deliver_body);
+    chat_room_release_user_ref(target);
 }
 
 static bool username_contains(const char *username, const char *needle)

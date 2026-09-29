@@ -920,15 +920,19 @@ static void session_handle_resetpw(session_ctx_t *ctx, const char *arguments)
     user_data_record_t user_data;
     // We need to find the user's IP to load their data correctly if they are offline.
     // First, try to find the user in the current session list.
+    char session_ip[SSH_CHATTER_IP_LEN] = {0};
+    char last_ip[SSH_CHATTER_IP_LEN] = {0};
     session_ctx_t *target_session =
-        chat_room_find_user(&ctx->owner->room, target_nickname);
+        chat_room_find_user_ref(&ctx->owner->room, target_nickname);
     const char *target_ip = nullptr;
 
     if (target_session != nullptr) {
-        target_ip = target_session->client_ip;
+        snprintf(session_ip, sizeof(session_ip), "%s",
+                 target_session->client_ip);
+        chat_room_release_user_ref(target_session);
+        target_ip = session_ip;
     } else {
         // If offline, try to find their last known IP from user data
-        char last_ip[SSH_CHATTER_IP_LEN] = {0};
         if (host_lookup_last_ip(ctx->owner, target_nickname, last_ip,
                                 sizeof(last_ip))) {
             last_ip[sizeof(last_ip) - 1U] = '\0';

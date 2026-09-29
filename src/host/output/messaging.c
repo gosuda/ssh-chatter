@@ -133,12 +133,17 @@ static bool host_lookup_member_ip(host_t *host, const char *username, char *ip,
         return false;
     }
 
-    session_ctx_t *member = chat_room_find_user(&host->room, username);
-    if (member == nullptr || member->client_ip[0] == '\0') {
+    session_ctx_t *member = chat_room_find_user_ref(&host->room, username);
+    if (member == nullptr) {
+        return false;
+    }
+    if (member->client_ip[0] == '\0') {
+        chat_room_release_user_ref(member);
         return false;
     }
 
-    snprintf(ip, length, "\%s", member->client_ip);
+    snprintf(ip, length, "%s", member->client_ip);
+    chat_room_release_user_ref(member);
     return true;
 }
 

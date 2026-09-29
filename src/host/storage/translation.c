@@ -257,6 +257,23 @@ static void session_translation_free_result(translation_result_t *result)
     sshc_gc_free(result);
 }
 
+// Free a processed translation job once the worker is done with it. Only BBS
+// jobs carry heap data beyond the node: their source segment strings and the
+// array holding them. Results keep copies of what they need (process_bbs_job
+// transfers ownership of a string rather than borrowing it when a copy
+// fails), so freeing the job's segments here cannot double-free.
+static void session_translation_free_job(translation_job_t *job)
+{
+    if (job == nullptr) {
+        return;
+    }
+    if (job->type == TRANSLATION_JOB_BBS_POST) {
+        session_translation_free_bbs_segments(job->data.bbs.segments,
+                                              job->data.bbs.segment_count);
+    }
+    sshc_gc_free(job);
+}
+
 static bool session_translation_worker_ensure(session_ctx_t *ctx)
 {
     if (ctx == nullptr) {
@@ -2002,12 +2019,8 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
         return false;
     }
 
+    // The worker frees the batch jobs once this returns, on every path.
     if (ctx->translation_thread_stop) {
-        for (size_t idx = 0U; idx < job_count; ++idx) {
-            if (jobs[idx] != nullptr) {
-                jobs[idx] = nullptr;
-            }
-        }
         return true;
     }
 
@@ -2022,19 +2035,14 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
     }
 
     // False means "not handled, fall back to per-job translation"; the
-    // abandoned_jobs flag instead reports a stop request and consumes the
-    // remaining jobs so the caller skips them either way.
+    // abandoned_jobs flag instead reports a stop request: nothing is
+    // published, and the caller frees the jobs after this returns.
     bool handled = true;
     bool abandoned_jobs = false;
 
     size_t offset = 0U;
     for (size_t idx = 0U; idx < job_count; ++idx) {
         if (ctx->translation_thread_stop) {
-            for (size_t release = idx; release < job_count; ++release) {
-                if (jobs[release] != nullptr) {
-                    jobs[release] = nullptr;
-                }
-            }
             abandoned_jobs = true;
             goto done;
         }
@@ -2073,11 +2081,6 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
             SSH_CHATTER_TRANSLATION_BATCH_BUFFER, nullptr, 0U,
             &ctx->translation_thread_stop)) {
         if (ctx->translation_thread_stop) {
-            for (size_t idx = 0U; idx < job_count; ++idx) {
-                if (jobs[idx] != nullptr) {
-                    jobs[idx] = nullptr;
-                }
-            }
             abandoned_jobs = true;
             goto done;
         }
@@ -2086,11 +2089,6 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
     }
 
     if (ctx->translation_thread_stop) {
-        for (size_t idx = 0U; idx < job_count; ++idx) {
-            if (jobs[idx] != nullptr) {
-                jobs[idx] = nullptr;
-            }
-        }
         abandoned_jobs = true;
         goto done;
     }
@@ -2182,11 +2180,6 @@ static bool session_translation_process_batch(session_ctx_t *ctx,
     }
 
     if (ctx->translation_thread_stop) {
-        for (size_t idx = 0U; idx < job_count; ++idx) {
-            if (jobs[idx] != nullptr) {
-                jobs[idx] = nullptr;
-            }
-        }
         abandoned_jobs = true;
         goto done;
     }
@@ -2584,7 +2577,8 @@ static void session_translation_process_bbs_job(session_ctx_t *ctx,
         // Anything the translator could not handle is shown as written. The
         // result must own every string it carries (the cache frees the list
         // wholesale later), so untranslated segments are copied rather than
-        // borrowed from the job; only a copy failure falls back to borrowing.
+        // borrowed from the job. A copy failure transfers the string to the
+        // result instead: the job forgets it, so it is freed exactly once.
         for (size_t idx = 0U; idx < count; ++idx) {
             if (segments[idx].output != nullptr) {
                 output[idx] = segments[idx].output;
@@ -2595,6 +2589,7 @@ static void session_translation_process_bbs_job(session_ctx_t *ctx,
                     strlen(job->data.bbs.segments[idx]));
                 if (output[idx] == nullptr) {
                     output[idx] = job->data.bbs.segments[idx];
+                    job->data.bbs.segments[idx] = nullptr;
                 }
             }
         }
@@ -2638,6 +2633,7 @@ static void session_translation_collect_chat_batch(session_ctx_t *ctx,
     translation_job_t **jobs = (translation_job_t **)sshc_gc_calloc(
         SSH_CHATTER_TRANSLATION_CHAT_BATCH_MAX, sizeof(translation_job_t *));
     if (jobs == nullptr) {
+        session_translation_free_job(first);
         return;
     }
     size_t count = 0U;
@@ -2679,6 +2675,14 @@ static void session_translation_collect_chat_batch(session_ctx_t *ctx,
     ttak_mutex_unlock(&ctx->translation_mutex);
 
     session_translation_process_chat_batch(ctx, jobs, count);
+
+    // Every job the batch collected (first included) was removed from the
+    // pending list under translation_mutex above and is referenced nowhere
+    // else; the results copied out what they needed.
+    for (size_t idx = 0U; idx < count; ++idx) {
+        session_translation_free_job(jobs[idx]);
+    }
+    sshc_gc_free(jobs);
 }
 
 static void *session_translation_worker(void *arg)
@@ -2725,16 +2729,19 @@ static void *session_translation_worker(void *arg)
 
         if (batch[0]->type == TRANSLATION_JOB_BBS_POST) {
             session_translation_process_bbs_job(ctx, batch[0]);
+            session_translation_free_job(batch[0]);
             continue;
         }
 
         if (batch[0]->type == TRANSLATION_JOB_CHAT) {
+            // collect_chat_batch frees first and everything it collects.
             session_translation_collect_chat_batch(ctx, batch[0]);
             continue;
         }
 
         if (batch[0]->type != TRANSLATION_JOB_CAPTION) {
             session_translation_process_single_job(ctx, batch[0]);
+            session_translation_free_job(batch[0]);
             continue;
         }
 
@@ -2802,6 +2809,14 @@ static void *session_translation_worker(void *arg)
             for (size_t idx = 0U; idx < batch_count; ++idx) {
                 session_translation_process_single_job(ctx, batch[idx]);
             }
+        }
+
+        // The batch jobs left the pending list under translation_mutex, so
+        // the worker is their sole owner: free them on every path, including
+        // the thread-stop abandons inside process_batch (which publishes
+        // nothing but leaves the array entries in place for this cleanup).
+        for (size_t idx = 0U; idx < batch_count; ++idx) {
+            session_translation_free_job(batch[idx]);
         }
     }
 

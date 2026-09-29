@@ -510,6 +510,14 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
                 if (member == nullptr || !session_transport_active(member)) {
                     continue;
                 }
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    continue;
+                }
+                atomic_fetch_add(&member->room_snapshot_refs, 1U);
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+                    continue;
+                }
                 targets[target_count++] = member;
             }
         }
@@ -521,7 +529,9 @@ static void chat_room_broadcast_should_sink(chat_room_t *room)
     }
 
     for (size_t idx = 0; idx < target_count; ++idx) {
-        session_mark_should_sink(targets[idx]);
+        session_ctx_t *member = targets[idx];
+        session_mark_should_sink(member);
+        atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
 
     sshc_gc_free(targets);
@@ -740,6 +750,8 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
         // viewport, so the caption is emitted directly and the next sink
         // (triggered by any future chat message) will re-render the inline
         // reaction count from the updated history.
+        bool locked = session_output_lock(member);
+
         session_output_buffer_flush(member);
         member->output_buffering_enabled = false;
         member->output_buffer_length = 0U;
@@ -753,6 +765,10 @@ static void chat_room_broadcast_caption(chat_room_t *room, const char *message)
             member->prompt_needs_padding = false;
             member->output_lines_since_prompt = 0U;
             session_refresh_input_line(member);
+        }
+
+        if (locked) {
+            session_output_unlock(member);
         }
         atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
@@ -873,9 +889,14 @@ static void chat_room_broadcast_entry(chat_room_t *room,
             continue;
         }
 
+        bool locked = session_output_lock(member);
+
         // Language/encoding filtering based on sender's ui_language
         if (entry->is_user_message && !member->unicode_all_mode) {
             if ((int)entry->sender_ui_language != (int)member->ui_language) {
+                if (locked) {
+                    session_output_unlock(member);
+                }
                 atomic_fetch_sub(&member->room_snapshot_refs, 1U);
                 continue;
             }
@@ -892,6 +913,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
                 session_process_pending_sink(member);
             }
             session_channel_flush(member);
+            if (locked) {
+                session_output_unlock(member);
+            }
             atomic_fetch_sub(&member->room_snapshot_refs, 1U);
             continue;
         }
@@ -899,6 +923,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         // --- SSH path (no display model) ---
         if (member->history_scroll_position > 0U || member->no_update) {
             session_flag_should_sink(member);
+            if (locked) {
+                session_output_unlock(member);
+            }
             atomic_fetch_sub(&member->room_snapshot_refs, 1U);
             continue;
         }
@@ -953,6 +980,9 @@ static void chat_room_broadcast_entry(chat_room_t *room,
         }
 
         member->capture_realtime_output = previous_capture;
+        if (locked) {
+            session_output_unlock(member);
+        }
         atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
 
@@ -2734,6 +2764,14 @@ static void host_apply_grant_to_ip(host_t *host, const char *ip)
                 if (strncmp(member->client_ip, ip, SSH_CHATTER_IP_LEN) != 0) {
                     continue;
                 }
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    continue;
+                }
+                atomic_fetch_add(&member->room_snapshot_refs, 1U);
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+                    continue;
+                }
                 member->user.is_operator = true;
                 member->auth.is_operator = true;
                 matches[match_count++] = member;
@@ -2750,6 +2788,7 @@ static void host_apply_grant_to_ip(host_t *host, const char *ip)
         session_ctx_t *member = matches[idx];
         session_send_system_line(
             member, "Operator privileges granted for your IP address.");
+        atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
 
     sshc_gc_free(matches);
@@ -2813,6 +2852,14 @@ static void host_revoke_grant_from_ip(host_t *host, const char *ip)
             member->auth.is_operator = false;
 
             if (matches != nullptr) {
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    continue;
+                }
+                atomic_fetch_add(&member->room_snapshot_refs, 1U);
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+                    continue;
+                }
                 matches[match_count++] = member;
             }
         }
@@ -2830,6 +2877,7 @@ static void host_revoke_grant_from_ip(host_t *host, const char *ip)
         }
         session_send_system_line(
             member, "Operator privileges revoked for your IP address.");
+        atomic_fetch_sub(&member->room_snapshot_refs, 1U);
     }
 
     sshc_gc_free(matches);

@@ -64,6 +64,14 @@ static void morse_client_collect_targets(host_t *host, session_ctx_t ***out,
                     !member->morse_feed_enabled) {
                     continue;
                 }
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    continue;
+                }
+                atomic_fetch_add(&member->room_snapshot_refs, 1U);
+                if (atomic_load(&member->room_snapshot_retired)) {
+                    atomic_fetch_sub(&member->room_snapshot_refs, 1U);
+                    continue;
+                }
                 targets[(*out_count)++] = member;
             }
             *out = targets;
@@ -176,6 +184,7 @@ static void morse_client_broadcast(morse_client_t *client, const char *line)
         /* Safe string search using the guaranteed null-terminated flag buffer */
         if (target->morse_filter[0] != '\0') {
         	if (strcasestr(country_flag, target->morse_filter) == nullptr) {
+        		atomic_fetch_sub(&target->room_snapshot_refs, 1U);
         		continue;
         	}
         }
@@ -188,6 +197,7 @@ static void morse_client_broadcast(morse_client_t *client, const char *line)
         	snprintf(formatted, sizeof(formatted), "-> %s", translated);
         	session_send_raw_text(target, formatted);
         }
+        atomic_fetch_sub(&target->room_snapshot_refs, 1U);
     }
 
     /* Free the target list allocated by morse_client_collect_targets */

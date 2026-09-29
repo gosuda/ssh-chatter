@@ -644,8 +644,10 @@ static void mv_find_cb(ddial_session_t *sess, void *user)
     }
 }
 
-/* The returned pointer is only a hint for reading simple fields; sessions
- * are GC-managed and validated by the registry on every visit. */
+/* Existence probe only: the returned pointer must NOT be dereferenced.
+ * Sessions are GC-managed; the pointer goes stale as soon as the registry
+ * lock is released.  Callers that need to read or modify the match must do
+ * it inside a host_ddial_foreach_session() callback instead. */
 static ddial_session_t *mv_find_slot(host_t *host, uint16_t slot)
 {
     mv_find_t f = {slot, 0U, nullptr, nullptr};
@@ -667,12 +669,28 @@ static ddial_session_t *mv_find_handle(host_t *host, const char *handle)
     return f.found;
 }
 
+typedef struct mv_slot_handle_ctx {
+    uint16_t slot;
+    char *out;
+    size_t cap;
+    bool found;
+} mv_slot_handle_ctx_t;
+
+static void mv_slot_handle_cb(ddial_session_t *sess, void *user)
+{
+    mv_slot_handle_ctx_t *c = (mv_slot_handle_ctx_t *)user;
+    if (!c->found && sess->logged_in && sess->slot == c->slot) {
+        snprintf(c->out, c->cap, "%s", sess->handle);
+        c->found = true;
+    }
+}
+
 /* Resolve a line number to a handle across dial-ins and Chatter members. */
 static bool mv_slot_handle(host_t *host, uint16_t slot, char *out, size_t cap)
 {
-    ddial_session_t *target = mv_find_slot(host, slot);
-    if (target != nullptr) {
-        snprintf(out, cap, "%s", target->handle);
+    mv_slot_handle_ctx_t c = {slot, out, cap, false};
+    host_ddial_foreach_session(host, mv_slot_handle_cb, &c);
+    if (c.found) {
         return true;
     }
     char username[SSH_CHATTER_USERNAME_LEN];
@@ -1215,6 +1233,31 @@ static bool mv_private_to_chatter(host_t *host, uint16_t slot,
     return true;
 }
 
+typedef struct mv_private_ctx {
+    uint16_t slot;
+    uint16_t from_slot;
+    const char *text;
+    bool found;
+    bool squelched;
+    char handle[DDIAL_MAX_HANDLE_LEN];
+} mv_private_ctx_t;
+
+static void mv_private_cb(ddial_session_t *target, void *user)
+{
+    mv_private_ctx_t *c = (mv_private_ctx_t *)user;
+    if (c->found || !target->logged_in || target->slot != c->slot) {
+        return;
+    }
+    c->found = true;
+    if (mv_list_contains(&target->mv.squelch_slots, c->from_slot)) {
+        c->squelched = true;
+        return;
+    }
+    ddial_session_write_line(target, c->text);
+    mv_bell(target, DDIAL_MV_BEEP_PM);
+    snprintf(c->handle, sizeof(c->handle), "%s", target->handle);
+}
+
 static void mv_private_one(ddial_session_t *sess, uint16_t slot,
                            const char *body, bool action)
 {
@@ -1228,16 +1271,15 @@ static void mv_private_one(ddial_session_t *sess, uint16_t slot,
                  sess->handle, body);
     }
 
-    ddial_session_t *target = mv_find_slot(host, slot);
-    if (target != nullptr) {
-        if (mv_list_contains(&target->mv.squelch_slots, sess->slot)) {
+    mv_private_ctx_t c = {slot, sess->slot, text, false, false, ""};
+    host_ddial_foreach_session(host, mv_private_cb, &c);
+    if (c.found) {
+        if (c.squelched) {
             mv_line(sess, "* Line #%u is not accepting your messages.",
                     (unsigned)slot);
             return;
         }
-        ddial_session_write_line(target, text);
-        mv_bell(target, DDIAL_MV_BEEP_PM);
-        mv_line(sess, "* Sent to #%u (%s).", (unsigned)slot, target->handle);
+        mv_line(sess, "* Sent to #%u (%s).", (unsigned)slot, c.handle);
         return;
     }
 
@@ -1279,6 +1321,30 @@ void host_ddial_deliver_link_private(host_t *host, uint16_t target_slot,
  * public relay.  A dial-in gets the same "P#slot(handle) msg" line a /p
  * from another dial-in would produce; a user behind the Station Link gets
  * a link /P.  Returns false when target_handle is on neither side. */
+typedef struct mv_relay_private_ctx {
+    const char *handle;
+    uint16_t from_slot;
+    const char *text;
+    bool found;
+    bool squelched;
+} mv_relay_private_ctx_t;
+
+static void mv_relay_private_cb(ddial_session_t *target, void *user)
+{
+    mv_relay_private_ctx_t *c = (mv_relay_private_ctx_t *)user;
+    if (c->found || !target->logged_in ||
+        strcasecmp(target->handle, c->handle) != 0) {
+        return;
+    }
+    c->found = true;
+    if (mv_list_contains(&target->mv.squelch_slots, c->from_slot)) {
+        c->squelched = true; /* accepted, silently not shown */
+        return;
+    }
+    ddial_session_write_line(target, c->text);
+    mv_bell(target, DDIAL_MV_BEEP_PM);
+}
+
 bool host_ddial_relay_private(host_t *host, session_ctx_t *from,
                               const char *target_handle, const char *message)
 {
@@ -1288,16 +1354,12 @@ bool host_ddial_relay_private(host_t *host, session_ctx_t *from,
     }
     uint16_t from_slot = from->ddial_link_slot;
 
-    ddial_session_t *target = mv_find_handle(host, target_handle);
-    if (target != nullptr) {
-        if (mv_list_contains(&target->mv.squelch_slots, from_slot)) {
-            return true; /* squelched: accepted, silently not shown */
-        }
-        char text[SSH_CHATTER_MESSAGE_LIMIT];
-        snprintf(text, sizeof(text), "P#%u(%s) %s", (unsigned)from_slot,
-                 from->user.name, message);
-        ddial_session_write_line(target, text);
-        mv_bell(target, DDIAL_MV_BEEP_PM);
+    char text[SSH_CHATTER_MESSAGE_LIMIT];
+    snprintf(text, sizeof(text), "P#%u(%s) %s", (unsigned)from_slot,
+             from->user.name, message);
+    mv_relay_private_ctx_t c = {target_handle, from_slot, text, false, false};
+    host_ddial_foreach_session(host, mv_relay_private_cb, &c);
+    if (c.found) {
         return true;
     }
 
@@ -1828,6 +1890,19 @@ static void mv_cosysop_cb(const ddial_member_t *m, void *user)
     }
 }
 
+typedef struct mv_cosysop_set_ctx {
+    uint32_t member_no;
+    bool value;
+} mv_cosysop_set_ctx_t;
+
+static void mv_cosysop_set_cb(ddial_session_t *s, void *user)
+{
+    mv_cosysop_set_ctx_t *c = (mv_cosysop_set_ctx_t *)user;
+    if (s->logged_in && s->mv.member_no == c->member_no) {
+        s->mv.cosysop = c->value || mv_env_cosysop(c->member_no);
+    }
+}
+
 static void mv_cmd_cosysops(ddial_session_t *sess, const char *arg)
 {
     arg = mv_skip_ws(arg);
@@ -1838,10 +1913,8 @@ static void mv_cmd_cosysops(ddial_session_t *sess, const char *arg)
         if (mv_parse_uint(&p, &no) && ddial_member_get(sess->owner, no, &m)) {
             m.cosysop = arg[0] == '+';
             ddial_member_put(sess->owner, &m);
-            ddial_session_t *t = mv_find_member(sess->owner, no);
-            if (t != nullptr) {
-                t->mv.cosysop = m.cosysop || mv_env_cosysop(no);
-            }
+            mv_cosysop_set_ctx_t set = {no, m.cosysop};
+            host_ddial_foreach_session(sess->owner, mv_cosysop_set_cb, &set);
             mv_line(sess, "* Member #%u is %s a CoSysop.", (unsigned)no,
                     m.cosysop ? "now" : "no longer");
         } else {
@@ -2404,6 +2477,24 @@ static void mv_cmd_signup(ddial_session_t *sess, const char *password)
     mv_notice_channel(sess, sess->channel, note);
 }
 
+typedef struct mv_handle_set_ctx {
+    ddial_session_t *self;
+    const char *clean;
+    const char *display;
+    bool colored;
+} mv_handle_set_ctx_t;
+
+static void mv_handle_set_cb(ddial_session_t *s, void *user)
+{
+    mv_handle_set_ctx_t *c = (mv_handle_set_ctx_t *)user;
+    if (s != c->self) {
+        return;
+    }
+    snprintf(s->handle, sizeof(s->handle), "%s", c->clean);
+    snprintf(s->mv.display_handle, sizeof(s->mv.display_handle), "%s",
+             c->colored ? c->display : "");
+}
+
 static void mv_cmd_handle(ddial_session_t *sess, const char *arg)
 {
     arg = mv_skip_ws(arg);
@@ -2494,9 +2585,8 @@ static void mv_cmd_handle(ddial_session_t *sess, const char *arg)
                                   DDIAL_MV_LINK_CHANNEL(sess->channel),
                                   mv_tier(sess), sess->handle,
                                   (uint16_t)sess->mv.member_no);
-    snprintf(sess->handle, sizeof(sess->handle), "%s", clean);
-    snprintf(sess->mv.display_handle, sizeof(sess->mv.display_handle), "%s",
-             colored ? display : "");
+    mv_handle_set_ctx_t set = {sess, clean, display, colored};
+    host_ddial_foreach_session(host, mv_handle_set_cb, &set);
     host_ddial_client_send_login(host, sess->slot,
                                  DDIAL_MV_LINK_CHANNEL(sess->channel),
                                  mv_tier(sess), sess->handle,
@@ -2724,6 +2814,19 @@ static void mv_mail_list_cb(const ddial_mail_t *mail, void *user)
             mail->from_handle, (unsigned)mail->from, mail->text);
 }
 
+typedef struct mv_mail_notify_ctx {
+    uint32_t member_no;
+} mv_mail_notify_ctx_t;
+
+static void mv_mail_notify_cb(ddial_session_t *t, void *user)
+{
+    mv_mail_notify_ctx_t *c = (mv_mail_notify_ctx_t *)user;
+    if (t->logged_in && t->mv.member_no == c->member_no) {
+        ddial_session_write_line(t, "* You have new email. Type /e.");
+        mv_bell(t, DDIAL_MV_BEEP_PM);
+    }
+}
+
 static void mv_cmd_email(ddial_session_t *sess, const char *arg)
 {
     host_t *host = sess->owner;
@@ -2795,11 +2898,8 @@ static void mv_cmd_email(ddial_session_t *sess, const char *arg)
             return;
         }
         mv_line(sess, "* Email sent to member #%u.", (unsigned)to);
-        ddial_session_t *t = mv_find_member(host, to);
-        if (t != nullptr) {
-            ddial_session_write_line(t, "* You have new email. Type /e.");
-            mv_bell(t, DDIAL_MV_BEEP_PM);
-        }
+        mv_mail_notify_ctx_t notify = {to};
+        host_ddial_foreach_session(host, mv_mail_notify_cb, &notify);
         return;
     }
     if (arg[0] == '-') {
@@ -2826,6 +2926,28 @@ static void mv_cmd_email(ddial_session_t *sess, const char *arg)
     }
 }
 
+typedef struct mv_buzz_ctx {
+    uint32_t member_no;
+    ddial_session_t *from;
+    const char *msg;
+    bool found;
+} mv_buzz_ctx_t;
+
+static void mv_buzz_cb(ddial_session_t *t, void *user)
+{
+    mv_buzz_ctx_t *c = (mv_buzz_ctx_t *)user;
+    if (c->found || !t->logged_in || t->mv.member_no != c->member_no) {
+        return;
+    }
+    c->found = true;
+    mv_line(t, "* BUZZ! %s (#%u) is calling you%s%s", c->from->handle,
+            (unsigned)c->from->slot, c->msg[0] != '\0' ? ": " : ".", c->msg);
+    if (t->mv.beep_on && t->mv.beep_volume > 0U &&
+        (t->mv.beep_events & DDIAL_MV_BEEP_BUZZ) != 0U) {
+        ddial_session_write_raw(t, "\a\a\a", 3U);
+    }
+}
+
 static void mv_cmd_offline(ddial_session_t *sess, const char *arg, bool buzz)
 {
     host_t *host = sess->owner;
@@ -2847,14 +2969,9 @@ static void mv_cmd_offline(ddial_session_t *sess, const char *arg, bool buzz)
         return;
     }
     if (buzz) {
-        ddial_session_t *t = mv_find_member(host, to);
-        if (t != nullptr) {
-            mv_line(t, "* BUZZ! %s (#%u) is calling you%s%s", sess->handle,
-                    (unsigned)sess->slot, p[0] != '\0' ? ": " : ".", p);
-            if (t->mv.beep_on && t->mv.beep_volume > 0U &&
-                (t->mv.beep_events & DDIAL_MV_BEEP_BUZZ) != 0U) {
-                ddial_session_write_raw(t, "\a\a\a", 3U);
-            }
+        mv_buzz_ctx_t buzz_ctx = {to, sess, p, false};
+        host_ddial_foreach_session(host, mv_buzz_cb, &buzz_ctx);
+        if (buzz_ctx.found) {
             mv_line(sess, "* Buzzed %s.", m.handle);
             return;
         }
@@ -2927,6 +3044,23 @@ static void mv_cmd_stats(ddial_session_t *sess)
             (unsigned)sess->channel);
 }
 
+typedef struct mv_whois_ctx {
+    uint16_t slot;
+    bool found;
+    uint32_t member_no;
+    char handle[DDIAL_MAX_HANDLE_LEN];
+} mv_whois_ctx_t;
+
+static void mv_whois_cb(ddial_session_t *t, void *user)
+{
+    mv_whois_ctx_t *c = (mv_whois_ctx_t *)user;
+    if (!c->found && t->logged_in && t->slot == c->slot) {
+        c->found = true;
+        c->member_no = t->mv.member_no;
+        snprintf(c->handle, sizeof(c->handle), "%s", t->handle);
+    }
+}
+
 static void mv_cmd_whois(ddial_session_t *sess, const char *arg)
 {
     const char *p = arg;
@@ -2935,8 +3069,9 @@ static void mv_cmd_whois(ddial_session_t *sess, const char *arg)
         mv_line(sess, "* Usage: /whois<line#>");
         return;
     }
-    ddial_session_t *t = mv_find_slot(sess->owner, (uint16_t)slot);
-    if (t == nullptr) {
+    mv_whois_ctx_t c = {(uint16_t)slot, false, 0U, ""};
+    host_ddial_foreach_session(sess->owner, mv_whois_cb, &c);
+    if (!c.found) {
         char username[SSH_CHATTER_USERNAME_LEN];
         if (host_ddial_chat_link_username(sess->owner, (uint16_t)slot,
                                           username, sizeof(username))) {
@@ -2947,15 +3082,15 @@ static void mv_cmd_whois(ddial_session_t *sess, const char *arg)
         }
         return;
     }
-    if (!mv_is_member(t)) {
-        mv_line(sess, "* #%u %s is a guest.", (unsigned)slot, t->handle);
+    if (c.member_no == 0U) {
+        mv_line(sess, "* #%u %s is a guest.", (unsigned)slot, c.handle);
         return;
     }
     ddial_member_t m;
-    if (!ddial_member_get(sess->owner, t->mv.member_no, &m)) {
+    if (!ddial_member_get(sess->owner, c.member_no, &m)) {
         return;
     }
-    mv_line(sess, "#%u %s (member #%u) also uses:", (unsigned)slot, t->handle,
+    mv_line(sess, "#%u %s (member #%u) also uses:", (unsigned)slot, c.handle,
             (unsigned)m.number);
     size_t shown = 0U;
     for (size_t i = 0U; i < DDIAL_MV_SAVED_HANDLES; ++i) {
@@ -3177,6 +3312,30 @@ static void mv_cmd_slot_toggle(ddial_session_t *sess, const char *arg,
             (unsigned)v);
 }
 
+typedef struct mv_full_mute_ctx {
+    uint16_t slot;
+    bool found;
+    bool is_member;
+    bool muted;
+} mv_full_mute_ctx_t;
+
+static void mv_full_mute_cb(ddial_session_t *t, void *user)
+{
+    mv_full_mute_ctx_t *c = (mv_full_mute_ctx_t *)user;
+    if (c->found || !t->logged_in || t->slot != c->slot) {
+        return;
+    }
+    c->found = true;
+    c->is_member = mv_is_member(t);
+    if (c->is_member) {
+        return;
+    }
+    t->mv.full_muted = !t->mv.full_muted;
+    c->muted = t->mv.full_muted;
+    mv_line(t, c->muted ? "* You have been muted by a CoSysop."
+                        : "* You have been unmuted.");
+}
+
 static void mv_cmd_full_mute(ddial_session_t *sess, const char *arg)
 {
     if (!sess->mv.cosysop) {
@@ -3189,20 +3348,50 @@ static void mv_cmd_full_mute(ddial_session_t *sess, const char *arg)
         mv_line(sess, "* Usage: /xx<line#>");
         return;
     }
-    ddial_session_t *t = mv_find_slot(sess->owner, (uint16_t)slot);
-    if (t == nullptr) {
+    mv_full_mute_ctx_t c = {(uint16_t)slot, false, false, false};
+    host_ddial_foreach_session(sess->owner, mv_full_mute_cb, &c);
+    if (!c.found) {
         mv_line(sess, "* Nobody on line #%u.", (unsigned)slot);
         return;
     }
-    if (mv_is_member(t)) {
+    if (c.is_member) {
         mv_line(sess, "* Full mute applies to guests only.");
         return;
     }
-    t->mv.full_muted = !t->mv.full_muted;
-    mv_line(t, t->mv.full_muted ? "* You have been muted by a CoSysop."
-                                : "* You have been unmuted.");
     mv_line(sess, "* Line #%u %s.", (unsigned)slot,
-            t->mv.full_muted ? "muted" : "unmuted");
+            c.muted ? "muted" : "unmuted");
+}
+
+typedef struct mv_boot_ctx {
+    uint16_t slot;
+    uint16_t channel;
+    ddial_session_t *actor;
+    bool found;
+    bool eligible;
+    bool is_cosysop;
+    char handle[DDIAL_MAX_HANDLE_LEN];
+} mv_boot_ctx_t;
+
+static void mv_boot_cb(ddial_session_t *t, void *user)
+{
+    mv_boot_ctx_t *c = (mv_boot_ctx_t *)user;
+    if (c->found || !t->logged_in || t->slot != c->slot) {
+        return;
+    }
+    c->found = true;
+    if (t->channel != c->channel || t == c->actor) {
+        return;
+    }
+    c->eligible = true;
+    if (t->mv.cosysop) {
+        c->is_cosysop = true;
+        return;
+    }
+    snprintf(c->handle, sizeof(c->handle), "%s", t->handle);
+    t->channel = DDIAL_MV_ROOM_CHANNEL;
+    t->mv.channel_joined_at = time(nullptr);
+    mv_line(t, "* You were booted from channel %u by %s.", (unsigned)c->channel,
+            c->actor->handle);
 }
 
 static void mv_cmd_boot(ddial_session_t *sess, const char *arg)
@@ -3222,25 +3411,47 @@ static void mv_cmd_boot(ddial_session_t *sess, const char *arg)
                       "boot.");
         return;
     }
-    ddial_session_t *t = mv_find_slot(sess->owner, (uint16_t)slot);
-    if (t == nullptr || t->channel != sess->channel || t == sess) {
+    mv_boot_ctx_t c = {(uint16_t)slot, sess->channel, sess,
+                       false, false, false, ""};
+    host_ddial_foreach_session(sess->owner, mv_boot_cb, &c);
+    if (!c.found || !c.eligible) {
         mv_line(sess, "* Line #%u is not on your channel.", (unsigned)slot);
         return;
     }
-    if (t->mv.cosysop) {
+    if (c.is_cosysop) {
         mv_line(sess, "* CoSysops cannot be booted.");
         return;
     }
     uint16_t channel = sess->channel;
-    mv_add_boot(channel, t->handle);
-    t->channel = DDIAL_MV_ROOM_CHANNEL;
-    t->mv.channel_joined_at = time(nullptr);
-    mv_line(t, "* You were booted from channel %u by %s.", (unsigned)channel,
-            sess->handle);
+    mv_add_boot(channel, c.handle);
     char note[128];
     snprintf(note, sizeof(note), "* #%u %s was booted from the channel.",
-             (unsigned)slot, t->handle);
+             (unsigned)slot, c.handle);
     mv_notice_channel(sess, channel, note);
+}
+
+typedef struct mv_kick_ctx {
+    uint16_t slot;
+    ddial_session_t *actor;
+    bool found;
+    bool kicked;
+} mv_kick_ctx_t;
+
+static void mv_kick_cb(ddial_session_t *t, void *user)
+{
+    mv_kick_ctx_t *c = (mv_kick_ctx_t *)user;
+    if (c->found || !t->logged_in || t->slot != c->slot) {
+        return;
+    }
+    c->found = true;
+    if (t == c->actor) {
+        return;
+    }
+    ddial_session_write_line(t, "* You have been disconnected by a CoSysop.");
+    snprintf(t->mv.quit_msg, sizeof(t->mv.quit_msg), "disconnected by %s",
+             c->actor->handle);
+    t->should_exit = true;
+    c->kicked = true;
 }
 
 static void mv_cmd_kick(ddial_session_t *sess, const char *arg)
@@ -3255,15 +3466,12 @@ static void mv_cmd_kick(ddial_session_t *sess, const char *arg)
         mv_line(sess, "* Usage: /k<line#>");
         return;
     }
-    ddial_session_t *t = mv_find_slot(sess->owner, (uint16_t)slot);
-    if (t == nullptr || t == sess) {
+    mv_kick_ctx_t c = {(uint16_t)slot, sess, false, false};
+    host_ddial_foreach_session(sess->owner, mv_kick_cb, &c);
+    if (!c.found || !c.kicked) {
         mv_line(sess, "* Nobody to disconnect on line #%u.", (unsigned)slot);
         return;
     }
-    ddial_session_write_line(t, "* You have been disconnected by a CoSysop.");
-    snprintf(t->mv.quit_msg, sizeof(t->mv.quit_msg), "disconnected by %s",
-             sess->handle);
-    t->should_exit = true;
 }
 
 static void mv_cmd_sentry(ddial_session_t *sess, const char *arg)

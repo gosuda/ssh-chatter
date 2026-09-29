@@ -925,6 +925,46 @@ __thread bool g_sshc_safe_active = false;
 static struct sigaction g_old_segv_action;
 static struct sigaction g_old_bus_action;
 
+/* Async-signal-safe write helpers: write(2) only, no stdio/malloc. */
+
+static void write_all_retry(int fd, const char *data, size_t len)
+{
+    size_t off = 0;
+    while (off < len) {
+        ssize_t w = write(fd, data + off, len - off);
+        if (w > 0) {
+            off += (size_t)w;
+        } else if (w < 0 && errno == EINTR) {
+            continue;
+        } else {
+            break;
+        }
+    }
+}
+
+static void write_ul_dec(unsigned long v)
+{
+    char tmp[24];
+    int i = (int)sizeof(tmp);
+    do {
+        tmp[--i] = (char)('0' + (int)(v % 10UL));
+        v /= 10UL;
+    } while (v != 0UL);
+    write_all_retry(STDERR_FILENO, tmp + i, (size_t)((int)sizeof(tmp) - i));
+}
+
+static void write_ul_hex(unsigned long v)
+{
+    static const char digits[] = "0123456789abcdef";
+    char tmp[20];
+    int i = (int)sizeof(tmp);
+    do {
+        tmp[--i] = digits[v & 0xFUL];
+        v >>= 4;
+    } while (v != 0UL);
+    write_all_retry(STDERR_FILENO, tmp + i, (size_t)((int)sizeof(tmp) - i));
+}
+
 static void sshc_crash_signal_handler(int sig, siginfo_t *info, void *context)
 {
     if (g_sshc_safe_active) {
@@ -946,21 +986,20 @@ static void sshc_crash_signal_handler(int sig, siginfo_t *info, void *context)
 #else
     (void)uc;
 #endif
-    char buf[256];
-    int n = snprintf(buf, sizeof(buf),
-                     "[crash] fatal signal %d code %d addr %p pc 0x%lx "
-                     "sp 0x%lx tid %ld\n",
-                     sig, info->si_code, info->si_addr, fault_pc, fault_sp,
-                     (long)syscall(SYS_gettid));
-    if (n > 0) {
-        size_t len = (size_t)n < sizeof(buf) ? (size_t)n : sizeof(buf) - 1U;
-        ssize_t off = 0;
-        while (off < (ssize_t)len) {
-            ssize_t w = write(STDERR_FILENO, buf + off, len - (size_t)off);
-            if (w <= 0) break;
-            off += w;
-        }
-    }
+    write_all_retry(STDERR_FILENO, "[crash] fatal signal ",
+                    sizeof("[crash] fatal signal ") - 1U);
+    write_ul_dec((unsigned long)sig);
+    write_all_retry(STDERR_FILENO, " code ", sizeof(" code ") - 1U);
+    write_ul_dec((unsigned long)info->si_code);
+    write_all_retry(STDERR_FILENO, " addr 0x", sizeof(" addr 0x") - 1U);
+    write_ul_hex((unsigned long)info->si_addr);
+    write_all_retry(STDERR_FILENO, " pc 0x", sizeof(" pc 0x") - 1U);
+    write_ul_hex(fault_pc);
+    write_all_retry(STDERR_FILENO, " sp 0x", sizeof(" sp 0x") - 1U);
+    write_ul_hex(fault_sp);
+    write_all_retry(STDERR_FILENO, " tid ", sizeof(" tid ") - 1U);
+    write_ul_dec((unsigned long)syscall(SYS_gettid));
+    write_all_retry(STDERR_FILENO, "\n", 1U);
     struct sigaction *old_act = (sig == SIGSEGV) ? &g_old_segv_action : &g_old_bus_action;
     if (old_act->sa_flags & SA_SIGINFO) {
         if (old_act->sa_sigaction != nullptr) {

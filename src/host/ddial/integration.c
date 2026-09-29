@@ -283,11 +283,11 @@ void host_ddial_broadcast_to_sessions(host_t *host, const char *message)
             ddial_session_registry_node_t *to_free = cur;
             cur = cur->next;
             if (valid) {
+                /* The session thread owns its fd; closing it from here
+                   races its poll()/recv() and can hijack a reused fd
+                   number.  Ask the thread to exit instead -- it closes
+                   the fd itself within one poll tick. */
                 SSHC_SAFE_BLOCK_BEGIN() {
-                    if (sess->fd >= 0) {
-                        close(sess->fd);
-                        sess->fd = -1;
-                    }
                     sess->should_exit = true;
                 } SSHC_SAFE_BLOCK_END({
                     // ignore secondary crashes during cleanup
@@ -614,11 +614,11 @@ void host_ddial_write_who(ddial_session_t *target)
             ddial_session_registry_node_t *to_free = cur;
             cur = cur->next;
             if (valid) {
+                /* The session thread owns its fd; closing it from here
+                   races its poll()/recv() and can hijack a reused fd
+                   number.  Ask the thread to exit instead -- it closes
+                   the fd itself within one poll tick. */
                 SSHC_SAFE_BLOCK_BEGIN() {
-                    if (sess->fd >= 0) {
-                        close(sess->fd);
-                        sess->fd = -1;
-                    }
                     sess->should_exit = true;
                 } SSHC_SAFE_BLOCK_END({
                     // ignore secondary crashes during cleanup

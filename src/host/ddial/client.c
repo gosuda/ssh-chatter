@@ -62,6 +62,7 @@
 #include <strings.h>
 #include <sys/file.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
@@ -523,6 +524,15 @@ static bool ddial_client_connect_socket(ddial_client_t *client)
     (void)setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &keep_cnt,
                      sizeof(keep_cnt));
 #endif
+
+    /* Bound send(): ddial_client_send_all() runs under client->lock, which
+       every relayed chat line and the periodic station broadcast contend
+       on, so a stalled upstream must not be allowed to block a send
+       forever.  10 s is far above any healthy RTT; on timeout send()
+       fails with EAGAIN and send_all returns the short write/error. */
+    struct timeval send_timeout = {.tv_sec = 10, .tv_usec = 0};
+    (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout,
+                     sizeof(send_timeout));
 
     client->upstream_fd = fd;
     client->connected = true;
@@ -1916,6 +1926,11 @@ void host_ddial_init(host_t *host)
     client->last_send_time.tv_nsec = 0;
     if (ttak_mutex_init(&client->lock) == 0) {
         client->lock_initialized = true;
+    } else {
+        /* Without the relay lock the upstream client is unusable (every
+           send path takes it); fail the init instead of proceeding with
+           a mutex we must never touch. */
+        printf("[ddial] failed to initialize relay lock; upstream relay disabled\n");
     }
 
     const char *host_env = getenv("CHATTER_DDIAL_HOST");
@@ -1935,8 +1950,8 @@ void host_ddial_init(host_t *host)
             (unsigned int)strtoul(cooldown_env, nullptr, 10);
     }
 
-    if (host_env != nullptr && host_env[0] != '\0' && port_env != nullptr &&
-        port_env[0] != '\0') {
+    if (client->lock_initialized && host_env != nullptr &&
+        host_env[0] != '\0' && port_env != nullptr && port_env[0] != '\0') {
         snprintf(client->host, sizeof(client->host), "%s", host_env);
         client->port = (int)strtol(port_env, nullptr, 10);
         if (handle_env != nullptr) {

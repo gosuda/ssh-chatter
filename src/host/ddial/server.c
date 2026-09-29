@@ -14,12 +14,14 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <poll.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
@@ -195,6 +197,11 @@ static void ddial_session_flush(ddial_session_t *sess)
         if (n < 0) {
             if (errno == EINTR) {
                 continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                /* SO_SNDTIMEO fired (stalled client): leave the unsent
+                   tail in out_buf; the next flush tick retries it. */
+                break;
             }
             break;
         }
@@ -410,6 +417,10 @@ static void *ddial_session_thread(void *arg)
     sess->pace_len = 0U;
     sess->mv.baud = 0U;
     ddial_session_flush(sess);
+    /* Unregister FIRST: under g_ddial_registry_lock this blocks every
+       broadcaster, so no other thread can hold or acquire a pointer to
+       sess past this point -- safe to close, destroy and free below. */
+    host_ddial_unregister_session(sess);
     if (sess->fd >= 0) {
         close(sess->fd);
         sess->fd = -1;
@@ -418,7 +429,6 @@ static void *ddial_session_thread(void *arg)
         ttak_mutex_destroy(&sess->out_lock);
         sess->out_lock_initialized = false;
     }
-    host_ddial_unregister_session(sess);
     sshc_gc_free(sess);
     return nullptr;
 }
@@ -550,6 +560,15 @@ static void host_ddial_configure_client_socket(int client_fd)
                      sizeof(enable));
     (void)setsockopt(client_fd, SOL_SOCKET, SO_KEEPALIVE, &enable,
                      sizeof(enable));
+    /* Bound send(): ddial_session_flush() holds out_lock while sending,
+       and broadcasters iterate the session registry holding the global
+       registry lock, so a stalled client must not be allowed to wedge a
+       send forever.  10 s is far above any healthy RTT; on timeout
+       send() fails with EAGAIN and the flush loop keeps the unsent tail
+       queued for the next tick. */
+    struct timeval send_timeout = {.tv_sec = 10, .tv_usec = 0};
+    (void)setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout,
+                     sizeof(send_timeout));
 }
 
 static void *host_ddial_listener_thread(void *arg)
@@ -574,6 +593,14 @@ static void *host_ddial_listener_thread(void *arg)
                     continue;
                 }
                 host->ddial_listener.fd = fd;
+                /* Non-blocking, with a poll tick before accept() below, so
+                   the stop flag can actually interrupt the wait for a
+                   connection: shutdown()/close() from another thread cannot
+                   wake a blocked accept() on Linux. */
+                int fd_flags = fcntl(fd, F_GETFL, 0);
+                if (fd_flags >= 0) {
+                    (void)fcntl(fd, F_SETFL, fd_flags | O_NONBLOCK);
+                }
                 const char *display_addr =
                     host->ddial_listener.bind_address[0] != '\0'
                         ? host->ddial_listener.bind_address
@@ -582,13 +609,37 @@ static void *host_ddial_listener_thread(void *arg)
                        host->ddial_listener.port);
             }
 
+            struct pollfd listen_pfd;
+            listen_pfd.fd = host->ddial_listener.fd;
+            listen_pfd.events = POLLIN;
+            listen_pfd.revents = 0;
+            int poll_rc = poll(&listen_pfd, 1, 400);
+            if (poll_rc == 0) {
+                /* Timeout: loop around and re-check the stop flags. */
+                continue;
+            }
+            if (poll_rc < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                break;
+            }
+            if ((listen_pfd.revents & (POLLERR | POLLNVAL)) != 0) {
+                printf("[ddial] listener socket error (revents=0x%x), stopping\n",
+                       listen_pfd.revents);
+                break;
+            }
+            if ((listen_pfd.revents & POLLIN) == 0) {
+                continue;
+            }
+
             struct sockaddr_storage addr;
             socklen_t addr_len = sizeof(addr);
             int client_fd =
                 accept(host->ddial_listener.fd, (struct sockaddr *)&addr, &addr_len);
             if (client_fd < 0) {
                 int err = errno;
-                if (err == EINTR) {
+                if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK) {
                     continue;
                 }
                 if (atomic_load(&host->ddial_listener.stop) ||
@@ -646,6 +697,13 @@ static void *host_ddial_listener_thread(void *arg)
                 humanized_log_error("ddial", "failed to spawn ddial session thread",
                                     errno);
                 close(client_fd);
+                /* Drop the registry node before freeing: it points at
+                   sess and would dangle otherwise. */
+                host_ddial_unregister_session(sess);
+                if (sess->out_lock_initialized) {
+                    ttak_mutex_destroy(&sess->out_lock);
+                    sess->out_lock_initialized = false;
+                }
                 sshc_gc_free(sess);
                 continue;
             }
@@ -754,23 +812,31 @@ void host_ddial_listener_stop(host_t *host)
            host->ddial_listener.port);
 
     atomic_store(&host->ddial_listener.stop, true);
-    if (host->ddial_listener.fd >= 0) {
-        shutdown(host->ddial_listener.fd, SHUT_RDWR);
+
+    /* The accept() wait is a 400 ms poll tick, so the detached listener
+     * thread exits quickly on its own and closes its own fd at exit.
+     * shutdown()/close() from here cannot wake a blocked accept() on a
+     * listening socket (shutdown returns ENOTCONN) and would race the
+     * thread's own close, so just wait (bounded) for it to wind down.
+     * No pthread_join — joining a detached thread is undefined behaviour.
+     * GC rotation will reclaim host memory only after the thread has
+     * exited the epoch. */
+    for (int waited_ms = 0;
+         waited_ms < 3000 && atomic_load(&host->ddial_listener.running);
+         waited_ms += 10) {
+        struct timespec pause = {.tv_sec = 0, .tv_nsec = 10000000L};
+        host_sleep_uninterruptible(&pause);
+    }
+    if (atomic_load(&host->ddial_listener.running)) {
+        printf("[ddial] listener thread did not exit within 3 s of stop request\n");
     }
 
-    /* The listener thread is detached and epoch-registered.  It exits
-     * on its own when it sees the stop flag or fd closure.  GC rotation
-     * will reclaim host memory only after the thread has exited the epoch.
-     * No pthread_join — joining a detached thread is undefined behaviour. */
     host->ddial_listener.thread_initialized = false;
     host->ddial_listener.enabled = false;
     atomic_store(&host->ddial_listener.running, false);
     atomic_store(&host->ddial_listener.stop, false);
 
-    if (host->ddial_listener.fd >= 0) {
-        close(host->ddial_listener.fd);
-        host->ddial_listener.fd = -1;
-    }
+    host->ddial_listener.fd = -1;
 
     host->ddial_listener.bind_address[0] = '\0';
     host->ddial_listener.port[0] = '\0';

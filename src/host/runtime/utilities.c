@@ -248,6 +248,10 @@ static bool host_memory_pressure_restart(host_t *host,
 static inline bool host_gc_cycle(host_t *host, struct timespec *last_gc_run,
                                  struct timespec *last_pressure_check)
 {
+    /* Land any state-file write that the debounced save skipped, before the
+     * idle/connection checks so pending saves flush even when idle. */
+    host_state_save_flush_pending(host);
+
     if (host == nullptr || host->memory_context == nullptr || last_gc_run == nullptr) {
         return false;
     }

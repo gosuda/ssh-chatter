@@ -1117,7 +1117,17 @@ static void host_eliza_state_resolve_path(host_t *host)
     }
 }
 
-static void host_state_save_locked(host_t *host)
+/* Debounce window for full state-file rewrites: hot paths (every chat
+ * message, reaction, settings tweak) skip the expensive write when one
+ * happened within this interval and instead mark it pending; the periodic
+ * GC cycle flushes it within a few seconds. */
+#define HOST_STATE_SAVE_DEBOUNCE_NS 2000000000LL
+
+static struct timespec g_last_state_save;
+static bool g_last_state_save_valid;
+static bool g_state_save_pending;
+
+static void host_state_save_force_locked(host_t *host)
 {
     if (host == nullptr) {
         return;
@@ -1444,6 +1454,62 @@ static void host_state_save_locked(host_t *host)
         humanized_log_error("host", "failed to update state file", errno);
         unlink(temp_path);
     }
+}
+
+/* Debounced entry point: callers hold host->lock (see the "_locked"
+ * convention — never take host->lock here). Within the debounce window the
+ * expensive full rewrite is skipped and left for host_state_save_flush_pending
+ * (GC cycle / shutdown) to complete. */
+static void host_state_save_locked(host_t *host)
+{
+    if (host == nullptr) {
+        return;
+    }
+
+    struct timespec now = {0};
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        host_state_save_force_locked(host);
+        g_state_save_pending = false;
+        return;
+    }
+
+    if (g_last_state_save_valid) {
+        const long elapsed_sec = now.tv_sec - g_last_state_save.tv_sec;
+        const long elapsed_nsec = now.tv_nsec - g_last_state_save.tv_nsec;
+        const long long elapsed_ns =
+            (long long)elapsed_sec * 1000000000LL + (long long)elapsed_nsec;
+        if (elapsed_ns < HOST_STATE_SAVE_DEBOUNCE_NS) {
+            g_state_save_pending = true;
+            return;
+        }
+    }
+
+    host_state_save_force_locked(host);
+    g_last_state_save = now;
+    g_last_state_save_valid = true;
+    g_state_save_pending = false;
+}
+
+/* Complete a write that host_state_save_locked skipped. Takes host->lock;
+ * safe to call from contexts that do not already hold it (GC cycle,
+ * shutdown). */
+void host_state_save_flush_pending(host_t *host)
+{
+    if (host == nullptr || !g_state_save_pending) {
+        return;
+    }
+
+    ttak_mutex_lock(&host->lock);
+    if (g_state_save_pending) {
+        host_state_save_force_locked(host);
+        g_state_save_pending = false;
+        struct timespec now = {0};
+        if (clock_gettime(CLOCK_MONOTONIC, &now) == 0) {
+            g_last_state_save = now;
+            g_last_state_save_valid = true;
+        }
+    }
+    ttak_mutex_unlock(&host->lock);
 }
 
 static void host_eliza_state_save_locked(host_t *host)

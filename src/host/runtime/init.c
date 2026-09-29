@@ -1603,6 +1603,10 @@ static void host_shutdown_internal(host_t *host, bool send_sigterm)
         return;
     }
 
+    /* Durability: complete any state-file write the debounced save skipped
+     * before the history buffers and host->lock are torn down below. */
+    host_state_save_flush_pending(host);
+
     if (send_sigterm) {
         // Terminate all child processes in the same process group
         kill(0, SIGTERM);

@@ -1542,6 +1542,9 @@ void host_nickname_claim_release(host_t *host, const session_ctx_t *ctx,
 void host_nickname_claim_remove(host_t *host, const char *nick);
 void host_nickname_claims_save(host_t *host);
 void host_nickname_claims_load(host_t *host);
+/* Flush a state-file write skipped by the debounced host_state_save_locked
+ * (takes host->lock; called from the GC cycle and from shutdown). */
+void host_state_save_flush_pending(host_t *host);
 void trim_whitespace_inplace(char *text);
 
 void session_send_raw_text(session_ctx_t *ctx, const char *text);

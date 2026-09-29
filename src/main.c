@@ -30,6 +30,7 @@
 #include <locale.h>
 #include <time.h>
 #include <signal.h>
+#include <unistd.h>
 
 #if defined(__GLIBC__)
 #include <malloc.h>
@@ -44,9 +45,36 @@ static bool g_sync_initialized = false;
 
 static void signal_handler(int signum)
 {
-    (void)signum;
-    printf("[signal] Received signal %d, setting shutdown flag\n", signum);
-    fflush(stdout);
+    /* Async-signal-safe: format by hand, write(2) only, no stdio/malloc. */
+    static const char prefix[] = "[signal] shutdown requested (sig ";
+    char buf[sizeof(prefix) - 1U + 12U + 2U];
+    size_t pos = 0;
+    for (size_t i = 0; i < sizeof(prefix) - 1U; ++i) {
+        buf[pos++] = prefix[i];
+    }
+    char digits[12];
+    int nd = 0;
+    unsigned int u = (unsigned int)signum;
+    do {
+        digits[nd++] = (char)('0' + (int)(u % 10U));
+        u /= 10U;
+    } while (u != 0U);
+    while (nd > 0) {
+        buf[pos++] = digits[--nd];
+    }
+    buf[pos++] = ')';
+    buf[pos++] = '\n';
+    size_t off = 0;
+    while (off < pos) {
+        ssize_t w = write(STDERR_FILENO, buf + off, pos - off);
+        if (w > 0) {
+            off += (size_t)w;
+        } else if (w < 0 && errno == EINTR) {
+            continue;
+        } else {
+            break;
+        }
+    }
     g_shutdown_flag = 1;
 }
 

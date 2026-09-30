@@ -390,6 +390,28 @@ static bool ddial_roster_line_is_operational(const char *line)
                                strncmp(line, "[LINK] ", 7U) == 0);
 }
 
+/* True for the cursor-positioned network map redraws (the NETS screen)
+ * that hubs broadcast between chat lines: they carry coordinate bytes,
+ * "}}}" station-broadcast prefixes, and "^#<name>:<slot>" hub separators,
+ * which are meaningful to a DDial terminal but read as garbage in a
+ * scrolling text room. */
+static bool ddial_line_is_network_map_noise(const char *line)
+{
+    if (line == nullptr || line[0] == '\0') {
+        return false;
+    }
+    if (strstr(line, "}}}") != nullptr || strstr(line, "^#") != nullptr) {
+        return true;
+    }
+    for (const unsigned char *p = (const unsigned char *)line; *p != '\0';
+         ++p) {
+        if (*p < 0x20U && *p != '\t') {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Replay the last DDIAL_ROSTER_HISTORY_SCAN history entries, oldest first,
  * so users who were already online before this start are known. */
 static void ddial_roster_seed_from_history(host_t *host)

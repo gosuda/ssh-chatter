@@ -9,11 +9,11 @@ static void session_fill_line_with_theme(session_ctx_t *ctx)
     const char *bg = ctx->system_bg_code != nullptr ? ctx->system_bg_code : "";
     const size_t bg_len = strlen(bg);
 
-    unsigned int width = ctx->terminal_width > 0U ? ctx->terminal_width : 80U;
-    if (width > SSH_CHATTER_MESSAGE_LIMIT) {
-        width = SSH_CHATTER_MESSAGE_LIMIT;
-    }
-
+    /* Erase the line with the current background instead of padding it
+       with width spaces: writing exactly `width` printable characters
+       puts 80-column terminals (SyncTerm and friends) into the pending
+       auto-wrap state, and the CRLF that follows then renders as an
+       extra blank line ("double spaced" output). */
     session_channel_write(ctx, SESSION_COLUMN_RESET,
                           sizeof(SESSION_COLUMN_RESET) - 1U);
 
@@ -21,17 +21,8 @@ static void session_fill_line_with_theme(session_ctx_t *ctx)
         session_channel_write(ctx, bg, bg_len);
     }
 
-    if (width > 0U) {
-        char spaces[64];
-        memset(spaces, ' ', sizeof(spaces));
-        unsigned int remaining = width;
-        while (remaining > 0U) {
-            size_t chunk =
-                remaining < sizeof(spaces) ? remaining : sizeof(spaces);
-            session_channel_write(ctx, spaces, chunk);
-            remaining -= (unsigned int)chunk;
-        }
-    }
+    static const char kEraseLine[] = "\033[2K";
+    session_channel_write(ctx, kEraseLine, sizeof(kEraseLine) - 1U);
 
     session_channel_write(ctx, SESSION_COLUMN_RESET,
                           sizeof(SESSION_COLUMN_RESET) - 1U);
@@ -885,10 +876,83 @@ static bool session_telnet_collect_line(session_ctx_t *ctx, char *buffer,
     return !ctx->should_exit;
 }
 
+/* Give the client a short window to finish terminal-type negotiation
+ * before the login prompts run: the TTYPE answer usually lands right
+ * after the client responds to our DO TERMINAL-TYPE, but the prompts
+ * execute before the main read loop would ever parse it.  Telnet
+ * commands are consumed internally; any user byte that arrives during
+ * the window is pushed back so the prompt reads it normally. */
+static void session_telnet_drain_negotiation(session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->telnet_fd < 0 || ctx->should_exit) {
+        return;
+    }
+
+    const int max_rounds = 6;
+    for (int round = 0;
+         round < max_rounds && ctx->terminal_type[0] == '\0' &&
+         !ctx->should_exit && !ctx->telnet_eof;
+         ++round) {
+        unsigned char byte = 0U;
+        int read_result = session_telnet_read_byte(ctx, &byte, 100);
+        if (read_result == 1) {
+            ctx->telnet_pending_char = (char)byte;
+            ctx->telnet_pending_valid = true;
+            break;
+        }
+        if (read_result == 0) {
+            break;
+        }
+        /* SSH_AGAIN: negotiation has not answered yet; keep waiting. */
+    }
+}
+
+static bool session_telnet_terminal_is_retro(const session_ctx_t *ctx)
+{
+    if (ctx == nullptr || ctx->terminal_type[0] == '\0') {
+        return false;
+    }
+
+    static const char *const kRetroTerminals[] = {
+        "ansi",     "ansi-bbs", "pc-ansi", "pcbios",
+        "syncterm", "vt52",     "vt-52",   "vt100",
+        "vt-100",   "vt102",    "ibm-pc",  "ibm pc",
+        "cbm",      "petscii",  "atari",   "atari-st",
+        "c64",      "c128",     "amiga",   "commodore",
+    };
+    char term[32];
+    snprintf(term, sizeof(term), "%s", ctx->terminal_type);
+    trim_whitespace_inplace(term);
+    to_lowercase(term);
+
+    for (size_t idx = 0U; idx < sizeof(kRetroTerminals) / sizeof(kRetroTerminals[0]);
+         ++idx) {
+        if (strcmp(term, kRetroTerminals[idx]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool session_telnet_prompt_unicode_check(session_ctx_t *ctx)
 {
     if (ctx == nullptr || ctx->owner == nullptr) {
         return false;
+    }
+
+    /* Retro terminals (SyncTerm reports "ANSI", "ANSI-BBS", or "SYNCTERM")
+       cannot render UTF-8; asking them about Unicode on every connect
+       delays dial-in and invites a wrong answer, so go retro right away.
+       Wait briefly for the TTYPE answer so detection actually works. */
+    session_telnet_drain_negotiation(ctx);
+    if (session_telnet_terminal_is_retro(ctx)) {
+        printf("[session] telnet terminal type '%s' from %s: enabling retro "
+               "mode by default\n",
+               ctx->terminal_type,
+               ctx->client_ip[0] != '\0' ? ctx->client_ip : "unknown");
+        session_handle_retro(ctx, "on");
+        session_handle_set_ui_lang(ctx, "en");
+        return session_telnet_login_prompt(ctx);
     }
 
     char resp[2];

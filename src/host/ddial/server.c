@@ -335,6 +335,170 @@ static void ddial_session_process_input(ddial_session_t *sess)
     }
 }
 
+static bool ddial_session_run_captcha(ddial_session_t *sess)
+{
+    if (sess == nullptr || sess->fd < 0) {
+        return false;
+    }
+
+    captcha_prompt_t prompt;
+    memset(&prompt, 0, sizeof(prompt));
+
+    unsigned basis = session_simple_hash(sess->client_ip);
+    basis ^= session_simple_hash("ddial");
+
+    unsigned entropy = 0U;
+    struct timespec now = {0, 0};
+    if (clock_gettime(CLOCK_REALTIME, &now) == 0) {
+        uint64_t now_sec = (uint64_t)now.tv_sec;
+        entropy ^= (unsigned)now_sec;
+        entropy ^= (unsigned)(now_sec >> 32);
+        entropy ^= (unsigned)now.tv_nsec;
+    } else {
+        uint64_t fallback = (uint64_t)time(nullptr);
+        entropy ^= (unsigned)fallback;
+        entropy ^= (unsigned)(fallback >> 32);
+    }
+
+    host_t *host = sess->owner;
+    if (host != nullptr) {
+        ttak_mutex_lock(&host->lock);
+        uint64_t nonce = ++host->captcha_nonce;
+        ttak_mutex_unlock(&host->lock);
+        entropy ^= (unsigned)nonce;
+        entropy ^= (unsigned)(nonce >> 32);
+    }
+
+    basis ^= entropy;
+    const unsigned variant_seed = basis ^ (basis >> 16U) ^ (entropy << 1U);
+    unsigned prng_state = variant_seed | 1U;
+
+    session_fill_digit_sum_prompt(&prompt, &prng_state);
+
+    if (host != nullptr) {
+        static const captcha_language_t kOrder[] = {
+            CAPTCHA_LANGUAGE_KO,
+            CAPTCHA_LANGUAGE_EN,
+            CAPTCHA_LANGUAGE_ZH,
+            CAPTCHA_LANGUAGE_RU,
+        };
+        host_update_last_captcha_prompt(host, &prompt, kOrder, 4U);
+    }
+
+    ddial_session_write_line(sess, "Before entering the room, solve this small puzzle.");
+    char qline[512];
+    snprintf(qline, sizeof(qline), "Captcha: %s", prompt.question_en);
+    ddial_session_write_line(sess, qline);
+    snprintf(qline, sizeof(qline), "캡챠: %s", prompt.question_ko);
+    ddial_session_write_line(sess, qline);
+    snprintf(qline, sizeof(qline), "驗證碼: %s", prompt.question_zh);
+    ddial_session_write_line(sess, qline);
+    snprintf(qline, sizeof(qline), "Капча: %s", prompt.question_ru);
+    ddial_session_write_line(sess, qline);
+    ddial_session_write_line(sess, "Type your answer and press Enter:");
+    ddial_session_flush(sess);
+
+    char answer[sizeof(prompt.answer)];
+    size_t length = 0U;
+    time_t start_time = time(nullptr);
+
+    while (length + 1U < sizeof(answer)) {
+        if (time(nullptr) - start_time > 60) {
+            ddial_session_write_line(sess, "Captcha timed out. Disconnecting.");
+            ddial_session_flush(sess);
+            return false;
+        }
+
+        struct pollfd pfd;
+        pfd.fd = sess->fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+
+        int rc = poll(&pfd, 1, 1000);
+        if (rc < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return false;
+        }
+        if (rc == 0) {
+            continue;
+        }
+        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            return false;
+        }
+        if ((pfd.revents & POLLIN) == 0) {
+            continue;
+        }
+
+        char chunk[128];
+        ssize_t n = recv(sess->fd, chunk, sizeof(chunk), 0);
+        if (n <= 0) {
+            return false;
+        }
+
+        char filtered[128];
+        size_t flen = ddial_filter_telnet_iac(chunk, (size_t)n, filtered, sizeof(filtered));
+        bool newline_hit = false;
+
+        for (size_t i = 0U; i < flen; ++i) {
+            char ch = filtered[i];
+            if (ch == '\r' || ch == '\n') {
+                ddial_session_write_raw(sess, "\r\n", 2);
+                ddial_session_flush(sess);
+                newline_hit = true;
+                break;
+            }
+
+            if (ch == '\b' || (unsigned char)ch == 0x7FU) {
+                if (length > 0U) {
+                    --length;
+                    ddial_session_write_raw(sess, "\b \b", 3);
+                    ddial_session_flush(sess);
+                }
+                continue;
+            }
+
+            if ((unsigned char)ch < 0x20U) {
+                continue;
+            }
+
+            if (length + 1U < sizeof(answer)) {
+                answer[length++] = ch;
+                ddial_session_write_raw(sess, &ch, 1);
+                ddial_session_flush(sess);
+            }
+        }
+
+        if (newline_hit) {
+            break;
+        }
+    }
+
+    answer[length] = '\0';
+    trim_whitespace_inplace(answer);
+
+    if (answer[0] == '\0') {
+        ddial_session_write_line(sess, "Captcha answer missing. Disconnecting.");
+        ddial_session_flush(sess);
+        return false;
+    }
+
+    if (strcasecmp(prompt.answer, "dog") == 0 && strcmp(answer, "개") == 0) {
+        snprintf(answer, sizeof(answer), "%s", "dog");
+    }
+
+    if (strcasecmp(answer, prompt.answer) == 0) {
+        ddial_session_write_line(sess, "Captcha solved. Welcome aboard!");
+        ddial_session_flush(sess);
+        return true;
+    }
+
+    ddial_session_write_line(sess, "Captcha failed. Disconnecting.");
+    ddial_session_flush(sess);
+    return false;
+}
+
 static void *ddial_session_thread(void *arg)
 {
     ddial_session_t *sess = (ddial_session_t *)arg;
@@ -343,8 +507,18 @@ static void *ddial_session_thread(void *arg)
     }
 
     SSHC_SAFE_BLOCK_BEGIN() {
-        ddial_session_send_welcome(sess);
-        ddial_session_send_prompt(sess);
+        bool captcha_enabled = false;
+        if (sess->owner != nullptr) {
+            captcha_enabled = atomic_load(&sess->owner->captcha_enabled);
+        }
+        if (captcha_enabled && !ddial_session_run_captcha(sess)) {
+            sess->should_exit = true;
+        }
+
+        if (!sess->should_exit) {
+            ddial_session_send_welcome(sess);
+            ddial_session_send_prompt(sess);
+        }
 
         while (!sess->should_exit) {
             struct pollfd pfd;
